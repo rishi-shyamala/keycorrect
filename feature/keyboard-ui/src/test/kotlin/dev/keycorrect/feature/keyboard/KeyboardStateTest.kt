@@ -40,9 +40,9 @@ class KeyboardStateTest {
     }
 
     @Test
-    fun tapOnAutoGoesToOnce() {
+    fun tapOnAutoCancelsIt() {
         val auto = start.withAutoShift(true)
-        assertThat(auto.onShift(1_000).shift).isEqualTo(ShiftState.Once)
+        assertThat(auto.onShift(1_000).shift).isEqualTo(ShiftState.Off)
     }
 
     @Test
@@ -98,5 +98,35 @@ class KeyboardStateTest {
     @Test
     fun transformFallsBackToTextWithoutShiftedText() {
         assertThat(start.onShift(0).transform(KeyAction.Text(".com"))).isEqualTo(".com")
+    }
+
+    @Test
+    fun heldShiftKeepsOneShotShiftAcrossCharacters() {
+        val once = start.onShift(0)
+        assertThat(once.afterCharacter(shiftHeld = true).shift).isEqualTo(ShiftState.Once)
+        assertThat(once.afterCharacter(shiftHeld = false).shift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun chordShiftTurnsOnWhenPressCancelledIt() {
+        val cancelledAuto = start.withAutoShift(true).onShift(0)
+        assertThat(cancelledAuto.shift).isEqualTo(ShiftState.Off)
+        assertThat(cancelledAuto.withChordShift().shift).isEqualTo(ShiftState.Once)
+        val once = start.onShift(0)
+        assertThat(once.withChordShift()).isEqualTo(once)
+    }
+
+    @Test
+    fun releasingAfterChordEndsShiftAndForgetsTheTap() {
+        val chorded = start.onShift(1_000).withChordShift().afterShiftChord()
+        assertThat(chorded.shift).isEqualTo(ShiftState.Off)
+        // The chord was not a tap, so a quick tap afterwards does not lock.
+        assertThat(chorded.onShift(1_100).shift).isEqualTo(ShiftState.Once)
+    }
+
+    @Test
+    fun releasingAfterChordKeepsCapsLockEngagedByDoubleTap() {
+        val locked = start.onShift(0).onShift(100)
+        assertThat(locked.afterShiftChord()).isEqualTo(locked)
     }
 }

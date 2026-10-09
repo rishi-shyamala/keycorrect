@@ -8,7 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.input.pointer.PointerId
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.ResolvedKey
 import kotlin.math.floor
@@ -70,10 +69,10 @@ internal fun previewBounds(key: Rect, overlap: Float, bounds: Size): Rect {
     return Rect(left, top, left + width, top + height)
 }
 
-/** An open long-press popup, owned by the pointer that opened it. */
+/** An open long-press popup, owned by the pointer (id) that opened it. */
 @Stable
 internal class PopupState(
-    val owner: PointerId,
+    val owner: Long,
     val slot: KeySlot,
     val panel: PopupPanel,
     val entries: List<ResolvedKey>,

@@ -25,7 +25,11 @@ class KeyboardControllerTest {
             this.text.append(text)
         }
 
-        override fun deleteBackward() {
+        /** The `sensitive` argument of each delete. */
+        val deletes = mutableListOf<Boolean>()
+
+        override fun deleteBackward(sensitive: Boolean) {
+            deletes += sensitive
             if (text.isNotEmpty()) text.setLength(text.length - 1)
         }
 
@@ -54,7 +58,8 @@ class KeyboardControllerTest {
     private fun start(
         profile: FieldProfile = textProfile,
         settings: KeyboardSettings = KeyboardSettings(),
-    ) = controller.onStartInput(profile, settings)
+        restarting: Boolean = false,
+    ) = controller.onStartInput(profile, settings, restarting)
 
     private fun labels() = controller.layer.rows.flatMap { r -> r.keys.map { it.label } }
 
@@ -235,7 +240,7 @@ class KeyboardControllerTest {
     fun autoCapDoesNotTouchCapsLock() {
         editor.capsMode = TextUtilsCaps
         start(sentences)
-        controller.onKey(KeyAction.Shift) // Auto -> Once
+        controller.onKey(KeyAction.Shift) // Auto -> Off
         now = 100
         controller.onKey(KeyAction.Shift) // double tap -> Locked
         editor.capsMode = 0
@@ -273,6 +278,313 @@ class KeyboardControllerTest {
         controller.onKey(KeyAction.SwitchLayer("letters"))
         assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
     }
+
+    @Test
+    fun backspaceTellsEditorWhetherFieldIsSensitive() {
+        start()
+        controller.onKey(KeyAction.Backspace)
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        controller.onKey(KeyAction.Backspace)
+        assertThat(editor.deletes).containsExactly(false, true).inOrder()
+    }
+
+    @Test
+    fun restartOnSameKindKeepsLayerAndShift() {
+        start()
+        controller.onKey(KeyAction.Shift)
+        start(restarting = true)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once)
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        start(restarting = true)
+        assertThat(controller.state.layerId).isEqualTo("symbols")
+        assertThat(controller.layer.id).isEqualTo("symbols")
+    }
+
+    @Test
+    fun restartOnSameKindRefreshesProfileEnterActionAndAutoCap() {
+        editor.capsMode = 0
+        start(profile(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEARCH), restarting = true)
+        val searchOnly = controller.enterAction
+        editor.capsMode = TextUtilsCaps
+        val restarted =
+            profile(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+                EditorInfo.IME_ACTION_SEND,
+            )
+        start(restarted, restarting = true)
+        assertThat(searchOnly).isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEARCH))
+        assertThat(controller.enterAction).isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEND))
+        assertThat(controller.profile).isEqualTo(restarted)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+    }
+
+    @Test
+    fun restartOnSameKindStillAppliesChangedOptions() {
+        start(profile(InputType.TYPE_CLASS_NUMBER))
+        val noMinus = controller.layer
+        start(
+            profile(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED),
+            restarting = true,
+        )
+        assertThat(controller.layer).isNotEqualTo(noMinus)
+        assertThat(controller.state.layerId).isEqualTo("numpad")
+    }
+
+    @Test
+    fun restartOnDifferentKindResets() {
+        start()
+        controller.onKey(KeyAction.Shift)
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        start(profile(InputType.TYPE_CLASS_NUMBER), restarting = true)
+        assertThat(controller.state.layerId).isEqualTo("numpad")
+        start(
+            profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI),
+            restarting = true,
+        )
+        assertThat(controller.state.layerId).isEqualTo("letters")
+        assertThat(labels()).contains(".com")
+    }
+
+    @Test
+    fun newInputOnSameKindResets() {
+        start()
+        controller.onKey(KeyAction.Shift)
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        start(restarting = false)
+        assertThat(controller.state.layerId).isEqualTo("letters")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun numberFieldFlagsRestrictTheNumpad() {
+        fun numpadLabels(inputType: Int): Set<String> {
+            start(profile(inputType))
+            return labels().toSet()
+        }
+        val plain = numpadLabels(InputType.TYPE_CLASS_NUMBER)
+        assertThat(plain).containsNoneOf("-", ".", ",")
+        val signed = numpadLabels(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED)
+        assertThat(signed).contains("-")
+        assertThat(signed).containsNoneOf(".", ",")
+        val decimal =
+            numpadLabels(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        assertThat(decimal).containsAtLeast(".", ",")
+        assertThat(decimal).doesNotContain("-")
+        val both =
+            numpadLabels(
+                InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_FLAG_SIGNED or
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
+            )
+        assertThat(both).containsAtLeast("-", ".", ",")
+    }
+
+    @Test
+    fun nonNumberFieldsKeepTheDefaultOptions() {
+        start(profile(InputType.TYPE_CLASS_PHONE))
+        assertThat(labels()).contains("+")
+        start(profile(InputType.TYPE_CLASS_DATETIME))
+        assertThat(labels()).isNotEmpty()
+    }
+
+    @Test
+    fun heightIsTheSameOnEveryLayerOfAField() {
+        start()
+        val letters = controller.heightUnits
+        for (id in listOf("symbols", "symbols2", "letters")) {
+            controller.onKey(KeyAction.SwitchLayer(id))
+            assertThat(controller.heightUnits).isEqualTo(letters)
+        }
+        assertThat(letters).isEqualTo(weight(controller.layer))
+    }
+
+    @Test
+    fun numberRowMakesTheWholeKeyboardOneRowTaller() {
+        start()
+        val plain = controller.heightUnits
+        start(settings = KeyboardSettings(numberRow = true))
+        assertThat(controller.heightUnits).isEqualTo(plain + 1f)
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        assertThat(controller.heightUnits).isEqualTo(plain + 1f)
+        // A setting change while on symbols resizes the window once, for every layer.
+        controller.updateSettings(KeyboardSettings())
+        assertThat(controller.heightUnits).isEqualTo(plain)
+    }
+
+    @Test
+    fun numericPadsAreAsTallAsTextKeyboardsWithoutNumberRow() {
+        start()
+        val text = controller.heightUnits
+        val settings = KeyboardSettings(numberRow = true)
+        for (type in
+            listOf(
+                InputType.TYPE_CLASS_NUMBER,
+                InputType.TYPE_CLASS_PHONE,
+                InputType.TYPE_CLASS_DATETIME,
+            )) {
+            start(profile(type), settings)
+            assertThat(controller.heightUnits).isEqualTo(text)
+        }
+    }
+
+    // --- shift press and chord ---
+
+    @Test
+    fun shiftActsOnPressAndTapStaysOnAfterRelease() {
+        start()
+        controller.onShiftDown()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once)
+        controller.onShiftUp()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once)
+        controller.onKey(shiftedA)
+        controller.onKey(shiftedA)
+        assertThat(editor.text.toString()).isEqualTo("Aa")
+    }
+
+    @Test
+    fun holdingShiftTypesCapitalsAndReleaseEndsShift() {
+        start()
+        controller.onShiftDown()
+        controller.onKey(shiftedA)
+        controller.onKey(KeyAction.Text("b", "B"))
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once)
+        controller.onShiftUp()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        controller.onKey(shiftedA)
+        assertThat(editor.text.toString()).isEqualTo("ABa")
+    }
+
+    @Test
+    fun holdingShiftFromAutoStillTypesCapitals() {
+        editor.capsMode = TextUtilsCaps
+        start(sentences)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        controller.onShiftDown() // cancels Auto...
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        editor.capsMode = 0
+        controller.onKey(shiftedA) // ...but the held shift still applies
+        controller.onKey(KeyAction.Text("b", "B"))
+        controller.onShiftUp()
+        controller.onKey(shiftedA)
+        assertThat(editor.text.toString()).isEqualTo("ABa")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun shiftReleaseAfterChordDoesNotCountAsATapForCapsLock() {
+        start()
+        now = 1_000
+        controller.onShiftDown()
+        controller.onKey(shiftedA)
+        now = 1_050
+        controller.onShiftUp()
+        now = 1_100
+        controller.onShiftDown()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once)
+    }
+
+    @Test
+    fun quickDoubleTapStillLocks() {
+        start()
+        now = 1_000
+        controller.onShiftDown()
+        controller.onShiftUp()
+        now = 1_100
+        controller.onShiftDown()
+        controller.onShiftUp()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Locked)
+    }
+
+    @Test
+    fun shiftReleaseWithoutPressIsIgnored() {
+        start()
+        controller.onShiftUp()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun switchingLayerWhileShiftHeldForgetsTheChord() {
+        start()
+        controller.onShiftDown()
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        controller.onShiftUp()
+        controller.onKey(KeyAction.SwitchLayer("letters"))
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
+    // --- own-edit suppression ---
+
+    @Test
+    fun selectionUpdateCausedByOurEditSkipsTheCapsQuery() {
+        start(sentences)
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Text("a"))
+        assertThat(editor.capsQueries).isEqualTo(1) // the controller's own re-evaluation
+        controller.onSelectionChanged() // the platform echoing our edit
+        assertThat(editor.capsQueries).isEqualTo(1)
+        controller.onSelectionChanged() // anything further is external
+        assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun everyKindOfEditIsRecognised() {
+        start(sentences)
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Space)
+        controller.onKey(KeyAction.Backspace)
+        controller.onKey(KeyAction.Enter) // NewLine action
+        assertThat(editor.capsQueries).isEqualTo(3)
+        repeat(3) { controller.onSelectionChanged() }
+        assertThat(editor.capsQueries).isEqualTo(3)
+    }
+
+    @Test
+    fun enterWithImeActionIsNotCountedAsAnEdit() {
+        start(
+            profile(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+                EditorInfo.IME_ACTION_SEARCH,
+            )
+        )
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Enter)
+        controller.onSelectionChanged()
+        assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun externalSelectionAfterTheWindowIsNotSuppressed() {
+        start(sentences)
+        controller.onKey(KeyAction.Text("a"))
+        editor.capsQueries = 0
+        now += OwnEditTracker.DEFAULT_WINDOW_MS + 1 // the echo never came
+        controller.onSelectionChanged()
+        assertThat(editor.capsQueries).isEqualTo(1)
+    }
+
+    @Test
+    fun rangeSelectionIsNeverOurs() {
+        start(sentences)
+        controller.onKey(KeyAction.Text("a"))
+        editor.capsQueries = 0
+        controller.onSelectionChanged(selectionCollapsed = false)
+        assertThat(editor.capsQueries).isEqualTo(1)
+        controller.onSelectionChanged() // the pending count was cleared, not left behind
+        assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun newFieldForgetsPendingEdits() {
+        start(sentences)
+        controller.onKey(KeyAction.Text("a"))
+        start(sentences)
+        editor.capsQueries = 0
+        controller.onSelectionChanged()
+        assertThat(editor.capsQueries).isEqualTo(1)
+    }
+
+    private fun weight(layer: dev.keycorrect.core.layout.KeyboardLayer): Float =
+        layer.rows.sumOf { it.height.toDouble() }.toFloat()
 
     private companion object {
         /** Any non-zero caps mode, e.g. `TextUtils.CAP_MODE_SENTENCES`. */

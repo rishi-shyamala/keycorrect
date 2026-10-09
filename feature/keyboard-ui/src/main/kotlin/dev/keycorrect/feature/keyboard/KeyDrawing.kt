@@ -1,8 +1,10 @@
 package dev.keycorrect.feature.keyboard
 
+import android.view.inputmethod.EditorInfo
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.ResolvedKey
@@ -27,34 +29,77 @@ internal fun keyLabel(key: ResolvedKey, shift: ShiftState, enterLabel: String): 
 
 /**
  * The accessibility label of [key]. [shift] is the current shift state for the shift key and null
- * for every other key.
+ * for every other key; the Enter key is spoken as [enterDescription] ("Search", "Send", ...).
  */
-internal fun keyDescription(key: ResolvedKey, shift: ShiftState?): String =
-    when (shift) {
-        null,
-        ShiftState.Off -> key.description
-        ShiftState.Auto,
-        ShiftState.Once -> "${key.description}, on"
-        ShiftState.Locked -> "Caps lock on"
+internal fun keyDescription(
+    key: ResolvedKey,
+    shift: ShiftState?,
+    enterDescription: String = key.description,
+): String =
+    when {
+        key.action == KeyAction.Enter -> enterDescription
+        shift == null || shift == ShiftState.Off -> key.description
+        shift == ShiftState.Locked -> "Caps lock on"
+        else -> "${key.description}, on"
     }
 
-/** Fill and content colours of [key]; shift looks filled whenever it is on. */
-internal fun keyColors(
+/** The text on the Enter key for [action]: its action name, or a return arrow for a line break. */
+internal fun enterLabel(action: EnterAction): String =
+    when (action) {
+        EnterAction.NewLine -> "↵"
+        is EnterAction.Editor ->
+            // "Previous" is too wide for a key.
+            if (action.actionId == EditorInfo.IME_ACTION_PREVIOUS) "Prev"
+            else editorActionName(action.actionId) ?: "↵"
+    }
+
+/** What TalkBack says for the Enter key: the action name, or [fallback] for a plain line break. */
+internal fun enterDescription(action: EnterAction, fallback: String): String =
+    when (action) {
+        EnterAction.NewLine -> fallback
+        is EnterAction.Editor -> editorActionName(action.actionId) ?: fallback
+    }
+
+private fun editorActionName(actionId: Int): String? =
+    when (actionId) {
+        EditorInfo.IME_ACTION_GO -> "Go"
+        EditorInfo.IME_ACTION_SEARCH -> "Search"
+        EditorInfo.IME_ACTION_SEND -> "Send"
+        EditorInfo.IME_ACTION_NEXT -> "Next"
+        EditorInfo.IME_ACTION_PREVIOUS -> "Previous"
+        EditorInfo.IME_ACTION_DONE -> "Done"
+        else -> null
+    }
+
+/** Fill colour of [key]; shift looks filled whenever it is on. */
+internal fun keyFill(key: ResolvedKey, pressed: Boolean, shift: ShiftState, colors: ColorScheme) =
+    when {
+        pressed -> colors.primaryContainer
+        key.style == KeyStyle.Action -> colors.primary
+        key.style == KeyStyle.Modifier ->
+            if (key.action == KeyAction.Shift && shift != ShiftState.Off) {
+                colors.tertiaryContainer
+            } else {
+                colors.secondaryContainer
+            }
+        else -> colors.surfaceContainerHighest
+    }
+
+/** Colour of the label on [key], matching [keyFill]. */
+internal fun keyContent(
     key: ResolvedKey,
     pressed: Boolean,
     shift: ShiftState,
     colors: ColorScheme,
-): Pair<Color, Color> {
-    if (pressed) return colors.primaryContainer to colors.onPrimaryContainer
-    return when (key.style) {
-        KeyStyle.Action -> colors.primary to colors.onPrimary
-        KeyStyle.Modifier ->
+): Color =
+    when {
+        pressed -> colors.onPrimaryContainer
+        key.style == KeyStyle.Action -> colors.onPrimary
+        key.style == KeyStyle.Modifier ->
             if (key.action == KeyAction.Shift && shift != ShiftState.Off) {
-                colors.tertiaryContainer to colors.onTertiaryContainer
+                colors.onTertiaryContainer
             } else {
-                colors.secondaryContainer to colors.onSecondaryContainer
+                colors.onSecondaryContainer
             }
-        KeyStyle.Character,
-        KeyStyle.Space -> colors.surfaceContainerHighest to colors.onSurface
+        else -> colors.onSurface
     }
-}

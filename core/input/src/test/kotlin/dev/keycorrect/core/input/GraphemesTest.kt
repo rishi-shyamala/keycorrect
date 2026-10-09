@@ -29,4 +29,12 @@ class GraphemesTest {
     fun combiningAccentStaysWithBaseLetter() {
         assertThat(Graphemes.lastClusterLength("café")).isEqualTo(2)
     }
+
+    @Test
+    fun repeatedCallsAndThreadsAreIndependent() {
+        repeat(3) { assertThat(Graphemes.lastClusterLength("hi 😀")).isEqualTo(2) }
+        var result = -1
+        Thread { result = Graphemes.lastClusterLength("ab") }.also { it.start() }.join()
+        assertThat(result).isEqualTo(1)
+    }
 }

@@ -18,12 +18,15 @@ import kotlin.math.roundToInt
 /**
  * A semantics-only mirror of the drawn keys for accessibility services: one invisible node per key,
  * positioned where the key is drawn. The nodes have no pointer input, so sighted touches pass
- * through to the key surface underneath. Recomposes only when [layer] or [shift] changes.
+ * through to the key surface underneath. Recomposes only when [layer] or [enterDescription]
+ * changes: [shift] is read inside the shift key's semantics node alone, so a shift change updates
+ * that node without recomposing or re-laying out the rest.
  */
 @Composable
 internal fun KeySemantics(
     layer: KeyboardLayer,
-    shift: ShiftState,
+    shift: () -> ShiftState,
+    enterDescription: String,
     onKey: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -32,10 +35,15 @@ internal fun KeySemantics(
             for (row in layer.rows) {
                 for (key in row.keys) {
                     if (key.isSpacer) continue
-                    val keyShift = if (key.action == KeyAction.Shift) shift else null
+                    val isShift = key.action == KeyAction.Shift
                     Box(
                         Modifier.clearAndSetSemantics {
-                            contentDescription = keyDescription(key, keyShift)
+                            contentDescription =
+                                keyDescription(
+                                    key,
+                                    if (isShift) shift() else null,
+                                    enterDescription,
+                                )
                             role = Role.Button
                             onClick {
                                 onKey(key.action)

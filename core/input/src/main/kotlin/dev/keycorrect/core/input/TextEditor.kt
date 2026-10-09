@@ -4,7 +4,11 @@ package dev.keycorrect.core.input
 interface TextEditor {
     fun commitText(text: CharSequence)
 
-    fun deleteBackward()
+    /**
+     * Deletes the selection, or the grapheme before the cursor. When [sensitive] (a password field)
+     * the field's text is never read: a delete key event is sent instead.
+     */
+    fun deleteBackward(sensitive: Boolean)
 
     fun performEnter()
 

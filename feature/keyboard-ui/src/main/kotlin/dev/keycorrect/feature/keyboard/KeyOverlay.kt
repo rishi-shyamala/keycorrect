@@ -35,12 +35,13 @@ private const val SHADOW_ALPHA = 0.07f
 /**
  * Draws the key preview bubble and long-press popup panel above the key rows. It covers the whole
  * keyboard content area (suggestion strip included) so they can overlap the strip, and takes no
- * input. It reads [touch] only while drawing, so showing and moving them never recomposes.
+ * input. It reads [touch] and [shift] only while drawing, so showing and moving them never
+ * recomposes.
  */
 @Composable
 internal fun KeyOverlay(
     touch: KeyboardTouchState,
-    shift: ShiftState,
+    shift: () -> ShiftState,
     enterLabel: String,
     modifier: Modifier = Modifier,
 ) {
@@ -50,9 +51,10 @@ internal fun KeyOverlay(
     val popupStyle = remember { TextStyle(fontSize = 22.sp) }
     Canvas(modifier.onGloballyPositioned { touch.overlayOrigin = it.positionInWindow() }) {
         val origin = touch.surfaceInOverlay
-        touch.popup?.let { drawPopup(it, origin, shift, colors, textMeasurer, popupStyle) }
+        val shiftState = shift()
+        touch.popup?.let { drawPopup(it, origin, shiftState, colors, textMeasurer, popupStyle) }
         touch.preview?.let {
-            drawPreview(it, origin, shift, enterLabel, colors, textMeasurer, previewStyle)
+            drawPreview(it, origin, shiftState, enterLabel, colors, textMeasurer, previewStyle)
         }
     }
 }

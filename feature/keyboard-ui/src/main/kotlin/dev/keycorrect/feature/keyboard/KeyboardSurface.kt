@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,73 +15,64 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.changedToDown
-import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.keycorrect.core.layout.KeyAction
-import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardLayer
+import dev.keycorrect.core.layout.ResolvedKey
 import dev.keycorrect.core.settings.KeyboardSettings
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-
-private const val REPEAT_START_DELAY_MS = 400L
-private const val REPEAT_INTERVAL_MS = 50L
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Enough for every label of a layer in each shift state, so drawing never re-measures text. */
 private const val TEXT_CACHE_SIZE = 256
-
-/** A finger on a key. */
-private class Press(val slot: KeySlot, var x: Float) {
-    /** The long-press timer or the backspace repeat loop. */
-    var job: Job? = null
-
-    /** Set when a popup was cancelled: releasing then types nothing. */
-    var cancelled = false
-}
 
 /**
  * Draws every key of [layer] in a single Canvas and handles multi-touch input.
  *
  * Keys are drawn rather than composed individually, so typing causes no recomposition: pressed keys
- * and the preview/popup state live in [touch] and are read only in draw phases. Character keys fire
- * on release; repeatable keys (backspace) fire on press and auto-repeat while held; keys with popup
- * entries open them after [KeyboardSettings.longPressDelayMs] and commit the highlighted entry on
- * release. The previews and popups themselves are drawn by [KeyOverlay].
+ * and the preview/popup state live in [touch] and the shift state is a lambda, all read only in
+ * draw phases. The touch handling itself is [TouchStateMachine]; the previews and popups are drawn
+ * by [KeyOverlay]. The surface is [heightUnits] key-heights tall whatever the layer, and the rows
+ * of a layer with fewer rows are stretched to fill it.
  */
 @Composable
 internal fun KeyboardSurface(
     layer: KeyboardLayer,
-    shift: ShiftState,
+    heightUnits: Float,
+    shift: () -> ShiftState,
     enterLabel: String,
     settings: KeyboardSettings,
     showPreviews: Boolean,
     feedback: KeyFeedback,
     touch: KeyboardTouchState,
     onKey: (KeyAction) -> Unit,
+    onShiftDown: () -> Unit,
+    onShiftUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val view = LocalView.current
     val textMeasurer = rememberTextMeasurer(cacheSize = TEXT_CACHE_SIZE)
     val currentOnKey by rememberUpdatedState(onKey)
+    val currentOnShiftDown by rememberUpdatedState(onShiftDown)
+    val currentOnShiftUp by rememberUpdatedState(onShiftUp)
     val currentSettings by rememberUpdatedState(settings)
     val currentShowPreviews by rememberUpdatedState(showPreviews)
     val currentFeedback by rememberUpdatedState(feedback)
@@ -89,120 +81,90 @@ internal fun KeyboardSurface(
         remember(layer, size) {
             KeyboardGeometry(layer, size.width.toFloat(), size.height.toFloat())
         }
-    val totalWeight = remember(layer) { layer.rows.sumOf { it.height.toDouble() }.toFloat() }
-    val charStyle = remember { TextStyle(fontSize = 22.sp) }
-    val modifierStyle = remember { TextStyle(fontSize = 16.sp) }
-    val hintStyle = remember { TextStyle(fontSize = 10.sp) }
+    val textCache =
+        remember(textMeasurer) {
+            KeyTextCache(
+                textMeasurer,
+                charStyle = TextStyle(fontSize = 22.sp),
+                modifierStyle = TextStyle(fontSize = 16.sp),
+                hintStyle = TextStyle(fontSize = 10.sp),
+            )
+        }
+    val host =
+        remember(view) {
+            object : TouchHost {
+                override val showPreviews: Boolean
+                    get() = currentShowPreviews
+
+                override val longPressDelayMs: Long
+                    get() = currentSettings.longPressDelayMs.toLong()
+
+                override fun onPress(action: KeyAction) =
+                    currentFeedback.onKeyPress(view, feedbackKind(action), currentSettings)
+
+                override fun onPopupOpened() = currentFeedback.haptic(view, currentSettings)
+
+                override fun onKey(action: KeyAction) = currentOnKey(action)
+
+                override fun onShiftDown() = currentOnShiftDown()
+
+                override fun onShiftUp() = currentOnShiftUp()
+            }
+        }
 
     Canvas(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(settings.keyHeightDp.dp * totalWeight)
+                .height(settings.keyHeightDp.dp * heightUnits)
                 .onSizeChanged { size = it }
                 .onGloballyPositioned { touch.surfaceOrigin = it.positionInWindow() }
                 .pointerInput(geometry) {
-                    coroutineScope {
-                        val presses = HashMap<PointerId, Press>()
-                        touch.reset()
-
-                        fun cancelPopup() {
-                            val popup = touch.popup ?: return
-                            presses[popup.owner]?.cancelled = true
-                            touch.popup = null
-                        }
-
-                        fun onDown(id: PointerId, position: Offset) {
-                            val slot = geometry.hitTest(position.x, position.y) ?: return
-                            val key = slot.key
-                            val press = Press(slot, position.x)
-                            presses[id] = press
-                            // A second finger dismisses an open popup; it then types normally.
-                            cancelPopup()
-                            touch.pressed = touch.pressed + slot.index
-                            if (currentShowPreviews && key.style == KeyStyle.Character) {
-                                touch.preview = slot
-                            }
-                            currentFeedback.onKeyPress(
-                                view,
-                                feedbackKind(key.action),
-                                currentSettings,
-                            )
-                            if (key.repeatable) {
-                                currentOnKey(key.action)
-                                press.job = launch {
-                                    delay(REPEAT_START_DELAY_MS)
-                                    while (isActive) {
-                                        currentOnKey(key.action)
-                                        delay(REPEAT_INTERVAL_MS)
-                                    }
-                                }
-                            } else if (key.popup.isNotEmpty()) {
-                                press.job = launch {
-                                    delay(currentSettings.longPressDelayMs.toLong())
-                                    val panel =
-                                        PopupPanel.above(slot, key.popup.size, geometry.width)
-                                    touch.preview = null
-                                    touch.popup =
-                                        PopupState(
-                                            id,
-                                            slot,
-                                            panel,
-                                            key.popup,
-                                            panel.indexAt(press.x),
-                                        )
-                                    currentFeedback.haptic(view, currentSettings)
-                                }
-                            }
-                        }
-
-                        fun onMove(id: PointerId, position: Offset) {
-                            val press = presses[id] ?: return
-                            press.x = position.x
-                            val popup = touch.popup?.takeIf { it.owner == id } ?: return
-                            if (isFarBelow(position.y, popup.slot)) {
-                                cancelPopup()
-                            } else {
-                                popup.highlighted = popup.panel.indexAt(position.x)
-                            }
-                        }
-
-                        fun onUp(id: PointerId) {
-                            val press = presses.remove(id) ?: return
-                            press.job?.cancel()
-                            val slot = press.slot
-                            touch.pressed = touch.pressed - slot.index
-                            if (touch.preview?.index == slot.index) touch.preview = null
-                            val popup = touch.popup?.takeIf { it.owner == id }
-                            when {
-                                popup != null -> {
-                                    touch.popup = null
-                                    currentOnKey(popup.entries[popup.highlighted].action)
-                                }
-                                press.cancelled -> Unit
-                                !slot.key.repeatable -> currentOnKey(slot.key.action)
-                            }
-                        }
-
-                        try {
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    for (change in event.changes) {
-                                        when {
-                                            change.changedToDown() ->
-                                                onDown(change.id, change.position)
-                                            change.changedToUp() -> onUp(change.id)
-                                            change.pressed && change.positionChanged() ->
-                                                onMove(change.id, change.position)
+                    val machine =
+                        TouchStateMachine(geometry, touch, host, SystemClock::uptimeMillis)
+                    touch.reset()
+                    try {
+                        awaitPointerEventScope {
+                            while (true) {
+                                // Wake for a pending long press or repeat even if no event comes.
+                                val deadline = machine.nextDeadline()
+                                val event =
+                                    if (deadline == null) {
+                                        awaitPointerEvent()
+                                    } else {
+                                        val wait = deadline - SystemClock.uptimeMillis()
+                                        withTimeoutOrNull(wait.coerceAtLeast(0L)) {
+                                            awaitPointerEvent()
                                         }
-                                        change.consume()
                                     }
+                                if (event == null) {
+                                    machine.onTimer()
+                                    continue
+                                }
+                                val changes = event.changes
+                                for (i in changes.indices) {
+                                    val change = changes[i]
+                                    val id = change.id.value
+                                    when {
+                                        change.changedToDown() ->
+                                            machine.onDown(id, change.position.x, change.position.y)
+                                        // Even a release another handler consumed ends the press.
+                                        change.changedToUpIgnoreConsumed() -> machine.onUp(id)
+                                        change.pressed && change.positionChanged() ->
+                                            machine.onMove(id, change.position.x, change.position.y)
+                                    }
+                                    change.consume()
+                                }
+                                // A finger that vanished without a release must not stay pressed.
+                                machine.retainOnly { id ->
+                                    changes.any { it.id.value == id && it.pressed }
                                 }
                             }
-                        } finally {
-                            touch.reset()
                         }
+                    } finally {
+                        // Cancelled (layer change, window gone): nothing may stay pressed or
+                        // repeat.
+                        machine.cancelAll()
                     }
                 }
     ) {
@@ -210,26 +172,22 @@ internal fun KeyboardSurface(
         val radius = CornerRadius(KeyCornerRadius.toPx())
         val hintInset = 5.dp.toPx()
         val pressed = touch.pressed
+        val shiftState = shift()
+        textCache.prepare(geometry, shiftState, enterLabel, this)
         for (slot in geometry.slots) {
             val key = slot.key
             if (key.isSpacer) continue
-            val (fill, content) = keyColors(key, slot.index in pressed, shift, colors)
+            val isPressed = slot.index in pressed
             drawRoundRect(
-                color = fill,
+                color = keyFill(key, isPressed, shiftState, colors),
                 topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2),
                 size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
                 cornerRadius = radius,
             )
-            val label = keyLabel(key, shift, enterLabel)
-            if (label.isNotEmpty()) {
-                val layout =
-                    textMeasurer.measure(
-                        label,
-                        if (key.style == KeyStyle.Character) charStyle else modifierStyle,
-                    )
+            textCache.label(slot.index, key)?.let { layout ->
                 drawText(
                     layout,
-                    color = content,
+                    color = keyContent(key, isPressed, shiftState, colors),
                     topLeft =
                         Offset(
                             slot.centerX - layout.size.width / 2f,
@@ -237,8 +195,7 @@ internal fun KeyboardSurface(
                         ),
                 )
             }
-            key.hint?.let { hint ->
-                val layout = textMeasurer.measure(hint, hintStyle)
+            textCache.hint(slot.index, key)?.let { layout ->
                 drawText(
                     layout,
                     color = colors.onSurfaceVariant,
@@ -250,6 +207,61 @@ internal fun KeyboardSurface(
                 )
             }
         }
+    }
+}
+
+/**
+ * Measured key labels and hints of the geometry being drawn, so a press or release redraw (and a
+ * shift change, for the hints) re-measures nothing. Measuring does not depend on colours, so the
+ * cache is keyed by what does: geometry (layer and size), shift state, Enter label, and density.
+ * Draw-phase only, not thread-safe.
+ */
+private class KeyTextCache(
+    private val measurer: TextMeasurer,
+    private val charStyle: TextStyle,
+    private val modifierStyle: TextStyle,
+    private val hintStyle: TextStyle,
+) {
+    private var geometry: KeyboardGeometry? = null
+    private var shift = ShiftState.Off
+    private var enterLabel = ""
+    private var density = 0f
+    private var fontScale = 0f
+    private var labels = arrayOfNulls<TextLayoutResult>(0)
+    private var hints = arrayOfNulls<TextLayoutResult>(0)
+
+    /** Drops whatever is no longer valid for the state about to be drawn. */
+    fun prepare(geometry: KeyboardGeometry, shift: ShiftState, enterLabel: String, d: Density) {
+        val count = geometry.slots.size
+        if (geometry !== this.geometry || d.density != density || d.fontScale != fontScale) {
+            labels = arrayOfNulls(count)
+            hints = arrayOfNulls(count)
+            this.geometry = geometry
+            density = d.density
+            fontScale = d.fontScale
+        } else if (shift != this.shift || enterLabel != this.enterLabel) {
+            labels = arrayOfNulls(count)
+        }
+        this.shift = shift
+        this.enterLabel = enterLabel
+    }
+
+    fun label(index: Int, key: ResolvedKey): TextLayoutResult? {
+        labels[index]?.let {
+            return it
+        }
+        val text = keyLabel(key, shift, enterLabel)
+        if (text.isEmpty()) return null
+        val style = if (key.style == KeyStyle.Character) charStyle else modifierStyle
+        return measurer.measure(text, style).also { labels[index] = it }
+    }
+
+    fun hint(index: Int, key: ResolvedKey): TextLayoutResult? {
+        hints[index]?.let {
+            return it
+        }
+        val text = key.hint ?: return null
+        return measurer.measure(text, hintStyle).also { hints[index] = it }
     }
 }
 

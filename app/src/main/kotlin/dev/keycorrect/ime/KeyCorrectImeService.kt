@@ -56,16 +56,24 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         KeyCorrectTheme { KeyboardScreen(controller, settings, feedback, autofill = autofill) }
     }
 
-    override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
-        super.onStartInputView(editorInfo, restarting)
-        // A restart is the same field re-announced; its suggestions are still valid.
+    /**
+     * Suggestions belong to the focused field, not to the keyboard being visible: they are dropped
+     * when the field changes ([onStartInput] without a restart, [onFinishInput]) and survive hiding
+     * and re-showing the keyboard on the same field.
+     */
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
         if (!restarting) autofill.clear()
-        controller.onStartInput(FieldProfile.from(editorInfo), settingsFlow.value)
     }
 
-    override fun onFinishInputView(finishingInput: Boolean) {
+    override fun onFinishInput() {
         autofill.clear()
-        super.onFinishInputView(finishingInput)
+        super.onFinishInput()
+    }
+
+    override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        super.onStartInputView(editorInfo, restarting)
+        controller.onStartInput(FieldProfile.from(editorInfo), settingsFlow.value, restarting)
     }
 
     /** Asks the autofill service for chips styled like the keyboard; null opts out (menu). */
@@ -95,6 +103,6 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             candidatesStart,
             candidatesEnd,
         )
-        controller.onSelectionChanged()
+        controller.onSelectionChanged(selectionCollapsed = newSelStart == newSelEnd)
     }
 }

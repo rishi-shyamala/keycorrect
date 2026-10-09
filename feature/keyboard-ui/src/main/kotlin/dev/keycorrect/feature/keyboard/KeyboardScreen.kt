@@ -1,7 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.widget.inline.InlineContentView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -22,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -30,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.settings.KeyboardSettings
 
 /**
@@ -45,13 +42,17 @@ fun KeyboardScreen(
     modifier: Modifier = Modifier,
     autofill: InlineAutofillController? = null,
 ) {
-    // Only the shift part of the state is read here, so typing never recomposes the screen.
-    val shift by remember(controller) { derivedStateOf { controller.state.shift } }
+    // Shift is a lambda read only in draw and semantics phases, so neither typing nor a shift
+    // change recomposes anything here.
+    val shift = remember(controller) { { controller.state.shift } }
     val enterLabel = enterLabel(controller.enterAction)
+    val enterDescription = enterDescription(controller.enterAction, fallback = "Enter")
     val showPreviews = settings.keyPreview && !controller.profile.sensitive
     val layer = controller.layer
     val touch = remember { KeyboardTouchState() }
     val onKey = remember(controller) { controller::onKey }
+    val onShiftDown = remember(controller) { controller::onShiftDown }
+    val onShiftUp = remember(controller) { controller::onShiftUp }
     Column(
         modifier =
             modifier
@@ -71,6 +72,7 @@ fun KeyboardScreen(
                 Box(modifier = Modifier.fillMaxWidth()) {
                     KeyboardSurface(
                         layer = layer,
+                        heightUnits = controller.heightUnits,
                         shift = shift,
                         enterLabel = enterLabel,
                         settings = settings,
@@ -78,10 +80,13 @@ fun KeyboardScreen(
                         feedback = feedback,
                         touch = touch,
                         onKey = onKey,
+                        onShiftDown = onShiftDown,
+                        onShiftUp = onShiftUp,
                     )
                     KeySemantics(
                         layer = layer,
                         shift = shift,
+                        enterDescription = enterDescription,
                         onKey = onKey,
                         modifier = Modifier.matchParentSize(),
                     )
@@ -152,18 +157,3 @@ private fun InlineSuggestionView(view: InlineContentView) {
 
 private val SuggestionStripHeight = 40.dp
 private val SuggestionSpacing = 6.dp
-
-private fun enterLabel(action: EnterAction): String =
-    when (action) {
-        EnterAction.NewLine -> "↵"
-        is EnterAction.Editor ->
-            when (action.actionId) {
-                EditorInfo.IME_ACTION_GO -> "Go"
-                EditorInfo.IME_ACTION_SEARCH -> "Search"
-                EditorInfo.IME_ACTION_SEND -> "Send"
-                EditorInfo.IME_ACTION_NEXT -> "Next"
-                EditorInfo.IME_ACTION_PREVIOUS -> "Prev"
-                EditorInfo.IME_ACTION_DONE -> "Done"
-                else -> "↵"
-            }
-    }

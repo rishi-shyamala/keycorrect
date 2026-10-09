@@ -134,18 +134,12 @@ data class FieldProfile(
                     }
             }
 
-            val multiLine =
-                isText &&
-                    inputType and
-                        (InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                            InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE) != 0
-
             val isNumber = inputClass == InputType.TYPE_CLASS_NUMBER
             return FieldProfile(
                 kind = kind,
                 enterAction = enter,
                 autoCapitalize = autoCapitalize,
-                multiLine = multiLine,
+                multiLine = isMultiLine(inputType),
                 suggestionsEnabled = suggestions,
                 autocorrectEnabled = autocorrect,
                 learningEnabled = learning,
@@ -154,6 +148,15 @@ data class FieldProfile(
                 decimalNumber = isNumber && inputType and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0,
             )
         }
+
+        /**
+         * True for a text field that accepts line breaks (`TEXT_FLAG_MULTI_LINE` or IME variant).
+         */
+        fun isMultiLine(inputType: Int): Boolean =
+            inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+                inputType and
+                    (InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                        InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE) != 0
 
         private fun textKind(variation: Int): FieldKind =
             when (variation) {
