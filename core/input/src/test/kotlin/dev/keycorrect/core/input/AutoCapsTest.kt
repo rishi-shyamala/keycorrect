@@ -51,9 +51,38 @@ class AutoCapsTest {
     fun aTruncatedStartIsUnknownWhenTheAnswerDependsOnIt() {
         assertThat(AutoCaps.shouldCapitalize("  ", AutoCapitalize.Sentences, startKnown = false))
             .isNull()
-        assertThat(AutoCaps.shouldCapitalize("a. ", AutoCapitalize.Sentences, startKnown = false))
+        assertThat(
+                AutoCaps.shouldCapitalize("hi you. ", AutoCapitalize.Sentences, startKnown = false)
+            )
             .isTrue()
         assertThat(AutoCaps.shouldCapitalize("abc", AutoCapitalize.Sentences, startKnown = false))
             .isFalse()
+    }
+
+    @Test
+    fun anAbbreviationCutOffByTruncationIsUnknown() {
+        // "e.g. " whose "e." may have been cut to "g. ": a period could lie before the start.
+        assertThat(AutoCaps.shouldCapitalize("g. ", AutoCapitalize.Sentences, startKnown = false))
+            .isNull()
+        // With the start known, the same text is a sentence end.
+        assertThat(AutoCaps.shouldCapitalize("g. ", AutoCapitalize.Sentences, startKnown = true))
+            .isTrue()
+        // A non-letter ends the look-back inside the text: no doubt.
+        assertThat(
+                AutoCaps.shouldCapitalize("a go. ", AutoCapitalize.Sentences, startKnown = false)
+            )
+            .isTrue()
+        assertThat(
+                AutoCaps.shouldCapitalize("a e.g. ", AutoCapitalize.Sentences, startKnown = false)
+            )
+            .isFalse()
+    }
+
+    @Test
+    fun typographicQuotesAreSkipped() {
+        assertThat(s("He left.\u201D ")).isTrue()
+        assertThat(s("He left. \u201C")).isTrue()
+        assertThat(s("Yes. \u00BF")).isTrue()
+        assertThat(s("He said \u2018")).isFalse()
     }
 }

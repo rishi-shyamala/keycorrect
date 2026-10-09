@@ -76,6 +76,9 @@ class PredictionHost(
                 )
             engine.load()
             predictor = Predictor { request, stale -> engine.predictNow(request, stale) }
+            // Build the contraction index here, off the main thread, rather than in the first
+            // decode (which may be a separator decode on main). Predictions need not wait for it.
+            runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }
         }
     }
 

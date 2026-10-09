@@ -199,4 +199,51 @@ class OwnEditTrackerTest {
         assertThat(isOwn(at(8))).isTrue()
         assertThat(tracker.onUpdate(at(2))).isEqualTo(UpdateVerdict.External)
     }
+
+    @Test
+    fun anIntermediateStateOfABatchIsOursAndKeepsTheFinalExpectation() {
+        start(10)
+        tracker.beginBatch()
+        tracker.onDeleteSurrounding(5)
+        tracker.onSetComposing(5)
+        tracker.endBatch()
+        // A non-coalescing editor: "cursor at the word start, nothing composing", then the end.
+        assertThat(isOwn(at(5))).isTrue()
+        assertThat(tracker.pendingCount).isEqualTo(1)
+        assertThat(isOwn(at(10, 5, 10))).isTrue()
+        assertThat(tracker.pendingCount).isEqualTo(0)
+    }
+
+    @Test
+    fun anIntermediateStateReportedInsideTheBatchIsOurs() {
+        start(10)
+        tracker.beginBatch()
+        tracker.onDeleteSurrounding(5)
+        assertThat(isOwn(at(5))).isTrue() // reported before the batch ended
+        tracker.onSetComposing(5)
+        assertThat(isOwn(at(10, 5, 10))).isTrue()
+        tracker.endBatch()
+        assertThat(isOwn(at(10, 5, 10))).isTrue() // the batch's own echo still matches
+        assertThat(tracker.pendingCount).isEqualTo(0)
+    }
+
+    @Test
+    fun anUpdateMatchingNoStepOfTheBatchIsStillExternal() {
+        start(10)
+        tracker.beginBatch()
+        tracker.onDeleteSurrounding(5)
+        tracker.onSetComposing(5)
+        tracker.endBatch()
+        assertThat(tracker.onUpdate(at(7))).isEqualTo(UpdateVerdict.External)
+    }
+
+    @Test
+    fun aReversedSelectionIsNormalised() {
+        tracker.reset(EditorSelection(7, 3))
+        tracker.onDeleteBackward()
+        assertThat(isOwn(at(3))).isTrue()
+        tracker.reset(at(4, 6, 2)) // a reversed composing region
+        tracker.onSetComposing(2)
+        assertThat(isOwn(at(4, 2, 4))).isTrue()
+    }
 }

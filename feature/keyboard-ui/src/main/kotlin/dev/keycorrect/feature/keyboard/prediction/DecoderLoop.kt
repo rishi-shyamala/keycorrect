@@ -96,12 +96,17 @@ class DecoderLoop(
         if (predictor() == null) return null
         if (outstanding.get() > 0) {
             val deadline = System.nanoTime() + separatorWaitMs * 1_000_000
-            synchronized(monitor) {
-                while (outstanding.get() > 0 && current(sequence) == null) {
-                    val remaining = deadline - System.nanoTime()
-                    if (remaining <= 0) break
-                    monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+            try {
+                synchronized(monitor) {
+                    while (outstanding.get() > 0 && current(sequence) == null) {
+                        val remaining = deadline - System.nanoTime()
+                        if (remaining <= 0) break
+                        monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+                    }
                 }
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null // no answer: the caller commits the word as typed
             }
             current(sequence)?.let {
                 return it

@@ -22,6 +22,22 @@ internal data class EditorSelection(
         get() =
             if (composingStart >= 0 && composingEnd > composingStart) composingEnd - composingStart
             else 0
+
+    /**
+     * The same state with a reversed selection or composing region put the right way round (some
+     * editors report the anchor before the focus).
+     */
+    fun normalised(): EditorSelection {
+        val selReversed = selStart >= 0 && selEnd >= 0 && selStart > selEnd
+        val compReversed = composingStart >= 0 && composingEnd >= 0 && composingStart > composingEnd
+        if (!selReversed && !compReversed) return this
+        return EditorSelection(
+            if (selReversed) selEnd else selStart,
+            if (selReversed) selStart else selEnd,
+            if (compReversed) composingEnd else composingStart,
+            if (compReversed) composingStart else composingEnd,
+        )
+    }
 }
 
 /** How [OwnEditTracker.onUpdate] classified a selection update. */
@@ -56,6 +72,13 @@ internal sealed interface UpdateVerdict {
  *    cursor outside the composing region, a lost region or a different cursor position, is
  *    external.
  *
+ * An editor that does not coalesce may report intermediate states inside a batch (a delete then a
+ * compose: "cursor at the word start, nothing composing", then the final state). Each batch
+ * therefore also remembers the states it passed through; an update matching one of those, in a
+ * batch still under way or pending, is ours too and consumes nothing, so the final echo still
+ * matches its expectation. [TrackedEditor] records an edit before passing it on, so an editor
+ * reporting synchronously is understood as well.
+ *
  * Expectations expire after [ttlMs]; an expired one only costs a fallback to the state check in 3.
  * A deleted grapheme's length is not known to the tracker, so it expects the cursor within
  * [MAX_DELETE] units to the left.
@@ -70,6 +93,8 @@ internal class OwnEditTracker(
         val compLength: Int,
         val compStart: Int,
         val at: Long,
+        /** Other states the same batch passed through before this one. */
+        val intermediates: List<Expectation> = emptyList(),
     )
 
     // The model: where the editor should be after everything sent so far. -1 = unknown.
@@ -85,6 +110,9 @@ internal class OwnEditTracker(
     private val pending = ArrayDeque<Expectation>()
     private var batchDepth = 0
     private var batchDirty = false
+
+    // The state after each edit of the batch under way.
+    private val batchSteps = ArrayList<Expectation>()
 
     /** Number of expectations not yet matched. */
     val pendingCount: Int
@@ -182,18 +210,21 @@ internal class OwnEditTracker(
         batchDepth = 0
         if (batchDirty) {
             batchDirty = false
-            push()
+            push(batchSteps.dropLast(1))
         }
+        batchSteps.clear()
     }
 
     // ------------------------------------------------------------------ classifying updates
 
     /** Classifies [update], consuming the expectations it explains. */
-    fun onUpdate(update: EditorSelection): UpdateVerdict {
+    fun onUpdate(raw: EditorSelection): UpdateVerdict {
+        val update = raw.normalised()
         expire()
         if (!update.known || !update.collapsed) return external(update)
 
         val exact = pending.indexOfLast { matchesExactly(it, update) }
+        if (exact < 0 && passesThroughIntermediate(update)) return UpdateVerdict.Own()
         val index = if (exact >= 0) exact else pending.indexOfLast { matchesNormalised(it, update) }
         if (index >= 0) {
             repeat(index + 1) { pending.removeFirst() }
@@ -228,6 +259,11 @@ internal class OwnEditTracker(
         return external(update)
     }
 
+    /** Whether [update] is a state a batch (under way or pending) passed through on its way. */
+    private fun passesThroughIntermediate(update: EditorSelection): Boolean =
+        batchSteps.any { matchesExactly(it, update) } ||
+            pending.any { p -> p.intermediates.any { matchesExactly(it, update) } }
+
     private fun external(update: EditorSelection): UpdateVerdict {
         pending.clear()
         adopt(update)
@@ -235,7 +271,8 @@ internal class OwnEditTracker(
     }
 
     /** Takes [update] as the truth about the editor. */
-    private fun adopt(update: EditorSelection) {
+    private fun adopt(raw: EditorSelection) {
+        val update = raw.normalised()
         if (!update.known) {
             selStart = -1
             selEnd = -1
@@ -256,6 +293,7 @@ internal class OwnEditTracker(
         pending.clear()
         batchDepth = 0
         batchDirty = false
+        batchSteps.clear()
         adopt(initial)
     }
 
@@ -275,14 +313,30 @@ internal class OwnEditTracker(
     }
 
     private fun record() {
-        if (batchDepth > 0) batchDirty = true else push()
+        if (batchDepth > 0) {
+            batchDirty = true
+            batchSteps.add(snapshot())
+        } else {
+            push(emptyList())
+        }
     }
 
-    private fun push() {
+    private fun snapshot(intermediates: List<Expectation> = emptyList()) =
+        Expectation(cursorMin, cursorMax, compLength, compStart, clock(), intermediates)
+
+    private fun push(steps: List<Expectation>) {
         expire()
-        pending.addLast(Expectation(cursorMin, cursorMax, compLength, compStart, clock()))
+        val last = snapshot()
+        val distinct = steps.filterNot { it.sameState(last) }
+        pending.addLast(snapshot(distinct))
         if (pending.size > MAX_PENDING) pending.removeFirst()
     }
+
+    private fun Expectation.sameState(o: Expectation) =
+        cursorMin == o.cursorMin &&
+            cursorMax == o.cursorMax &&
+            compLength == o.compLength &&
+            compStart == o.compStart
 
     private fun expire() {
         val now = clock()
@@ -318,35 +372,36 @@ internal class OwnEditTracker(
 
 /**
  * A [TextEditor] that reports every mutation to an [OwnEditTracker] and passes everything on to
- * [delegate] (reads and Enter included).
+ * [delegate] (reads and Enter included). The tracker hears of an edit before the editor does, so
+ * that an update the editor reports synchronously while applying it is already explained.
  */
 internal class TrackedEditor(
     private val delegate: TextEditor,
     private val tracker: OwnEditTracker,
 ) : TextEditor by delegate {
     override fun commitText(text: CharSequence, newCursorPosition: Int) {
-        delegate.commitText(text, newCursorPosition)
         tracker.onCommit(text.length, newCursorPosition)
+        delegate.commitText(text, newCursorPosition)
     }
 
     override fun setComposingText(text: CharSequence) {
-        delegate.setComposingText(text)
         tracker.onSetComposing(text.length)
+        delegate.setComposingText(text)
     }
 
     override fun finishComposingText() {
-        delegate.finishComposingText()
         tracker.onFinishComposing()
+        delegate.finishComposingText()
     }
 
     override fun deleteSurroundingText(before: Int, after: Int) {
-        delegate.deleteSurroundingText(before, after)
         tracker.onDeleteSurrounding(before)
+        delegate.deleteSurroundingText(before, after)
     }
 
     override fun deleteBackward(sensitive: Boolean) {
-        delegate.deleteBackward(sensitive)
         tracker.onDeleteBackward()
+        delegate.deleteBackward(sensitive)
     }
 
     override fun <T> batchEdit(block: () -> T): T {

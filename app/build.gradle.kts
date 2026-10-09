@@ -17,7 +17,7 @@ android {
         versionCode = 1
         versionName = "0.0.1"
         // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
-        // native code.
+        // native code. 32-bit-only devices (armeabi-v7a, x86) are intentionally unsupported.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 

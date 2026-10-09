@@ -944,6 +944,28 @@ class PredictiveControllerTest {
         assertThat(editor.composing).isEmpty()
     }
 
+    @Test
+    fun backspaceAfterATokenThatIsNotAWordJustDeletes() {
+        for (token in listOf("foo.bar", "user@exa", "#tag", "42x")) {
+            editor.setText("$token!")
+            start()
+            backspace()
+            assertWithMessage(token).that(text()).isEqualTo(token)
+            assertWithMessage(token).that(editor.composing).isEmpty()
+        }
+    }
+
+    @Test
+    fun backspaceAfterAWordAtAWordBoundaryRecomposesIt() {
+        for (field in listOf("hello world", "hello (world", "world")) {
+            editor.setText(field + "!")
+            start()
+            backspace()
+            assertThat(text()).isEqualTo(field)
+            assertThat(editor.composing).isEqualTo("world")
+        }
+    }
+
     // ------------------------------------------------------------------ finishing input
 
     @Test

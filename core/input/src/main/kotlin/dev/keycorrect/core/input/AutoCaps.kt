@@ -3,10 +3,11 @@ package dev.keycorrect.core.input
 /**
  * Auto-capitalisation computed from the text before the cursor, so the keyboard needs no editor
  * round trip (`getCursorCapsMode`) per key while it already holds that text. Follows the rules of
- * `TextUtils.getCapsMode`: a capital at the start of the field or a line, after a sentence end
- * (`.`, `!`, `?` plus whitespace, ignoring closing and opening quotes and brackets) and, for
- * [AutoCapitalize.Words], after any whitespace. A period inside an abbreviation such as "e.g. "
- * does not end a sentence.
+ * `TextUtils.getCapsMode`, which it intentionally extends with typographic quotes: the opening `“ ‘
+ * ¿ ¡` and the closing `” ’` are skipped like their ASCII counterparts and brackets. A capital at
+ * the start of the field or a line, after a sentence end (`.`, `!`, `?` plus whitespace, ignoring
+ * closing and opening quotes and brackets) and, for [AutoCapitalize.Words], after any whitespace. A
+ * period inside an abbreviation such as "e.g. " does not end a sentence.
  */
 object AutoCaps {
     /**
@@ -49,6 +50,8 @@ object AutoCaps {
                 if (!c.isLetter()) break
                 k--
             }
+            // Ran off the start of truncated text: an earlier period may lie beyond it.
+            if (k < 0 && !startKnown) return null
         }
         return true
     }

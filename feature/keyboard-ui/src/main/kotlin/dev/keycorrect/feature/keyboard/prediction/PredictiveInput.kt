@@ -538,15 +538,27 @@ internal class PredictiveInput(
         return true
     }
 
-    /** Start of the word ending at the cursor in [before], or -1 if there isn't a usable one. */
+    /**
+     * Start of the word ending at the cursor in [before], or -1 if there isn't a usable one. Only a
+     * word that [startsWord] would have composed qualifies: it begins with a letter at a word
+     * boundary (the start of the field, if the cached text isn't truncated; whitespace; opening
+     * punctuation), so "foo.bar", "user@exa", "#tag" and "42x" are left alone.
+     */
     private fun trailingWordStart(): Int {
         var i = before.length
         if (i == 0 || !before[i - 1].isLetterOrDigit()) return -1
         while (i > 0 && (before[i - 1].isLetterOrDigit() || isApostrophe(before[i - 1]))) i--
+        val boundary = i
+        if (boundary == 0) {
+            if (beforeTruncated) return -1
+        } else {
+            val c = before[boundary - 1]
+            if (!c.isWhitespace() && c !in OPENING_PUNCTUATION) return -1
+        }
         while (i < before.length && isApostrophe(before[i])) i++
         val length = before.length - i
         if (length == 0 || length > MAX_RECOMPOSE_CHARS) return -1
-        if ((i until before.length).none { before[it].isLetter() }) return -1
+        if (!before[i].isLetter()) return -1
         return i
     }
 

@@ -40,6 +40,14 @@ internal class SimEditor : TextEditor {
     var composeCalls = 0
     var readCalls = 0
 
+    /**
+     * When set, called after every mutating operation, even inside a batch: a non-coalescing editor
+     * reporting each intermediate state (tests wire it to [echo]).
+     */
+    var onOperation: (() -> Unit)? = null
+
+    private fun changed() = onOperation?.invoke()
+
     val composing: String
         get() = if (compStart < 0) "" else text.substring(compStart, compEnd)
 
@@ -71,6 +79,7 @@ internal class SimEditor : TextEditor {
         cursor =
             if (newCursorPosition > 0) start + text.length + newCursorPosition - 1
             else start + newCursorPosition
+        changed()
     }
 
     override fun setComposingText(text: CharSequence) {
@@ -79,11 +88,14 @@ internal class SimEditor : TextEditor {
         compStart = start
         compEnd = start + text.length
         cursor = compEnd
+        changed()
     }
 
     override fun finishComposingText() {
+        val was = compStart >= 0
         compStart = -1
         compEnd = -1
+        if (was) changed()
     }
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int) {
@@ -93,6 +105,7 @@ internal class SimEditor : TextEditor {
         cursor = from
         compStart = -1
         compEnd = -1
+        changed()
     }
 
     override fun textBeforeCursor(maxChars: Int): CharSequence? {
@@ -112,13 +125,15 @@ internal class SimEditor : TextEditor {
 
     override fun deleteBackward(sensitive: Boolean) {
         deletes += sensitive
-        if (cursor > 0) {
+        val deleted = cursor > 0
+        if (deleted) {
             val n = Graphemes.lastClusterLength(text.substring(maxOf(0, cursor - 32), cursor))
             text.delete(cursor - n, cursor)
             cursor -= n
         }
         compStart = -1
         compEnd = -1
+        if (deleted) changed()
     }
 
     override fun performEnter() {
