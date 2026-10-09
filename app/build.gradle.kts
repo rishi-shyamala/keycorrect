@@ -16,6 +16,9 @@ android {
         applicationId = "dev.keycorrect"
         versionCode = 1
         versionName = "0.0.1"
+        // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
+        // native code.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     buildTypes {
