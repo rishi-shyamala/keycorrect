@@ -2,10 +2,6 @@ package dev.keycorrect.core.data
 
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -98,12 +94,7 @@ class SqlUserDictionaryStore(
     }
 
     override fun all(): Flow<List<UserWord>> =
-        database
-            .invalidations(DbTable.USER_WORDS)
-            .onSubscription { emit(Unit) }
-            .conflate()
-            .map { database.read { db -> queryAll(db) } }
-            .distinctUntilChanged()
+        database.observe(DbTable.USER_WORDS) { database.read { db -> queryAll(db) } }
 
     private suspend fun readSnapshot(): UserWordSnapshot =
         UserWordSnapshot(database.read { db -> queryAll(db) }.associateBy { it.word })

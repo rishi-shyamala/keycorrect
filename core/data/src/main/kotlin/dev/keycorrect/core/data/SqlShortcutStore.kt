@@ -2,10 +2,6 @@ package dev.keycorrect.core.data
 
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -67,12 +63,7 @@ class SqlShortcutStore(
     }
 
     override fun all(): Flow<List<Shortcut>> =
-        database
-            .invalidations(DbTable.SHORTCUTS)
-            .onSubscription { emit(Unit) }
-            .conflate()
-            .map { database.read { db -> queryAll(db) } }
-            .distinctUntilChanged()
+        database.observe(DbTable.SHORTCUTS) { database.read { db -> queryAll(db) } }
 
     private suspend fun readSnapshot(): ShortcutSnapshot =
         ShortcutSnapshot(database.read { db -> queryAll(db) }.associateBy { it.trigger })

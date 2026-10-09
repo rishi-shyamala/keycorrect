@@ -6,9 +6,7 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
@@ -45,21 +43,13 @@ internal constructor(
     @Volatile private var db: SupportSQLiteDatabase? = null
     @Volatile private var helper: SupportSQLiteOpenHelper? = null
 
-    private val invalidations: Map<DbTable, MutableSharedFlow<Unit>> =
-        DbTable.entries.associateWith {
-            MutableSharedFlow(
-                replay = 0,
-                extraBufferCapacity = 1,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST,
-            )
-        }
+    private val tracker = InvalidationTracker()
 
-    /** Emits (conflated) after each committed change to [table]; no replay. */
-    internal fun invalidations(table: DbTable): SharedFlow<Unit> = invalidations.getValue(table)
+    /** Emits `query()` now and after each committed change to [table]. */
+    internal fun <T> observe(table: DbTable, query: suspend () -> T): Flow<T> =
+        tracker.observe(table, query)
 
-    internal fun notifyChanged(vararg tables: DbTable) {
-        tables.forEach { invalidations.getValue(it).tryEmit(Unit) }
-    }
+    internal fun notifyChanged(vararg tables: DbTable) = tracker.notifyChanged(*tables)
 
     /** Runs [block] against the database on [dispatcher], outside any explicit transaction. */
     internal suspend fun <T> read(block: (SupportSQLiteDatabase) -> T): T =

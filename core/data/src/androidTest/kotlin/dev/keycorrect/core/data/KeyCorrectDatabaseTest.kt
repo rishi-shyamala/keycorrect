@@ -141,15 +141,13 @@ class KeyCorrectDatabaseTest {
         store.load()
         assertThat(store.snapshot.size).isEqualTo(0)
 
-        val flowEmissions = mutableListOf<List<String>>()
+        // Collect incrementally: the list is visible to the test while the flow is still live.
+        val seen = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
         val job =
             launch(Dispatchers.Default) {
-                store.all().take(4).toList().forEach { flowEmissions += it.map(UserWord::word) }
+                store.all().collect { seen += it.map(UserWord::word) }
             }
-        // Wait for the initial (empty) emission before mutating.
-        withTimeout(5_000) {
-            while (flowEmissions.isEmpty() && job.isActive) kotlinx.coroutines.yield()
-        }
+        awaitLast(seen, emptyList())
 
         val added = store.add("  Rishi ", 200, "en-GB")
         assertThat(added.word).isEqualTo("Rishi")
@@ -157,6 +155,8 @@ class KeyCorrectDatabaseTest {
         assertThat(added.locale).isEqualTo("en-GB")
         assertThat(store.contains("Rishi")).isTrue()
         assertThat(store.snapshot["Rishi"]).isEqualTo(added)
+
+        awaitLast(seen, listOf("Rishi"))
 
         assertThat(store.update("Rishi", 10, null)).isTrue()
         assertThat(store.snapshot["Rishi"]?.frequency).isEqualTo(10)
@@ -171,11 +171,16 @@ class KeyCorrectDatabaseTest {
         assertThat(store.contains("Rishi")).isFalse()
         assertThat(store.snapshot.size).isEqualTo(0)
 
-        withTimeout(10_000) { job.join() }
-        assertThat(flowEmissions.first()).isEmpty()
-        assertThat(flowEmissions.last()).isEmpty()
-        assertThat(flowEmissions.any { it == listOf("Rishi") }).isTrue()
+        awaitLast(seen, emptyList())
+        job.cancel()
+        assertThat(seen.first()).isEmpty()
+        assertThat(seen).contains(listOf("Rishi"))
     }
+
+    private suspend fun awaitLast(seen: List<List<String>>, expected: List<String>) =
+        withTimeout(5_000) {
+            while (seen.lastOrNull() != expected) kotlinx.coroutines.delay(20)
+        }
 
     @Test
     fun userDictionaryRejectsInvalid() = runBlocking {
