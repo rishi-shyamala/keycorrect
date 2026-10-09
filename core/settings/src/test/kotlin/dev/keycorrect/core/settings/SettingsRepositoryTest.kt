@@ -1,0 +1,170 @@
+package dev.keycorrect.core.settings
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import com.google.common.truth.Truth.assertThat
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class SettingsRepositoryTest {
+    @get:Rule val tmp = TemporaryFolder()
+
+    private lateinit var scope: CoroutineScope
+    private lateinit var store: DataStore<Preferences>
+    private lateinit var repo: SettingsRepository
+
+    @Before
+    fun setUp() {
+        scope = CoroutineScope(UnconfinedTestDispatcher())
+        store =
+            PreferenceDataStoreFactory.create(scope = scope) { File(tmp.root, "s.preferences_pb") }
+        repo = SettingsRepository(store)
+    }
+
+    @After
+    fun tearDown() {
+        scope.cancel()
+    }
+
+    @Test
+    fun emptyStoreYieldsDefaults() = runTest {
+        assertThat(repo.settings.first()).isEqualTo(KeyboardSettings())
+    }
+
+    @Test
+    fun defaultsMatchSpec() {
+        val d = KeyboardSettings()
+        assertThat(d.keyHeightDp).isEqualTo(54)
+        assertThat(d.numberRow).isFalse()
+        assertThat(d.keyPreview).isTrue()
+        assertThat(d.longPressDelayMs).isEqualTo(300)
+        assertThat(d.autoCapitalize).isTrue()
+        assertThat(d.hapticsEnabled).isTrue()
+        assertThat(d.hapticDurationMs).isEqualTo(0)
+        assertThat(d.hapticStrength).isEqualTo(0)
+        assertThat(d.soundEnabled).isFalse()
+        assertThat(d.soundVolume).isEqualTo(0.5f)
+    }
+
+    @Test
+    fun everyFieldRoundTrips() = runTest {
+        val custom =
+            KeyboardSettings(
+                keyHeightDp = 72,
+                numberRow = true,
+                keyPreview = false,
+                longPressDelayMs = 450,
+                autoCapitalize = false,
+                hapticsEnabled = false,
+                hapticDurationMs = 25,
+                hapticStrength = 128,
+                soundEnabled = true,
+                soundVolume = 0.8f,
+            )
+        repo.update { custom }
+        assertThat(repo.settings.first()).isEqualTo(custom)
+    }
+
+    @Test
+    fun eachFieldCanBeChangedIndependently() = runTest {
+        repo.update { it.copy(numberRow = true) }
+        repo.update { it.copy(keyHeightDp = 60) }
+        assertThat(repo.settings.first())
+            .isEqualTo(KeyboardSettings(numberRow = true, keyHeightDp = 60))
+    }
+
+    @Test
+    fun updateClampsOnWrite() = runTest {
+        repo.update {
+            it.copy(
+                keyHeightDp = 500,
+                longPressDelayMs = 1,
+                hapticDurationMs = 9999,
+                hapticStrength = -5,
+                soundVolume = 3f,
+            )
+        }
+        val s = repo.settings.first()
+        assertThat(s.keyHeightDp).isEqualTo(80)
+        assertThat(s.longPressDelayMs).isEqualTo(150)
+        assertThat(s.hapticDurationMs).isEqualTo(100)
+        assertThat(s.hapticStrength).isEqualTo(0)
+        assertThat(s.soundVolume).isEqualTo(1f)
+        // The persisted values themselves are clamped, not just the read.
+        val raw = store.data.first()
+        assertThat(raw[intPreferencesKey("key_height_dp")]).isEqualTo(80)
+        assertThat(raw[floatPreferencesKey("sound_volume")]).isEqualTo(1f)
+    }
+
+    @Test
+    fun readClampsCorruptStoredValues() = runTest {
+        store.edit {
+            it[intPreferencesKey("key_height_dp")] = 5
+            it[intPreferencesKey("long_press_delay_ms")] = 99999
+            it[intPreferencesKey("haptic_duration_ms")] = -1
+            it[intPreferencesKey("haptic_strength")] = 1000
+            it[floatPreferencesKey("sound_volume")] = -0.5f
+        }
+        val s = repo.settings.first()
+        assertThat(s.keyHeightDp).isEqualTo(40)
+        assertThat(s.longPressDelayMs).isEqualTo(800)
+        assertThat(s.hapticDurationMs).isEqualTo(0)
+        assertThat(s.hapticStrength).isEqualTo(255)
+        assertThat(s.soundVolume).isEqualTo(0f)
+    }
+
+    @Test
+    fun sanitizedReplacesNanVolume() {
+        assertThat(KeyboardSettings(soundVolume = Float.NaN).sanitized().soundVolume)
+            .isEqualTo(0.5f)
+    }
+
+    @Test
+    fun sanitizedLeavesValidValuesAlone() {
+        val s = KeyboardSettings(keyHeightDp = 40, longPressDelayMs = 800, hapticStrength = 255)
+        assertThat(s.sanitized()).isEqualTo(s)
+    }
+
+    @Test
+    fun concurrentUpdatesAreAtomic() = runTest {
+        val n = 50
+        (1..n)
+            .map {
+                async(UnconfinedTestDispatcher(testScheduler)) {
+                    repo.update {
+                        it.copy(hapticDurationMs = (it.hapticDurationMs + 1).coerceAtMost(100))
+                    }
+                }
+            }
+            .awaitAll()
+        assertThat(repo.settings.first().hapticDurationMs).isEqualTo(n)
+    }
+
+    @Test
+    fun updateTransformSeesStoredValue() = runTest {
+        repo.update { it.copy(keyHeightDp = 60) }
+        var seen = -1
+        repo.update {
+            seen = it.keyHeightDp
+            it
+        }
+        assertThat(seen).isEqualTo(60)
+    }
+}
