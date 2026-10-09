@@ -16,7 +16,6 @@ application {
 tasks.named<JavaExec>("run") { workingDir = rootProject.projectDir }
 
 dependencies {
-    // TODO: re-add `implementation(project(":core:dictionary"))` when the binary writer lands;
-    // the count pipeline is deliberately independent of it.
-    implementation("org.apache.commons:commons-compress:1.27.1") // bzip2 decompression
+    implementation(project(":core:dictionary")) // DictionaryWriter / Dictionary for compile + eval
+    implementation(libs.commons.compress) // bzip2 decompression
 }

@@ -87,4 +87,39 @@ class CorpusCountsTest {
         c.addSentence("café", CorpusCounts.WIKI)
         assertThat(c.unigrams[0][1]).isEqualTo(1)
     }
+
+    @Test
+    fun ignoredNamesAreOovInTatoebaOnly() {
+        val v =
+            Vocabulary(
+                listOf("the", "cat", "sat", "Tom").map { VocabEntry(it, 100, 100, emptySet()) }
+            )
+        val c = CorpusCounts(v, setOf("Tom"))
+        val tom = v.lookup("Tom", false)
+        val cat = v.lookup("cat", false)
+        val sat = v.lookup("sat", false)
+        c.addSentence("Tom the cat sat.", CorpusCounts.TATOEBA)
+        c.addSentence("Tom the cat sat.", CorpusCounts.WIKI)
+        assertThat(c.unigrams[CorpusCounts.TATOEBA][tom]).isEqualTo(0)
+        assertThat(c.unigrams[CorpusCounts.WIKI][tom]).isEqualTo(1)
+        // The chain is broken at "Tom": "the" is no longer sentence-initial in Tatoeba.
+        assertThat(c.bigrams.count(v.lookup("the", false).toLong() shl 21 or cat.toLong(), 1))
+            .isEqualTo(1)
+        assertThat(c.bigrams.count(0L shl 21 or tom.toLong(), CorpusCounts.TATOEBA)).isEqualTo(0)
+        assertThat(c.bigrams.count(0L shl 21 or tom.toLong(), CorpusCounts.WIKI)).isEqualTo(1)
+        assertThat(c.bigrams.count(0L shl 21 or v.lookup("the", false).toLong(), 1)).isEqualTo(0)
+        assertThat(
+                c.trigrams.count(
+                    (v.lookup("the", false).toLong() shl 42) or
+                        (cat.toLong() shl 21) or
+                        sat.toLong(),
+                    1,
+                )
+            )
+            .isEqualTo(1)
+        assertThat(CountOptions.parse(listOf("--tatoeba-ignore-names", "A,B")).tatoebaIgnoreNames)
+            .containsExactly("A", "B")
+        assertThat(CountOptions.parse(listOf("--tatoeba-ignore-names=")).tatoebaIgnoreNames)
+            .isEmpty()
+    }
 }

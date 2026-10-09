@@ -15,14 +15,16 @@ data class CountOptions(
     val out: Path = Paths.get("data/processed"),
     /** Multiplier applied to Tatoeba counts when combining with Wikipedia counts. */
     val tatoebaWeight: Double = 3.0,
+    /** Exact-case tokens ignored (treated as OOV) in Tatoeba sentences; Wikipedia is unaffected. */
+    val tatoebaIgnoreNames: Set<String> = setOf("Tom", "Mary"),
     /** Percentage (0..100) of Tatoeba sentence ids held out for evaluation. */
     val heldoutPercent: Int = 5,
     /** Minimum raw (unweighted, wiki+tatoeba) occurrences for a bigram / trigram to be kept. */
     val minBigramCount: Int = 2,
     val minTrigramCount: Int = 2,
     /** Maximum successors kept per bigram context (w1) / trigram context (w1,w2). */
-    val maxBigramSuccessors: Int = 32,
-    val maxTrigramSuccessors: Int = 8,
+    val maxBigramSuccessors: Int = 1000,
+    val maxTrigramSuccessors: Int = 200,
     /** Debug: stop after this many main-namespace Wikipedia pages. */
     val maxWikiPages: Long = Long.MAX_VALUE,
 ) {
@@ -35,11 +37,12 @@ dictbuild count [options]
   --tatoeba PATH|none        Tatoeba eng_sentences.tsv[.bz2]      (default data/raw/eng_sentences.tsv.bz2)
   --out DIR                  output directory                     (default data/processed)
   --tatoeba-weight W         weight of Tatoeba counts vs Wikipedia (default 3.0)
+  --tatoeba-ignore-names A,B  Tatoeba-only tokens treated as OOV  (default Tom,Mary; empty = none)
   --heldout-percent P        % of Tatoeba sentence ids held out    (default 5)
   --min-bigram-count N       raw count needed to keep a bigram     (default 2)
   --min-trigram-count N      raw count needed to keep a trigram    (default 2)
-  --max-bigram-successors N  top successors kept per word          (default 32)
-  --max-trigram-successors N top successors kept per word pair     (default 8)
+  --max-bigram-successors N  top successors kept per word          (default 1000)
+  --max-trigram-successors N top successors kept per word pair     (default 200)
   --max-wiki-pages N         debug: stop after N Wikipedia articles
 """
 
@@ -71,6 +74,14 @@ dictbuild count [options]
                             }
                         "--out" -> o.copy(out = Paths.get(value(flag, inline)))
                         "--tatoeba-weight" -> o.copy(tatoebaWeight = value(flag, inline).toDouble())
+                        "--tatoeba-ignore-names" ->
+                            o.copy(
+                                tatoebaIgnoreNames =
+                                    value(flag, inline)
+                                        .split(',')
+                                        .filter { it.isNotBlank() }
+                                        .toSet()
+                            )
                         "--heldout-percent" -> o.copy(heldoutPercent = value(flag, inline).toInt())
                         "--min-bigram-count" -> o.copy(minBigramCount = value(flag, inline).toInt())
                         "--min-trigram-count" ->

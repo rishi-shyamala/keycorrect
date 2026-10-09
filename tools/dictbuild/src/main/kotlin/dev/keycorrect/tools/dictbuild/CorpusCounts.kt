@@ -37,7 +37,15 @@ class SourceStats {
  *
  * Packed keys: 21 bits per word id (up to ~2M words), bigram `a<<21|b`, trigram `a<<42|b<<21|c`.
  */
-class CorpusCounts(private val vocab: Vocabulary) {
+class CorpusCounts(
+    private val vocab: Vocabulary,
+    /**
+     * Exact-case tokens treated as out-of-vocabulary in Tatoeba sentences only (they break the
+     * n-gram chain and add no counts). Tatoeba's placeholder names ("Tom", "Mary") would otherwise
+     * dominate predictions.
+     */
+    private val tatoebaIgnored: Set<String> = emptySet(),
+) {
     init {
         require(vocab.size < (1 shl BITS)) { "vocabulary too large for 21-bit ids" }
     }
@@ -63,13 +71,14 @@ class CorpusCounts(private val vocab: Vocabulary) {
         var first = true
         Tokenizer.tokenize(text) { token ->
             st.tokens++
-            val id = vocab.lookup(token, first)
-            when {
-                id != 0 -> {
-                    st.inVocab++
-                    emit(id, channel, uni)
-                }
-                else -> if (!resolveFallback(token, first, channel, uni, st)) breakChain(token, st)
+            ids.clear()
+            if (channel == TATOEBA && token in tatoebaIgnored) {
+                breakChain(token, st)
+            } else if (vocab.resolve(token, first, ids)) {
+                st.inVocab++
+                for (k in 0 until ids.size) emit(ids[k], channel, uni)
+            } else {
+                breakChain(token, st)
             }
             first = false
         }
@@ -82,44 +91,12 @@ class CorpusCounts(private val vocab: Vocabulary) {
     }
 
     private val state = Chain()
+    private val ids = IdBuffer()
 
     private fun breakChain(token: String, st: SourceStats) {
         if (Tokenizer.isNumeric(token)) st.oovNumeric++ else st.oovOther++
         state.p1 = -1
         state.p2 = -1
-    }
-
-    /**
-     * Fallbacks for tokens missing from the vocabulary: a possessive `'s` on a known word maps to
-     * the word, and a hyphenated compound whose parts are all known is counted as its parts.
-     */
-    private fun resolveFallback(
-        token: String,
-        first: Boolean,
-        channel: Int,
-        uni: IntArray,
-        st: SourceStats,
-    ): Boolean {
-        if (token.endsWith("'s") || token.endsWith("'S")) {
-            val base = vocab.lookup(token.substring(0, token.length - 2), first)
-            if (base != 0) {
-                st.inVocab++
-                emit(base, channel, uni)
-                return true
-            }
-        }
-        if (token.indexOf('-') > 0) {
-            val parts = token.split('-')
-            val ids = IntArray(parts.size)
-            for (k in parts.indices) {
-                ids[k] = vocab.lookup(parts[k], first && k == 0)
-                if (ids[k] == 0) return false
-            }
-            st.inVocab++
-            for (id in ids) emit(id, channel, uni)
-            return true
-        }
-        return false
     }
 
     private fun emit(id: Int, channel: Int, uni: IntArray) {

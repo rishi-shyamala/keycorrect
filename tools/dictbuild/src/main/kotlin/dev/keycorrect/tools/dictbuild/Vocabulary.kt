@@ -73,6 +73,40 @@ class Vocabulary(entries: List<VocabEntry>) {
         return lowerBest[token.lowercase(Locale.ROOT)] ?: 0
     }
 
+    /**
+     * Resolves one corpus [token] to vocabulary ids appended to [out]; returns false (and appends
+     * nothing) when it is out of vocabulary. Besides [lookup], a possessive `'s` on a known word
+     * maps to the word, and a hyphenated compound whose parts are all known maps to its parts.
+     */
+    fun resolve(token: String, sentenceInitial: Boolean, out: IdBuffer): Boolean {
+        val id = lookup(token, sentenceInitial)
+        if (id != 0) {
+            out.add(id)
+            return true
+        }
+        if (token.endsWith("'s") || token.endsWith("'S")) {
+            val base = lookup(token.substring(0, token.length - 2), sentenceInitial)
+            if (base != 0) {
+                out.add(base)
+                return true
+            }
+        }
+        if (token.indexOf('-') > 0) {
+            val parts = token.split('-')
+            val start = out.size
+            for (k in parts.indices) {
+                val partId = lookup(parts[k], sentenceInitial && k == 0)
+                if (partId == 0) {
+                    out.truncate(start)
+                    return false
+                }
+                out.add(partId)
+            }
+            return true
+        }
+        return false
+    }
+
     companion object {
         const val START = "<s>"
 
@@ -80,5 +114,27 @@ class Vocabulary(entries: List<VocabEntry>) {
          * AOSP frequency steps (each ~1.15x) a capitalised form must lead its lowercase twin by.
          */
         const val PROPER_NOUN_MARGIN = 10
+    }
+}
+
+/** Minimal growable int list (avoids boxing in the counting loop). */
+class IdBuffer {
+    private var data = IntArray(8)
+    var size = 0
+        private set
+
+    fun add(v: Int) {
+        if (size == data.size) data = data.copyOf(size * 2)
+        data[size++] = v
+    }
+
+    operator fun get(i: Int): Int = data[i]
+
+    fun clear() {
+        size = 0
+    }
+
+    fun truncate(n: Int) {
+        size = n
     }
 }

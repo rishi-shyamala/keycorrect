@@ -57,7 +57,7 @@ object CountCommand {
         log("vocabulary: ${wordlist.entries.size} entries, ${vocab.size} words")
         endPhase("vocabulary")
 
-        val counts = CorpusCounts(vocab)
+        val counts = CorpusCounts(vocab, opts.tatoebaIgnoreNames)
         val sourceInfo = LinkedHashMap<String, Any?>()
 
         // --- Tatoeba --------------------------------------------------------------------------
@@ -80,10 +80,13 @@ object CountCommand {
 
         // --- output ---------------------------------------------------------------------------
         val ngramStats = LinkedHashMap<String, Any?>()
-        ngramStats["unigrams"] = writeUnigrams(opts, vocab, counts)
+        // Number of distinct predecessors of each word (Kneser-Ney continuation counts), filled
+        // from the *unpruned* bigram table while writing it.
+        val continuation = IntArray(vocab.size + 1)
         ngramStats["bigrams"] =
             writeNgrams(
                 opts.out.resolve("bigrams.tsv"),
+                opts.out.resolve("bigram_contexts.tsv"),
                 "#w1\tw2\tcount\twiki\ttatoeba",
                 counts.bigrams,
                 2,
@@ -91,10 +94,13 @@ object CountCommand {
                 opts.maxBigramSuccessors,
                 opts.tatoebaWeight,
                 vocab,
+                continuation,
             )
+        ngramStats["unigrams"] = writeUnigrams(opts, vocab, counts, continuation)
         ngramStats["trigrams"] =
             writeNgrams(
                 opts.out.resolve("trigrams.tsv"),
+                opts.out.resolve("trigram_contexts.tsv"),
                 "#w1\tw2\tw3\tcount\twiki\ttatoeba",
                 counts.trigrams,
                 3,
@@ -102,7 +108,9 @@ object CountCommand {
                 opts.maxTrigramSuccessors,
                 opts.tatoebaWeight,
                 vocab,
+                null,
             )
+        writeCountOfCounts(opts.out.resolve("count_of_counts.tsv"), ngramStats)
         endPhase("write")
 
         // --- stats ----------------------------------------------------------------------------
@@ -287,6 +295,7 @@ object CountCommand {
         opts: CountOptions,
         vocab: Vocabulary,
         counts: CorpusCounts,
+        continuation: IntArray,
     ): Map<String, Any?> {
         val wiki = counts.unigrams[CorpusCounts.WIKI]
         val tat = counts.unigrams[CorpusCounts.TATOEBA]
@@ -298,11 +307,11 @@ object CountCommand {
                         .thenBy { it }
                 )
         Files.newBufferedWriter(opts.out.resolve("unigrams.tsv"), StandardCharsets.UTF_8).use { w ->
-            w.write("#word\tcount\twiki\ttatoeba\n")
+            w.write("#word\tcount\twiki\ttatoeba\tcont\n")
             for (id in ids) {
                 w.write(
                     "${vocab.word(id)}\t${fmt(weighted(wiki[id], tat[id], opts.tatoebaWeight))}" +
-                        "\t${wiki[id]}\t${tat[id]}\n"
+                        "\t${wiki[id]}\t${tat[id]}\t${continuation[id]}\n"
                 )
             }
         }
@@ -313,9 +322,19 @@ object CountCommand {
      * Writes one n-gram order. Prunes in two steps, both reported: keys with fewer than [minRaw]
      * raw occurrences are dropped, then each context keeps its [maxSucc] highest weighted
      * successors. Output is grouped by context (ascending word id), successors by count desc.
+     *
+     * Because pruning discards exactly what a probability estimator needs to normalise (context
+     * totals, number of distinct successors, singleton counts), the statistics of the *unpruned*
+     * table are written alongside: [contextPath] gets one row per context that has at least one
+     * written n-gram (`wiki` / `tatoeba` = total count of all its successors, `distinct` = number
+     * of distinct successors, `tatShare` = sum over the successors of the Tatoeba fraction `tatoeba
+     * / (wiki + tatoeba)` of their count), [continuation] (bigrams only) receives, per word, the
+     * number of distinct predecessors, and the returned stats contain the raw count-of-counts
+     * n1..n4 used to estimate absolute discounts.
      */
     private fun writeNgrams(
         path: Path,
+        contextPath: Path,
         header: String,
         map: LongCountMap,
         order: Int,
@@ -323,45 +342,111 @@ object CountCommand {
         maxSucc: Int,
         weight: Double,
         vocab: Vocabulary,
+        continuation: IntArray?,
     ): Map<String, Any?> {
         val before = map.size
-        val keys = map.sortedKeys(minRaw)
+        val keys = map.sortedKeys(1)
+        val countOfCounts = LongArray(5) // [1..4]: number of keys with raw total == i; [0]: >= 5
+        var afterMin = 0
         var written = 0L
+        var contexts = 0L
         var buf = LongArray(1024)
+        val ctxShift = CorpusCounts.BITS
         Files.newBufferedWriter(path, StandardCharsets.UTF_8).use { w ->
-            w.write(header)
-            w.write("\n")
-            var s = 0
-            while (s < keys.size) {
-                val ctx = keys[s] ushr CorpusCounts.BITS
-                var e = s + 1
-                while (e < keys.size && keys[e] ushr CorpusCounts.BITS == ctx) e++
-                val m = e - s
-                if (buf.size < m) buf = LongArray(maxOf(m, buf.size * 2))
-                var n = 0
-                for (k in s until e) {
-                    val key = keys[k]
-                    val wt = weighted(map.count(key, 0), map.count(key, 1), weight).toFloat()
-                    if (wt <= 0f) continue
-                    val inv = Int.MAX_VALUE - java.lang.Float.floatToRawIntBits(wt)
-                    buf[n++] = (inv.toLong() shl 32) or (key and CorpusCounts.MASK)
+            Files.newBufferedWriter(contextPath, StandardCharsets.UTF_8).use { cw ->
+                w.write(header)
+                w.write("\n")
+                cw.write(
+                    if (order == 2) "#w1\twiki\ttatoeba\tdistinct\ttatShare\n"
+                    else "#w1\tw2\twiki\ttatoeba\tdistinct\ttatShare\n"
+                )
+                var s = 0
+                while (s < keys.size) {
+                    val ctx = keys[s] ushr ctxShift
+                    var e = s + 1
+                    while (e < keys.size && keys[e] ushr ctxShift == ctx) e++
+                    val m = e - s
+                    if (buf.size < m) buf = LongArray(maxOf(m, buf.size * 2))
+                    var n = 0
+                    var totalWiki = 0L
+                    var totalTat = 0L
+                    var tatShare = 0.0
+                    for (k in s until e) {
+                        val key = keys[k]
+                        val wk = map.count(key, 0)
+                        val tk = map.count(key, 1)
+                        totalWiki += wk
+                        totalTat += tk
+                        tatShare += tk.toDouble() / (wk + tk)
+                        val raw = wk + tk
+                        countOfCounts[if (raw in 1..4) raw else 0]++
+                        continuation?.let { it[(key and CorpusCounts.MASK).toInt()]++ }
+                        if (raw < minRaw) continue
+                        afterMin++
+                        val wt = weighted(wk, tk, weight).toFloat()
+                        if (wt <= 0f) continue
+                        val inv = Int.MAX_VALUE - java.lang.Float.floatToRawIntBits(wt)
+                        buf[n++] = (inv.toLong() shl 32) or (key and CorpusCounts.MASK)
+                    }
+                    Arrays.sort(buf, 0, n)
+                    val keep = minOf(n, maxSucc)
+                    for (k in 0 until keep) {
+                        val succ = (buf[k] and 0xFFFFFFFFL)
+                        val key = (ctx shl CorpusCounts.BITS) or succ
+                        writeNgramLine(w, key, order, map, weight, vocab)
+                        written++
+                    }
+                    if (keep > 0) {
+                        contexts++
+                        if (order == 3) {
+                            cw.write(vocab.word((ctx ushr CorpusCounts.BITS).toInt()))
+                            cw.write("\t")
+                        }
+                        cw.write(vocab.word((ctx and CorpusCounts.MASK).toInt()))
+                        cw.write(
+                            "\t$totalWiki\t$totalTat\t${e - s}\t" +
+                                "%.3f\n".format(java.util.Locale.ROOT, tatShare)
+                        )
+                    }
+                    s = e
                 }
-                Arrays.sort(buf, 0, n)
-                for (k in 0 until minOf(n, maxSucc)) {
-                    val succ = (buf[k] and 0xFFFFFFFFL)
-                    val key = (ctx shl CorpusCounts.BITS) or succ
-                    writeNgramLine(w, key, order, map, weight, vocab)
-                    written++
-                }
-                s = e
             }
         }
-        log("${path.fileName}: $before unique, ${keys.size} after min-count, $written written")
+        log(
+            "${path.fileName}: $before unique, $afterMin after min-count, $written written " +
+                "($contexts contexts)"
+        )
         return linkedMapOf(
             "uniqueBeforePruning" to before,
-            "afterMinCount" to keys.size,
+            "afterMinCount" to afterMin,
             "afterMaxSuccessors" to written,
+            "contexts" to contexts,
+            "countOfCounts" to
+                linkedMapOf(
+                    "n1" to countOfCounts[1],
+                    "n2" to countOfCounts[2],
+                    "n3" to countOfCounts[3],
+                    "n4" to countOfCounts[4],
+                    "n5plus" to countOfCounts[0],
+                ),
         )
+    }
+
+    /**
+     * `order n1 n2 n3 n4 n5plus` rows: raw count-of-counts of the unpruned bigram / trigram tables.
+     */
+    private fun writeCountOfCounts(path: Path, ngramStats: Map<String, Any?>) {
+        val sb = StringBuilder("#order\tn1\tn2\tn3\tn4\tn5plus\n")
+        for ((order, name) in listOf(2 to "bigrams", 3 to "trigrams")) {
+            @Suppress("UNCHECKED_CAST")
+            val coc = (ngramStats.getValue(name) as Map<String, Any?>).getValue("countOfCounts")
+            @Suppress("UNCHECKED_CAST") val m = coc as Map<String, Any?>
+            sb.append(order)
+            for (k in listOf("n1", "n2", "n3", "n4", "n5plus")) sb.append('\t')
+                .append(m.getValue(k))
+            sb.append('\n')
+        }
+        Files.writeString(path, sb.toString())
     }
 
     private fun writeNgramLine(

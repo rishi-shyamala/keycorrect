@@ -3,7 +3,8 @@
 The classic engine's English dictionary (vocabulary, unigram frequencies, bigram/trigram table;
 see `PLAN.md` §4.4) is built offline from three third-party sources. Raw downloads live in the
 git-ignored `data/raw/`; everything derived lives in the git-ignored `data/processed/`. Only the
-compiled dictionary (produced by a later `dictbuild` step) is committed.
+compiled dictionary (`app/src/main/assets/dictionaries/en_US.kcd`, produced by `dictbuild compile`) is
+committed.
 
 Reproduce from scratch:
 
@@ -101,8 +102,12 @@ the") badly under-represents. In the build Tatoeba contributes 14.9 M tokens aga
 Wikipedia; a weight of 3.0 (`--tatoeba-weight`, default) makes conversational text weigh about
 1.1x the Wikipedia mass in the combined counts (14.9 M x 3 = 44.8 M vs 39.5 M), so that it shapes
 sentence starts and contractions without drowning out the broader topical vocabulary. This is a judgement call to
-be tuned against `heldout.txt` by the eval harness. One known artefact: Tatoeba is heavy on the
-name "Tom", which ends up among the ten most frequent unigrams.
+be tuned against `heldout.txt` by `dictbuild eval-lm` (3.0 beat 1 and 2 on that Tatoeba held-out set,
+which naturally favours Tatoeba-heavy models). Tatoeba is dominated by the placeholder names "Tom"
+and "Mary", which would otherwise rank among the most frequent words and top the next-word
+predictions. `count` therefore treats the exact-case tokens in `--tatoeba-ignore-names` (default
+`Tom,Mary`) as out-of-vocabulary in Tatoeba sentences only: they break the n-gram chain and add no
+counts. Wikipedia counts for these names are unchanged; pass `--tatoeba-ignore-names ""` to disable.
 
 ## Pipeline output (`data/processed/`)
 
@@ -111,9 +116,11 @@ All TSVs start with a `#`-prefixed column header line.
 | File | Columns |
 |---|---|
 | `vocab.tsv` | word, freq (0–255), originalFreq, flags (comma list) |
-| `unigrams.tsv` | word, count (weighted), wiki, tatoeba; `<s>` row = sentence count |
+| `unigrams.tsv` | word, count (weighted), wiki, tatoeba, cont (distinct left contexts, for Kneser-Ney); `<s>` row = sentence count |
 | `bigrams.tsv` | w1, w2, count (weighted), wiki, tatoeba; `w1` may be `<s>` |
 | `trigrams.tsv` | w1, w2, w3, count (weighted), wiki, tatoeba |
+| `bigram_contexts.tsv`, `trigram_contexts.tsv` | per context (w1 / w1,w2): total wiki and tatoeba counts, distinct successors, Tatoeba share, over all successors before pruning (needed to normalise the model) |
+| `count_of_counts.tsv` | number of n-grams seen exactly 1, 2, 3, ... times (Chen-Goodman discounts) |
 | `heldout.txt` | one held-out Tatoeba sentence per line |
 | `stats.json` | token counts per source, OOV rate, n-gram counts before/after pruning, runtime, memory |
 
@@ -121,8 +128,9 @@ Counting rules: tokens keep internal apostrophes/hyphens; a token maps to a voca
 exactly, else case-insensitively to the most frequent variant (sentence-initial capitalised words
 fold into their lowercase form unless clearly a proper noun); `'s` on a known word and all-known
 hyphen compounds fall back to their parts; an out-of-vocabulary token (including bare numbers)
-breaks the n-gram chain. Pruning keeps n-grams with at least 2 raw occurrences and at most 32
-(bigram) / 8 (trigram) successors per context; weighted count = wiki + weight x tatoeba.
+breaks the n-gram chain. Pruning keeps n-grams with at least 2 raw occurrences and at most 1000
+(bigram) / 200 (trigram) successors per context (`--max-bigram-successors`,
+`--max-trigram-successors`); weighted count = wiki + weight x tatoeba.
 
 ## Licence compatibility with the app (GPL-3.0-or-later)
 
@@ -151,3 +159,16 @@ breaks the n-gram chain. Pruning keeps n-grams with at least 2 raw occurrences a
 > (https://tatoeba.org, by Tatoeba contributors, licensed under CC BY 2.0 FR,
 > https://creativecommons.org/licenses/by/2.0/fr/). The statistics are aggregated word counts;
 > no article or sentence text is included. Changes were made.
+
+## Compiling the dictionary
+
+```
+./gradlew :tools:dictbuild:installDist
+tools/dictbuild/build/install/dictbuild/bin/dictbuild compile --build-date 2026-10-09
+tools/dictbuild/build/install/dictbuild/bin/dictbuild eval-lm
+```
+
+`compile` estimates an interpolated Kneser-Ney style model from the `count` output (AOSP vocabulary
+is kept in full; unseen words get a monotone fit of the AOSP 0-255 level), prunes by count-weighted
+gain (`--bigram-gain`/`--trigram-gain`, default 12 nats) and refuses to write more than 10 MiB.
+`eval-lm` reports held-out perplexity, OOV rate and next-word accuracy.
