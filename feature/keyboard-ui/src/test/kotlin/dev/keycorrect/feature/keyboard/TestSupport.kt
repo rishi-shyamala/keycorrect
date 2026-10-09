@@ -4,6 +4,7 @@ import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
+import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.feature.keyboard.prediction.DecoderLoop
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
@@ -23,6 +24,9 @@ internal class SimEditor : TextEditor {
     var compStart = -1
     var compEnd = -1
     var enters = 0
+
+    /** Whether Enter inserts a line break (a multi-line field) rather than doing nothing. */
+    var enterInsertsLineBreak = false
     var batches = 0
 
     /** What [cursorCapsMode] reports; tests set it to mimic the editor. */
@@ -109,8 +113,9 @@ internal class SimEditor : TextEditor {
     override fun deleteBackward(sensitive: Boolean) {
         deletes += sensitive
         if (cursor > 0) {
-            text.deleteCharAt(cursor - 1)
-            cursor--
+            val n = Graphemes.lastClusterLength(text.substring(maxOf(0, cursor - 32), cursor))
+            text.delete(cursor - n, cursor)
+            cursor -= n
         }
         compStart = -1
         compEnd = -1
@@ -118,6 +123,7 @@ internal class SimEditor : TextEditor {
 
     override fun performEnter() {
         enters++
+        if (enterInsertsLineBreak) commitText("\n", 1)
     }
 
     override fun cursorCapsMode(): Int {
@@ -129,13 +135,7 @@ internal class SimEditor : TextEditor {
      * What the platform reports after an edit: feed this to the controller's selection callback.
      */
     fun echo(controller: KeyboardController) =
-        controller.onSelectionChanged(
-            selectionCollapsed = true,
-            cursorAtStart = cursor == 0,
-            cursor = cursor,
-            composingStart = compStart,
-            composingEnd = compEnd,
-        )
+        controller.onSelectionChanged(cursor, cursor, compStart, compEnd)
 }
 
 /** A backend whose predictor, shortcuts and known words are set by the test. */
@@ -193,8 +193,10 @@ internal fun testEnv(
     executor: Executor = Executor { it.run() },
     scheduler: TimeoutScheduler = ManualScheduler(),
     expander: ShortcutExpander = ShortcutExpander(),
+    postToMain: (Runnable) -> Unit = { it.run() },
+    separatorWaitMs: Long = DecoderLoop.SEPARATOR_WAIT_MS,
 ): PredictionEnvironment {
-    val loop = DecoderLoop(executor, { it.run() }) { backend.predictor }
+    val loop = DecoderLoop(executor, postToMain, separatorWaitMs) { backend.predictor }
     return PredictionEnvironment(backend, loop, scheduler, expander)
 }
 

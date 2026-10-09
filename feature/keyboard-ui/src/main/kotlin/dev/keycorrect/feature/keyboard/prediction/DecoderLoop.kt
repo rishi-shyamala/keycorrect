@@ -4,7 +4,9 @@ import android.util.Log
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Runs predictions off the main thread and drops the ones that arrive late (docs/PLAN.md §3).
@@ -14,6 +16,16 @@ import java.util.concurrent.atomic.AtomicLong
  * also what the predictor's `stale` lambda checks, so a newer keystroke makes the running decode
  * give up early instead of making the user wait for it.
  *
+ * Separator policy ([resultForSeparator]): the main thread must never queue up behind the engine
+ * lock that a background decode holds. The decoder thread publishes every finished result in
+ * [completed] before posting it to the main thread, so at a separator the result for the current
+ * sequence is usually already there, even if its delivery hasn't run yet. If it isn't:
+ * - a decode is still outstanding (running, or queued behind one): wait at most [separatorWaitMs]
+ *   (30 ms by default) for the result for the current sequence, or for the decoder to go idle;
+ * - then, if the result arrived, use it; if the decoder is idle, decode on the calling thread
+ *   (nothing holds the engine, and only the main thread submits, so nothing starts meanwhile); if
+ *   it is still busy, give up: the caller commits the typed word as it is, without autocorrect.
+ *
  * [executor] must run tasks one at a time, in order (a single-thread executor); [postToMain] hands
  * a result back to the main thread, where [submit]'s callback runs. Failures inside the predictor
  * are logged by type only (messages could carry typed text) and produce no result.
@@ -21,9 +33,18 @@ import java.util.concurrent.atomic.AtomicLong
 class DecoderLoop(
     private val executor: Executor,
     private val postToMain: (Runnable) -> Unit,
+    private val separatorWaitMs: Long = SEPARATOR_WAIT_MS,
     private val predictor: () -> Predictor?,
 ) {
     private val counter = AtomicLong()
+
+    /** The latest finished result of the decoder thread, whether or not it was delivered yet. */
+    private val completed = AtomicReference<PredictResult?>(null)
+
+    /** Submitted decodes not yet finished or skipped. */
+    private val outstanding = AtomicInteger()
+
+    private val monitor = Object()
 
     /** Decode durations, for tuning. Holds numbers only. */
     val latency = LatencyStats()
@@ -42,17 +63,61 @@ class DecoderLoop(
     fun submit(request: PredictRequest, onResult: (PredictResult) -> Unit) {
         if (predictor() == null) return
         val seq = request.sequence
-        executor.execute {
-            if (counter.get() != seq) return@execute
-            val result = decode(request) ?: return@execute
-            if (counter.get() != seq) return@execute
-            postToMain { onResult(result) }
+        outstanding.incrementAndGet()
+        try {
+            executor.execute {
+                try {
+                    if (counter.get() != seq) return@execute
+                    val result = decode(request) ?: return@execute
+                    completed.set(result)
+                    if (counter.get() != seq) return@execute
+                    postToMain { onResult(result) }
+                } finally {
+                    outstanding.decrementAndGet()
+                    synchronized(monitor) { monitor.notifyAll() }
+                }
+            }
+        } catch (e: RuntimeException) {
+            outstanding.decrementAndGet()
+            throw e
         }
     }
 
     /**
-     * Decodes [request] on the calling thread (a separator needs the answer now). Returns null
-     * without a predictor or when the predictor fails.
+     * The answer for the input event [sequence] at a separator, under the policy in the class
+     * comment: never blocks on the engine lock, waits at most [separatorWaitMs]. [request] builds
+     * the request lazily, only when a synchronous decode turns out to be safe. Null means "no
+     * answer in time" (or no predictor, or a failure).
+     */
+    fun resultForSeparator(sequence: Long, request: () -> PredictRequest): PredictResult? {
+        current(sequence)?.let {
+            return it
+        }
+        if (predictor() == null) return null
+        if (outstanding.get() > 0) {
+            val deadline = System.nanoTime() + separatorWaitMs * 1_000_000
+            synchronized(monitor) {
+                while (outstanding.get() > 0 && current(sequence) == null) {
+                    val remaining = deadline - System.nanoTime()
+                    if (remaining <= 0) break
+                    monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+                }
+            }
+            current(sequence)?.let {
+                return it
+            }
+            if (outstanding.get() > 0) return null
+        }
+        return decode(request())
+    }
+
+    private fun current(sequence: Long): PredictResult? =
+        completed.get()?.takeIf { it.sequence == sequence }
+
+    /**
+     * Decodes [request] on the calling thread. Only for callers that know no background decode can
+     * hold the engine ([resultForSeparator] checks that); returns null without a predictor or when
+     * the predictor fails.
      */
     fun predictNow(request: PredictRequest): PredictResult? = decode(request)
 
@@ -74,8 +139,10 @@ class DecoderLoop(
         return result
     }
 
-    private companion object {
-        const val TAG = "DecoderLoop"
+    companion object {
+        /** How long a separator may wait for an outstanding decode. */
+        const val SEPARATOR_WAIT_MS = 30L
+        private const val TAG = "DecoderLoop"
     }
 }
 

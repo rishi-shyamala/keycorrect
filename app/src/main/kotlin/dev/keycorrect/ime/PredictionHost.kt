@@ -16,6 +16,7 @@ import java.nio.channels.FileChannel
 import java.util.Locale
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /**
@@ -48,14 +49,24 @@ class PredictionHost(
     @Volatile private var cachedShortcutSource: ShortcutSnapshot? = null
     @Volatile private var cachedShortcuts: Map<String, String> = emptyMap()
 
-    /** Loads the stores and the dictionary in the background. Safe to call more than once. */
+    /**
+     * Loads the stores and the dictionary in the background, in parallel (the dictionary needs no
+     * database). Predictions start as soon as the dictionary is ready; the user's words and
+     * shortcuts join the engine when their stores have loaded, as it reads their snapshots per use.
+     * Safe to call more than once.
+     */
     fun start() {
         if (started) return
         started = true
         scope.launch(io) {
-            runCatching { userDictionary.load() }.onFailure { logFailure("user words", it) }
-            runCatching { shortcutStore.load() }.onFailure { logFailure("shortcuts", it) }
-            val dict = loadDictionary() ?: return@launch
+            val dictionaryLoad = async { loadDictionary() }
+            launch {
+                runCatching { userDictionary.load() }.onFailure { logFailure("user words", it) }
+            }
+            launch {
+                runCatching { shortcutStore.load() }.onFailure { logFailure("shortcuts", it) }
+            }
+            val dict = dictionaryLoad.await() ?: return@launch
             dictionary = dict
             val engine =
                 ClassicEngine(
@@ -73,11 +84,20 @@ class PredictionHost(
             ShortcutRule(it.expansion, it.mode == ShortcutMode.AUTO_EXPAND)
         }
 
+    /**
+     * Apostrophes are normalised (curly and modifier forms to `'`) and the user's words are
+     * compared case-insensitively, so "Don’t" and "DON'T" are as known as "don't".
+     */
     override fun isKnownWord(word: String): Boolean {
-        if (word in userDictionary.snapshot) return true
+        val plain = normaliseApostrophes(word)
+        val user = userDictionary.snapshot
+        if (word in user || plain in user) return true
+        if (user.words.keys.any { normaliseApostrophes(it).equals(plain, ignoreCase = true) }) {
+            return true
+        }
         val dict = dictionary ?: return true
-        val key = word.lowercase(Locale.ROOT)
-        return dict.idsForKey(key).isNotEmpty() || dict.wordId(word) >= 0
+        val key = plain.lowercase(Locale.ROOT)
+        return dict.idsForKey(key).isNotEmpty() || dict.wordId(plain) >= 0
     }
 
     override fun addWord(word: String) {
@@ -85,6 +105,9 @@ class PredictionHost(
             runCatching { userDictionary.add(word) }.onFailure { logFailure("add word", it) }
         }
     }
+
+    private fun normaliseApostrophes(word: String): String =
+        word.replace('’', '\'').replace('‘', '\'').replace('ʼ', '\'')
 
     private fun shortcutExpansions(): Map<String, String> {
         val snapshot = shortcutStore.snapshot

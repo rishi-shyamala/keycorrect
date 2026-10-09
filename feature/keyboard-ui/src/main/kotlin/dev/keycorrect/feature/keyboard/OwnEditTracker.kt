@@ -1,86 +1,360 @@
 package dev.keycorrect.feature.keyboard
 
+import dev.keycorrect.core.input.TextEditor
+
 /**
- * Recognises the `onUpdateSelection` callbacks caused by the keyboard's own edits.
+ * The editor's selection and composing region as `onUpdateSelection` reports them. Unknown fields
+ * are -1; [composingStart]/[composingEnd] are -1 (or an empty range) when nothing is composing.
+ */
+internal data class EditorSelection(
+    val selStart: Int = -1,
+    val selEnd: Int = -1,
+    val composingStart: Int = -1,
+    val composingEnd: Int = -1,
+) {
+    val known: Boolean
+        get() = selStart >= 0 && selEnd >= 0
+
+    val collapsed: Boolean
+        get() = selStart == selEnd
+
+    val composingLength: Int
+        get() =
+            if (composingStart >= 0 && composingEnd > composingStart) composingEnd - composingStart
+            else 0
+}
+
+/** How [OwnEditTracker.onUpdate] classified a selection update. */
+internal sealed interface UpdateVerdict {
+    /**
+     * Explained by our own edits (or an echo of the current state). [composingLength] is the
+     * editor's composing length when it differs from ours and the update is the latest word on the
+     * state (a normalising editor), else -1: the caller then re-reads the word from the editor.
+     */
+    data class Own(val composingLength: Int = -1) : UpdateVerdict
+
+    /** The cursor or text changed behind our back. */
+    data object External : UpdateVerdict
+}
+
+/**
+ * Tells the `onUpdateSelection` callbacks caused by the keyboard's own edits from external changes
+ * by *state*, not by counting.
  *
- * The platform reports every cursor change asynchronously, including the ones our own edits cause,
- * and the controller has already re-evaluated auto-capitalisation right after such an edit. To skip
- * the redundant query without trusting a callback that may never come, each edit sent counts as one
- * *pending* callback and a callback with a bare cursor consumes one. Nothing guarantees the pairing
- * (rapid edits can be coalesced into fewer callbacks), so a miscount must heal itself and never
- * hide an external change for long:
- * - pending edits expire [windowMs] after the most recent edit, so a stale count is dropped;
- * - a callback with a selection range is the user selecting text, never ours: it clears the count;
- * - the count is capped at [MAX_PENDING].
+ * The tracker keeps a model of where the editor's cursor and composing region should be, and every
+ * edit sent through a [TrackedEditor] records the state it is expected to produce (one expectation
+ * per batch, as the platform reports one update per batch). An update is then classified:
+ * 1. It exactly matches a pending expectation: that one and every older one are consumed (older
+ *    ones had their echoes dropped or coalesced). The newest match wins, so a late echo of an
+ *    earlier state consumes only what it can explain.
+ * 2. Otherwise it matches one with a different composing *length* (the same region start, cursor at
+ *    its end): an editor that normalises the composing text. It is accepted, and when nothing newer
+ *    is pending the caller resyncs its word from the editor.
+ * 3. Otherwise all pending expectations are dropped, and the update is still ours if it merely
+ *    repeats the current state (a duplicated or late echo) or, while composing, leaves the cursor
+ *    at the end of the composing region (case 2 without a pending edit). Anything else, such as a
+ *    cursor outside the composing region, a lost region or a different cursor position, is
+ *    external.
  *
- * Edits known not to move the cursor are not counted at all, so they cannot swallow a later
- * external change: the caller skips Enter that is a key event or an editor action, and [onDelete]
- * skips a delete while the last reported cursor was at position 0 (the only no-op delete knowable
- * without a query; the position is tracked from the callbacks, so a stale value can at worst
- * miscount one edit). A delete whose no-op status is unknown is still counted, which is why the
- * window is short: a miscounted edit can mask an external move for at most [windowMs].
- *
- * The worst case is a cursor move by the user or app landing within [windowMs] of typing while a
- * count is still pending: auto-capitalisation then catches up on the next edit. A wrongly counted
- * edit only ever costs the old behaviour, one extra query.
+ * Expectations expire after [ttlMs]; an expired one only costs a fallback to the state check in 3.
+ * A deleted grapheme's length is not known to the tracker, so it expects the cursor within
+ * [MAX_DELETE] units to the left.
  */
 internal class OwnEditTracker(
     private val clock: () -> Long,
-    private val windowMs: Long = DEFAULT_WINDOW_MS,
+    private val ttlMs: Long = DEFAULT_TTL_MS,
 ) {
-    private var pending = 0
-    private var lastEditAt = 0L
+    private class Expectation(
+        val cursorMin: Int,
+        val cursorMax: Int,
+        val compLength: Int,
+        val compStart: Int,
+        val at: Long,
+    )
 
-    /** The last cursor reported to [consumeIfOwn] was a bare cursor at position 0. */
-    private var cursorAtStart = false
+    // The model: where the editor should be after everything sent so far. -1 = unknown.
+    private var selStart = -1
+    private var selEnd = -1
+    private var compStart = NONE
+    private var compLength = 0
 
-    /** An edit that inserts text (so it moves the cursor off position 0) was just sent. */
-    fun onEdit() {
-        cursorAtStart = false
-        count()
-    }
+    // Min/max the cursor can be after the latest edit (equal unless a delete's size is unknown).
+    private var cursorMin = -1
+    private var cursorMax = -1
 
-    /**
-     * A backward delete was just sent. Not counted when the cursor is known to be at the start of
-     * the field: nothing is deleted, so no callback follows.
-     */
-    fun onDelete() {
-        if (!cursorAtStart) count()
-    }
+    private val pending = ArrayDeque<Expectation>()
+    private var batchDepth = 0
+    private var batchDirty = false
 
-    private fun count() {
-        if (pending < MAX_PENDING) pending++
-        lastEditAt = clock()
-    }
+    /** Number of expectations not yet matched. */
+    val pendingCount: Int
+        get() = pending.size
 
-    /**
-     * A selection update arrived. Returns true if it is explained by one of our pending edits (and
-     * consumes it), false if it must be treated as an external change. [atStart] is whether the new
-     * selection is a bare cursor at position 0.
-     */
-    fun consumeIfOwn(selectionCollapsed: Boolean, atStart: Boolean = false): Boolean {
-        cursorAtStart = selectionCollapsed && atStart
-        if (pending == 0) return false
-        if (!selectionCollapsed || clock() - lastEditAt > windowMs) {
-            pending = 0
-            return false
+    // ------------------------------------------------------------------ recording our edits
+
+    /** `setComposingText` of [length] chars: the region is replaced (or started at the cursor). */
+    fun onSetComposing(length: Int) {
+        if (length == 0) {
+            onCommit(0)
+            return
         }
-        pending--
-        return true
+        val start = regionStart()
+        compLength = length
+        if (start >= 0) {
+            compStart = start
+            moveTo(start + length)
+        } else {
+            compStart = UNKNOWN
+            moveTo(-1)
+        }
+        record()
     }
 
-    /** Forgets everything, e.g. for a newly focused field. */
-    fun reset() {
-        pending = 0
-        cursorAtStart = false
+    /** `commitText` of [length] chars with the platform's [newCursorPosition]. */
+    fun onCommit(length: Int, newCursorPosition: Int = 1) {
+        val start = regionStart()
+        compStart = NONE
+        compLength = 0
+        if (start >= 0) {
+            val end =
+                if (newCursorPosition > 0) start + length + newCursorPosition - 1
+                else start + newCursorPosition
+            moveTo(maxOf(0, end))
+        } else {
+            moveTo(-1)
+        }
+        record()
     }
+
+    /** `finishComposingText`: the text stays, the region goes. */
+    fun onFinishComposing() {
+        if (compLength == 0) return
+        compStart = NONE
+        compLength = 0
+        record()
+    }
+
+    /** `deleteSurroundingText(before, after)`. */
+    fun onDeleteSurrounding(before: Int) {
+        val had = selStart >= 0
+        compStart = NONE
+        compLength = 0
+        if (had) {
+            val newStart = maxOf(0, selStart - before)
+            val width = selEnd - selStart
+            selStart = newStart
+            selEnd = newStart + width
+            cursorMin = selEnd
+            cursorMax = selEnd
+        } else {
+            moveTo(-1)
+        }
+        record()
+    }
+
+    /** A backward delete of a selection or one grapheme (its size is unknown). */
+    fun onDeleteBackward() {
+        compStart = NONE
+        compLength = 0
+        if (selStart >= 0 && selStart != selEnd) {
+            moveTo(selStart)
+        } else if (selEnd == 0) {
+            return // at the start of the field: nothing is deleted, no update follows
+        } else if (selEnd > 0) {
+            val max = selEnd - 1
+            val min = maxOf(0, selEnd - MAX_DELETE)
+            selStart = -1
+            selEnd = -1
+            cursorMin = min
+            cursorMax = max
+        } else {
+            moveTo(-1)
+        }
+        record()
+    }
+
+    fun beginBatch() {
+        batchDepth++
+    }
+
+    fun endBatch() {
+        if (--batchDepth > 0) return
+        batchDepth = 0
+        if (batchDirty) {
+            batchDirty = false
+            push()
+        }
+    }
+
+    // ------------------------------------------------------------------ classifying updates
+
+    /** Classifies [update], consuming the expectations it explains. */
+    fun onUpdate(update: EditorSelection): UpdateVerdict {
+        expire()
+        if (!update.known || !update.collapsed) return external(update)
+
+        val exact = pending.indexOfLast { matchesExactly(it, update) }
+        val index = if (exact >= 0) exact else pending.indexOfLast { matchesNormalised(it, update) }
+        if (index >= 0) {
+            repeat(index + 1) { pending.removeFirst() }
+            val latest = pending.isEmpty()
+            val resync =
+                if (latest && update.composingLength != compLength && update.composingLength > 0) {
+                    update.composingLength
+                } else {
+                    -1
+                }
+            if (latest) adopt(update)
+            return UpdateVerdict.Own(resync)
+        }
+        pending.clear()
+        val cursor = update.selEnd
+        if (compLength > 0) {
+            val atEnd = update.composingLength > 0 && cursor == update.composingEnd
+            val sameStart = compStart < 0 || update.composingStart == compStart
+            if (atEnd && sameStart) {
+                val resync =
+                    if (update.composingLength != compLength) update.composingLength else -1
+                adopt(update)
+                return UpdateVerdict.Own(resync)
+            }
+            return external(update)
+        }
+        if (
+            update.composingLength == 0 && selStart >= 0 && selStart == selEnd && cursor == selEnd
+        ) {
+            return UpdateVerdict.Own()
+        }
+        return external(update)
+    }
+
+    private fun external(update: EditorSelection): UpdateVerdict {
+        pending.clear()
+        adopt(update)
+        return UpdateVerdict.External
+    }
+
+    /** Takes [update] as the truth about the editor. */
+    private fun adopt(update: EditorSelection) {
+        if (!update.known) {
+            selStart = -1
+            selEnd = -1
+            cursorMin = -1
+            cursorMax = -1
+        } else {
+            selStart = update.selStart
+            selEnd = update.selEnd
+            cursorMin = selEnd
+            cursorMax = selEnd
+        }
+        compLength = update.composingLength
+        compStart = if (compLength > 0) update.composingStart else NONE
+    }
+
+    /** Forgets everything, e.g. for a newly focused field. [initial] is its reported selection. */
+    fun reset(initial: EditorSelection = EditorSelection()) {
+        pending.clear()
+        batchDepth = 0
+        batchDirty = false
+        adopt(initial)
+    }
+
+    // ------------------------------------------------------------------ internals
+
+    private fun regionStart(): Int =
+        when {
+            compLength > 0 -> if (compStart >= 0) compStart else -1
+            else -> selStart
+        }
+
+    private fun moveTo(cursor: Int) {
+        selStart = cursor
+        selEnd = cursor
+        cursorMin = cursor
+        cursorMax = cursor
+    }
+
+    private fun record() {
+        if (batchDepth > 0) batchDirty = true else push()
+    }
+
+    private fun push() {
+        expire()
+        pending.addLast(Expectation(cursorMin, cursorMax, compLength, compStart, clock()))
+        if (pending.size > MAX_PENDING) pending.removeFirst()
+    }
+
+    private fun expire() {
+        val now = clock()
+        while (pending.isNotEmpty() && now - pending.first().at > ttlMs) pending.removeFirst()
+    }
+
+    private fun cursorInRange(e: Expectation, cursor: Int): Boolean =
+        e.cursorMin < 0 || (cursor >= e.cursorMin && cursor <= e.cursorMax)
+
+    private fun matchesExactly(e: Expectation, u: EditorSelection): Boolean {
+        if (u.composingLength != e.compLength) return false
+        if (e.compLength > 0 && e.compStart >= 0 && u.composingStart != e.compStart) return false
+        return cursorInRange(e, u.selEnd)
+    }
+
+    private fun matchesNormalised(e: Expectation, u: EditorSelection): Boolean =
+        e.compLength > 0 &&
+            u.composingLength > 0 &&
+            u.selEnd == u.composingEnd &&
+            (e.compStart < 0 || u.composingStart == e.compStart)
 
     companion object {
-        /**
-         * Long enough for the app's callback to arrive after an edit on a busy main thread, short
-         * enough that a miscounted edit does not hide a real cursor move for long.
-         */
-        const val DEFAULT_WINDOW_MS = 150L
-        const val MAX_PENDING = 8
+        /** Long enough for a callback on a busy main thread, short enough to heal a lost one. */
+        const val DEFAULT_TTL_MS = 1_000L
+        const val MAX_PENDING = 16
+
+        /** Longest grapheme cluster a backward delete may remove. */
+        const val MAX_DELETE = 32
+        private const val NONE = -1
+        private const val UNKNOWN = -2
+    }
+}
+
+/**
+ * A [TextEditor] that reports every mutation to an [OwnEditTracker] and passes everything on to
+ * [delegate] (reads and Enter included).
+ */
+internal class TrackedEditor(
+    private val delegate: TextEditor,
+    private val tracker: OwnEditTracker,
+) : TextEditor by delegate {
+    override fun commitText(text: CharSequence, newCursorPosition: Int) {
+        delegate.commitText(text, newCursorPosition)
+        tracker.onCommit(text.length, newCursorPosition)
+    }
+
+    override fun setComposingText(text: CharSequence) {
+        delegate.setComposingText(text)
+        tracker.onSetComposing(text.length)
+    }
+
+    override fun finishComposingText() {
+        delegate.finishComposingText()
+        tracker.onFinishComposing()
+    }
+
+    override fun deleteSurroundingText(before: Int, after: Int) {
+        delegate.deleteSurroundingText(before, after)
+        tracker.onDeleteSurrounding(before)
+    }
+
+    override fun deleteBackward(sensitive: Boolean) {
+        delegate.deleteBackward(sensitive)
+        tracker.onDeleteBackward()
+    }
+
+    override fun <T> batchEdit(block: () -> T): T {
+        tracker.beginBatch()
+        try {
+            return delegate.batchEdit(block)
+        } finally {
+            tracker.endBatch()
+        }
     }
 }

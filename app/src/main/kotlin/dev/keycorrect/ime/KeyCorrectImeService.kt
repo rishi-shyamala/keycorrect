@@ -107,6 +107,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             settingsFlow.value,
             restarting,
             EditorIdentity.from(editorInfo),
+            initialSelStart = editorInfo.initialSelStart,
+            initialSelEnd = editorInfo.initialSelEnd,
         )
     }
 
@@ -137,12 +139,6 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             candidatesStart,
             candidatesEnd,
         )
-        controller.onSelectionChanged(
-            selectionCollapsed = newSelStart == newSelEnd,
-            cursorAtStart = newSelStart == 0 && newSelEnd == 0,
-            cursor = newSelEnd,
-            composingStart = candidatesStart,
-            composingEnd = candidatesEnd,
-        )
+        controller.onSelectionChanged(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
     }
 }

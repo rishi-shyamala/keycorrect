@@ -41,7 +41,15 @@ class KeyboardControllerTest {
         field: Field = textProfile,
         settings: KeyboardSettings = KeyboardSettings(),
         restarting: Boolean = false,
-    ) = controller.onStartInput(field.profile, settings, restarting, field.identity)
+    ) =
+        controller.onStartInput(
+            field.profile,
+            settings,
+            restarting,
+            field.identity,
+            editor.cursor,
+            editor.cursor,
+        )
 
     private fun labels() = controller.layer.rows.flatMap { r -> r.keys.map { it.label } }
 
@@ -596,14 +604,18 @@ class KeyboardControllerTest {
         editor.capsQueries = 0
         controller.onKey(KeyAction.Text("a"))
         assertThat(editor.capsQueries).isEqualTo(1) // the controller's own re-evaluation
-        controller.onSelectionChanged() // the platform echoing our edit
+        editor.echo(controller) // the platform echoing our edit
         assertThat(editor.capsQueries).isEqualTo(1)
-        controller.onSelectionChanged() // anything further is external
+        editor.echo(controller) // a duplicated echo is not an external change either
+        assertThat(editor.capsQueries).isEqualTo(1)
+        editor.moveCursor(0) // the user taps elsewhere
+        editor.echo(controller)
         assertThat(editor.capsQueries).isEqualTo(2)
     }
 
     @Test
     fun everyKindOfEditIsRecognised() {
+        editor.enterInsertsLineBreak = true
         start(
             Field(
                 InputType.TYPE_CLASS_TEXT or
@@ -616,8 +628,20 @@ class KeyboardControllerTest {
         controller.onKey(KeyAction.Backspace)
         controller.onKey(KeyAction.Enter) // commits a line break
         assertThat(editor.capsQueries).isEqualTo(3)
-        repeat(3) { controller.onSelectionChanged() }
+        editor.echo(controller) // the three updates arrive as one
+        editor.echo(controller)
         assertThat(editor.capsQueries).isEqualTo(3)
+    }
+
+    @Test
+    fun eachEditIsMatchedByItsOwnState() {
+        start(sentences)
+        editor.capsQueries = 0
+        repeat(5) {
+            controller.onKey(KeyAction.Text("a"))
+            editor.echo(controller)
+        }
+        assertThat(editor.capsQueries).isEqualTo(5) // one per key, none per echo
     }
 
     @Test
@@ -630,7 +654,11 @@ class KeyboardControllerTest {
         )
         editor.capsQueries = 0
         controller.onKey(KeyAction.Enter)
-        controller.onSelectionChanged()
+        editor.echo(controller) // the app moved nothing: the cursor is where it was
+        assertThat(editor.capsQueries).isEqualTo(1)
+        editor.moveCursor(0)
+        editor.setText("abc", at = 1) // an external move that must not be swallowed
+        editor.echo(controller)
         assertThat(editor.capsQueries).isEqualTo(2)
     }
 
@@ -639,50 +667,29 @@ class KeyboardControllerTest {
         start(sentences) // NewLine action, but a single-line field: Enter is a key event
         editor.capsQueries = 0
         controller.onKey(KeyAction.Enter)
-        controller.onSelectionChanged()
+        editor.setText("abc", at = 2) // an app reaction, reported as a move
+        editor.echo(controller)
         assertThat(editor.capsQueries).isEqualTo(2)
     }
 
     @Test
-    fun backspaceAtTheStartOfTheFieldIsNotCountedAsAnEdit() {
+    fun backspaceAtTheStartOfTheFieldExpectsNoUpdate() {
         start(sentences)
-        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = true)
         editor.capsQueries = 0
         controller.onKey(KeyAction.Backspace) // deletes nothing, so no callback will follow
-        controller.onSelectionChanged() // an external move: must not be swallowed
+        editor.setText("abc", at = 3)
+        editor.echo(controller) // an external move: must not be swallowed
         assertThat(editor.capsQueries).isEqualTo(2)
     }
 
     @Test
-    fun backspaceAwayFromTheStartIsCountedAndTypingForgetsTheStart() {
-        start(sentences)
-        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = true)
-        controller.onKey(KeyAction.Text("a")) // cursor is no longer at the start
-        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = false)
-        editor.capsQueries = 0
-        controller.onKey(KeyAction.Backspace)
-        controller.onSelectionChanged()
-        assertThat(editor.capsQueries).isEqualTo(1)
-    }
-
-    @Test
-    fun externalSelectionAfterTheWindowIsNotSuppressed() {
+    fun aSelectionRangeIsNeverOurs() {
         start(sentences)
         controller.onKey(KeyAction.Text("a"))
         editor.capsQueries = 0
-        now += OwnEditTracker.DEFAULT_WINDOW_MS + 1 // the echo never came
-        controller.onSelectionChanged()
+        controller.onSelectionChanged(0, 1)
         assertThat(editor.capsQueries).isEqualTo(1)
-    }
-
-    @Test
-    fun rangeSelectionIsNeverOurs() {
-        start(sentences)
-        controller.onKey(KeyAction.Text("a"))
-        editor.capsQueries = 0
-        controller.onSelectionChanged(selectionCollapsed = false)
-        assertThat(editor.capsQueries).isEqualTo(1)
-        controller.onSelectionChanged() // the pending count was cleared, not left behind
+        editor.echo(controller) // the pending expectation was cleared, not left behind
         assertThat(editor.capsQueries).isEqualTo(2)
     }
 
@@ -690,9 +697,11 @@ class KeyboardControllerTest {
     fun newFieldForgetsPendingEdits() {
         start(sentences)
         controller.onKey(KeyAction.Text("a"))
+        editor.setText("")
         start(sentences)
         editor.capsQueries = 0
-        controller.onSelectionChanged()
+        editor.setText("x", at = 1)
+        editor.echo(controller)
         assertThat(editor.capsQueries).isEqualTo(1)
     }
 

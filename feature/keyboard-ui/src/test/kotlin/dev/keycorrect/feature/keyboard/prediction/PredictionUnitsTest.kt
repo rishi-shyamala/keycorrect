@@ -227,4 +227,68 @@ class DecoderLoopTest {
         assertThat(executor.queue).isEmpty()
         assertThat(loop.predictNow(request(1))).isNull()
     }
+
+    // ------------------------------------------------------------------ separator policy
+
+    @Test
+    fun aSeparatorUsesTheCompletedResultOfTheCurrentSequence() {
+        val seq = loop.advance()
+        loop.submit(request(seq)) { delivered += it }
+        executor.runAll()
+        var decodedOnCaller = false
+        predictor = Predictor { r, _ ->
+            decodedOnCaller = true
+            PredictResult(emptyList(), null, null, sequence = r.sequence)
+        }
+        assertThat(loop.resultForSeparator(seq) { request(seq) }?.sequence).isEqualTo(seq)
+        assertThat(decodedOnCaller).isFalse()
+    }
+
+    @Test
+    fun aSeparatorDecodesOnTheCallerOnlyWhenNothingIsInFlight() {
+        val seq = loop.advance()
+        assertThat(loop.resultForSeparator(seq) { request(seq) }?.sequence).isEqualTo(seq)
+    }
+
+    @Test
+    fun aSeparatorGivesUpAfterTheBoundedWaitWhileADecodeIsOutstanding() {
+        val impatient = DecoderLoop(executor, { it.run() }, separatorWaitMs = 10) { predictor }
+        val seq = impatient.advance()
+        impatient.submit(request(seq)) { delivered += it } // queued, never run
+        var called = false
+        predictor = Predictor { r, _ ->
+            called = true
+            PredictResult(emptyList(), null, null, sequence = r.sequence)
+        }
+        val start = System.nanoTime()
+        assertThat(impatient.resultForSeparator(seq) { request(seq) }).isNull()
+        assertThat(called).isFalse()
+        assertThat((System.nanoTime() - start) / 1_000_000).isAtMost(1_000L)
+    }
+
+    @Test
+    fun aSeparatorWaitsForAnOutstandingDecodeOnAnotherThread() {
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val gate = java.util.concurrent.CountDownLatch(1)
+            val threaded =
+                DecoderLoop(pool, { it.run() }, separatorWaitMs = 5_000) {
+                    Predictor { r, _ ->
+                        gate.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                        PredictResult(emptyList(), null, null, sequence = r.sequence)
+                    }
+                }
+            val seq = threaded.advance()
+            threaded.submit(request(seq)) { delivered += it }
+            Thread {
+                Thread.sleep(30)
+                gate.countDown()
+            }
+                .start()
+            assertThat(threaded.resultForSeparator(seq) { error("must not decode here") }?.sequence)
+                .isEqualTo(seq)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
 }

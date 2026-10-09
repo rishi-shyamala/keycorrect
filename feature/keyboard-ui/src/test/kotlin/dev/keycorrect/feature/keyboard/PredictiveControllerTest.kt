@@ -2,6 +2,7 @@ package dev.keycorrect.feature.keyboard
 
 import android.text.InputType
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictResult
@@ -47,7 +48,7 @@ class PredictiveControllerTest {
     private fun start(
         profile: FieldProfile = textField,
         settings: KeyboardSettings = KeyboardSettings(),
-    ) = controller.onStartInput(profile, settings)
+    ) = controller.onStartInput(profile, settings, false, null, editor.cursor, editor.cursor)
 
     private fun type(text: String) = text.forEach { controller.onKey(KeyAction.Text("$it")) }
 
@@ -94,7 +95,104 @@ class PredictiveControllerTest {
         space()
         type("4x")
         assertThat(text()).isEqualTo("don't 4x")
-        assertThat(editor.composing).isEqualTo("x")
+        assertThat(editor.composing).isEmpty() // 'x' follows a digit: not a word start
+    }
+
+    private fun assertNeverDecoded(vararg words: String) {
+        val decoded = predictor.requests.map { it.composing.text }
+        for (w in words) assertThat(decoded).doesNotContain(w)
+    }
+
+    @Test
+    fun anAddressMentionIsNotComposed() {
+        start()
+        type("@bob")
+        assertThat(text()).isEqualTo("@bob")
+        assertThat(editor.composeCalls).isEqualTo(0)
+        assertThat(predictor.requests.map { it.composing.text }.filter { it.isNotEmpty() })
+            .isEmpty()
+    }
+
+    @Test
+    fun aHashtagIsNotComposed() {
+        predictor.word("tag", listOf("tags"), autocorrect = "tags")
+        start()
+        type("#tag")
+        space()
+        assertThat(text()).isEqualTo("#tag ")
+        assertThat(editor.composeCalls).isEqualTo(0)
+        assertNeverDecoded("tag")
+    }
+
+    @Test
+    fun aLetterAfterADigitIsNotComposed() {
+        predictor.word("x", listOf("xylophone"), autocorrect = "xylophone")
+        start()
+        type("42x")
+        space()
+        assertThat(text()).isEqualTo("42x ")
+        assertThat(editor.composeCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun aUrlIsOnlyComposedUpToThePunctuation() {
+        start()
+        type("http://x")
+        assertThat(text()).isEqualTo("http://x")
+        assertThat(editor.composeCalls).isEqualTo(4) // only "http" was composed
+        assertNeverDecoded("x")
+    }
+
+    @Test
+    fun anAbbreviationsLaterPartIsNotComposed() {
+        start()
+        type("e.g")
+        assertThat(text()).isEqualTo("e.g")
+        assertThat(editor.composeCalls).isEqualTo(1)
+        assertThat(editor.composing).isEmpty()
+        assertNeverDecoded("g")
+    }
+
+    @Test
+    fun aLetterAfterAnUnderscoreIsNotComposed() {
+        start()
+        type("foo_bar")
+        assertThat(text()).isEqualTo("foo_bar")
+        assertThat(editor.composeCalls).isEqualTo(3) // only "foo"
+        assertNeverDecoded("bar", "b", "ba")
+    }
+
+    @Test
+    fun aWordStartsAfterWhitespaceOpeningPunctuationAndAtTheStart() {
+        start()
+        for (opener in listOf("(", "[", "{", "\"", "'", "“", "‘", "¿", "¡", " ", "\n")) {
+            editor.setText(opener)
+            controller.onStartInput(
+                textField,
+                KeyboardSettings(),
+                false,
+                null,
+                editor.cursor,
+                editor.cursor,
+            )
+            editor.composeCalls = 0
+            type("a")
+            assertWithMessage("after '$opener'").that(editor.composeCalls).isEqualTo(1)
+        }
+        editor.setText("")
+        controller.onStartInput(textField, KeyboardSettings(), false, null, 0, 0)
+        editor.composeCalls = 0
+        type("a")
+        assertThat(editor.composeCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun aLetterAfterALetterWeDidNotComposeIsCommittedDirectly() {
+        editor.setText("ab")
+        start()
+        type("c")
+        assertThat(text()).isEqualTo("abc")
+        assertThat(editor.composeCalls).isEqualTo(0)
     }
 
     @Test
@@ -256,9 +354,8 @@ class PredictiveControllerTest {
         predictor.word("hel", listOf("help"))
         start()
         type("hel")
-        now += 1_000 // the keyboard's own pending edits have long expired
         editor.moveCursor(0)
-        controller.onSelectionChanged(true, true, cursor = 0, composingStart = 0, composingEnd = 3)
+        editor.echo(controller)
         assertThat(editor.composing).isEmpty()
         assertThat(text()).isEqualTo("hel")
         assertThat(controller.strip.isEmpty).isTrue()
@@ -268,9 +365,95 @@ class PredictiveControllerTest {
     fun theEchoOfOurOwnComposingEditIsNotAJump() {
         start()
         type("hel")
-        now += 1_000
         editor.echo(controller)
         assertThat(editor.composing).isEqualTo("hel")
+    }
+
+    // ------------------------------------------------------------------ selection echoes
+
+    @Test
+    fun aDroppedEchoDoesNotEndTheWord() {
+        start()
+        type("hel")
+        // The updates for "h" and "he" never arrive; only the one for "hel" does.
+        editor.echo(controller)
+        assertThat(editor.composing).isEqualTo("hel")
+    }
+
+    @Test
+    fun aDuplicatedEchoDoesNotEndTheWord() {
+        predictor.word("hel", listOf("help"))
+        start()
+        type("hel")
+        editor.echo(controller)
+        editor.echo(controller)
+        assertThat(editor.composing).isEqualTo("hel")
+        assertThat(controller.strip.centre?.text).isEqualTo("help")
+    }
+
+    @Test
+    fun coalescedAndInterleavedEchoesAreAllRecognised() {
+        start()
+        type("h")
+        type("e")
+        controller.onSelectionChanged(1, 1, 0, 1) // the echo of "h", late
+        type("l")
+        assertThat(editor.composing).isEqualTo("hel")
+        editor.echo(controller) // "he" and "hel" coalesced
+        editor.echo(controller)
+        assertThat(editor.composing).isEqualTo("hel")
+        type("p")
+        assertThat(editor.composing).isEqualTo("help")
+    }
+
+    @Test
+    fun aNormalisingEditorKeepsTheWordAndAdoptsItsText() {
+        start()
+        type("he")
+        // The editor rewrites the composing text to a decomposed form of different length.
+        editor.text.replace(0, 2, "he\u0301")
+        editor.compEnd = 3
+        editor.cursor = 3
+        editor.echo(controller)
+        assertThat(editor.composing).isEqualTo("he\u0301")
+        type("l")
+        assertThat(editor.composing).isEqualTo("he\u0301l")
+        assertThat(predictor.requests.last().composing.text).isEqualTo("he\u0301l")
+    }
+
+    @Test
+    fun aGenuineCursorMoveInsideTheWordEndsIt() {
+        predictor.word("hello", listOf("hello"))
+        start()
+        type("hello")
+        editor.moveCursor(2)
+        editor.echo(controller)
+        assertThat(editor.composing).isEmpty()
+        assertThat(text()).isEqualTo("hello")
+        assertThat(controller.strip.isEmpty).isTrue()
+        type("x") // inside a word now: committed directly
+        assertThat(text()).isEqualTo("hexllo")
+        assertThat(editor.composeCalls).isEqualTo(5)
+    }
+
+    @Test
+    fun theEditorLosingTheCompositionEndsTheWord() {
+        start()
+        type("hel")
+        editor.finishComposingText() // the app cancelled composing on its own
+        editor.echo(controller)
+        assertThat(controller.strip.isEmpty).isTrue()
+        type("p")
+        assertThat(editor.composing).isEmpty() // 'p' follows a letter we don't own
+    }
+
+    @Test
+    fun anExpiredExpectationStillLetsALateEchoThrough() {
+        start()
+        type("h")
+        now += 5_000
+        editor.echo(controller)
+        assertThat(editor.composing).isEqualTo("h")
     }
 
     @Test
@@ -328,15 +511,16 @@ class PredictiveControllerTest {
     }
 
     @Test
-    fun aSeparatorDecodesSynchronouslyWhenNoFreshResultIsThere() {
+    fun aSeparatorDoesNotDecodeOnMainWhileADecodeIsOutstanding() {
         val executor = ManualExecutor()
         controller = build(executor)
         predictor.word("teh", listOf("the"), autocorrect = "the")
         start()
-        type("teh") // nothing has been decoded yet
+        type("teh") // the decodes are queued behind a (pretend) busy decoder thread
         space()
-        assertThat(text()).isEqualTo("the ")
-        assertThat(predictor.requests.map { it.composing.text }).contains("teh")
+        // No answer in time: the word is committed as typed and the engine is never entered.
+        assertThat(text()).isEqualTo("teh ")
+        assertThat(predictor.requests).isEmpty()
     }
 
     // ------------------------------------------------------------------ strip taps
@@ -537,5 +721,251 @@ class PredictiveControllerTest {
         type("hi")
         space()
         assertThat(controller.touchLog.size).isEqualTo(0)
+    }
+
+    // ------------------------------------------------------------------ auto-capitalisation
+
+    private val sentencesField =
+        FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, 0)
+
+    @Test
+    fun capsAreComputedFromTheCachedTextWithoutAskingTheEditor() {
+        editor.capsMode = 0 // the editor would say "no": the answer must not come from it
+        start(sentencesField)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto) // start of the field
+        type("hi")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        controller.onKey(KeyAction.Text("."))
+        space()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        controller.onKey(KeyAction.Text("A", "A"))
+        space()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        backspace()
+        backspace()
+        assertThat(editor.capsQueries).isEqualTo(0)
+    }
+
+    @Test
+    fun anAbbreviationDoesNotCapitalise() {
+        start(sentencesField)
+        type("see e.g. ")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        assertThat(editor.capsQueries).isEqualTo(0)
+    }
+
+    @Test
+    fun wordsAndCharactersModesAreLocalToo() {
+        start(FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS, 0))
+        type("hi")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        space()
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS,
+                0,
+            )
+        )
+        type("hi")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        assertThat(editor.capsQueries).isEqualTo(0)
+    }
+
+    @Test
+    fun anExternalMoveReadsTheTextOnceAndCapsAreLocalAgain() {
+        start(sentencesField)
+        editor.setText("Hello. World", at = 7)
+        editor.capsQueries = 0
+        editor.readCalls = 0
+        editor.echo(controller)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        assertThat(editor.capsQueries).isEqualTo(0)
+        assertThat(editor.readCalls).isEqualTo(1) // the text before the cursor
+        type("x")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        assertThat(editor.capsQueries).isEqualTo(0)
+    }
+
+    @Test
+    fun theEditorIsAskedOnlyWhenNothingIsCached() {
+        backend.predictor = null // no engine: nothing is read, so the editor answers
+        start(sentencesField)
+        editor.capsMode = TEXT_CAPS
+        type("a")
+        assertThat(editor.capsQueries).isGreaterThan(0)
+        assertThat(editor.readCalls).isEqualTo(0)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+    }
+
+    @Test
+    fun typingReadsTheEditorOnlyAtStartAndTheFirstWord() {
+        start(sentencesField)
+        type("hello world ")
+        space()
+        type("again")
+        controller.onKey(KeyAction.Enter)
+        type("more")
+        // Text before the cursor at input start, text after it at the first word start.
+        assertThat(editor.readCalls).isEqualTo(2)
+    }
+
+    // ------------------------------------------------------------------ add-word chip
+
+    private fun showChip() {
+        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
+        type("zzq")
+        controller.onSuggestionTap(controller.strip.left!!)
+        assertThat(controller.strip.addWord).isEqualTo("zzq")
+    }
+
+    @Test
+    fun theChipDoesNotSurviveAMoveToAPasswordField() {
+        start()
+        showChip()
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                0,
+            )
+        )
+        assertThat(controller.strip.addWord).isNull()
+        assertThat(scheduler.pending).isEmpty()
+        controller.onAddWordTap()
+        assertThat(backend.added).isEmpty()
+        start() // and back to a text field: still gone
+        controller.onAddWordTap()
+        assertThat(backend.added).isEmpty()
+    }
+
+    @Test
+    fun theChipGoesWhenInputFinishesOrSuggestionsAreSwitchedOff() {
+        start()
+        showChip()
+        controller.onFinishInput()
+        assertThat(controller.strip.addWord).isNull()
+        controller.onAddWordTap()
+        assertThat(backend.added).isEmpty()
+
+        start()
+        editor.setText("")
+        showChip()
+        controller.updateSettings(KeyboardSettings(suggestionsEnabled = false))
+        assertThat(controller.strip.addWord).isNull()
+        controller.onAddWordTap()
+        assertThat(backend.added).isEmpty()
+    }
+
+    @Test
+    fun tappingTheChipAddsTheWordOnlyWhereLearningIsAllowed() {
+        start()
+        showChip()
+        controller.onAddWordTap()
+        assertThat(backend.added).containsExactly("zzq")
+    }
+
+    @Test
+    fun noChipWhereLearningIsOff() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                0,
+            )
+        )
+        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
+        type("zzq")
+        assertThat(controller.strip.isEmpty).isTrue()
+    }
+
+    // ------------------------------------------------------------------ undo and recompose safety
+
+    @Test
+    fun undoIsAbandonedWhenTheCursorMovedAfterTheCorrection() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("abc teh")
+        space()
+        assertThat(text()).isEqualTo("abc the ")
+        editor.moveCursor(3) // the app moved the cursor; we haven't heard about it yet
+        backspace()
+        assertThat(text()).isEqualTo("ab the ") // a plain backspace, nothing rewritten
+        assertThat(controller.touchLog.snapshot().none { it.reverted }).isTrue()
+    }
+
+    @Test
+    fun undoWorksNextToAnEmoji() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        editor.setText("😀 ")
+        start()
+        type("teh")
+        space()
+        assertThat(text()).isEqualTo("😀 the ")
+        backspace()
+        assertThat(text()).isEqualTo("😀 teh ")
+    }
+
+    @Test
+    fun undoCountsUtf16UnitsOfADecomposedCorrection() {
+        predictor.word("cafe", listOf("cafe\u0301"), autocorrect = "cafe\u0301")
+        start()
+        type("cafe")
+        space()
+        assertThat(text()).isEqualTo("cafe\u0301 ")
+        backspace()
+        assertThat(text()).isEqualTo("cafe ")
+    }
+
+    @Test
+    fun backspacingOverAnEmojiRecomposesTheWordBeforeIt() {
+        editor.setText("hello😀")
+        start()
+        backspace()
+        assertThat(text()).isEqualTo("hello")
+        assertThat(editor.composing).isEqualTo("hello")
+    }
+
+    @Test
+    fun backspacingOverACombiningAccentDeletesTheWholeCluster() {
+        editor.setText("caf" + "e\u0301")
+        start()
+        backspace()
+        assertThat(text()).isEqualTo("caf")
+        assertThat(editor.composing).isEqualTo("caf")
+    }
+
+    @Test
+    fun recomposeIsAbandonedWhenTheEditorDisagreesWithTheCache() {
+        start()
+        type("hello")
+        space()
+        editor.text.replace(0, 5, "jello") // changed behind our back, no callback yet
+        backspace()
+        assertThat(text()).isEqualTo("jello")
+        assertThat(editor.composing).isEmpty()
+    }
+
+    // ------------------------------------------------------------------ finishing input
+
+    @Test
+    fun finishingInputTwiceIsHarmless() {
+        start()
+        type("hel")
+        controller.onFinishInput()
+        val records = controller.touchLog.size
+        val composeCalls = editor.composeCalls
+        controller.onFinishInput()
+        assertThat(text()).isEqualTo("hel")
+        assertThat(editor.composing).isEmpty()
+        assertThat(controller.touchLog.size).isEqualTo(records)
+        assertThat(editor.composeCalls).isEqualTo(composeCalls)
+        assertThat(controller.strip.isEmpty).isTrue()
+        start()
+        space()
+        type("x")
+        assertThat(editor.composing).isEqualTo("x")
+    }
+
+    private companion object {
+        const val TEXT_CAPS = 0x4000
     }
 }

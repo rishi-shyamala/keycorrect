@@ -34,7 +34,11 @@ import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
  * Typing goes through [PredictiveInput] (composing words, autocorrect, suggestions) where the field
  * and settings allow it, and straight to the editor otherwise; the suggestion [strip] it produces
  * is observable state. The controller keeps the shift and auto-capitalisation logic and the
- * matching of selection callbacks to the keyboard's own edits.
+ * matching of selection callbacks to the keyboard's own edits ([OwnEditTracker]).
+ *
+ * Auto-capitalisation is computed from the text before the cursor when [PredictiveInput] has it
+ * cached, and asked of the editor (a blocking call) only otherwise: when input starts, after an
+ * external cursor move, or in fields where nothing is read.
  */
 class KeyboardController(
     private val editor: TextEditor,
@@ -47,6 +51,7 @@ class KeyboardController(
     private var variant = BottomRowVariant.Text
     private var options = ComposeOptions()
     private val ownEdits = OwnEditTracker(clock)
+    private val tracked = TrackedEditor(editor, ownEdits)
     private var layoutId = 0L
     private var identity: EditorIdentity? = null
 
@@ -61,7 +66,7 @@ class KeyboardController(
     var strip: StripModel by mutableStateOf(StripModel.Empty)
         private set
 
-    private val input = PredictiveInput(editor, prediction) { strip = it }
+    private val input = PredictiveInput(tracked, prediction) { strip = it }
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog
@@ -101,27 +106,31 @@ class KeyboardController(
      * previous one (the app re-announcing the same field, e.g. on rotation or when the keyboard is
      * shown again; see [EditorIdentity.continues]) keeps the layer and shift and only refreshes the
      * profile, enter action and auto-capitalisation; anything else is a new field and resets the
-     * keyboard.
+     * keyboard. [initialSelStart]/[initialSelEnd] are the field's selection from `EditorInfo` (-1
+     * when unknown), the starting point for recognising the keyboard's own selection updates.
      */
     fun onStartInput(
         profile: FieldProfile,
         settings: KeyboardSettings,
         restarting: Boolean = false,
         identity: EditorIdentity? = null,
+        initialSelStart: Int = -1,
+        initialSelEnd: Int = -1,
     ) {
+        val initialSelection = EditorSelection(initialSelStart, initialSelEnd)
         val sameField = identity != null && identity.continues(this.identity, restarting)
         this.identity = identity
         this.profile = profile
         this.settings = settings
         enterAction = profile.enterAction
         input.onStartInput(profile, settings, newField = !sameField)
+        if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
         val newOptions = composeOptions(profile, settings)
         if (sameField) {
             applyOptions(newOptions)
             updateAutoCapitalize()
             return
         }
-        ownEdits.reset()
         shiftHeld = false
         shiftChorded = false
         variant =
@@ -147,7 +156,7 @@ class KeyboardController(
     /** Applies changed [settings]; recomposes the layer if the number row changed. */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
-        if (input.updateSettings(settings)) ownEdits.onEdit()
+        input.updateSettings(settings)
         applyOptions(composeOptions(profile, settings))
         if (!settings.autoCapitalize && state.shift == ShiftState.Auto) {
             state = state.withAutoShift(false)
@@ -165,30 +174,29 @@ class KeyboardController(
             is KeyAction.Text -> {
                 markChord()
                 input.onText(state.transform(action), touch)
-                ownEdits.onEdit()
                 state = state.afterCharacter(shiftHeld)
                 updateAutoCapitalize()
             }
             KeyAction.Space -> {
                 markChord()
                 input.onSeparator(" ")
-                ownEdits.onEdit()
                 state = state.afterCharacter(shiftHeld)
                 updateAutoCapitalize()
             }
             KeyAction.Backspace -> {
                 markChord()
-                if (input.onBackspace()) ownEdits.onDelete() else ownEdits.onEdit()
+                input.onBackspace()
                 updateAutoCapitalize()
             }
             KeyAction.Enter -> {
                 markChord()
-                if (input.beforeEnter()) ownEdits.onEdit()
-                editor.performEnter()
                 // Only a committed line break moves the cursor with a callback of its own. In a
                 // single-line field Enter is a key event the editor usually swallows, and an IME
                 // action does not edit the text.
-                if (enterAction == EnterAction.NewLine && profile.multiLine) ownEdits.onEdit()
+                val lineBreak = enterAction == EnterAction.NewLine && profile.multiLine
+                input.beforeEnter(lineBreak)
+                editor.performEnter()
+                if (lineBreak) ownEdits.onCommit(1)
                 updateAutoCapitalize()
             }
             KeyAction.Shift -> state = state.onShift(clock())
@@ -198,7 +206,7 @@ class KeyboardController(
                 val next =
                     runCatching { composer.compose(keyboardSet, action.layerId, variant, options) }
                         .getOrNull() ?: return
-                if (input.onLayerSwitch()) ownEdits.onEdit()
+                input.onLayerSwitch()
                 shiftHeld = false
                 shiftChorded = false
                 state = state.withLayer(action.layerId)
@@ -230,36 +238,37 @@ class KeyboardController(
     }
 
     /**
-     * The cursor moved (typing, tapping in the text, an app edit): re-evaluate auto-caps.
-     * [selectionCollapsed] is whether the new selection is a bare cursor. The update caused by an
-     * edit we just made is skipped: [onKey] already re-evaluated after it, so asking the editor
-     * again would be a second blocking IPC per keystroke (see [OwnEditTracker]). [cursorAtStart] is
-     * whether the new selection is a bare cursor at position 0, which lets a following backspace be
-     * recognised as one that changes nothing.
-     *
-     * [cursor], [composingStart] and [composingEnd] (-1 when unknown or absent) let an update that
-     * just echoes the word being composed be told from a real cursor move. Any other update ends
-     * the composing word as it stands and drops pending suggestions.
+     * The platform reported a selection change (`onUpdateSelection`): [selStart]/[selEnd] are the
+     * new selection, [composingStart]/[composingEnd] the composing region (-1 when none). Updates
+     * explained by the keyboard's own edits are ignored ([OwnEditTracker]), so typing costs no
+     * extra work or editor query; an editor that changed the length of our composing word has it
+     * adopted. Anything else is external: the composing word ends as it stands, pending suggestions
+     * are dropped, and the text around the cursor and auto-caps are re-evaluated. An update with
+     * unknown values (the defaults) is external.
      */
     fun onSelectionChanged(
-        selectionCollapsed: Boolean = true,
-        cursorAtStart: Boolean = false,
-        cursor: Int = -1,
+        selStart: Int = -1,
+        selEnd: Int = -1,
         composingStart: Int = -1,
         composingEnd: Int = -1,
     ) {
-        input.noteSelection(selectionCollapsed)
-        if (ownEdits.consumeIfOwn(selectionCollapsed, cursorAtStart)) return
-        if (selectionCollapsed && input.isEchoOfComposing(cursor, composingStart, composingEnd)) {
-            return
+        val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
+        if (update.known) input.noteSelection(update.collapsed)
+        when (val verdict = ownEdits.onUpdate(update)) {
+            is UpdateVerdict.Own -> {
+                val resync = verdict.composingLength
+                if (resync < 0 || input.resyncComposing(resync)) return
+            }
+            UpdateVerdict.External -> Unit
         }
-        if (input.onExternalChange()) ownEdits.onEdit()
+        input.onExternalChange(collapsed = update.known && update.collapsed)
         updateAutoCapitalize()
     }
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
-        if (input.onFinishInput()) ownEdits.onEdit()
+        input.onFinishInput()
+        ownEdits.reset()
     }
 
     /**
@@ -273,7 +282,7 @@ class KeyboardController(
 
     /** A strip slot was tapped. */
     fun onSuggestionTap(slot: StripSlot) {
-        if (input.onStripTap(slot)) ownEdits.onEdit()
+        input.onStripTap(slot)
         updateAutoCapitalize()
     }
 
@@ -342,7 +351,8 @@ class KeyboardController(
         ) {
             return
         }
-        val next = state.withAutoShift(editor.cursorCapsMode() != 0)
+        val wanted = input.capsFromCache(profile.autoCapitalize) ?: (editor.cursorCapsMode() != 0)
+        val next = state.withAutoShift(wanted)
         if (next != state) state = next
     }
 

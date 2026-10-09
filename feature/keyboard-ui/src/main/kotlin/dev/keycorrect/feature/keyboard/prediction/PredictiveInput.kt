@@ -9,6 +9,8 @@ import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
+import dev.keycorrect.core.input.AutoCapitalize
+import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.Graphemes
@@ -23,9 +25,13 @@ import dev.keycorrect.feature.keyboard.TimeoutHandle
  *
  * Composing state machine (per field that allows suggestions; anywhere else every key is a plain
  * commit and nothing is read from the editor or sent to an engine, see [canPredict]):
- * - *Idle* (no composing word). A letter starts a word, unless the cursor sits inside an existing
- *   word. Backspace deletes in the editor and, when the cursor lands right after a word, turns that
- *   word back into the composing word. Separators commit directly.
+ * - *Idle* (no composing word). A letter starts a word only at a word boundary: the cursor is at
+ *   the start of the field, after whitespace or after opening punctuation (see [atWordBoundary]).
+ *   After a digit, `@`, `#`, `/`, `:`, `.`, `_` or a letter that isn't part of a composing word of
+ *   ours (an address, hashtag, number, abbreviation, or the middle of an existing word) a letter is
+ *   committed directly: no decode, no autocorrect. Backspace deletes in the editor and, when the
+ *   cursor lands right after a word, turns that word back into the composing word. Separators
+ *   commit directly.
  * - *Composing*. Letters, digits and apostrophes extend the word, shown with `setComposingText`.
  *   Backspace shortens it. A separator (space, punctuation, Enter) finishes it: the autocorrect or
  *   auto-expanding shortcut of the freshest result is applied if allowed, otherwise the word stays.
@@ -34,9 +40,13 @@ import dev.keycorrect.feature.keyboard.TimeoutHandle
  *   (separator kept) and that word is never auto-corrected again. Any other key closes it.
  *
  * Every input event advances the decoder's sequence, so results for older input are dropped. The
- * text before the cursor (≤ [TypingContext.MAX_BEFORE_CHARS]) is read from the editor at the start
- * of a word after a cursor jump and then maintained locally; the text after the cursor (≤
- * [TypingContext.MAX_AFTER_CHARS]) is read at the same moments, since typing doesn't change it.
+ * text before the cursor (≤ [TypingContext.MAX_BEFORE_CHARS]) is read from the editor when input
+ * starts and after an external cursor move ([refreshContext]) and then maintained locally; the text
+ * after the cursor (≤ [TypingContext.MAX_AFTER_CHARS]) is read lazily at the next word start, since
+ * typing doesn't change it. The cache also answers auto-capitalisation ([capsFromCache]).
+ *
+ * At a separator the answer is taken from the decoder without ever blocking on the engine lock; see
+ * [DecoderLoop]'s separator policy. When none arrives in time the word is committed as typed.
  */
 internal class PredictiveInput(
     private val editor: TextEditor,
@@ -62,6 +72,7 @@ internal class PredictiveInput(
 
     private val before = StringBuilder()
     private var beforeKnown = false
+    private var beforeAvailable = false
     private var beforeTruncated = false
     private var after = ""
     private var afterKnown = false
@@ -118,17 +129,20 @@ internal class PredictiveInput(
         if (newField) revertedWords.clear()
         resetWordState()
         selectionIsRange = false
+        refreshContext()
     }
 
     /** Settings changed. Finishes the word as typed if suggestions were just switched off. */
-    fun updateSettings(settings: KeyboardSettings): Boolean {
+    fun updateSettings(settings: KeyboardSettings) {
         val old = this.settings
         this.settings = settings
-        val profile = profile ?: return false
+        val profile = profile ?: return
         val was = predictionOn
         predictionOn = computeCanPredict(profile, settings)
-        var edited = false
-        if (was && !predictionOn) edited = finishAsTyped()
+        if (was && !predictionOn) {
+            finishAsTyped()
+            cancelAddWord()
+        }
         val relevant =
             old.suggestionsEnabled != settings.suggestionsEnabled ||
                 old.autocorrectEnabled != settings.autocorrectEnabled ||
@@ -140,16 +154,15 @@ internal class PredictiveInput(
             if (!predictionOn) publish(StripModel.Empty)
             else if (composing.isNotEmpty()) requestWord() else publish(StripModel.Empty)
         }
-        return edited
     }
 
     /**
-     * The field loses the keyboard (input finished or keyboard hidden). Returns true if it edited.
+     * The field loses the keyboard (input finished or keyboard hidden). Idempotent: the platform
+     * reports both the end of input and of its view, and a second call finds nothing to do.
      */
-    fun onFinishInput(): Boolean {
-        val edited = finishAsTyped()
+    fun onFinishInput() {
+        finishAsTyped()
         resetWordState()
-        return edited
     }
 
     // ------------------------------------------------------------------ keys
@@ -166,8 +179,8 @@ internal class PredictiveInput(
         val composingNow = composing.isNotEmpty()
         if (c != null && composingNow && (c.isLetterOrDigit() || isApostrophe(c))) {
             append(c, touch)
-        } else if (c != null && c.isLetter() && !composingNow && startsWord()) {
-            append(c, touch)
+        } else if (c != null && c.isLetter() && !composingNow) {
+            if (startsWord()) append(c, touch) else commitPlain(text)
         } else {
             separator(text)
         }
@@ -185,15 +198,14 @@ internal class PredictiveInput(
     }
 
     /**
-     * Backspace. Returns true if the only edit made was a bare backward delete (which the caller
-     * counts like a plain delete when matching selection callbacks), false if it composed or
-     * rewrote text.
+     * Backspace: shortens the composing word, undoes a correction (if the text before the cursor is
+     * still what we wrote), or deletes and re-composes the word it lands behind.
      */
-    fun onBackspace(): Boolean {
+    fun onBackspace() {
         val sensitive = profile?.sensitive == true
         if (!canPredict()) {
             editor.deleteBackward(sensitive)
-            return true
+            return
         }
         dismissAddWord()
         if (composing.isNotEmpty()) {
@@ -210,11 +222,13 @@ internal class PredictiveInput(
                 editor.setComposingText(composing)
                 requestWord()
             }
-            return false
+            return
         }
-        undo?.let {
-            undoCorrection(it)
-            return false
+        val pendingUndo = undo
+        undo = null
+        if (pendingUndo != null) {
+            if (!selectionIsRange && undoCorrection(pendingUndo)) return
+            invalidateContext() // the text isn't what we thought: fall back to a plain backspace
         }
         val hadRange = selectionIsRange
         editor.deleteBackward(false)
@@ -227,34 +241,31 @@ internal class PredictiveInput(
         }
         loop.advance()
         latest = null
-        return !recomposePreviousWord().also { if (!it) publish(StripModel.Empty) }
+        if (!recomposePreviousWord()) publish(StripModel.Empty)
     }
 
     /**
      * Enter is about to be performed: finishes the composing word (with its correction) first.
-     * Returns true if that edited the text.
+     * [commitsLineBreak] is whether Enter will insert a line break, which the cache then follows;
+     * an editor action or key event changes nothing we know of, and if the app reacts (clears the
+     * field, say) the selection callback reports it as an external change.
      */
-    fun beforeEnter(): Boolean {
-        if (!canPredict()) return false
+    fun beforeEnter(commitsLineBreak: Boolean) {
+        if (!canPredict()) return
         dismissAddWord()
         undo = null
-        var edited = false
-        if (composing.isNotEmpty()) {
-            finishWord(separator = null, allowUndo = false)
-            edited = true
-        }
+        if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
+        if (commitsLineBreak) appendBefore("\n")
         loop.advance()
         latest = null
         publish(StripModel.Empty)
-        invalidateContext()
-        return edited
     }
 
-    /** The layer changed: a word in progress ends as typed. Returns true if it edited. */
-    fun onLayerSwitch(): Boolean {
+    /** The layer changed: a word in progress ends as typed. */
+    fun onLayerSwitch() {
         undo = null
         dismissAddWord()
-        return finishAsTyped()
+        finishAsTyped()
     }
 
     // ------------------------------------------------------------------ selection changes
@@ -265,42 +276,53 @@ internal class PredictiveInput(
     }
 
     /**
-     * True if a selection update is just the editor echoing the composing word as it stands now
-     * (cursor at its end, region as long as the word), however late it arrives.
+     * The editor reports a composing region of [length] chars where we have a word of another
+     * length (it normalised the text, say): takes the word from the editor and decodes it again.
+     * Returns false, leaving the state alone, if the editor's text can't be read back as that word.
      */
-    fun isEchoOfComposing(cursor: Int, composingStart: Int, composingEnd: Int): Boolean =
-        composing.isNotEmpty() &&
-            cursor >= 0 &&
-            composingStart >= 0 &&
-            cursor == composingEnd &&
-            composingEnd - composingStart == composing.length
+    fun resyncComposing(length: Int): Boolean {
+        if (composing.isEmpty() || length <= 0) return false
+        val text = editor.textBeforeCursor(length)?.toString()
+        if (text == null || text.length != length) return false
+        composing.setLength(0)
+        composing.append(text)
+        while (touches.size > length) touches.removeAt(touches.size - 1)
+        touches.replaceAll { null }
+        while (touches.size < length) touches.add(null)
+        requestWord()
+        return true
+    }
 
     /**
      * The cursor or text changed behind our back: the word in progress ends as it is and nothing
-     * decoded so far applies any more. Returns true if it edited.
+     * decoded so far applies any more. The text before the cursor is read afresh when [collapsed].
      */
-    fun onExternalChange(): Boolean {
-        val edited = finishAsTyped()
+    fun onExternalChange(collapsed: Boolean) {
+        finishAsTyped()
         resetWordState()
         publish(StripModel.Empty)
-        return edited
+        if (collapsed) refreshContext()
     }
 
     // ------------------------------------------------------------------ strip taps
 
-    /** A strip slot was tapped. Returns true if the editor's text changed. */
-    fun onStripTap(slot: StripSlot): Boolean {
-        if (!canPredict()) return false
+    /** A strip slot was tapped. */
+    fun onStripTap(slot: StripSlot) {
+        if (!canPredict()) return
         dismissAddWord()
         undo = null
-        return if (slot.kind == SlotKind.Literal) keepLiteral() else pick(slot)
+        if (slot.kind == SlotKind.Literal) keepLiteral() else pick(slot)
     }
 
-    /** The "Add word to dictionary" prompt was tapped. */
+    /**
+     * The "Add word to dictionary" prompt was tapped. The word is added only if the field still
+     * allows suggestions and learning; a prompt that outlived either is dropped.
+     */
     fun onAddWordTap() {
         val word = addWord ?: return
-        backend.addWord(word)
+        val allowed = canPredict() && profile?.learningEnabled == true
         dismissAddWord()
+        if (allowed) backend.addWord(word)
     }
 
     // ------------------------------------------------------------------ composing
@@ -308,11 +330,29 @@ internal class PredictiveInput(
     private fun computeCanPredict(profile: FieldProfile, settings: KeyboardSettings): Boolean =
         settings.suggestionsEnabled && profile.suggestionsEnabled && !profile.sensitive
 
-    /** A letter may start a composing word: an engine exists and the cursor isn't mid-word. */
+    /**
+     * A letter may start a composing word: an engine exists, the text before the cursor is known
+     * and ends at a word boundary, and the cursor isn't inside a word.
+     */
     private fun startsWord(): Boolean {
         if (backend.predictor == null) return false
         ensureContext()
-        return !cursorInsideWord()
+        return beforeAvailable && atWordBoundary() && !cursorInsideWord()
+    }
+
+    /** True at the start of the field, after whitespace, or after opening punctuation. */
+    private fun atWordBoundary(): Boolean {
+        val c = before.lastOrNull() ?: return !beforeTruncated
+        return c.isWhitespace() || c in OPENING_PUNCTUATION
+    }
+
+    /** Commits [text] as it is, without decoding anything for it. */
+    private fun commitPlain(text: String) {
+        editor.commitText(text)
+        appendBefore(text)
+        loop.advance()
+        latest = null
+        if (stripBase != StripModel.Empty) publish(StripModel.Empty)
     }
 
     private fun append(c: Char, touch: TouchPoint?) {
@@ -413,7 +453,8 @@ internal class PredictiveInput(
             ?.let {
                 return it
             }
-        return loop.predictNow(request(loop.sequence, typed, touches.toList()))
+        val seq = loop.sequence
+        return loop.resultForSeparator(seq) { request(seq, typed, touches.toList()) }
     }
 
     /**
@@ -443,16 +484,21 @@ internal class PredictiveInput(
             word.lowercase() !in revertedWords
     }
 
-    /** Backspace right after a correction: put the typed word back, keeping the separator. */
-    private fun undoCorrection(u: Undo) {
-        undo = null
-        val appliedLength = u.applied.length + u.separator.length
+    /**
+     * Backspace right after a correction: puts the typed word back, keeping the separator. Only
+     * done if the text before the cursor is still exactly what we wrote (UTF-16 units, so emoji and
+     * combining marks count like the editor counts them); returns false, changing nothing, if not
+     * (the cursor moved or the text was edited without us hearing of it yet).
+     */
+    private fun undoCorrection(u: Undo): Boolean {
+        val expected = u.applied + u.separator
+        if (editor.textBeforeCursor(expected.length)?.toString() != expected) return false
         editor.batchEdit {
-            editor.deleteSurroundingText(appliedLength, 0)
+            editor.deleteSurroundingText(expected.length, 0)
             editor.commitText(u.typed + u.separator)
         }
         if (beforeKnown) {
-            before.setLength(maxOf(0, before.length - appliedLength))
+            before.setLength(maxOf(0, before.length - expected.length))
             appendBefore(u.typed + u.separator)
         }
         revertedWords.addLast(u.typed.lowercase())
@@ -462,12 +508,13 @@ internal class PredictiveInput(
         latest = null
         publish(StripModel.Empty)
         requestNextWord()
+        return true
     }
 
     /**
      * After a backspace landed the cursor right after a word, makes that word the composing word
-     * again so its suggestions come back. The editor's copy is deleted and re-inserted as composing
-     * text (the word's touches are unknown). Returns true if it did.
+     * again so its suggestions come back. The editor's copy is verified, deleted and re-inserted as
+     * composing text (the word's touches are unknown). Returns true if it did.
      */
     private fun recomposePreviousWord(): Boolean {
         if (backend.predictor == null) return false
@@ -476,6 +523,10 @@ internal class PredictiveInput(
         val start = trailingWordStart()
         if (start < 0 || (start == 0 && beforeTruncated)) return false
         val word = before.substring(start)
+        if (editor.textBeforeCursor(word.length)?.toString() != word) {
+            invalidateContext()
+            return false
+        }
         editor.batchEdit {
             editor.deleteSurroundingText(word.length, 0)
             editor.setComposingText(word)
@@ -501,7 +552,7 @@ internal class PredictiveInput(
 
     // ------------------------------------------------------------------ suggestion taps
 
-    private fun pick(slot: StripSlot): Boolean {
+    private fun pick(slot: StripSlot) {
         val typed = composing.toString()
         val nextWord = typed.isEmpty()
         val expansion =
@@ -542,12 +593,11 @@ internal class PredictiveInput(
         }
         publish(StripModel.Empty)
         requestNextWord()
-        return true
     }
 
-    private fun keepLiteral(): Boolean {
+    private fun keepLiteral() {
         val typed = composing.toString()
-        if (typed.isEmpty()) return false
+        if (typed.isEmpty()) return
         val touchList = ArrayList(touches)
         composing.setLength(0)
         touches.clear()
@@ -564,9 +614,14 @@ internal class PredictiveInput(
         while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
         record(typed, typed, touchList, CommitMethod.LiteralTap)
         publish(StripModel.Empty)
-        if (typed.any { it.isLetter() } && !backend.isKnownWord(typed)) showAddWord(typed)
+        if (
+            profile?.learningEnabled == true &&
+                typed.any { it.isLetter() } &&
+                !backend.isKnownWord(typed)
+        ) {
+            showAddWord(typed)
+        }
         requestNextWord()
-        return true
     }
 
     private fun needsLeadingSpace(): Boolean {
@@ -631,17 +686,44 @@ internal class PredictiveInput(
      */
     private fun ensureContext() {
         if (!canPredict()) return
-        if (!beforeKnown) {
-            val text = editor.textBeforeCursor(TypingContext.MAX_BEFORE_CHARS)
-            before.setLength(0)
-            if (text != null) before.append(text)
-            beforeTruncated = text != null && text.length >= TypingContext.MAX_BEFORE_CHARS
-            beforeKnown = true
-        }
+        ensureBefore()
         if (!afterKnown) {
             after = editor.textAfterCursor(TypingContext.MAX_AFTER_CHARS)?.toString().orEmpty()
             afterKnown = true
         }
+    }
+
+    private fun ensureBefore() {
+        if (beforeKnown) return
+        val text = editor.textBeforeCursor(TypingContext.MAX_BEFORE_CHARS)
+        before.setLength(0)
+        if (text != null) before.append(text)
+        beforeAvailable = text != null
+        beforeTruncated = text != null && text.length >= TypingContext.MAX_BEFORE_CHARS
+        beforeKnown = true
+    }
+
+    /**
+     * Re-reads the text before the cursor, after input starts or the cursor moved externally. This
+     * and the first word start are the only reads while typing; auto-capitalisation then runs off
+     * the cache. Skipped when no engine could use it (the editor is then never read at all).
+     */
+    private fun refreshContext() {
+        invalidateContext()
+        if (canPredict() && backend.predictor != null) ensureBefore()
+    }
+
+    /**
+     * Whether a capital is wanted at the cursor, computed from the cached text, or null when the
+     * cache can't tell (prediction off, text unread or unavailable, or a truncated start the answer
+     * depends on): the caller asks the editor then.
+     */
+    fun capsFromCache(mode: AutoCapitalize): Boolean? {
+        if (mode == AutoCapitalize.Characters) return true
+        if (!canPredict() || !beforeKnown || !beforeAvailable) return null
+        // A composing word starts with a letter, so no capital is wanted inside or after it.
+        if (composing.isNotEmpty()) return false
+        return AutoCaps.shouldCapitalize(before, mode, startKnown = !beforeTruncated)
     }
 
     private fun appendBefore(text: String) {
@@ -664,9 +746,9 @@ internal class PredictiveInput(
 
     // ------------------------------------------------------------------ misc
 
-    /** Ends the composing word without correcting it. Returns true if there was one. */
-    private fun finishAsTyped(): Boolean {
-        if (composing.isEmpty()) return false
+    /** Ends the composing word without correcting it. */
+    private fun finishAsTyped() {
+        if (composing.isEmpty()) return
         val typed = composing.toString()
         val touchList = ArrayList(touches)
         editor.finishComposingText()
@@ -677,7 +759,6 @@ internal class PredictiveInput(
         loop.advance()
         latest = null
         publish(StripModel.Empty)
-        return true
     }
 
     private fun resetWordState() {
@@ -690,9 +771,7 @@ internal class PredictiveInput(
         latest = null
         undo = null
         loop.advance()
-        addWordTimer?.cancel()
-        addWordTimer = null
-        addWord = null
+        cancelAddWord()
         stripBase = StripModel.Empty
         onStrip(StripModel.Empty)
     }
@@ -727,6 +806,12 @@ internal class PredictiveInput(
             }
     }
 
+    private fun cancelAddWord() {
+        addWordTimer?.cancel()
+        addWordTimer = null
+        addWord = null
+    }
+
     private fun dismissAddWord() {
         if (addWord == null) return
         addWordTimer?.cancel()
@@ -749,5 +834,8 @@ internal class PredictiveInput(
 
         /** Text ending in one of these needs no space before an inserted next word. */
         const val NO_SPACE_AFTER = "([{<\"'“‘/@#-"
+
+        /** A word may start right after one of these. */
+        const val OPENING_PUNCTUATION = "([{\"'“‘¿¡"
     }
 }

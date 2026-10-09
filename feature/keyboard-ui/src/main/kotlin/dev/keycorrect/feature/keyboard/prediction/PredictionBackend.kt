@@ -4,10 +4,10 @@ import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 
 /**
- * Synchronous prediction entry point. Called on the decoder thread for every keystroke and, when no
- * fresh result exists at a separator, briefly on the main thread. [stale] turns true once a newer
- * input event has superseded [request]; the predictor should then return early with any result (the
- * caller drops it).
+ * Synchronous prediction entry point. Called on the decoder thread for every keystroke and, when
+ * the decoder is idle and no result exists at a separator, on the main thread. [stale] turns true
+ * once a newer input event has superseded [request]; the predictor should then return early with
+ * any result (the caller drops it).
  */
 fun interface Predictor {
     fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult
