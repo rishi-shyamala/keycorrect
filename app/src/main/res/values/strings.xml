@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KeyCorrect</string>
+    <string name="subtype_en_us">English (US)</string>
+    <string name="setup_title">Set up KeyCorrect</string>
+    <string name="setup_enable_title">1. Enable KeyCorrect</string>
+    <string name="setup_enable_body">Turn on KeyCorrect in the system keyboard list.</string>
+    <string name="setup_enable_action">Open keyboard settings</string>
+    <string name="setup_select_title">2. Switch to KeyCorrect</string>
+    <string name="setup_select_body">Choose KeyCorrect as your current keyboard.</string>
+    <string name="setup_select_action">Choose keyboard</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_try_title">3. Try it</string>
+    <string name="setup_try_hint">Type here</string>
+</resources>
