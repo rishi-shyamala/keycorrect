@@ -47,6 +47,13 @@ class EditorSession(
         }
     }
 
+    /** 0 when there is no connection or editor. */
+    override fun cursorCapsMode(): Int {
+        val ic = connection() ?: return 0
+        val info = editorInfo() ?: return 0
+        return ic.getCursorCapsMode(info.inputType)
+    }
+
     private fun sendKey(keyCode: Int) {
         val ic = connection() ?: return
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))

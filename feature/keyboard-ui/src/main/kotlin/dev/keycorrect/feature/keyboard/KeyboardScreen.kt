@@ -14,14 +14,32 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.core.input.EnterAction
+import dev.keycorrect.core.settings.KeyboardSettings
 
-/** The full keyboard: suggestion strip (placeholder until Phase 2) above the key surface. */
+/**
+ * The full keyboard: suggestion strip (placeholder until Phase 2) above the key surface, with the
+ * key previews and popups drawn over both.
+ */
 @Composable
-fun KeyboardScreen(controller: KeyboardController, modifier: Modifier = Modifier) {
-    val state = controller.state
+fun KeyboardScreen(
+    controller: KeyboardController,
+    settings: KeyboardSettings,
+    feedback: KeyFeedback,
+    modifier: Modifier = Modifier,
+) {
+    // Only the shift part of the state is read here, so typing never recomposes the screen.
+    val shift by remember(controller) { derivedStateOf { controller.state.shift } }
+    val enterLabel = enterLabel(controller.enterAction)
+    val showPreviews = settings.keyPreview && !controller.profile.sensitive
+    val layer = controller.layer
+    val touch = remember { KeyboardTouchState() }
+    val onKey = remember(controller) { controller::onKey }
     Column(
         modifier =
             modifier
@@ -35,13 +53,35 @@ fun KeyboardScreen(controller: KeyboardController, modifier: Modifier = Modifier
                 )
                 .padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(40.dp))
-        KeyboardSurface(
-            layer = BuiltInLayouts.forLayer(state.layer),
-            shift = state.shift,
-            enterLabel = enterLabel(controller.enterAction),
-            onKey = controller::onKey,
-        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth().height(40.dp))
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    KeyboardSurface(
+                        layer = layer,
+                        shift = shift,
+                        enterLabel = enterLabel,
+                        settings = settings,
+                        showPreviews = showPreviews,
+                        feedback = feedback,
+                        touch = touch,
+                        onKey = onKey,
+                    )
+                    KeySemantics(
+                        layer = layer,
+                        shift = shift,
+                        onKey = onKey,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+            }
+            KeyOverlay(
+                touch = touch,
+                shift = shift,
+                enterLabel = enterLabel,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
     }
 }
 

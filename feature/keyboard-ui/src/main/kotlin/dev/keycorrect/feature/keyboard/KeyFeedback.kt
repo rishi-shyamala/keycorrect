@@ -1,7 +1,9 @@
 package dev.keycorrect.feature.keyboard
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioManager
+import android.os.Build
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.VibratorManager
@@ -22,7 +24,11 @@ class KeyFeedback(context: Context) {
     private val vibrator = context.getSystemService(VibratorManager::class.java).defaultVibrator
     private val audio = context.getSystemService(AudioManager::class.java)
     private val touchAttributes =
-        VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH)
+        } else {
+            null
+        }
 
     /** Whether custom strength (amplitude) is supported on this device. */
     val hasAmplitudeControl: Boolean
@@ -38,6 +44,8 @@ class KeyFeedback(context: Context) {
      * a one-shot of the configured duration and strength with touch attributes, so the system
      * touch-feedback intensity still applies.
      */
+    // VIBRATE is declared in the app manifest.
+    @SuppressLint("MissingPermission")
     fun haptic(view: View?, settings: KeyboardSettings) {
         if (!settings.hapticsEnabled) return
         if (settings.hapticDurationMs == 0) {
@@ -50,10 +58,12 @@ class KeyFeedback(context: Context) {
             } else {
                 settings.hapticStrength
             }
-        vibrator.vibrate(
-            VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude),
-            touchAttributes,
-        )
+        val effect = VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude)
+        if (touchAttributes != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            vibrator.vibrate(effect, touchAttributes)
+        } else {
+            vibrator.vibrate(effect)
+        }
     }
 
     fun sound(kind: FeedbackKind, settings: KeyboardSettings) {
