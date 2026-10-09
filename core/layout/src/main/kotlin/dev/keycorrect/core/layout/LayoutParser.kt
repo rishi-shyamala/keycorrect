@@ -129,6 +129,15 @@ internal object LayoutParser {
         val isTyped = type == Type.Char || type == Type.Text
         if (popup && !isTyped)
             fail("$path.type", "popup keys must be char or text, got '${key.type}'")
+        if (popup) {
+            // Popup entries are drawn as fixed-size cells in the popup panel, so these are no-ops.
+            if (key.popup.isNotEmpty()) fail("$path.popup", "popups cannot be nested")
+            if (key.hint != HINT_UNSET) fail("$path.hint", "not valid on popup entries")
+            if (key.width != null) fail("$path.width", "not valid on popup entries")
+            if (key.style != null) fail("$path.style", "not valid on popup entries")
+        } else if (!isTyped && key.popup.isNotEmpty()) {
+            fail("$path.popup", "only valid on char/text keys, got '${key.type}'")
+        }
         if (type == Type.ModeSwitch && kind != LayoutKind.Bottom) {
             fail(path, "modeSwitch is only allowed in bottom layouts")
         }

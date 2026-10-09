@@ -2,6 +2,7 @@ package dev.keycorrect.feature.keyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationAttributes
@@ -30,6 +31,12 @@ class KeyFeedback(context: Context) {
             null
         }
 
+    private val sonificationAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+
     /** Whether custom strength (amplitude) is supported on this device. */
     val hasAmplitudeControl: Boolean
         get() = vibrator.hasAmplitudeControl()
@@ -41,8 +48,8 @@ class KeyFeedback(context: Context) {
 
     /**
      * Duration 0 uses the system keyboard-tap haptic (honours the user's system setting); otherwise
-     * a one-shot of the configured duration and strength with touch attributes, so the system
-     * touch-feedback intensity still applies.
+     * a one-shot of the configured duration and strength with touch attributes (sonification audio
+     * attributes on API 31-32), so the system touch-feedback intensity still applies.
      */
     // VIBRATE is declared in the app manifest.
     @SuppressLint("MissingPermission")
@@ -62,8 +69,19 @@ class KeyFeedback(context: Context) {
         if (touchAttributes != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             vibrator.vibrate(effect, touchAttributes)
         } else {
-            vibrator.vibrate(effect)
+            vibrateWithSonificationAttributes(effect)
         }
+    }
+
+    // API 31-32 have no VibrationAttributes. A plain vibrate(effect) would carry no touch
+    // semantics, so the system touch-feedback setting would not apply to it. The deprecated
+    // AudioAttributes overload maps USAGE_ASSISTANCE_SONIFICATION to the touch vibration usage
+    // there; it is the only way to express that before API 33.
+    // VIBRATE is declared in the app manifest.
+    @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
+    private fun vibrateWithSonificationAttributes(effect: VibrationEffect) {
+        vibrator.vibrate(effect, sonificationAttributes)
     }
 
     fun sound(kind: FeedbackKind, settings: KeyboardSettings) {

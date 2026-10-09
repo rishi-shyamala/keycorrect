@@ -190,4 +190,53 @@ class BuiltInLayoutsTest {
     fun loaderRejectsPathTraversal() {
         assertThat(BuiltInLayouts.loader("../layouts/qwerty")).isNull()
     }
+
+    private fun numpad(signed: Boolean = true, decimal: Boolean = true) =
+        composer.compose(
+            KeyboardSet.Default,
+            "numpad",
+            options = ComposeOptions(signedNumber = signed, decimalNumber = decimal),
+        )
+
+    @Test
+    fun numpadDefaultsKeepEveryKey() {
+        val labels = numpad().rows.flatMap { it.keys }.map { it.label }
+        assertThat(labels).containsAtLeast("-", ",", ".")
+        assertThat(ComposeOptions().signedNumber).isTrue()
+        assertThat(ComposeOptions().decimalNumber).isTrue()
+    }
+
+    @Test
+    fun unsignedNumpadHidesMinusOnly() {
+        val plain = numpad()
+        val layer = numpad(signed = false)
+        val minus = layer.rows[0].keys[3]
+        assertThat(minus.isSpacer).isTrue()
+        assertThat(minus.width).isEqualTo(plain.rows[0].keys[3].width)
+        assertThat(layer.rows.flatMap { it.keys }.map { it.label }).containsAtLeast(",", ".")
+        assertThat(layer.rows.map { it.width }).isEqualTo(plain.rows.map { it.width })
+    }
+
+    @Test
+    fun nonDecimalNumpadHidesBothSeparators() {
+        val plain = numpad()
+        val layer = numpad(decimal = false)
+        assertThat(layer.rows[1].keys[3].isSpacer).isTrue()
+        assertThat(layer.rows[3].keys[2].isSpacer).isTrue()
+        val labels = layer.rows.flatMap { it.keys }.map { it.label }
+        assertThat(labels).contains("-")
+        assertThat(labels).containsNoneOf(",", ".")
+        assertThat(layer.rows.map { it.keys.size }).isEqualTo(plain.rows.map { it.keys.size })
+    }
+
+    @Test
+    fun numberFlagsAreCachedSeparatelyAndIgnoredElsewhere() {
+        assertThat(numpad(signed = false)).isNotEqualTo(numpad())
+        assertThat(numpad(signed = false, decimal = false)).isNotEqualTo(numpad(decimal = false))
+        val opts = ComposeOptions(signedNumber = false, decimalNumber = false)
+        for (id in listOf("letters", "symbols", "phone", "datetime")) {
+            assertThat(composer.compose(KeyboardSet.Default, id, options = opts))
+                .isEqualTo(composer.compose(KeyboardSet.Default, id))
+        }
+    }
 }

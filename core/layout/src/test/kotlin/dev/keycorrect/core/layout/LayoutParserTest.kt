@@ -238,10 +238,40 @@ class LayoutParserTest {
 
     @Test
     fun popupErrorsIncludeNestedPath() {
-        val msg = errorOf(layout("""[["a",{"label":"b","popup":["x",{"label":"y","width":0}]}]]"""))
-        assertThat(msg).contains("rows[0].keys[1].popup[1].width")
+        val msg =
+            errorOf(layout("""[["a",{"label":"b","popup":["x",{"label":"y","type":"shift"}]}]]"""))
+        assertThat(msg).contains("rows[0].keys[1].popup[1].type")
         assertThat(errorOf(layout("""[[{"label":"b","popup":[{"type":"shift"}]}]]""")))
             .contains("popup[0]")
+    }
+
+    @Test
+    fun popupOnNonTypedKeysIsRejected() {
+        for (type in listOf("shift", "backspace", "space", "enter", "spacer")) {
+            val msg = errorOf(layout("""[["a",{"type":"$type","popup":["x"]}]]"""))
+            assertThat(msg).contains("rows[0].keys[1].popup")
+            assertThat(msg).contains("char/text")
+        }
+        assertThat(
+                errorOf(layout("""[[{"type":"layer","label":"L","target":"x","popup":["x"]}]]"""))
+            )
+            .contains("keys[0].popup")
+        // text keys may have popups
+        assertThat(key("""{"type":"text","label":".com","popup":[".net"]}""").popup).hasSize(1)
+    }
+
+    @Test
+    fun popupEntriesRejectNestedPopupHintWidthStyle() {
+        fun entry(field: String) =
+            errorOf(layout("""[["a",{"label":"b","popup":["x",{"label":"y",$field}]}]]"""))
+        assertThat(entry(""""popup":["z"]""")).contains("rows[0].keys[1].popup[1].popup")
+        assertThat(entry(""""hint":"h"""")).contains("rows[0].keys[1].popup[1].hint")
+        assertThat(entry(""""hint":null""")).contains("rows[0].keys[1].popup[1].hint")
+        assertThat(entry(""""width":2""")).contains("rows[0].keys[1].popup[1].width")
+        assertThat(entry(""""style":"modifier"""")).contains("rows[0].keys[1].popup[1].style")
+        // description and shifted are still meaningful
+        val k = key("""{"label":"b","popup":[{"label":"y","shifted":"Y","description":"why"}]}""")
+        assertThat(k.popup.single().description).isEqualTo("why")
     }
 
     @Test

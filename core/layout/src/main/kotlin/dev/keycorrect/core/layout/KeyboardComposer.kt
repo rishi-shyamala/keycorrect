@@ -35,8 +35,21 @@ enum class BottomRowVariant(val layoutId: String) {
     Url("bottom_url"),
 }
 
-/** [numberRow] prepends a row of digits to the letters layer. */
-data class ComposeOptions(val numberRow: Boolean = false)
+/**
+ * [numberRow] prepends a row of digits to the letters layer.
+ *
+ * [signedNumber] and [decimalNumber] mirror the `TYPE_NUMBER_FLAG_SIGNED` / `..._DECIMAL` flags of
+ * a number field and only affect `numpad` layouts. When [signedNumber] is false the `-` key becomes
+ * a spacer; when [decimalNumber] is false the `.` and `,` keys do. Both separators count as decimal
+ * separators (the numpad offers both so one layout serves every locale; there is no thousands
+ * grouping key because number fields reject it). The spacer keeps the key's width, so geometry is
+ * stable and touches go to the neighbouring keys.
+ */
+data class ComposeOptions(
+    val numberRow: Boolean = false,
+    val signedNumber: Boolean = true,
+    val decimalNumber: Boolean = true,
+)
 
 /** Builds ready-to-draw [KeyboardLayer]s from layouts, adding bottom and number rows. */
 class KeyboardComposer(private val repository: LayoutRepository) {
@@ -60,13 +73,36 @@ class KeyboardComposer(private val repository: LayoutRepository) {
             val layout = repository.get(set.layoutId(layerId))
             val rows = buildList {
                 if (options.numberRow && layerId == KeyboardSet.LETTERS) add(NUMBER_ROW)
-                addAll(layout.rows(layerId))
+                val own = layout.rows(layerId)
+                addAll(if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own)
                 if (layout.bottomRow == BottomRowMode.Auto) {
                     addAll(repository.get(variant.layoutId).rows(layerId))
                 }
             }
             KeyboardLayer(layerId, rows)
         }
+
+    private fun restrictNumpad(
+        rows: List<ResolvedRow>,
+        options: ComposeOptions,
+    ): List<ResolvedRow> =
+        if (options.signedNumber && options.decimalNumber) {
+            rows
+        } else {
+            rows.map { row -> row.copy(keys = row.keys.map { hideIfDisallowed(it, options) }) }
+        }
+
+    private fun hideIfDisallowed(key: ResolvedKey, options: ComposeOptions): ResolvedKey {
+        val typed = (key.action as? KeyAction.Text)?.text
+        val hidden =
+            (typed == "-" && !options.signedNumber) ||
+                ((typed == "." || typed == ",") && !options.decimalNumber)
+        return if (hidden) {
+            ResolvedKey(label = "", action = KeyAction.None, width = key.width, description = "")
+        } else {
+            key
+        }
+    }
 
     private companion object {
         val NUMBER_ROW =

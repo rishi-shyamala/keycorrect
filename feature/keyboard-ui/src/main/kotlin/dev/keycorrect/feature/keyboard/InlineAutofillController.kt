@@ -1,6 +1,8 @@
 package dev.keycorrect.feature.keyboard
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Size
 import android.view.ViewGroup
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -31,30 +33,39 @@ class InlineAutofillController(private val context: Context, private val executo
     /** Views to show, in display order (pinned last). Never contains a view twice. */
     val suggestions: StateFlow<List<InlineSuggestionItem>> = _suggestions.asStateFlow()
 
-    /** Incremented per response and per [clear] so late inflate callbacks are dropped. */
-    private var generation = 0
+    private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * Publishes a response's suggestions atomically: once every inflate has resolved, or
+     * [PUBLISH_TIMEOUT_MS] after the first view arrives. The previous list stays on screen until
+     * then (no flicker). Superseded and cleared batches are ignored.
+     */
+    private val coordinator =
+        InflateCoordinator<InlineSuggestionItem>(
+            PUBLISH_TIMEOUT_MS,
+            { delayMs, action ->
+                handler.postDelayed(action, delayMs)
+                TimeoutHandle { handler.removeCallbacks(action) }
+            },
+            { _suggestions.value = it.pinnedLast() },
+        )
 
     /** Handles a response; always returns true (we always use the suggestions we are given). */
     fun onResponse(response: InlineSuggestionsResponse): Boolean {
-        val current = ++generation
         val inline = response.inlineSuggestions
+        val batch = coordinator.begin(inline.size)
         if (inline.isEmpty()) {
             _suggestions.value = emptyList()
             return true
         }
         // Inflation is asynchronous and may finish out of order, so each suggestion owns a slot
-        // and the published list is rebuilt from the slots, keeping the platform's order. The
-        // previous list stays on screen until the first new view arrives (no flicker).
-        val slots = arrayOfNulls<InlineSuggestionItem>(inline.size)
+        // and the list is built from the slots, keeping the platform's order.
         inline.forEachIndexed { index, suggestion ->
             val pinned = suggestion.info.isPinned
+            // A null view means inflation failed: the batch skips that suggestion.
             val onView =
                 Consumer<InlineContentView?> { view ->
-                    if (current == generation) {
-                        // A null view means inflation failed: skip this suggestion.
-                        slots[index] = view?.let { InlineSuggestionItem(it, pinned) }
-                        _suggestions.value = slots.filterNotNull().pinnedLast()
-                    }
+                    batch.resolve(index, view?.let { InlineSuggestionItem(it, pinned) })
                 }
             // WRAP_CONTENT lets each chip size itself between the spec's min and max. If the
             // platform rejects it, fall back to the spec's maximum size.
@@ -74,11 +85,14 @@ class InlineAutofillController(private val context: Context, private val executo
 
     /** Drops all suggestions (new field, keyboard hidden, feature turned off). */
     fun clear() {
-        generation++
+        coordinator.cancel()
         if (_suggestions.value.isNotEmpty()) _suggestions.value = emptyList()
     }
 
     private companion object {
+        /** How long after the first view arrives to publish without waiting for slower inflates. */
+        const val PUBLISH_TIMEOUT_MS = 300L
+
         val WRAP_CONTENT_SIZE =
             Size(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
