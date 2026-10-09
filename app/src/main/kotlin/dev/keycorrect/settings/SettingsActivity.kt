@@ -10,11 +10,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import dev.keycorrect.appContainer
 import dev.keycorrect.core.designsystem.KeyCorrectTheme
 
-/**
- * Launcher entry point. Phase 0: keyboard setup wizard; settings screens arrive in later phases.
- */
+/** Launcher entry point: hosts the settings UI (see [SettingsApp]). */
 class SettingsActivity : ComponentActivity() {
     /** Bumped whenever IME status may have changed (resume, picker dialog closed). */
     private var refreshKey by mutableIntStateOf(0)
@@ -24,7 +23,8 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             KeyCorrectTheme {
-                SetupScreen(
+                SettingsApp(
+                    repository = appContainer.settingsRepository,
                     status = imeStatus(refreshKey),
                     onOpenKeyboardSettings = {
                         startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))

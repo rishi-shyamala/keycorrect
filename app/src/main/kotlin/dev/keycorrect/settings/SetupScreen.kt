@@ -2,46 +2,32 @@ package dev.keycorrect.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.R
 
+/** Setup wizard: enable the keyboard, select it, then try it. */
 @Composable
 fun SetupScreen(
+    contentPadding: PaddingValues,
     status: ImeStatus,
     onOpenKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
 ) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    SettingsPage(contentPadding) {
         Column(
-            modifier =
-                Modifier.safeDrawingPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
+            modifier = Modifier.padding(top = 8.dp).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                stringResource(R.string.setup_title),
-                style = MaterialTheme.typography.headlineMedium,
-            )
             SetupStep(
                 title = stringResource(R.string.setup_enable_title),
                 body = stringResource(R.string.setup_enable_body),
@@ -57,19 +43,13 @@ fun SetupScreen(
                 enabled = status.enabled,
                 onAction = onChooseKeyboard,
             )
-            Text(
-                stringResource(R.string.setup_try_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            var text by rememberSaveable { mutableStateOf("") }
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.setup_try_hint)) },
-                minLines = 3,
-            )
         }
+        Text(
+            stringResource(R.string.setup_try_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
+        )
+        TryItField()
     }
 }
 

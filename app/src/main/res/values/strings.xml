@@ -12,4 +12,50 @@
     <string name="setup_done">Done</string>
     <string name="setup_try_title">3. Try it</string>
     <string name="setup_try_hint">Type here</string>
+    <string name="try_it_title">Try it</string>
+    <string name="navigate_up">Navigate up</string>
+
+    <string name="home_setup_title">Finish setting up</string>
+    <string name="home_setup_body">KeyCorrect is not your active keyboard yet. Enable it and switch to it to start typing.</string>
+    <string name="home_setup_action">Set up</string>
+
+    <string name="keyboard_title">Keyboard</string>
+    <string name="keyboard_summary">Layout, size, behaviour</string>
+    <string name="keyboard_section_appearance">Appearance</string>
+    <string name="keyboard_section_behaviour">Behaviour</string>
+    <string name="keyboard_key_height">Key height</string>
+    <string name="keyboard_number_row">Number row</string>
+    <string name="keyboard_number_row_summary">Show digits above the letters</string>
+    <string name="keyboard_key_preview">Key preview popup</string>
+    <string name="keyboard_key_preview_summary">Show the pressed key above your finger</string>
+    <string name="keyboard_long_press_delay">Long-press delay</string>
+    <string name="keyboard_auto_capitalize">Auto-capitalisation</string>
+    <string name="keyboard_auto_capitalize_summary">Capitalise the first letter of each sentence</string>
+
+    <string name="feedback_title">Feedback</string>
+    <string name="feedback_summary">Vibration and sound</string>
+    <string name="feedback_section_vibration">Vibration</string>
+    <string name="feedback_section_sound">Sound</string>
+    <string name="feedback_vibration">Vibrate on keypress</string>
+    <string name="feedback_vibration_duration">Vibration duration</string>
+    <string name="feedback_vibration_strength">Vibration strength</string>
+    <string name="feedback_strength_unsupported">This device does not support adjusting vibration strength.</string>
+    <string name="feedback_strength_needs_duration">Set a vibration duration to adjust strength.</string>
+    <string name="feedback_test_vibration">Test vibration</string>
+    <string name="feedback_sound">Sound on keypress</string>
+    <string name="feedback_sound_summary">Follows the system touch sounds setting</string>
+    <string name="feedback_sound_volume">Volume</string>
+    <string name="feedback_test_sound">Test sound</string>
+
+    <string name="about_title">About</string>
+    <string name="about_summary">Version, licence, privacy</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_license">Licensed under GPL-3.0-or-later</string>
+    <string name="about_privacy">KeyCorrect has no internet access. Everything you type stays on this device.</string>
+
+    <string name="value_dp">%1$d dp</string>
+    <string name="value_ms">%1$d ms</string>
+    <string name="value_percent">%1$d%%</string>
+    <string name="value_system_default">System default</string>
+    <string name="value_device_default">Device default</string>
 </resources>
