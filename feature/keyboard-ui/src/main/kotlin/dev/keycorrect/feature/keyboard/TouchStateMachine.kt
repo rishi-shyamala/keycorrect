@@ -1,6 +1,7 @@
 package dev.keycorrect.feature.keyboard
 
 import android.util.Log
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
@@ -26,8 +27,12 @@ internal interface TouchHost {
     /** A long-press popup opened. */
     fun onPopupOpened()
 
-    /** A key was committed (tap, repeat or popup entry). Never called for the shift key. */
-    fun onKey(action: KeyAction)
+    /**
+     * A key was committed (tap, repeat or popup entry). Never called for the shift key. [touch] is
+     * where and when the finger went down for a plain tap, and null for repeats and popup entries
+     * (whose position says nothing about the key meant).
+     */
+    fun onKey(action: KeyAction, touch: TouchPoint?)
 
     /** The shift key went down. It acts on press, not release, so it can chord. */
     fun onShiftDown()
@@ -64,7 +69,16 @@ internal class TouchStateMachine(
     private val clock: () -> Long,
 ) {
     /** A finger on a key. */
-    private class Press(val slot: KeySlot, var x: Float) {
+    private class Press(
+        val slot: KeySlot,
+        var x: Float,
+        val downX: Float,
+        val downY: Float,
+        val downTime: Long,
+    ) {
+        /** Where and when this press started, in surface pixels and clock milliseconds. */
+        fun touchPoint() = TouchPoint(downX, downY, downTime)
+
         /** When the long-press popup opens or the next repeat fires; null when neither is due. */
         var deadline: Long? = null
 
@@ -96,7 +110,7 @@ internal class TouchStateMachine(
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
                 // doesn't delete a burst of characters when it catches up.
                 press.deadline = now + REPEAT_INTERVAL_MS
-                hostCall { host.onKey(press.slot.key.action) }
+                hostCall { host.onKey(press.slot.key.action, null) }
             } else {
                 press.deadline = null
                 openPopup(id, press)
@@ -109,7 +123,7 @@ internal class TouchStateMachine(
         if (presses.containsKey(id)) cancel(id)
         val slot = geometry.hitTest(x, y) ?: return
         val key = slot.key
-        val press = Press(slot, x)
+        val press = Press(slot, x, x, y, clock())
         // A second finger dismisses an open popup; it then types normally.
         cancelPopup()
         presses[id] = press
@@ -119,7 +133,7 @@ internal class TouchStateMachine(
         when {
             press.isShift -> hostCall { host.onShiftDown() }
             key.repeatable -> {
-                hostCall { host.onKey(key.action) }
+                hostCall { host.onKey(key.action, null) }
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
             }
@@ -149,10 +163,10 @@ internal class TouchStateMachine(
             press.isShift -> hostCall { host.onShiftUp() }
             popup != null -> {
                 touch.popup = null
-                hostCall { host.onKey(popup.entries[popup.highlighted].action) }
+                hostCall { host.onKey(popup.entries[popup.highlighted].action, null) }
             }
             press.cancelled -> Unit
-            !slot.key.repeatable -> hostCall { host.onKey(slot.key.action) }
+            !slot.key.repeatable -> hostCall { host.onKey(slot.key.action, press.touchPoint()) }
         }
     }
 

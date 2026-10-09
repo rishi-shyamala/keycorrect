@@ -19,6 +19,7 @@ class EditorSessionTest {
     private class Fake {
         /** Text the editor reports before the cursor; null mimics editors that expose none. */
         var before: CharSequence? = ""
+        var after: CharSequence? = ""
         var selected: CharSequence? = null
         var capsMode = 0
 
@@ -43,12 +44,17 @@ class EditorSessionTest {
                 when (method.name) {
                     "getSelectedText" -> selected
                     "getTextBeforeCursor" -> before
+                    "getTextAfterCursor" -> after
                     "getCursorCapsMode" -> capsMode
                     "sendKeyEvent" -> {
                         keys += keyOfEvent.getValue(a[0] as KeyEvent)
                         true
                     }
                     "commitText",
+                    "setComposingText",
+                    "finishComposingText",
+                    "beginBatchEdit",
+                    "endBatchEdit",
                     "deleteSurroundingText",
                     "performEditorAction" -> true
                     else -> null
@@ -227,5 +233,94 @@ class EditorSessionTest {
         assertThat(fake.calls.single()).startsWith("getCursorCapsMode(")
         info = null
         assertThat(session.cursorCapsMode()).isEqualTo(0)
+    }
+
+    // --- composing and context ---
+
+    @Test
+    fun composingCallsForwardWithCursorAfter() {
+        session.setComposingText("hel")
+        session.finishComposingText()
+        session.commitText("hello", 1)
+        session.commitText("tail", 0)
+        session.deleteSurroundingText(3, 1)
+        assertThat(fake.calls)
+            .containsExactly(
+                "setComposingText(hel, 1)",
+                "finishComposingText",
+                "commitText(hello, 1)",
+                "commitText(tail, 0)",
+                "deleteSurroundingText(3, 1)",
+            )
+            .inOrder()
+    }
+
+    @Test
+    fun textAroundTheCursorIsReadWithoutFlags() {
+        fake.before = "left"
+        fake.after = "right"
+        assertThat(session.textBeforeCursor(256).toString()).isEqualTo("left")
+        assertThat(session.textAfterCursor(64).toString()).isEqualTo("right")
+        assertThat(fake.calls)
+            .containsExactly("getTextBeforeCursor(256, 0)", "getTextAfterCursor(64, 0)")
+            .inOrder()
+    }
+
+    @Test
+    fun sensitiveFieldsNeverExposeTheirText() {
+        val sensitive =
+            listOf(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+            )
+        fake.before = "hunter2"
+        fake.after = "hunter2"
+        for (inputType in sensitive) {
+            field(inputType)
+            assertThat(session.textBeforeCursor(256)).isNull()
+            assertThat(session.textAfterCursor(64)).isNull()
+        }
+        assertThat(fake.reads()).isEmpty()
+    }
+
+    @Test
+    fun readsAreRefusedWithoutEditorInfoAndNullWithoutConnection() {
+        info = null
+        assertThat(session.textBeforeCursor(10)).isNull()
+        info = EditorInfo()
+        connected = false
+        assertThat(session.textBeforeCursor(10)).isNull()
+        session.setComposingText("x")
+        session.finishComposingText()
+        session.deleteSurroundingText(1, 0)
+        assertThat(fake.calls).isEmpty()
+    }
+
+    @Test
+    fun batchEditBracketsTheBlockAndEndsEvenWhenItThrows() {
+        val result = session.batchEdit {
+            session.commitText("a")
+            7
+        }
+        assertThat(result).isEqualTo(7)
+        runCatching { session.batchEdit { error("boom") } }
+        assertThat(fake.calls)
+            .containsExactly(
+                "beginBatchEdit",
+                "commitText(a, 1)",
+                "endBatchEdit",
+                "beginBatchEdit",
+                "endBatchEdit",
+            )
+            .inOrder()
+    }
+
+    @Test
+    fun batchEditWithoutConnectionStillRunsTheBlock() {
+        connected = false
+        assertThat(session.batchEdit { 3 }).isEqualTo(3)
+        assertThat(fake.calls).isEmpty()
     }
 }

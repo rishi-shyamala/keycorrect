@@ -6,7 +6,6 @@ import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldProfile
-import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
@@ -14,40 +13,10 @@ import dev.keycorrect.core.settings.KeyboardSettings
 import org.junit.Test
 
 class KeyboardControllerTest {
-    private class FakeEditor : TextEditor {
-        val text = StringBuilder()
-        var enters = 0
-
-        /** What [cursorCapsMode] reports; tests set it to mimic the editor. */
-        var capsMode = 0
-        var capsQueries = 0
-
-        override fun commitText(text: CharSequence) {
-            this.text.append(text)
-        }
-
-        /** The `sensitive` argument of each delete. */
-        val deletes = mutableListOf<Boolean>()
-
-        override fun deleteBackward(sensitive: Boolean) {
-            deletes += sensitive
-            if (text.isNotEmpty()) text.setLength(text.length - 1)
-        }
-
-        override fun performEnter() {
-            enters++
-        }
-
-        override fun cursorCapsMode(): Int {
-            capsQueries++
-            return capsMode
-        }
-    }
-
-    private val editor = FakeEditor()
+    private val editor = SimEditor()
     private var now = 0L
     private val controller =
-        KeyboardController(editor, KeyboardComposer(BuiltInLayouts.repository())) { now }
+        KeyboardController(editor, KeyboardComposer(BuiltInLayouts.repository()), clock = { now })
 
     /** A focused field as the platform describes it; [profile] is derived like the service does. */
     private data class Field(

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
@@ -62,7 +64,8 @@ internal fun KeyboardSurface(
     showPreviews: Boolean,
     feedback: KeyFeedback,
     touch: KeyboardTouchState,
-    onKey: (KeyAction) -> Unit,
+    onKey: (KeyAction, TouchPoint?) -> Unit,
+    onGeometry: (KeyboardGeometry) -> Unit,
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -71,6 +74,7 @@ internal fun KeyboardSurface(
     val view = LocalView.current
     val textMeasurer = rememberTextMeasurer(cacheSize = TEXT_CACHE_SIZE)
     val currentOnKey by rememberUpdatedState(onKey)
+    val currentOnGeometry by rememberUpdatedState(onGeometry)
     val currentOnShiftDown by rememberUpdatedState(onShiftDown)
     val currentOnShiftUp by rememberUpdatedState(onShiftUp)
     val currentSettings by rememberUpdatedState(settings)
@@ -81,6 +85,9 @@ internal fun KeyboardSurface(
         remember(layer, size) {
             KeyboardGeometry(layer, size.width.toFloat(), size.height.toFloat())
         }
+    // Tell the controller what the keys look like (for the decoder's touch model) whenever the
+    // geometry changes; never before the surface has a size.
+    LaunchedEffect(geometry) { currentOnGeometry(geometry) }
     val textCache =
         remember(textMeasurer) {
             KeyTextCache(
@@ -104,7 +111,8 @@ internal fun KeyboardSurface(
 
                 override fun onPopupOpened() = currentFeedback.haptic(view, currentSettings)
 
-                override fun onKey(action: KeyAction) = currentOnKey(action)
+                override fun onKey(action: KeyAction, touch: TouchPoint?) =
+                    currentOnKey(action, touch)
 
                 override fun onShiftDown() = currentOnShiftDown()
 

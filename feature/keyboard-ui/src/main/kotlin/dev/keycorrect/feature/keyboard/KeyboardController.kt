@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.input.AutoCapitalize
 import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldKind
@@ -15,17 +16,30 @@ import dev.keycorrect.core.layout.BottomRowVariant
 import dev.keycorrect.core.layout.ComposeOptions
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
+import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardLayer
 import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
+import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
+import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
+import dev.keycorrect.feature.keyboard.prediction.StripModel
+import dev.keycorrect.feature.keyboard.prediction.StripSlot
+import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
 
 /**
  * Translates key actions into editor operations and owns the keyboard's observable state: the
  * composed [layer], the [state] (layer id and shift), the field's [enterAction] and [profile].
+ *
+ * Typing goes through [PredictiveInput] (composing words, autocorrect, suggestions) where the field
+ * and settings allow it, and straight to the editor otherwise; the suggestion [strip] it produces
+ * is observable state. The controller keeps the shift and auto-capitalisation logic and the
+ * matching of selection callbacks to the keyboard's own edits.
  */
 class KeyboardController(
     private val editor: TextEditor,
     private val composer: KeyboardComposer,
+    prediction: PredictionEnvironment = PredictionEnvironment.Disabled,
     private val clock: () -> Long = SystemClock::uptimeMillis,
 ) {
     private val keyboardSet = KeyboardSet.Default
@@ -33,6 +47,7 @@ class KeyboardController(
     private var variant = BottomRowVariant.Text
     private var options = ComposeOptions()
     private val ownEdits = OwnEditTracker(clock)
+    private var layoutId = 0L
     private var identity: EditorIdentity? = null
 
     /**
@@ -41,6 +56,16 @@ class KeyboardController(
      */
     private var shiftHeld by mutableStateOf(false)
     private var shiftChorded = false
+
+    /** The suggestions to show above the keys; empty when there are none. */
+    var strip: StripModel by mutableStateOf(StripModel.Empty)
+        private set
+
+    private val input = PredictiveInput(editor, prediction) { strip = it }
+
+    /** Touches of recently committed words, in memory only (for Phase 3 learning). */
+    val touchLog: WordTouchLog
+        get() = input.touchLog
 
     /** The layer being shown, composed for the current field and settings. */
     var layer: KeyboardLayer by mutableStateOf(composer.compose(keyboardSet, KeyboardSet.LETTERS))
@@ -89,6 +114,7 @@ class KeyboardController(
         this.profile = profile
         this.settings = settings
         enterAction = profile.enterAction
+        input.onStartInput(profile, settings, newField = !sameField)
         val newOptions = composeOptions(profile, settings)
         if (sameField) {
             applyOptions(newOptions)
@@ -121,6 +147,7 @@ class KeyboardController(
     /** Applies changed [settings]; recomposes the layer if the number row changed. */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
+        if (input.updateSettings(settings)) ownEdits.onEdit()
         applyOptions(composeOptions(profile, settings))
         if (!settings.autoCapitalize && state.shift == ShiftState.Auto) {
             state = state.withAutoShift(false)
@@ -129,30 +156,34 @@ class KeyboardController(
         }
     }
 
-    fun onKey(action: KeyAction) {
+    /**
+     * A key was committed. [touch] is where the finger went down for a plain tap of a character
+     * key, null for repeats, popup entries and accessibility actions.
+     */
+    fun onKey(action: KeyAction, touch: TouchPoint? = null) {
         when (action) {
             is KeyAction.Text -> {
                 markChord()
-                editor.commitText(state.transform(action))
+                input.onText(state.transform(action), touch)
                 ownEdits.onEdit()
                 state = state.afterCharacter(shiftHeld)
                 updateAutoCapitalize()
             }
             KeyAction.Space -> {
                 markChord()
-                editor.commitText(" ")
+                input.onSeparator(" ")
                 ownEdits.onEdit()
                 state = state.afterCharacter(shiftHeld)
                 updateAutoCapitalize()
             }
             KeyAction.Backspace -> {
                 markChord()
-                editor.deleteBackward(profile.sensitive)
-                ownEdits.onDelete()
+                if (input.onBackspace()) ownEdits.onDelete() else ownEdits.onEdit()
                 updateAutoCapitalize()
             }
             KeyAction.Enter -> {
                 markChord()
+                if (input.beforeEnter()) ownEdits.onEdit()
                 editor.performEnter()
                 // Only a committed line break moves the cursor with a callback of its own. In a
                 // single-line field Enter is a key event the editor usually swallows, and an IME
@@ -167,6 +198,7 @@ class KeyboardController(
                 val next =
                     runCatching { composer.compose(keyboardSet, action.layerId, variant, options) }
                         .getOrNull() ?: return
+                if (input.onLayerSwitch()) ownEdits.onEdit()
                 shiftHeld = false
                 shiftChorded = false
                 state = state.withLayer(action.layerId)
@@ -204,11 +236,49 @@ class KeyboardController(
      * again would be a second blocking IPC per keystroke (see [OwnEditTracker]). [cursorAtStart] is
      * whether the new selection is a bare cursor at position 0, which lets a following backspace be
      * recognised as one that changes nothing.
+     *
+     * [cursor], [composingStart] and [composingEnd] (-1 when unknown or absent) let an update that
+     * just echoes the word being composed be told from a real cursor move. Any other update ends
+     * the composing word as it stands and drops pending suggestions.
      */
-    fun onSelectionChanged(selectionCollapsed: Boolean = true, cursorAtStart: Boolean = false) {
+    fun onSelectionChanged(
+        selectionCollapsed: Boolean = true,
+        cursorAtStart: Boolean = false,
+        cursor: Int = -1,
+        composingStart: Int = -1,
+        composingEnd: Int = -1,
+    ) {
+        input.noteSelection(selectionCollapsed)
         if (ownEdits.consumeIfOwn(selectionCollapsed, cursorAtStart)) return
+        if (selectionCollapsed && input.isEchoOfComposing(cursor, composingStart, composingEnd)) {
+            return
+        }
+        if (input.onExternalChange()) ownEdits.onEdit()
         updateAutoCapitalize()
     }
+
+    /** The keyboard left the field (input finished or hidden): ends any composing word. */
+    fun onFinishInput() {
+        if (input.onFinishInput()) ownEdits.onEdit()
+    }
+
+    /**
+     * The key surface was laid out: remember what the keys look like for the decoder. Zero-size
+     * geometry (before the first layout) is ignored; each new geometry gets a new id.
+     */
+    fun onGeometry(geometry: KeyboardGeometry) {
+        if (geometry.width <= 0f || geometry.height <= 0f) return
+        input.layout = KeyLayoutModels.from(geometry, ++layoutId)
+    }
+
+    /** A strip slot was tapped. */
+    fun onSuggestionTap(slot: StripSlot) {
+        if (input.onStripTap(slot)) ownEdits.onEdit()
+        updateAutoCapitalize()
+    }
+
+    /** The "Add word to dictionary" prompt was tapped. */
+    fun onAddWordTap() = input.onAddWordTap()
 
     /** A key is committed while shift is held: shift applies to it and is released as a chord. */
     private fun markChord() {

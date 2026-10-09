@@ -1,6 +1,7 @@
 package dev.keycorrect.feature.keyboard
 
 import com.google.common.truth.Truth.assertThat
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeySlot
@@ -17,6 +18,9 @@ class TouchStateMachineTest {
 
         /** Actions passed to [onKey] only, in order. */
         val keys = mutableListOf<KeyAction>()
+
+        /** The touch point delivered with each key, in order. */
+        val touches = mutableListOf<TouchPoint?>()
         var popupOpened = 0
 
         /** Callbacks (by name, or "all") that throw, like a host whose input connection died. */
@@ -37,8 +41,9 @@ class TouchStateMachineTest {
             maybeThrow("popup")
         }
 
-        override fun onKey(action: KeyAction) {
+        override fun onKey(action: KeyAction, touch: TouchPoint?) {
             keys += action
+            touches += touch
             events += "key"
             maybeThrow("key")
         }
@@ -90,6 +95,29 @@ class TouchStateMachineTest {
         assertThat(host.keys).containsExactly(a.key.action)
         assertThat(touch.pressed).isEmpty()
         assertThat(touch.preview).isNull()
+    }
+
+    @Test
+    fun aTapDeliversTheDownPositionAndTime() {
+        now = 1_000
+        machine.onDown(1, a.centerX - 3f, a.centerY + 2f)
+        now = 1_080
+        machine.onMove(1, a.centerX + 5f, a.centerY)
+        machine.onUp(1)
+        assertThat(host.touches).containsExactly(TouchPoint(a.centerX - 3f, a.centerY + 2f, 1_000))
+    }
+
+    @Test
+    fun repeatsAndPopupEntriesDeliverNoTouch() {
+        down(1, backspace)
+        advance(REPEAT_START_DELAY_MS)
+        machine.onUp(1)
+        assertThat(host.touches).containsExactly(null, null)
+        host.touches.clear()
+        down(2, a)
+        advance(host.longPressDelayMs)
+        machine.onUp(2)
+        assertThat(host.touches).containsExactly(null)
     }
 
     @Test

@@ -16,9 +16,44 @@ class EditorSession(
     private val editorInfo: () -> EditorInfo?,
     private val newKeyEvent: (action: Int, keyCode: Int) -> KeyEvent = ::KeyEvent,
 ) : TextEditor {
-    override fun commitText(text: CharSequence) {
-        connection()?.commitText(text, 1)
+    override fun commitText(text: CharSequence, newCursorPosition: Int) {
+        connection()?.commitText(text, newCursorPosition)
     }
+
+    override fun setComposingText(text: CharSequence) {
+        connection()?.setComposingText(text, 1)
+    }
+
+    override fun finishComposingText() {
+        connection()?.finishComposingText()
+    }
+
+    override fun deleteSurroundingText(before: Int, after: Int) {
+        connection()?.deleteSurroundingText(before, after)
+    }
+
+    /**
+     * Reads are refused (null) in a sensitive field, whatever the caller does: the keyboard's
+     * prediction layer already never asks, this keeps a password out of this process regardless.
+     */
+    override fun textBeforeCursor(maxChars: Int): CharSequence? =
+        if (readsAllowed()) connection()?.getTextBeforeCursor(maxChars, 0) else null
+
+    override fun textAfterCursor(maxChars: Int): CharSequence? =
+        if (readsAllowed()) connection()?.getTextAfterCursor(maxChars, 0) else null
+
+    override fun <T> batchEdit(block: () -> T): T {
+        val ic = connection() ?: return block()
+        ic.beginBatchEdit()
+        try {
+            return block()
+        } finally {
+            ic.endBatchEdit()
+        }
+    }
+
+    private fun readsAllowed(): Boolean =
+        editorInfo()?.let { !FieldProfile.from(it).sensitive } ?: false
 
     /**
      * Deletes the selection if there is one, otherwise the grapheme before the cursor. In a

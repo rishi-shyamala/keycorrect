@@ -19,12 +19,24 @@ import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardScreen
+import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /** The system-facing keyboard service. */
 class KeyCorrectImeService : ComposeInputMethodService() {
     private val settingsFlow = MutableStateFlow(KeyboardSettings())
+
+    private val predictionHost by lazy {
+        PredictionHost(
+            assets,
+            appContainer.userDictionary,
+            appContainer.shortcuts,
+            appContainer.applicationScope,
+            Dispatchers.IO,
+        )
+    }
 
     private val controller by lazy {
         KeyboardController(
@@ -33,6 +45,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 editorInfo = { currentInputEditorInfo },
             ),
             appContainer.keyboardComposer,
+            PredictionEnvironment.create(this, predictionHost),
         )
     }
 
@@ -45,6 +58,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Dictionary and user data load in the background; suggestions appear once they're ready.
+        predictionHost.start()
         lifecycleScope.launch {
             appContainer.settingsRepository.settings.collect {
                 settingsFlow.value = it
@@ -75,8 +90,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onFinishInput() {
+        controller.onFinishInput()
         autofill.clear()
         super.onFinishInput()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        controller.onFinishInput()
+        super.onFinishInputView(finishingInput)
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
@@ -119,6 +140,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         controller.onSelectionChanged(
             selectionCollapsed = newSelStart == newSelEnd,
             cursorAtStart = newSelStart == 0 && newSelEnd == 0,
+            cursor = newSelEnd,
+            composingStart = candidatesStart,
+            composingEnd = candidatesEnd,
         )
     }
 }

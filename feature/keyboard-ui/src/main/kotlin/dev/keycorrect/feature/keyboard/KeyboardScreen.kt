@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.settings.KeyboardSettings
 
 /**
@@ -52,6 +53,9 @@ fun KeyboardScreen(
     val layer = controller.layer
     val touch = remember { KeyboardTouchState() }
     val onKey = remember(controller) { controller::onKey }
+    // Accessibility actions have no touch position.
+    val onSemanticKey = remember(controller) { { action: KeyAction -> controller.onKey(action) } }
+    val onGeometry = remember(controller) { controller::onGeometry }
     val onShiftDown = remember(controller) { controller::onShiftDown }
     val onShiftUp = remember(controller) { controller::onShiftUp }
     Column(
@@ -69,7 +73,7 @@ fun KeyboardScreen(
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionStrip(autofill)
+                SuggestionArea(controller, autofill)
                 Box(modifier = Modifier.fillMaxWidth()) {
                     KeyboardSurface(
                         layer = layer,
@@ -81,6 +85,7 @@ fun KeyboardScreen(
                         feedback = feedback,
                         touch = touch,
                         onKey = onKey,
+                        onGeometry = onGeometry,
                         onShiftDown = onShiftDown,
                         onShiftUp = onShiftUp,
                     )
@@ -88,7 +93,7 @@ fun KeyboardScreen(
                         layer = layer,
                         shift = shift,
                         enterDescription = enterDescription,
-                        onKey = onKey,
+                        onKey = onSemanticKey,
                         modifier = Modifier.matchParentSize(),
                     )
                 }
@@ -103,13 +108,24 @@ fun KeyboardScreen(
     }
 }
 
-/** Fixed-height strip above the keys; shows the autofill suggestions when there are any. */
+/**
+ * Fixed-height area above the keys: autofill chips when there are any (they take priority), else
+ * the prediction strip, else nothing. The height never changes, so the keys below don't jump. The
+ * controller's strip is read inside [PredictionStrip] only, so a new suggestion recomposes that and
+ * nothing else.
+ */
 @Composable
-private fun SuggestionStrip(autofill: InlineAutofillController?) {
+private fun SuggestionArea(controller: KeyboardController, autofill: InlineAutofillController?) {
     Box(modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)) {
-        if (autofill != null) {
-            val items by autofill.suggestions.collectAsState()
-            if (items.isNotEmpty()) InlineSuggestionRow(items)
+        val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
+        if (items.isNotEmpty()) {
+            InlineSuggestionRow(items)
+        } else {
+            PredictionStrip(
+                strip = { controller.strip },
+                onSlot = controller::onSuggestionTap,
+                onAddWord = controller::onAddWordTap,
+            )
         }
     }
 }
@@ -156,5 +172,5 @@ private fun InlineSuggestionView(view: InlineContentView) {
     )
 }
 
-private val SuggestionStripHeight = 40.dp
+internal val SuggestionStripHeight = 40.dp
 private val SuggestionSpacing = 6.dp
