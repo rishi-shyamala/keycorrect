@@ -29,15 +29,17 @@ A plain string is shorthand for a character key: `"q"` means `{ "label": "q" }`.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` |
-| `label` | string | per type | Text drawn on the key. Required for `char`/`text` unless `text` is set |
+| `label` | string | per type | Text drawn on the key. Required for `char`/`text` unless `text` is set, and for `layer`. Ignored for `modeSwitch` |
 | `text` | string | `label` | What gets typed (`char`/`text`) |
 | `shifted` | string | upper-cased `text` | What gets typed while shift is on (`char` only). Labels follow it |
-| `popup` | array of key/string | `[]` | Long-press alternatives, in display order |
+| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text` keys only) |
 | `hint` | string or `null` | first `popup` entry | Small corner label. `null` hides it |
 | `width` | number | `1.0` (`space` 5.0, `shift`/`backspace`/`enter`/`layer`/`modeSwitch` 1.5) | Width in standard-key units |
 | `target` | string | — | Layer id to switch to (`layer` only, required) |
 | `style` | string | per type | `character` · `modifier` · `space` · `action` (visual class) |
 | `description` | string | per type | Accessibility label (TalkBack) |
+
+Setting `text`, `shifted` or `target` on a type that doesn't use it is an error. Default `description` is the label, `Shift`, `Delete`, `Space`, `Enter`, `Switch to <target>` (`layer`), or `Switch to symbols`/`Switch to letters` (`modeSwitch`). A single cased letter gets an upper-case `shifted` by default; anything else is unchanged.
 
 Type semantics:
 - `char`: types `text` (or `shifted` while shift is on) and consumes a one-shot shift.

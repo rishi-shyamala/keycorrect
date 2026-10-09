@@ -1,0 +1,16 @@
+// Bottom row for email address fields.
+{
+  "format": 1,
+  "id": "bottom_email",
+  "name": "Bottom row (email)",
+  "kind": "bottom",
+  "rows": [
+    [
+      { "type": "modeSwitch" },
+      "@",
+      { "type": "space" },
+      ".",
+      { "type": "enter" },
+    ],
+  ],
+}

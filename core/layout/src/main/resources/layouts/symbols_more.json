@@ -1,0 +1,22 @@
+// Symbols layer, page 2. The bottom row is appended at runtime (bottomRow: auto).
+{
+  "format": 1,
+  "id": "symbols_more",
+  "name": "More symbols",
+  "kind": "symbols",
+  "rows": [
+    ["~", "`", "|", "•", "√", "π", "÷", "×", "¶", "∆"],
+    ["£", "¢", "€", "¥", "^", "°", "=", "{", "}", "\\"],
+    [
+      { "type": "layer", "label": "?123", "target": "symbols", "description": "Switch to symbols" },
+      "%",
+      "©",
+      "®",
+      "™",
+      "✓",
+      "[",
+      "]",
+      { "type": "backspace" },
+    ],
+  ],
+}

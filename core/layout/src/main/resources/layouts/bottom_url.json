@@ -1,0 +1,17 @@
+// Bottom row for URL fields.
+{
+  "format": 1,
+  "id": "bottom_url",
+  "name": "Bottom row (URL)",
+  "kind": "bottom",
+  "rows": [
+    [
+      { "type": "modeSwitch" },
+      "/",
+      { "type": "space", "width": 3 },
+      ".",
+      { "type": "text", "label": ".com", "width": 2, "popup": [".org", ".net", ".io", ".dev", ".app"] },
+      { "type": "enter" },
+    ],
+  ],
+}

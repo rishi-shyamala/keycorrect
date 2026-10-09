@@ -1,0 +1,16 @@
+// Bottom row for ordinary text fields.
+{
+  "format": 1,
+  "id": "bottom_text",
+  "name": "Bottom row (text)",
+  "kind": "bottom",
+  "rows": [
+    [
+      { "type": "modeSwitch" },
+      ",",
+      { "type": "space" },
+      { "label": ".", "popup": ["?", "!", ",", ";", ":", "'", "\""] },
+      { "type": "enter" },
+    ],
+  ],
+}

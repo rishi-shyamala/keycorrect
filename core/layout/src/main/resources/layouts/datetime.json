@@ -1,0 +1,14 @@
+// Date and time pad. Rows are complete, no bottom row is added.
+{
+  "format": 1,
+  "id": "datetime",
+  "name": "Date and time",
+  "kind": "datetime",
+  "bottomRow": "included",
+  "rows": [
+    ["1", "2", "3", { "label": "/", "style": "modifier" }],
+    ["4", "5", "6", { "label": ":", "style": "modifier" }],
+    ["7", "8", "9", { "type": "backspace", "width": 1 }],
+    [{ "label": "-", "style": "modifier" }, "0", { "type": "space", "width": 1 }, { "type": "enter", "width": 1 }],
+  ],
+}

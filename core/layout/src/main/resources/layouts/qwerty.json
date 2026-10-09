@@ -1,0 +1,44 @@
+// QWERTY letters layer. The bottom row is appended at runtime (bottomRow: auto).
+// Digits come first in each top-row popup so the corner hint shows the digit.
+{
+  "format": 1,
+  "id": "qwerty",
+  "name": "QWERTY",
+  "kind": "letters",
+  "rows": [
+    [
+      { "label": "q", "popup": ["1"] },
+      { "label": "w", "popup": ["2"] },
+      { "label": "e", "popup": ["3", "è", "é", "ê", "ë", "ē"] },
+      { "label": "r", "popup": ["4"] },
+      { "label": "t", "popup": ["5"] },
+      { "label": "y", "popup": ["6", "ý", "ÿ"] },
+      { "label": "u", "popup": ["7", "ù", "ú", "û", "ü", "ū"] },
+      { "label": "i", "popup": ["8", "ì", "í", "î", "ï", "ī"] },
+      { "label": "o", "popup": ["9", "ò", "ó", "ô", "ö", "õ", "ø", "ō", "œ"] },
+      { "label": "p", "popup": ["0"] },
+    ],
+    [
+      { "label": "a", "hint": null, "popup": ["à", "á", "â", "ä", "æ", "ã", "å", "ā"] },
+      { "label": "s", "hint": null, "popup": ["ß", "š", "ś"] },
+      "d",
+      "f",
+      "g",
+      "h",
+      "j",
+      "k",
+      { "label": "l", "hint": null, "popup": ["ł"] },
+    ],
+    [
+      { "type": "shift" },
+      { "label": "z", "hint": null, "popup": ["ž", "ź", "ż"] },
+      "x",
+      { "label": "c", "hint": null, "popup": ["ç", "ć", "č"] },
+      "v",
+      "b",
+      { "label": "n", "hint": null, "popup": ["ñ", "ń"] },
+      "m",
+      { "type": "backspace" },
+    ],
+  ],
+}

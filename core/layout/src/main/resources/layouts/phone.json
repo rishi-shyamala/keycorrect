@@ -1,0 +1,14 @@
+// Phone dialer pad. Rows are complete, no bottom row is added.
+{
+  "format": 1,
+  "id": "phone",
+  "name": "Phone",
+  "kind": "phone",
+  "bottomRow": "included",
+  "rows": [
+    ["1", { "label": "2", "hint": "ABC" }, { "label": "3", "hint": "DEF" }, { "label": "+", "style": "modifier" }],
+    [{ "label": "4", "hint": "GHI" }, { "label": "5", "hint": "JKL" }, { "label": "6", "hint": "MNO" }, { "label": ",", "style": "modifier" }],
+    [{ "label": "7", "hint": "PQRS" }, { "label": "8", "hint": "TUV" }, { "label": "9", "hint": "WXYZ" }, { "type": "backspace", "width": 1 }],
+    [{ "label": "*", "style": "modifier" }, { "label": "0", "popup": ["+"] }, { "label": "#", "style": "modifier" }, { "type": "enter", "width": 1 }],
+  ],
+}

@@ -1,0 +1,14 @@
+// Numeric keypad (number fields). Rows are complete, no bottom row is added.
+{
+  "format": 1,
+  "id": "numpad",
+  "name": "Numpad",
+  "kind": "numpad",
+  "bottomRow": "included",
+  "rows": [
+    ["1", "2", "3", { "label": "-", "style": "modifier" }],
+    ["4", "5", "6", { "label": ",", "style": "modifier" }],
+    ["7", "8", "9", { "type": "backspace", "width": 1 }],
+    [{ "label": "*", "style": "modifier" }, "0", { "label": ".", "style": "modifier" }, { "type": "enter", "width": 1 }],
+  ],
+}
