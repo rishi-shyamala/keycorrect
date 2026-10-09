@@ -1,0 +1,6 @@
+# SHA-256 of raw sources in data/raw/. Verified by tools/data/fetch-sources.sh.
+# AOSP LatinIME commit 127336e9f29d69607eab55982324b210279ae8c5; Simple English Wikipedia dump 20261001;
+# Tatoeba eng_sentences.tsv.bz2 is a rolling export, recorded on 2026-10-09.
+0f78dd455b532be169a23f233227b811fabced4b5bd7fc9c40cc05839793bcbd  en_US_wordlist.combined.gz
+2db94ff149adbbaf88efecb8f510a549eaa2a82d59df6278a4af88e13c1b99bd  simplewiki-20261001-pages-articles.xml.bz2
+5f7ebf552bd3925dfd33236ccb6a210c5ba02b365e4a39964fb658e1209e87d9  eng_sentences.tsv.bz2
