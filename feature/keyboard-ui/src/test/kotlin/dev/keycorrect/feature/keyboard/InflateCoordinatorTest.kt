@@ -65,7 +65,7 @@ class InflateCoordinatorTest {
         batch.resolve(0, null)
         batch.resolve(1, null)
         assertThat(published).containsExactly(emptyList<String>())
-        assertThat(scheduler.tasks).isEmpty()
+        assertThat(scheduler.pendingCount).isEqualTo(0)
     }
 
     @Test
@@ -80,13 +80,63 @@ class InflateCoordinatorTest {
     }
 
     @Test
-    fun timeoutIsStartedOnlyByFirstViewAndOnlyOnce() {
+    fun timeoutIsArmedWhenTheBatchBeginsAndOnlyOnce() {
         val batch = coordinator.begin(4)
+        assertThat(scheduler.tasks).hasSize(1)
+        assertThat(scheduler.tasks.single().delayMs).isEqualTo(300L)
         batch.resolve(0, null)
-        assertThat(scheduler.tasks).isEmpty()
         batch.resolve(1, "b")
         batch.resolve(2, "c")
         assertThat(scheduler.tasks).hasSize(1)
+    }
+
+    @Test
+    fun batchWhereNoCallbackEverComesPublishesEmptyListAtTheTimeout() {
+        coordinator.begin(3)
+        assertThat(published).isEmpty()
+        scheduler.fire()
+        assertThat(published).containsExactly(emptyList<String>())
+    }
+
+    @Test
+    fun batchWhereOnlySomeInflatesFailPublishesEmptyAtTheTimeout() {
+        val batch = coordinator.begin(3)
+        batch.resolve(0, null)
+        batch.resolve(1, null)
+        assertThat(published).isEmpty() // one slot still pending
+        scheduler.fire()
+        assertThat(published).containsExactly(emptyList<String>())
+        batch.resolve(2, "c") // a straggler still shows up
+        assertThat(published).containsExactly(emptyList<String>(), listOf("c")).inOrder()
+    }
+
+    @Test
+    fun allFailingInflatesPublishEmptyListWithoutWaitingForTheTimeout() {
+        val batch = coordinator.begin(2)
+        batch.resolve(0, null)
+        batch.resolve(1, null)
+        assertThat(published).containsExactly(emptyList<String>())
+        assertThat(scheduler.pendingCount).isEqualTo(0)
+        scheduler.fire()
+        assertThat(published).hasSize(1)
+    }
+
+    @Test
+    fun timeoutOfASupersededBatchNeverPublishes() {
+        coordinator.begin(2)
+        val fresh = coordinator.begin(2)
+        assertThat(scheduler.pendingCount).isEqualTo(1)
+        fresh.resolve(0, "x")
+        scheduler.fire()
+        assertThat(published).containsExactly(listOf("x"))
+    }
+
+    @Test
+    fun cancelledBatchNeverPublishesAtTheTimeout() {
+        coordinator.begin(2)
+        coordinator.cancel()
+        scheduler.fire()
+        assertThat(published).isEmpty()
     }
 
     @Test

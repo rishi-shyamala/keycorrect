@@ -37,8 +37,9 @@ class InlineAutofillController(private val context: Context, private val executo
 
     /**
      * Publishes a response's suggestions atomically: once every inflate has resolved, or
-     * [PUBLISH_TIMEOUT_MS] after the first view arrives. The previous list stays on screen until
-     * then (no flicker). Superseded and cleared batches are ignored.
+     * [PUBLISH_TIMEOUT_MS] after the response arrives (an empty list if nothing inflated by then).
+     * The previous list stays on screen until then (no flicker). Superseded and cleared batches are
+     * ignored.
      */
     private val coordinator =
         InflateCoordinator<InlineSuggestionItem>(
@@ -90,7 +91,7 @@ class InlineAutofillController(private val context: Context, private val executo
     }
 
     private companion object {
-        /** How long after the first view arrives to publish without waiting for slower inflates. */
+        /** How long after a response to publish without waiting for slower (or failed) inflates. */
         const val PUBLISH_TIMEOUT_MS = 300L
 
         val WRAP_CONTENT_SIZE =

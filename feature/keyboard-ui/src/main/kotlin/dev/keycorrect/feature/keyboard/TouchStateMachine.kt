@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import android.util.Log
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
@@ -47,6 +48,11 @@ internal interface TouchHost {
  * - A second finger going down dismisses an open popup; the first finger's release then types
  *   nothing.
  *
+ * A host callback that throws (e.g. an input connection that died mid-keystroke) is logged and
+ * dropped: it must not escape into the pointer-input loop and end it, which would leave the
+ * keyboard dead to touch. The machine updates its own state before calling out, so the touch state
+ * stays consistent whatever the host does.
+ *
  * Timers are not coroutines: [nextDeadline] says when [onTimer] is next due and every event first
  * runs whatever is already due, so ordering follows [clock] and nothing can outlive the machine.
  * Call [cancelAll] when the owner goes away.
@@ -90,7 +96,7 @@ internal class TouchStateMachine(
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
                 // doesn't delete a burst of characters when it catches up.
                 press.deadline = now + REPEAT_INTERVAL_MS
-                host.onKey(press.slot.key.action)
+                hostCall { host.onKey(press.slot.key.action) }
             } else {
                 press.deadline = null
                 openPopup(id, press)
@@ -109,11 +115,11 @@ internal class TouchStateMachine(
         presses[id] = press
         publishPressed()
         if (host.showPreviews && key.style == KeyStyle.Character) touch.preview = slot
-        host.onPress(key.action)
+        hostCall { host.onPress(key.action) }
         when {
-            press.isShift -> host.onShiftDown()
+            press.isShift -> hostCall { host.onShiftDown() }
             key.repeatable -> {
-                host.onKey(key.action)
+                hostCall { host.onKey(key.action) }
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
             }
@@ -140,13 +146,13 @@ internal class TouchStateMachine(
         val slot = press.slot
         val popup = touch.popup?.takeIf { it.owner == id }
         when {
-            press.isShift -> host.onShiftUp()
+            press.isShift -> hostCall { host.onShiftUp() }
             popup != null -> {
                 touch.popup = null
-                host.onKey(popup.entries[popup.highlighted].action)
+                hostCall { host.onKey(popup.entries[popup.highlighted].action) }
             }
             press.cancelled -> Unit
-            !slot.key.repeatable -> host.onKey(slot.key.action)
+            !slot.key.repeatable -> hostCall { host.onKey(slot.key.action) }
         }
     }
 
@@ -155,7 +161,7 @@ internal class TouchStateMachine(
         val press = presses.remove(id) ?: return
         release(press)
         if (touch.popup?.owner == id) touch.popup = null
-        if (press.isShift) host.onShiftUp()
+        if (press.isShift) hostCall { host.onShiftUp() }
     }
 
     /**
@@ -171,6 +177,15 @@ internal class TouchStateMachine(
     fun cancelAll() {
         for (id in presses.keys.toList()) cancel(id)
         touch.reset()
+    }
+
+    private inline fun hostCall(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            // Type only: exception messages from the editor connection could contain user text.
+            Log.w(TAG, "Host callback failed: ${e.javaClass.name}")
+        }
     }
 
     private fun release(press: Press) {
@@ -194,6 +209,10 @@ internal class TouchStateMachine(
         val panel = PopupPanel.above(slot, slot.key.popup.size, geometry.width)
         touch.preview = null
         touch.popup = PopupState(id, slot, panel, slot.key.popup, panel.indexAt(press.x))
-        host.onPopupOpened()
+        hostCall { host.onPopupOpened() }
+    }
+
+    private companion object {
+        const val TAG = "TouchStateMachine"
     }
 }

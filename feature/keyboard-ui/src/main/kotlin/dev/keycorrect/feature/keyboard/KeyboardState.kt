@@ -31,6 +31,14 @@ data class KeyboardState(
         get() = shift != ShiftState.Off
 
     /**
+     * The shift state to draw and describe the keys in. While the shift key is held ([shiftHeld]) a
+     * key typed is a chord and comes out shifted even if the press itself turned shift off (see
+     * [withChordShift]), so the keys show shifted exactly then. Typing is unaffected.
+     */
+    fun effectiveShift(shiftHeld: Boolean): ShiftState =
+        if (shiftHeld) withChordShift().shift else shift
+
+    /**
      * Handles a press on shift at [nowMillis]. Off goes to Once, and Once and Auto go to Off (a tap
      * cancels the automatic capital, as on Gboard), except that a press within [DOUBLE_TAP_MS] of
      * the previous one engages caps lock; Locked goes to Off.

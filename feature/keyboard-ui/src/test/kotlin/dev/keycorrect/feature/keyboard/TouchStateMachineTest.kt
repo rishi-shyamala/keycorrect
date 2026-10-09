@@ -19,26 +19,38 @@ class TouchStateMachineTest {
         val keys = mutableListOf<KeyAction>()
         var popupOpened = 0
 
+        /** Callbacks (by name, or "all") that throw, like a host whose input connection died. */
+        val failing = mutableSetOf<String>()
+
+        private fun maybeThrow(name: String) {
+            if (name in failing || "all" in failing) throw IllegalStateException("dead: $name")
+        }
+
         override fun onPress(action: KeyAction) {
             events += "press"
+            maybeThrow("press")
         }
 
         override fun onPopupOpened() {
             popupOpened++
             events += "popup"
+            maybeThrow("popup")
         }
 
         override fun onKey(action: KeyAction) {
             keys += action
             events += "key"
+            maybeThrow("key")
         }
 
         override fun onShiftDown() {
             events += "shiftDown"
+            maybeThrow("shiftDown")
         }
 
         override fun onShiftUp() {
             events += "shiftUp"
+            maybeThrow("shiftUp")
         }
     }
 
@@ -338,5 +350,129 @@ class TouchStateMachineTest {
         assertThat(machine.nextDeadline()).isEqualTo(1_300L)
         machine.onUp(1)
         assertThat(machine.nextDeadline()).isEqualTo(1_000L + REPEAT_START_DELAY_MS)
+    }
+
+    // --- rolling chords, shift + popup ---
+
+    @Test
+    fun rollingChordWithShiftReleasedBeforeTheLetterStillTypesTheLetter() {
+        val shift = slot(KeyAction.Shift)
+        down(1, shift)
+        down(2, a)
+        machine.onUp(1) // shift first...
+        assertThat(host.keys).isEmpty()
+        machine.onUp(2) // ...then the letter
+        assertThat(host.events.filter { it != "press" })
+            .containsExactly("shiftDown", "shiftUp", "key")
+            .inOrder()
+        assertThat(host.keys).containsExactly(a.key.action)
+        assertThat(touch.pressed).isEmpty()
+    }
+
+    @Test
+    fun shiftHeldWhileALongPressPopupOpensAndCommits() {
+        val shift = slot(KeyAction.Shift)
+        down(1, shift)
+        down(2, a)
+        advance(300)
+        val popup = touch.popup!!
+        assertThat(popup.owner).isEqualTo(2L)
+        assertThat(touch.pressed).containsExactly(shift.index, a.index)
+        val cell = 2
+        machine.onMove(2, popup.panel.left + popup.panel.cellWidth * (cell + 0.5f), a.top - 10f)
+        machine.onUp(2)
+        assertThat(host.keys).containsExactly(popup.entries[cell].action)
+        assertThat(touch.popup).isNull()
+        // Shift is still down: still pressed, and released on its own.
+        assertThat(touch.pressed).containsExactly(shift.index)
+        machine.onUp(1)
+        assertThat(host.events.filter { it != "press" })
+            .containsExactly("shiftDown", "popup", "key", "shiftUp")
+            .inOrder()
+    }
+
+    @Test
+    fun shiftAsSecondFingerDismissesAnOpenPopupLikeAnyKey() {
+        down(1, a)
+        advance(300)
+        down(2, slot(KeyAction.Shift)) // a second finger dismisses the popup, as for any key
+        assertThat(touch.popup).isNull()
+        machine.onUp(1)
+        assertThat(host.keys).isEmpty()
+        machine.onUp(2)
+        assertThat(host.events.last()).isEqualTo("shiftUp")
+    }
+
+    // --- failing host ---
+
+    @Test
+    fun hostThrowingOnKeyDoesNotBreakLaterTaps() {
+        host.failing += "key"
+        down(1, a)
+        machine.onUp(1) // must not throw
+        assertThat(touch.pressed).isEmpty()
+        assertThat(touch.preview).isNull()
+        host.failing.clear()
+        down(1, slot("s"))
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action, slot("s").key.action).inOrder()
+        assertThat(touch.pressed).isEmpty()
+        assertThat(machine.nextDeadline()).isNull()
+    }
+
+    @Test
+    fun hostThrowingOnEveryCallbackLeavesConsistentTouchState() {
+        host.failing += "all"
+        down(1, a)
+        assertThat(touch.pressed).containsExactly(a.index)
+        advance(300) // popup opens although the host's callback throws
+        assertThat(touch.popup).isNotNull()
+        machine.onUp(1)
+        assertThat(touch.popup).isNull()
+        assertThat(touch.pressed).isEmpty()
+        down(2, slot(KeyAction.Shift))
+        machine.onUp(2)
+        down(3, backspace)
+        assertThat(machine.nextDeadline()).isNotNull() // repeat still armed despite the throw
+        machine.cancel(3)
+        assertThat(touch.pressed).isEmpty()
+        host.failing.clear()
+        down(1, a)
+        machine.onUp(1)
+        assertThat(host.keys.last()).isEqualTo(a.key.action)
+    }
+
+    @Test
+    fun backspaceRepeatSurvivesAThrowingHost() {
+        host.failing += "key"
+        down(1, backspace)
+        advance(REPEAT_START_DELAY_MS)
+        advance(REPEAT_INTERVAL_MS)
+        assertThat(host.keys).hasSize(3)
+        machine.onUp(1)
+        advance(10_000)
+        assertThat(host.keys).hasSize(3)
+    }
+
+    @Test
+    fun hostThrowingOnPressStillTracksAndCommitsTheKey() {
+        host.failing += "press"
+        down(1, a)
+        assertThat(touch.pressed).containsExactly(a.index)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun hostThrowingOnShiftStillReleasesShift() {
+        host.failing += "shiftDown"
+        down(1, slot(KeyAction.Shift))
+        host.failing.clear()
+        host.failing += "shiftUp"
+        machine.onUp(1)
+        assertThat(touch.pressed).isEmpty()
+        assertThat(host.events.filter { it != "press" })
+            .containsExactly("shiftDown", "shiftUp")
+            .inOrder()
     }
 }

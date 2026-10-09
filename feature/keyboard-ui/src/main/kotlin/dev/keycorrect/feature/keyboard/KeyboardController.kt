@@ -33,9 +33,13 @@ class KeyboardController(
     private var variant = BottomRowVariant.Text
     private var options = ComposeOptions()
     private val ownEdits = OwnEditTracker(clock)
+    private var identity: EditorIdentity? = null
 
-    /** True from shift press to release; a key typed meanwhile is a chord. */
-    private var shiftHeld = false
+    /**
+     * True from shift press to release; a key typed meanwhile is a chord. Observable so the keys
+     * are drawn shifted while it is held (see [effectiveShift]).
+     */
+    private var shiftHeld by mutableStateOf(false)
     private var shiftChorded = false
 
     /** The layer being shown, composed for the current field and settings. */
@@ -44,6 +48,13 @@ class KeyboardController(
 
     var state by mutableStateOf(KeyboardState())
         private set
+
+    /**
+     * The shift state keys are drawn (and described) in: [KeyboardState.shift], except that while
+     * the shift key is held the keys show shifted whenever a chord would type shifted.
+     */
+    val effectiveShift: ShiftState
+        get() = state.effectiveShift(shiftHeld)
 
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
         private set
@@ -61,17 +72,20 @@ class KeyboardController(
         private set
 
     /**
-     * Prepares the keyboard for a field. A [restarting] input on the same kind of field (the app
-     * re-announcing it, e.g. on rotation or when the keyboard is shown again) keeps the layer and
-     * shift and only refreshes the profile, enter action and auto-capitalisation; anything else is
-     * a new field and resets the keyboard.
+     * Prepares the keyboard for a field. A [restarting] input that has the same [identity] as the
+     * previous one (the app re-announcing the same field, e.g. on rotation or when the keyboard is
+     * shown again; see [EditorIdentity.continues]) keeps the layer and shift and only refreshes the
+     * profile, enter action and auto-capitalisation; anything else is a new field and resets the
+     * keyboard.
      */
     fun onStartInput(
         profile: FieldProfile,
         settings: KeyboardSettings,
         restarting: Boolean = false,
+        identity: EditorIdentity? = null,
     ) {
-        val sameField = restarting && profile.kind == this.profile.kind
+        val sameField = identity != null && identity.continues(this.identity, restarting)
+        this.identity = identity
         this.profile = profile
         this.settings = settings
         enterAction = profile.enterAction
@@ -134,14 +148,16 @@ class KeyboardController(
             KeyAction.Backspace -> {
                 markChord()
                 editor.deleteBackward(profile.sensitive)
-                ownEdits.onEdit()
+                ownEdits.onDelete()
                 updateAutoCapitalize()
             }
             KeyAction.Enter -> {
                 markChord()
                 editor.performEnter()
-                // Only a line break reliably moves the cursor; an IME action usually doesn't.
-                if (enterAction == EnterAction.NewLine) ownEdits.onEdit()
+                // Only a committed line break moves the cursor with a callback of its own. In a
+                // single-line field Enter is a key event the editor usually swallows, and an IME
+                // action does not edit the text.
+                if (enterAction == EnterAction.NewLine && profile.multiLine) ownEdits.onEdit()
                 updateAutoCapitalize()
             }
             KeyAction.Shift -> state = state.onShift(clock())
@@ -185,10 +201,12 @@ class KeyboardController(
      * The cursor moved (typing, tapping in the text, an app edit): re-evaluate auto-caps.
      * [selectionCollapsed] is whether the new selection is a bare cursor. The update caused by an
      * edit we just made is skipped: [onKey] already re-evaluated after it, so asking the editor
-     * again would be a second blocking IPC per keystroke (see [OwnEditTracker]).
+     * again would be a second blocking IPC per keystroke (see [OwnEditTracker]). [cursorAtStart] is
+     * whether the new selection is a bare cursor at position 0, which lets a following backspace be
+     * recognised as one that changes nothing.
      */
-    fun onSelectionChanged(selectionCollapsed: Boolean = true) {
-        if (ownEdits.consumeIfOwn(selectionCollapsed)) return
+    fun onSelectionChanged(selectionCollapsed: Boolean = true, cursorAtStart: Boolean = false) {
+        if (ownEdits.consumeIfOwn(selectionCollapsed, cursorAtStart)) return
         updateAutoCapitalize()
     }
 

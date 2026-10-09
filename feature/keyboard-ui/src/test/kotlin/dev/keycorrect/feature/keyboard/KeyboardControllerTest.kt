@@ -3,6 +3,7 @@ package dev.keycorrect.feature.keyboard
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.TextEditor
@@ -48,18 +49,30 @@ class KeyboardControllerTest {
     private val controller =
         KeyboardController(editor, KeyboardComposer(BuiltInLayouts.repository())) { now }
 
-    private val textProfile = profile(InputType.TYPE_CLASS_TEXT)
-    private val sentences =
-        profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+    /** A focused field as the platform describes it; [profile] is derived like the service does. */
+    private data class Field(
+        val inputType: Int,
+        val imeOptions: Int = 0,
+        val fieldId: Int = 1,
+        val packageName: String? = "app.one",
+        val privateImeOptions: String? = null,
+    ) {
+        val profile = FieldProfile.from(inputType, imeOptions)
+        val identity =
+            EditorIdentity(fieldId, packageName, inputType, imeOptions, privateImeOptions)
+    }
 
-    private fun profile(inputType: Int, imeOptions: Int = 0) =
-        FieldProfile.from(inputType, imeOptions)
+    private val textProfile = Field(InputType.TYPE_CLASS_TEXT)
+    private val sentences =
+        Field(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+
+    private fun profile(inputType: Int, imeOptions: Int = 0) = Field(inputType, imeOptions)
 
     private fun start(
-        profile: FieldProfile = textProfile,
+        field: Field = textProfile,
         settings: KeyboardSettings = KeyboardSettings(),
         restarting: Boolean = false,
-    ) = controller.onStartInput(profile, settings, restarting)
+    ) = controller.onStartInput(field.profile, settings, restarting, field.identity)
 
     private fun labels() = controller.layer.rows.flatMap { r -> r.keys.map { it.label } }
 
@@ -289,7 +302,7 @@ class KeyboardControllerTest {
     }
 
     @Test
-    fun restartOnSameKindKeepsLayerAndShift() {
+    fun restartOnSameFieldKeepsLayerAndShift() {
         start()
         controller.onKey(KeyAction.Shift)
         start(restarting = true)
@@ -301,33 +314,55 @@ class KeyboardControllerTest {
     }
 
     @Test
-    fun restartOnSameKindRefreshesProfileEnterActionAndAutoCap() {
+    fun restartOnSameFieldRefreshesAutoCap() {
         editor.capsMode = 0
-        start(profile(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEARCH), restarting = true)
-        val searchOnly = controller.enterAction
+        start(sentences)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
         editor.capsMode = TextUtilsCaps
-        val restarted =
-            profile(
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
-                EditorInfo.IME_ACTION_SEND,
-            )
-        start(restarted, restarting = true)
-        assertThat(searchOnly).isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEARCH))
-        assertThat(controller.enterAction).isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEND))
-        assertThat(controller.profile).isEqualTo(restarted)
+        start(sentences, restarting = true)
         assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
+        assertThat(controller.profile).isEqualTo(sentences.profile)
     }
 
     @Test
-    fun restartOnSameKindStillAppliesChangedOptions() {
-        start(profile(InputType.TYPE_CLASS_NUMBER))
-        val noMinus = controller.layer
-        start(
-            profile(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED),
-            restarting = true,
-        )
-        assertThat(controller.layer).isNotEqualTo(noMinus)
-        assertThat(controller.state.layerId).isEqualTo("numpad")
+    fun restartOnSameFieldStillAppliesChangedSettings() {
+        start()
+        controller.onKey(KeyAction.Shift)
+        val noRow = controller.layer
+        start(settings = KeyboardSettings(numberRow = true), restarting = true)
+        assertThat(controller.layer).isNotEqualTo(noRow)
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Once) // same field: kept
+    }
+
+    @Test
+    fun restartingFlagAloneDoesNotKeepState() {
+        // The platform says "restarting", but nothing says it is the same field.
+        val base = textProfile
+        val different =
+            mapOf(
+                "fieldId" to base.copy(fieldId = 2),
+                "package" to base.copy(packageName = "app.two"),
+                "inputType" to base.copy(inputType = InputType.TYPE_CLASS_TEXT or 0x10000),
+                "imeOptions" to base.copy(imeOptions = EditorInfo.IME_ACTION_SEARCH),
+                "privateImeOptions" to base.copy(privateImeOptions = "x=1"),
+            )
+        for ((what, next) in different) {
+            start(base)
+            controller.onKey(KeyAction.Shift)
+            controller.onKey(KeyAction.SwitchLayer("symbols"))
+            start(next, restarting = true)
+            assertWithMessage(what).that(controller.state.layerId).isEqualTo("letters")
+            assertWithMessage(what).that(controller.state.shift).isEqualTo(ShiftState.Off)
+        }
+    }
+
+    @Test
+    fun restartWithoutAPreviousFieldResets() {
+        start(restarting = true)
+        assertThat(controller.state.layerId).isEqualTo("letters")
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        controller.onStartInput(textProfile.profile, KeyboardSettings(), restarting = true)
+        assertThat(controller.state.layerId).isEqualTo("letters") // no identity: never "same"
     }
 
     @Test
@@ -343,6 +378,15 @@ class KeyboardControllerTest {
         )
         assertThat(controller.state.layerId).isEqualTo("letters")
         assertThat(labels()).contains(".com")
+    }
+
+    @Test
+    fun restartWithNewImeActionResetsAndTakesTheEnterAction() {
+        start(profile(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEARCH))
+        assertThat(controller.enterAction)
+            .isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEARCH))
+        start(profile(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEND), restarting = true)
+        assertThat(controller.enterAction).isEqualTo(EnterAction.Editor(EditorInfo.IME_ACTION_SEND))
     }
 
     @Test
@@ -512,6 +556,69 @@ class KeyboardControllerTest {
         assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
     }
 
+    // --- effective shift (what the keys are drawn as) ---
+
+    @Test
+    fun keysDrawShiftedWhileShiftIsHeldAndTypeShifted() {
+        start()
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Off)
+        controller.onShiftDown()
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Once)
+        controller.onKey(shiftedA)
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Once) // still held
+        controller.onShiftUp()
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Off)
+        assertThat(editor.text.toString()).isEqualTo("A")
+    }
+
+    @Test
+    fun keysDrawShiftedWhenHoldingShiftOverAutoCap() {
+        editor.capsMode = TextUtilsCaps
+        start(sentences)
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Auto)
+        controller.onShiftDown() // the press cancels Auto, but the chord is still shifted
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Once)
+        controller.onShiftUp()
+        assertThat(controller.effectiveShift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun effectiveShiftIsTheRealShiftWhenNotHeld() {
+        for (shift in ShiftState.entries) {
+            val state = KeyboardState(shift = shift)
+            assertThat(state.effectiveShift(shiftHeld = false)).isEqualTo(shift)
+        }
+        val off = KeyboardState()
+        assertThat(off.effectiveShift(shiftHeld = true)).isEqualTo(ShiftState.Once)
+        for (shift in listOf(ShiftState.Once, ShiftState.Auto, ShiftState.Locked)) {
+            assertThat(KeyboardState(shift = shift).effectiveShift(shiftHeld = true))
+                .isEqualTo(shift)
+        }
+    }
+
+    @Test
+    fun rollingChordWithShiftReleasedFirstStillTypesTheCapital() {
+        start()
+        controller.onShiftDown()
+        controller.onShiftUp() // released before the letter is: no chord yet, shift stays Once
+        controller.onKey(shiftedA)
+        controller.onKey(shiftedA)
+        assertThat(editor.text.toString()).isEqualTo("Aa")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
+    @Test
+    fun shiftChordWithAPopupEntryTypesTheShiftedEntry() {
+        start()
+        controller.onShiftDown()
+        controller.onKey(KeyAction.Text("à", "À")) // a long-press popup entry
+        controller.onShiftUp()
+        controller.onKey(KeyAction.Text("à", "À"))
+        assertThat(editor.text.toString()).isEqualTo("Àà")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
+    }
+
     // --- own-edit suppression ---
 
     @Test
@@ -528,11 +635,17 @@ class KeyboardControllerTest {
 
     @Test
     fun everyKindOfEditIsRecognised() {
-        start(sentences)
+        start(
+            Field(
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            )
+        )
         editor.capsQueries = 0
         controller.onKey(KeyAction.Space)
         controller.onKey(KeyAction.Backspace)
-        controller.onKey(KeyAction.Enter) // NewLine action
+        controller.onKey(KeyAction.Enter) // commits a line break
         assertThat(editor.capsQueries).isEqualTo(3)
         repeat(3) { controller.onSelectionChanged() }
         assertThat(editor.capsQueries).isEqualTo(3)
@@ -550,6 +663,37 @@ class KeyboardControllerTest {
         controller.onKey(KeyAction.Enter)
         controller.onSelectionChanged()
         assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun enterInASingleLineFieldIsNotCountedAsAnEdit() {
+        start(sentences) // NewLine action, but a single-line field: Enter is a key event
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Enter)
+        controller.onSelectionChanged()
+        assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun backspaceAtTheStartOfTheFieldIsNotCountedAsAnEdit() {
+        start(sentences)
+        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = true)
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Backspace) // deletes nothing, so no callback will follow
+        controller.onSelectionChanged() // an external move: must not be swallowed
+        assertThat(editor.capsQueries).isEqualTo(2)
+    }
+
+    @Test
+    fun backspaceAwayFromTheStartIsCountedAndTypingForgetsTheStart() {
+        start(sentences)
+        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = true)
+        controller.onKey(KeyAction.Text("a")) // cursor is no longer at the start
+        controller.onSelectionChanged(selectionCollapsed = true, cursorAtStart = false)
+        editor.capsQueries = 0
+        controller.onKey(KeyAction.Backspace)
+        controller.onSelectionChanged()
+        assertThat(editor.capsQueries).isEqualTo(1)
     }
 
     @Test

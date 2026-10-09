@@ -52,4 +52,15 @@ class KeyDrawingTest {
         assertThat(keyDescription(shift, ShiftState.Locked)).isEqualTo("Caps lock on")
         assertThat(keyDescription(letter, null)).isEqualTo("a")
     }
+
+    @Test
+    fun keysShowTheirShiftedLabelUnderEffectiveShift() {
+        val key = ResolvedKey("a", KeyAction.Text("a", "A"), shiftedLabel = "A")
+        val plain = ResolvedKey("1", KeyAction.Text("1"))
+        val held = KeyboardState().effectiveShift(shiftHeld = true)
+        assertThat(keyLabel(key, held, "")).isEqualTo("A")
+        assertThat(keyLabel(plain, held, "")).isEqualTo("1") // no shiftedLabel: unchanged
+        assertThat(keyLabel(key, KeyboardState().effectiveShift(false), "")).isEqualTo("a")
+        assertThat(keyDescription(shift, held)).isEqualTo("Shift, on")
+    }
 }

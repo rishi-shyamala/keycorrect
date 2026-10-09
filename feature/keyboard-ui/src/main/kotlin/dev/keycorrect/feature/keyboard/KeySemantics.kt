@@ -46,8 +46,14 @@ internal fun KeySemantics(
                                 )
                             role = Role.Button
                             onClick {
-                                onKey(key.action)
-                                true
+                                // A failing host (e.g. a dead input connection) must not take
+                                // down the accessibility service's call.
+                                try {
+                                    onKey(key.action)
+                                    true
+                                } catch (_: Exception) {
+                                    false
+                                }
                             }
                         }
                     )

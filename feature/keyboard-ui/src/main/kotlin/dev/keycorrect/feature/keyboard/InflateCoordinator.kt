@@ -16,10 +16,13 @@ internal fun interface TimeoutScheduler {
  *
  * Each [begin] starts a new batch of `size` slots (one per suggestion, in the platform's order) and
  * invalidates the previous one. A batch publishes once every slot has resolved (an item or `null`
- * for a failed inflate, which is skipped). If some slots are still pending, [timeoutMs] after the
- * first item arrives the batch publishes what is ready, so one slow inflate cannot hold the strip
- * back. Items that arrive after that are added and the list is published again, so a slow chip
- * still shows up eventually. Callbacks from superseded or cancelled batches are ignored.
+ * for a failed inflate, which is skipped). The safety timeout starts when the batch begins, not
+ * when the first item arrives: if some slots are still pending after [timeoutMs] the batch
+ * publishes what is ready, which may be nothing. So one slow inflate cannot hold the strip back,
+ * and a batch whose inflates all fail or never call back still replaces the previous (now stale)
+ * list with an empty one. Items that arrive after that are added and the list is published again,
+ * so a slow chip still shows up eventually. Callbacks from superseded or cancelled batches are
+ * ignored.
  *
  * Single-threaded: use from the main thread only.
  */
@@ -30,10 +33,16 @@ internal class InflateCoordinator<T : Any>(
 ) {
     private var current: Batch? = null
 
-    /** Starts a new batch of [size] slots and drops the previous one. Publishes nothing itself. */
+    /**
+     * Starts a new batch of [size] slots and drops the previous one, and arms the batch's timeout
+     * (unless it has no slots, which has nothing to wait for and publishes nothing).
+     */
     fun begin(size: Int): Batch {
         cancel()
-        return Batch(size).also { current = it }
+        val batch = Batch(size)
+        current = batch
+        if (size > 0) batch.timeout = scheduler.schedule(timeoutMs) { batch.onTimeout() }
+        return batch
     }
 
     /** Drops the current batch and its pending timeout; later callbacks for it are ignored. */
@@ -62,12 +71,10 @@ internal class InflateCoordinator<T : Any>(
                     if (!published || item != null) publishReady()
                 }
                 published -> if (item != null) publishReady()
-                item != null && timeout == null ->
-                    timeout = scheduler.schedule(timeoutMs) { onTimeout() }
             }
         }
 
-        private fun onTimeout() {
+        internal fun onTimeout() {
             if (current !== this || published) return
             timeout = null
             publishReady()

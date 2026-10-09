@@ -43,8 +43,9 @@ fun KeyboardScreen(
     autofill: InlineAutofillController? = null,
 ) {
     // Shift is a lambda read only in draw and semantics phases, so neither typing nor a shift
-    // change recomposes anything here.
-    val shift = remember(controller) { { controller.state.shift } }
+    // change recomposes anything here. It is the effective shift: keys draw shifted while the
+    // shift key is held, as a chord would type them.
+    val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
     val enterDescription = enterDescription(controller.enterAction, fallback = "Enter")
     val showPreviews = settings.keyPreview && !controller.profile.sensitive

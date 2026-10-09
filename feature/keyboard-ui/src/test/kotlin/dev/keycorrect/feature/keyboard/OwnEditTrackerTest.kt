@@ -70,4 +70,56 @@ class OwnEditTrackerTest {
         tracker.reset()
         assertThat(tracker.consumeIfOwn(true)).isFalse()
     }
+
+    @Test
+    fun deleteIsCountedWhenThePositionIsUnknown() {
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true)).isTrue()
+    }
+
+    @Test
+    fun deleteAtTheKnownStartOfTheFieldIsNotCounted() {
+        tracker.consumeIfOwn(selectionCollapsed = true, atStart = true) // external: cursor at 0
+        tracker.onDelete() // nothing to delete, no callback will follow
+        assertThat(tracker.consumeIfOwn(true)).isFalse()
+    }
+
+    @Test
+    fun rangeSelectionIsNotTheStart() {
+        tracker.consumeIfOwn(selectionCollapsed = false, atStart = true)
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true)).isTrue()
+    }
+
+    @Test
+    fun anInsertMovesTheCursorOffTheStart() {
+        tracker.consumeIfOwn(selectionCollapsed = true, atStart = true)
+        tracker.onEdit()
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true)).isTrue()
+        assertThat(tracker.consumeIfOwn(true)).isTrue()
+        assertThat(tracker.consumeIfOwn(true)).isFalse()
+    }
+
+    @Test
+    fun aDeleteThatReachesTheStartMakesTheNextOneFree() {
+        tracker.consumeIfOwn(true, atStart = false)
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true, atStart = true)).isTrue() // our own, now at 0
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true)).isFalse()
+    }
+
+    @Test
+    fun resetForgetsTheStartPosition() {
+        tracker.consumeIfOwn(true, atStart = true)
+        tracker.reset()
+        tracker.onDelete()
+        assertThat(tracker.consumeIfOwn(true)).isTrue()
+    }
+
+    @Test
+    fun defaultWindowIsShort() {
+        assertThat(OwnEditTracker.DEFAULT_WINDOW_MS).isAtMost(150L)
+    }
 }

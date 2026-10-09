@@ -14,6 +14,7 @@ import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.EditorIdentity
 import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
 import dev.keycorrect.feature.keyboard.KeyboardController
@@ -39,6 +40,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     private val autofill by lazy { InlineAutofillController(this, mainExecutor) }
 
+    /** The field the last [onStartInput] was for; see [EditorIdentity.continues]. */
+    private var inputIdentity: EditorIdentity? = null
+
     override fun onCreate() {
         super.onCreate()
         lifecycleScope.launch {
@@ -58,12 +62,16 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     /**
      * Suggestions belong to the focused field, not to the keyboard being visible: they are dropped
-     * when the field changes ([onStartInput] without a restart, [onFinishInput]) and survive hiding
-     * and re-showing the keyboard on the same field.
+     * when the field changes ([onStartInput] for a different field, [onFinishInput]) and survive
+     * hiding and re-showing the keyboard on the same field. "Same field" is the controller's
+     * definition: a restart with an unchanged [EditorIdentity], not the `restarting` flag alone.
      */
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
-        if (!restarting) autofill.clear()
+        val identity = attribute?.let(EditorIdentity::from)
+        val sameField = identity != null && identity.continues(inputIdentity, restarting)
+        inputIdentity = identity
+        if (!sameField) autofill.clear()
     }
 
     override fun onFinishInput() {
@@ -73,7 +81,12 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
-        controller.onStartInput(FieldProfile.from(editorInfo), settingsFlow.value, restarting)
+        controller.onStartInput(
+            FieldProfile.from(editorInfo),
+            settingsFlow.value,
+            restarting,
+            EditorIdentity.from(editorInfo),
+        )
     }
 
     /** Asks the autofill service for chips styled like the keyboard; null opts out (menu). */
@@ -103,6 +116,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             candidatesStart,
             candidatesEnd,
         )
-        controller.onSelectionChanged(selectionCollapsed = newSelStart == newSelEnd)
+        controller.onSelectionChanged(
+            selectionCollapsed = newSelStart == newSelEnd,
+            cursorAtStart = newSelStart == 0 && newSelEnd == 0,
+        )
     }
 }
