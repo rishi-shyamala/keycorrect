@@ -119,10 +119,7 @@ class AutocorrectSafetyTest {
                 "didnt" to "didn't",
             )
         for ((typed, expected) in cases) {
-            // "can" and "won" outscore "can't"/"won't" at a sentence start (bigram from <s>).
-            if (typed != "cant" && typed != "wont") {
-                assertThat(autocorrect(TestKeyboard.typed(typed), "")).isEqualTo(expected)
-            }
+            assertThat(autocorrect(TestKeyboard.typed(typed), "")).isEqualTo(expected)
             assertThat(autocorrect(TestKeyboard.typed(typed), "so ")).isEqualTo(expected)
         }
     }

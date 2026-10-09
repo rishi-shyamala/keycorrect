@@ -133,8 +133,11 @@ class ClassicEngineTest {
 
     @Test
     fun nonWordTranspositionIsCorrectedToTheFrequentWord() {
-        val r = engine.predictNow(request(TestKeyboard.typed("fo")))
-        assertThat(r.autocorrect?.text).isEqualTo("of")
+        val r = engine.predictNow(request(TestKeyboard.typed("taht")))
+        // Unambiguous: no other dictionary word is a plausible reading of these four touches.
+        assertThat(r.autocorrect?.text).isEqualTo("that")
+        val other = engine.predictNow(request(TestKeyboard.typed("wiht")))
+        assertThat(other.autocorrect?.text).isEqualTo("with")
     }
 
     // ------------------------------------------------------------------ completion

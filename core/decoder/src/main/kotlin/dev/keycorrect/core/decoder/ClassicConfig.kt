@@ -19,9 +19,12 @@ data class ClassicConfig(
 /** Per-key Gaussian touch model (§4.4). */
 data class SpatialConfig(
     /** Standard deviation as a fraction of key width. */
-    val sigmaXFactor: Float = 0.45f,
+    // 1.0 chosen by the eval harness sweep (docs/EVAL.md): vs 0.45, typist sigma 0.25 gives
+    // 93.83% vs 93.68% accuracy with 2.48 vs 3.88 false corrections per 1000 words, and sigma 0.35
+    // gives 77.90% vs 75.87% with 1.07 vs 1.81.
+    val sigmaXFactor: Float = 1.0f,
     /** Standard deviation as a fraction of key height. */
-    val sigmaYFactor: Float = 0.45f,
+    val sigmaYFactor: Float = 1.0f,
     /** Lower bound of a per-char log-likelihood, so one far touch never dominates a word. */
     val floorLogLikelihood: Float = -12f,
     /** Added when a base letter's key is used for an accented letter (e -> é). */
@@ -119,6 +122,12 @@ data class AutocorrectConfig(
      * brand: it is only corrected when the sole edit is one adjacent transposition ("Teh").
      */
     val protectMidSentenceCapitals: Boolean = true,
+    /**
+     * Apostrophe-less contractions ("dont", "im", "youre") that are not words themselves are
+     * corrected regardless of the spatial model (see [ContractionIndex]). Real words such as "cant"
+     * or "wont" follow the normal real-word margin.
+     */
+    val contractions: Boolean = true,
 )
 
 /** Multi-word completion gates (§3.2). */

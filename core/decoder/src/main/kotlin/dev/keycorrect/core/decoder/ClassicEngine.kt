@@ -70,6 +70,7 @@ class ClassicEngine(
             config.search.maxCompletionChars,
             config.search.maxInputChars,
         )
+    private val contractions = ContractionIndex(dictionary)
     private val lexicon = UserLexicon(dictionary, config.user, userWords, shortcuts)
     private val nextIds = IntArray(MAX_NEXT_WORDS)
     private val nextLogProbs = FloatArray(MAX_NEXT_WORDS)
@@ -161,6 +162,7 @@ class ClassicEngine(
         collectUserCandidates(text, key, right, ranked)
         if (stale()) return RankedPrediction.Empty
         ranked.sortWith(RANK_ORDER)
+        if (literalNode < 0 && !literalIsUser) addContraction(key, text, literal, ranked)
 
         // Candidate strip: shortcut first, then the capitalised pronoun fix, then the ranking.
         val out = ArrayList<RankedCandidate>(request.maxCandidates)
@@ -297,6 +299,49 @@ class ClassicEngine(
                 )
             )
         }
+    }
+
+    /**
+     * Puts the contraction for an apostrophe-less, unknown [key] ("dont" -> "don't", "im" -> "I'm")
+     * first in [ranked], scored clear of the literal and the previous best so that the autocorrect
+     * policy's margins hold whatever the spatial sigma. The policy still decides whether it is
+     * applied (field, `autocorrectAllowed`, casing and edit rules). Real words that happen to equal
+     * the stripped form ("cant", "wont") never get here: their literal is a dictionary word.
+     */
+    private fun addContraction(
+        key: String,
+        text: String,
+        literal: RankedCandidate,
+        ranked: MutableList<RankedCandidate>,
+    ) {
+        if (!config.autocorrect.contractions || key.any { Text.isApostrophe(it) }) return
+        val entry = contractions.lookup(key) ?: return
+        val existing = ranked.indexOfFirst { it.wordId == entry.id }
+        val base = if (existing >= 0) ranked[existing].breakdown else null
+        val breakdown =
+            base?.copy(completionChars = 0)
+                ?: literal.breakdown.copy(
+                    edits = config.edits.insertionPenalty,
+                    editCount = 1,
+                    source = CandidateSource.Dictionary,
+                )
+        if (existing >= 0) ranked.removeAt(existing)
+        val policy = config.autocorrect
+        val score =
+            maxOf(literal.score, ranked.firstOrNull()?.score ?: literal.score) +
+                autocorrectPolicy.threshold +
+                policy.runnerUpMargin +
+                1f
+        ranked.add(
+            0,
+            RankedCandidate(
+                Casing.apply(entry.surface, text),
+                score,
+                breakdown,
+                entry.id,
+                entry.surface,
+            ),
+        )
     }
 
     /**
