@@ -160,6 +160,7 @@ Engines never receive text from password fields, `IME_FLAG_NO_PERSONALIZED_LEARN
 
 ### 4.4 Classic engine (default fast path)
 - **Dictionary**: our own memory-mapped binary trie (DAWG) with unigram frequencies + a compact bigram/trigram table; built by `:tools:dictbuild` from AOSP wordlists (Apache-2.0) and other compatibly-licensed lists per language.
+  - **Decided (2026-10-09):** English vocabulary + frequencies from the AOSP wordlist (Apache-2.0); n-grams counted from Simple English Wikipedia (CC BY-SA 4.0, formal) + Tatoeba (CC BY 2.0 FR, conversational). Sources are fetched into git-ignored `data/raw/` by a checksummed script; only the compiled dictionary (~5–10 MB) is committed. Attribution in About and `docs/DATA_SOURCES.md`.
 - **Spatial model**: per-key 2D Gaussian (mean = key center + learned user offset, covariance from key size), per-layout.
 - **Candidate generation**: beam search over the trie weighted by spatial probabilities, allowing insert/delete/transpose with penalties (handles both proximity typos and real misspellings), plus completions of the current prefix.
 - **Scoring**: noisy channel `log P(touches|word) + λ·log P_LM(word|context) + user-model terms` (§6).
@@ -268,6 +269,18 @@ Weights are relative; "pos/neg" update the user model, correction memory, and pr
 | 21 | Same correction is right in one context but wrong in another ("their"/"there") | Context-dependent | Pairs stored per context bucket (§3.1) with global back-off; a revert in one bucket does not suppress the pair elsewhere. |
 
 Additional safeguards: time decay (default half-life ~90 days of *active use*), a per-event cap on rank movement (anti-poisoning / anti-overfit), per-language stores, optional per-field-class buckets (messaging vs email vs URL), and a "What KeyCorrect learned" screen to browse/forget words, pairs, and shortcuts, plus "forget last N minutes".
+
+### 6.5 Keyboard-fit recommendations (requested 2026-10-09)
+The touch model (§6.1) already learns, per key, where your touches land relative to the key centre for words you accepted, plus the spread of those touches. From those aggregates (never the text), a **Keyboard fit** report in settings can:
+- Show a heat map of your touch offsets and spread per key.
+- Detect systematic problems and suggest concrete settings with a live preview and one-tap **Apply** (never applied automatically):
+  - **Spread too large for the key size** (σ relative to key width/height, or misses into neighbour keys after correction) → larger key height and/or width, or a smaller gap.
+  - **Consistent directional offset** (e.g. touches land low on the top row) → the spatial model already compensates; also suggest keyboard height or bottom padding changes when the offset is large.
+  - **Mostly horizontal versus vertical scatter** → width versus height recommendations.
+  - **Errors concentrated at edges or the centre** (thumb reach) → side margins, one-handed mode, or split layout on the tablet.
+  - **Separate profiles**: phone and tablet, portrait and landscape, and the hardware-keyboard profile are analysed independently.
+- Evidence thresholds: only recommend once there are enough samples (for example ≥ 300 accepted words in that profile), the predicted improvement (replaying recorded touches against the proposed geometry) is meaningful, and the suggestion hasn't been dismissed recently.
+- Phase 2 records touch points per typed character so this data exists; Phase 3 builds the touch model; Phase 8 adds the report UI and preview.
 
 ### 6.4 Storage
 SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pairs(context_bucket)`, `blocklist`, `touch_model`, `candidate_words`, `ranker_weights(engine_id)`, `episodes_ring` (last few hundred episodes, auto-pruned), `sentence_buffer` (D10, 7-day TTL). Writes batched on the IO thread at commit boundaries.
@@ -408,12 +421,12 @@ Each phase ends usable; exit criteria in *italics*.
 | **0 Foundations** | Toolchain, Gradle multi-module + version catalog, lint/detekt/ktfmt, IME skeleton with Compose host & lifecycle owners, settings activity shell, DI (manual or Koin—small), test infra | *Keyboard selectable in system settings and types letters into a test app.* |
 | **1 Core keyboard** | Layout schema + JSON + built-ins (QWERTY, symbols ×2, numpad, phone, datetime), single-Canvas renderer with **virtual accessibility nodes per key** (TalkBack/explore-by-touch, also used for automated UI tests), multitouch, shift/caps-lock, long-press popups, key previews, haptics/sound, `FieldProfile` + IME actions, dynamic-color theme & dark mode, basic size settings, inline autofill | *Daily-drivable without predictions; all field types from §8 switch correctly.* |
 | **2 Prediction core** | `engine-api`, dictbuild + mmap dictionary, spatial model, classic engine with left/right context (§3.1) and phrase completion from n-grams (§3.2), suggestion strip with literal slot, autocorrect + one-backspace revert, user dictionary, shortcuts, `:tools:eval` harness | *Eval harness baseline recorded; autocorrect p95 <8 ms on device.* |
-| **3 Learning** | Tracker, episode model, outcome classifier (§6.3), encrypted learning store, user n-gram cache, correction memory, touch model, FusionRanker, adaptive threshold, privacy gates, "What I learned" UI | *All §6.3 rows covered by tests; simulated-personal-corpus eval shows improvement over baseline.* |
+| **3 Learning** | Tracker, episode model, outcome classifier (§6.3), encrypted learning store, user n-gram cache, correction memory, touch model (+ per-profile touch statistics for §6.5), FusionRanker, adaptive threshold, privacy gates, "What I learned" UI | *All §6.3 rows covered by tests; simulated-personal-corpus eval shows improvement over baseline.* |
 | **4 Editing, clipboard, emoji** | Spacebar/backspace gestures, editing panel, selection strip; `TYPE_NULL` terminal extra-keys row (ctrl/esc/tab/arrows, §8); clipboard history w/ sensitivity + images; emoji panel/search/suggestions | *Feature checklist + no password-field leaks (instrumented tests).* |
 | **5 Swipe** | SHARK² decoder, trail, preview, gesture learning, eval for swipe | *Top-1 swipe accuracy target on eval set; decode <30 ms.* |
 | **6 Voice** | `SttEngine`, audio capture/VAD, sherpa-onnx engine + model manager (SAF import), system-recognizer adapter, dictation UX, biasing & STT learning; benchmark the ≤50 MB candidates on S23 Ultra | *Dictation works offline; default chosen from device benchmarks.* |
 | **7 Neural & plugins** | `:engine` process, llama.cpp JNI (SCORE + GENERATE), SmolLM2 defaults, LM-strength slider, neural phrase completion, prompt templates, plugin AIDL SDK + sample plugin (optional later: separate HTTP-bridge plugin APK) | *Reranker improves eval metrics within latency budget; sample plugin works end-to-end.* |
-| **8 UI/UX customization** | Everything in §13.1: haptics (per-event duration/strength/style), sound, key shapes/geometry/labels, press feedback, timings, theme editor, toolbar/strip config, profiles (phone/tablet/landscape/hardware-keyboard), in-app layout & symbol-page editor, one-handed/split/floating, Expressive motion polish | *Every §13.1 setting live-previews and round-trips through backup.* |
+| **8 UI/UX customization** | Keyboard-fit report & recommendations (§6.5); everything in §13.1: haptics (per-event duration/strength/style), sound, key shapes/geometry/labels, press feedback, timings, theme editor, toolbar/strip config, profiles (phone/tablet/landscape/hardware-keyboard), in-app layout & symbol-page editor, one-handed/split/floating, Expressive motion polish | *Every §13.1 setting live-previews and round-trips through backup.* |
 | **9 Hardening & polish** | Backup/restore, security audit (manifest, logs, FLAG_SECURE, `accessibilityDataSensitive` on key views in password fields, direct boot: enabling `directBootAware` only after explicit lock-screen/first-unlock testing, §15), Tab S9 hardware-keyboard mode, baseline profiles, perf pass on S23 Ultra + Tab S9 | *All budgets in §14 met on your devices.* |
 | 10 Optional | On-device LoRA finetuning, neural swipe, ONNX engine, more languages, Gemini-Nano rewrite action | — |
 

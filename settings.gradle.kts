@@ -25,7 +25,15 @@ rootProject.name = "keycorrect"
 
 include(":app")
 
+include(":core:data")
+
+include(":core:decoder")
+
 include(":core:designsystem")
+
+include(":core:dictionary")
+
+include(":core:engine-api")
 
 include(":core:ime")
 
@@ -36,3 +44,7 @@ include(":core:layout")
 include(":core:settings")
 
 include(":feature:keyboard-ui")
+
+include(":tools:dictbuild")
+
+include(":tools:eval")
