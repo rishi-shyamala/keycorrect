@@ -44,6 +44,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
             soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
             inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
+            suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
+            autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
+            nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
+            phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
+            autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
         )
     }
 
@@ -59,6 +64,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[SOUND_ENABLED] = s.soundEnabled
         this[SOUND_VOLUME] = s.soundVolume
         this[INLINE_AUTOFILL] = s.inlineAutofill
+        this[SUGGESTIONS_ENABLED] = s.suggestionsEnabled
+        this[AUTOCORRECT_ENABLED] = s.autocorrectEnabled
+        this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
+        this[PHRASE_COMPLETION] = s.phraseCompletion
+        this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
     }
 
     private companion object {
@@ -73,5 +83,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INLINE_AUTOFILL = booleanPreferencesKey("inline_autofill")
+        val SUGGESTIONS_ENABLED = booleanPreferencesKey("suggestions_enabled")
+        val AUTOCORRECT_ENABLED = booleanPreferencesKey("autocorrect_enabled")
+        val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
+        val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
+        val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
     }
 }

@@ -19,6 +19,16 @@ data class KeyboardSettings(
     val soundVolume: Float = 0.5f,
     /** Show the autofill service's (password manager) inline suggestions in the strip. */
     val inlineAutofill: Boolean = true,
+    /** Show word suggestions in the strip. */
+    val suggestionsEnabled: Boolean = true,
+    /** Replace likely typos on space/punctuation (one backspace undoes). */
+    val autocorrectEnabled: Boolean = true,
+    /** Suggest the next word after a word is finished. */
+    val nextWordPredictions: Boolean = true,
+    /** Offer multi-word completions (docs/PLAN.md §3.2). */
+    val phraseCompletion: Boolean = true,
+    /** Insert a space after picking a suggestion. */
+    val autoSpaceAfterPick: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =

@@ -63,6 +63,11 @@ class SettingsRepositoryTest {
         assertThat(d.soundEnabled).isFalse()
         assertThat(d.soundVolume).isEqualTo(0.5f)
         assertThat(d.inlineAutofill).isTrue()
+        assertThat(d.suggestionsEnabled).isTrue()
+        assertThat(d.autocorrectEnabled).isTrue()
+        assertThat(d.nextWordPredictions).isTrue()
+        assertThat(d.phraseCompletion).isTrue()
+        assertThat(d.autoSpaceAfterPick).isTrue()
     }
 
     @Test
@@ -80,6 +85,11 @@ class SettingsRepositoryTest {
                 soundEnabled = true,
                 soundVolume = 0.8f,
                 inlineAutofill = false,
+                suggestionsEnabled = false,
+                autocorrectEnabled = false,
+                nextWordPredictions = false,
+                phraseCompletion = false,
+                autoSpaceAfterPick = false,
             )
         repo.update { custom }
         assertThat(repo.settings.first()).isEqualTo(custom)
