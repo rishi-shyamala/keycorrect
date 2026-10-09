@@ -25,6 +25,13 @@ version, length, bounds, header CRC and expected section lengths only (O(section
 does **not** checksum the bulk sections (that would touch every page of the mmap); a corrupted bulk
 section is not detected.
 
+Reader hardening (no format change): the bulk sections are not checksummed, so the reader treats
+them as untrusted at query time. Trie handles, children ranges, terminal ranks, multi-id and
+case-pool offsets and n-gram list positions are range-checked; `parent`/`keyOf`/`word(id)` walks
+are bounded by `Dictionary.MAX_KEY_LENGTH` (256 chars, enforced by the writer) and require parents
+to have smaller handles; varints are bounds-checked and limited to 5 bytes. Damaged data raises
+`DictionaryFormatException` and never loops.
+
 Version policy: a reader accepts exactly `formatVersion == 1`. Any layout change bumps the version;
 purely additive sections do not need a bump.
 

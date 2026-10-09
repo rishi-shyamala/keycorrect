@@ -27,6 +27,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object About : SettingsDestination("about", R.string.about_title)
 
+    data object Licenses : SettingsDestination("licenses", R.string.licenses_title)
+
     /** Debug-only screen for checking inline autofill with a real password manager. */
     data object AutofillTest : SettingsDestination("autofill_test", R.string.autofill_test_title)
 
@@ -41,6 +43,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 Shortcuts,
                 Feedback,
                 About,
+                Licenses,
             ) + if (BuildConfig.DEBUG) listOf(AutofillTest) else emptyList()
         }
 

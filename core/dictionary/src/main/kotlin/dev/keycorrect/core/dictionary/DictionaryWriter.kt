@@ -96,6 +96,9 @@ private class Compiler(val data: DictionaryData, val skipUnknown: Boolean) {
         val seen = HashSet<String>(data.words.size * 2)
         for (w in data.words) {
             require(w.surface.isNotEmpty()) { "empty surface" }
+            require(w.surface.length <= Dictionary.MAX_KEY_LENGTH) {
+                "surface longer than ${Dictionary.MAX_KEY_LENGTH} chars: ${w.surface.take(40)}..."
+            }
             require(w.surface != Dictionary.BOS_TOKEN && w.surface != Dictionary.EOS_TOKEN) {
                 "reserved token as word: ${w.surface}"
             }

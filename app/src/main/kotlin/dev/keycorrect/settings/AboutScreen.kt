@@ -47,6 +47,11 @@ fun AboutScreen(contentPadding: PaddingValues, onNavigate: (SettingsDestination)
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
+        NavRow(
+            title = stringResource(R.string.about_licenses),
+            supportingText = stringResource(R.string.about_licenses_summary),
+            onClick = { onNavigate(SettingsDestination.Licenses) },
+        )
         if (BuildConfig.DEBUG) {
             NavRow(
                 title = stringResource(R.string.about_autofill_test),

@@ -59,17 +59,30 @@ internal object Fmt {
             else -> 5
         }
 
+    /**
+     * Reads an unsigned LEB128 at absolute [pos]. Bounds-checked: throws
+     * [DictionaryFormatException] when [pos] is outside the buffer, the encoding is longer than 5
+     * bytes, or the value does not fit a non-negative Int (corrupt data must not loop or read past
+     * the buffer).
+     */
     fun readVarint(buf: ByteBuffer, pos: Int): Int {
+        val limit = buf.limit()
+        if (pos < 0 || pos >= limit) throw DictionaryFormatException("varint outside the buffer")
         var b = buf.get(pos).toInt()
         if (b >= 0) return b
         var v = b and 0x7F
         var shift = 7
         var p = pos + 1
         while (true) {
+            if (p >= limit) throw DictionaryFormatException("truncated varint")
             b = buf.get(p++).toInt()
             v = v or ((b and 0x7F) shl shift)
-            if (b >= 0) return v
+            if (b >= 0) {
+                if (v < 0) throw DictionaryFormatException("varint overflow")
+                return v
+            }
             shift += 7
+            if (shift > 28) throw DictionaryFormatException("varint too long")
         }
     }
 

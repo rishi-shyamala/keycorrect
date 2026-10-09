@@ -17,6 +17,10 @@ tools/data/fetch-sources.sh                      # download + verify against too
 skips files that are already present and valid, and never executes anything it downloads.
 `fetch-sources.sh --record` rewrites `sources.sha256` and is only for deliberately bumping a source.
 
+The licence of the compiled dictionary and its required attributions are stated in
+[`LICENSE-DATA.md`](../LICENSE-DATA.md) (repository root); the app shows them under
+About > Open-source licences & data.
+
 ## Summary
 
 | Source | Used for | Version | Licence |
@@ -159,6 +163,15 @@ breaks the n-gram chain. Pruning keeps n-grams with at least 2 raw occurrences a
 > (https://tatoeba.org, by Tatoeba contributors, licensed under CC BY 2.0 FR,
 > https://creativecommons.org/licenses/by/2.0/fr/). The statistics are aggregated word counts;
 > no article or sentence text is included. Changes were made.
+
+## Tuning and evaluation hygiene
+
+Thresholds and weights that are tuned against data (autocorrect `threshold` / margins, back-off
+penalties, `lambda`, the Tatoeba weight, ...) must be tuned on a **development split that is
+distinct from the final held-out set**. `heldout.txt` (the Tatoeba 5% hash split above) is split
+further into a *dev* part used for tuning and a *test* part that is scored once, after the
+parameters are frozen; reporting numbers from data that influenced the parameters overstates
+quality. The eval harness implements the split; any new tuning code must use it.
 
 ## Compiling the dictionary
 

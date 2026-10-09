@@ -14,6 +14,8 @@ class AutocorrectInput(
     val field: FieldClass,
     /** `PredictRequest.autocorrectAllowed`. */
     val allowed: Boolean,
+    /** True at the start of a sentence or of the text (a leading capital is then expected). */
+    val sentenceInitial: Boolean = true,
 )
 
 /**
@@ -26,6 +28,10 @@ class AutocorrectInput(
  * (completions are ignored: the word is finished) needs at most [AutocorrectConfig.maxEdits] edits;
  * it beats the literal by [threshold] (or by [AutocorrectConfig.realWordMargin] when the literal is
  * a dictionary word) and beats the runner-up by [AutocorrectConfig.runnerUpMargin].
+ *
+ * Capitalised words in mid-sentence ([AutocorrectConfig.protectMidSentenceCapitals]) are likely
+ * names or brands: an unknown one is corrected only when the sole edit is one adjacent
+ * transposition, and a known one is never turned into a lowercase dictionary word.
  */
 class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
     /**
@@ -63,6 +69,18 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
             return null
         }
         if (top.breakdown.editCount > config.maxEdits) return null
+        if (config.protectMidSentenceCapitals && !input.sentenceInitial) {
+            val first = input.literal.firstOrNull { it.isLetter() }
+            if (first != null && first.isUpperCase() && input.literal[0] == first) {
+                val known = input.literalIsDictionaryWord || input.literalIsUserWord
+                if (known) {
+                    val form = top.dictionaryForm ?: top.text
+                    if (form == form.lowercase()) return null
+                } else if (!Text.isSingleTransposition(input.literal, top.text)) {
+                    return null
+                }
+            }
+        }
         var required = if (input.literalIsDictionaryWord) config.realWordMargin else threshold
         if (input.field == FieldClass.PersonName || input.field == FieldClass.PostalAddress) {
             required += config.nameFieldExtraMargin

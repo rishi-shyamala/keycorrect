@@ -168,18 +168,22 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
 
     // ------------------------------------------------------------ scoring
 
-    /** `ln P(id | w2, w1)` with back-off trigram -> bigram -> unigram. */
+    /**
+     * `ln P(id | w2, w1)` with back-off trigram -> bigram -> unigram: a missing trigram costs
+     * [ScoringConfig.trigramBackoffPenalty], a missing bigram [ScoringConfig.bigramBackoffPenalty]
+     * (both when both miss), matching the dictionary build's assumptions.
+     */
     fun logProb(id: Int): Float {
         var penalty = 0f
         if (triList >= 0) {
             val v = dict.logProbInTrigramList(triList, id)
             if (!v.isNaN()) return v
-            penalty += config.backoffPenalty
+            penalty += config.trigramBackoffPenalty
         }
         if (biList >= 0) {
             val v = dict.logProbInBigramList(biList, id)
             if (!v.isNaN()) return v + penalty
-            penalty += config.backoffPenalty
+            penalty += config.bigramBackoffPenalty
         }
         return dict.logProb(id) + penalty
     }
@@ -191,7 +195,7 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
             val v = dict.logProbInBigramList(dict.bigramList(id), next)
             if (!v.isNaN()) return v
         }
-        return dict.logProb(next) + config.backoffPenalty
+        return dict.logProb(next) + config.bigramBackoffPenalty
     }
 
     // ------------------------------------------------------------ next word

@@ -1,7 +1,5 @@
 package dev.keycorrect.core.decoder
 
-import kotlin.math.ln
-
 /**
  * All tunables of the classic engine (docs/PLAN.md §4.4). Log-likelihoods and penalties are natural
  * logs (higher is better, penalties are negative). Defaults are hand-tuned against the synthetic
@@ -85,9 +83,18 @@ data class ScoringConfig(
     /** Cost of each char a completion adds beyond the typed input. */
     val completionCharPenalty: Float = -0.4f,
     /**
-     * Log-probability of one back-off step (no n-gram stored); the dictionary stores no weights.
+     * Log-probability penalty (ln units, <= 0) when a stored trigram context has no entry for the
+     * word and scoring falls back to the bigram level. The dictionary stores no back-off weights.
+     * The default matches `tools/dictbuild` (`Compile.penalty3`, `EvalLm --penalty3`): the value
+     * the dictionary's gain pruning assumes and `eval-lm` found best; the eval harness may re-tune
+     * it.
      */
-    val backoffPenalty: Float = ln(0.4f),
+    val trigramBackoffPenalty: Float = -0.8f,
+    /**
+     * Same for the bigram -> unigram step (`Compile.penalty2` / `EvalLm --penalty2`, default -1.3).
+     * Also applied to `P(next word | candidate)` when the right-context bigram is not stored.
+     */
+    val bigramBackoffPenalty: Float = -1.3f,
     /** The unknown-word log-probability is the dictionary's rarest word plus this offset. */
     val oovOffset: Float = -1f,
 )
@@ -107,6 +114,11 @@ data class AutocorrectConfig(
     val maxEdits: Int = 2,
     /** ALL CAPS input is usually an acronym; leave it alone. */
     val correctAllCaps: Boolean = false,
+    /**
+     * A capitalised word that is neither sentence-initial nor a known word is probably a name or
+     * brand: it is only corrected when the sole edit is one adjacent transposition ("Teh").
+     */
+    val protectMidSentenceCapitals: Boolean = true,
 )
 
 /** Multi-word completion gates (§3.2). */

@@ -34,13 +34,15 @@ data class ScoreBreakdown(
 
 /**
  * A scored suggestion with its [breakdown]. [wordId] is the dictionary word id, or -1 for user
- * words, shortcuts and the literal.
+ * words, shortcuts and the literal. [dictionaryForm] is the word as stored (before the user's
+ * capitalisation is applied to [text]); null for the literal and shortcuts.
  */
 class RankedCandidate(
     val text: String,
     val score: Float,
     val breakdown: ScoreBreakdown,
     val wordId: Int = -1,
+    val dictionaryForm: String? = null,
 ) {
     val source: CandidateSource
         get() = breakdown.source

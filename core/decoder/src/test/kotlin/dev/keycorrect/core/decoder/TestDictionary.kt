@@ -98,6 +98,12 @@ object TestDictionary {
         counts["I'll"] = 8_000L
         counts["don't"] = 30_000L
         counts["he'll"] = 4_000L
+        counts["can't"] = 12_000L
+        counts["won't"] = 9_000L
+        counts["isn't"] = 8_000L
+        counts["you're"] = 15_000L
+        counts["didn't"] = 14_000L
+        counts["Wilhelm"] = 20L
         counts["iPhone"] = 40L
         counts["Monday"] = 300L
         counts["damn"] = 900L

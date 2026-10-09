@@ -9,7 +9,7 @@ internal object Text {
                     it == Character.COMBINING_SPACING_MARK.toInt()
             }
 
-    fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == 'ʼ'
+    fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == '‘' || c == 'ʼ'
 
     fun isHyphen(c: Char): Boolean = c == '-' || c == '‐' || c == '‑'
 
@@ -33,6 +33,20 @@ internal object Text {
             if (c.isDigit() || c == '@' || c == '/') return true
         }
         return false
+    }
+
+    /**
+     * True if [a] and [b] (compared by [key]) differ by exactly one swap of two adjacent chars
+     * ("teh"/"the"); equal or longer-distance differences are false.
+     */
+    fun isSingleTransposition(a: CharSequence, b: CharSequence): Boolean {
+        val x = key(a)
+        val y = key(b)
+        if (x.length != y.length || x.length < 2) return false
+        var i = 0
+        while (i < x.length && x[i] == y[i]) i++
+        if (i + 1 >= x.length || x[i] != y[i + 1] || x[i + 1] != y[i]) return false
+        return x.substring(i + 2) == y.substring(i + 2)
     }
 
     fun hasLetter(text: CharSequence): Boolean = text.any { it.isLetter() }

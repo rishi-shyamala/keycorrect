@@ -102,6 +102,7 @@ fun SettingsApp(
                 SettingsDestination.Shortcuts -> ShortcutsScreen(padding, container)
                 SettingsDestination.Feedback -> FeedbackSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.About -> AboutScreen(padding, onNavigate = navigate)
+                SettingsDestination.Licenses -> LicensesScreen(padding)
                 SettingsDestination.AutofillTest -> AutofillTestScreen(padding)
             }
         }

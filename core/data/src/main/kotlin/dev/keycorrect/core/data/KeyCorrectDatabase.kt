@@ -23,11 +23,10 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
  *
  * Key handling: the 32-byte key from [keyProvider] is passed to SQLCipher as a raw key (`x'<64
  * hex>'`), which skips the passphrase KDF (the key is already uniformly random), keeping open time
- * low. SQLCipher keeps a reference to that byte array for the lifetime of the open database because
- * its connection pool reuses it to open additional (WAL reader) connections; it therefore cannot be
- * zeroed while the database is open. What we do zero immediately: the decrypted key returned by the
- * provider, and the array itself if opening fails. See [KeystoreDatabaseKeyProvider] for the threat
- * model.
+ * low. Wiping is best effort: the decrypted key returned by the provider is zeroed immediately
+ * after hex encoding (also when encoding fails); the hex array is handed to SQLCipher with
+ * `clearPassphrase = true` (it zeroes the array it was given) and is zeroed here as well if opening
+ * fails. See [KeystoreDatabaseKeyProvider] for the threat model.
  */
 class KeyCorrectDatabase
 internal constructor(
@@ -110,10 +109,16 @@ internal constructor(
     private fun open(): SupportSQLiteDatabase {
         loadNativeLibrary()
         val rawKey = keyProvider.getOrCreatePassphrase()
-        val sqlcipherKey = toRawKeySyntax(rawKey)
-        rawKey.fill(0)
+        val sqlcipherKey =
+            try {
+                toRawKeySyntax(rawKey)
+            } finally {
+                rawKey.fill(0)
+            }
         var newHelper: SupportSQLiteOpenHelper? = null
         try {
+            // clearPassphrase = true: SQLCipher zeroes the hex array itself once it is done with
+            // it.
             val factory = SupportOpenHelperFactory(sqlcipherKey, null, true)
             val config =
                 SupportSQLiteOpenHelper.Configuration.builder(appContext)
@@ -125,8 +130,11 @@ internal constructor(
             helper = newHelper
             return database
         } catch (e: Throwable) {
-            newHelper?.close()
-            sqlcipherKey.fill(0)
+            try {
+                newHelper?.close()
+            } finally {
+                sqlcipherKey.fill(0)
+            }
             throw e
         }
     }

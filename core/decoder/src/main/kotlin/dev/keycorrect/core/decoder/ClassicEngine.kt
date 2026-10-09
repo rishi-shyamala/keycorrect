@@ -126,6 +126,7 @@ class ClassicEngine(
         }
 
         lm.setContext(request.context.before)
+        val sentenceInitial = lm.atSentenceStart
         val right = lm.parseRightContext(request.context.after)
         scorer.bind(spatialModels.get(request.layout, touchCorrection()), input)
 
@@ -188,6 +189,7 @@ class ClassicEngine(
                         candidates = ranked.filter { it.text != text },
                         field = field,
                         allowed = request.autocorrectAllowed,
+                        sentenceInitial = sentenceInitial,
                     )
                 )
             }
@@ -256,6 +258,7 @@ class ClassicEngine(
                     breakdown.total(config.scoring),
                     breakdown,
                     bestId,
+                    dictionary.word(bestId),
                 )
             )
         }
@@ -290,6 +293,7 @@ class ClassicEngine(
                     breakdown.total(config.scoring),
                     breakdown,
                     -1,
+                    lexicon.surface(u),
                 )
             )
         }

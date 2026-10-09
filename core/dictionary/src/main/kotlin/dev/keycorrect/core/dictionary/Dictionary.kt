@@ -43,10 +43,12 @@ private constructor(
     private val bitmapOff: Int,
     private val termOff: Int,
     private val multiOff: Int,
+    private val multiEnd: Int,
     private val infoOff: Int,
     private val idNodeOff: Int,
     private val caseIdxOff: Int,
     private val casePoolOff: Int,
+    private val casePoolEnd: Int,
     private val bigrams: NgramTable,
     private val trigrams: NgramTable,
 ) {
@@ -63,16 +65,25 @@ private constructor(
         get() = 0
 
     /** Number of children of [node]. */
-    fun childCount(node: Int): Int = Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD)
+    fun childCount(node: Int): Int {
+        checkNode(node)
+        return Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD)
+    }
 
     /** Handle of the first child of [node]; children are `firstChild + 0 until childCount`. */
     fun firstChild(node: Int): Int {
+        checkNode(node)
         val j = node ushr 4
         var fc = buf.getInt(samplesOff + j * 4)
         var t = j shl 4
         while (t < node) {
             fc += Fmt.u8(buf, nodesOff + t * Fmt.NODE_RECORD)
             t++
+        }
+        // The children must exist: a corrupt sample/count would otherwise yield handles off the
+        // trie.
+        if (fc < 0 || fc.toLong() + Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD) > nodeCount) {
+            throw DictionaryFormatException("corrupt trie: children of node $node out of range")
         }
         return fc
     }
@@ -81,7 +92,19 @@ private constructor(
     fun childAt(node: Int, index: Int): Int = firstChild(node) + index
 
     /** The character labelling the edge into [node] (undefined for [root]). */
-    fun nodeChar(node: Int): Char = alphabet[Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 1)]
+    fun nodeChar(node: Int): Char {
+        checkNode(node)
+        val label = Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 1)
+        if (label >= alphabet.size) throw DictionaryFormatException("corrupt trie: bad label")
+        return alphabet[label]
+    }
+
+    /** Trie handles come from this dictionary's own data; a handle outside the trie is corrupt. */
+    private fun checkNode(node: Int) {
+        if (node < 0 || node >= nodeCount) {
+            throw DictionaryFormatException("corrupt trie: node $node outside 0 until $nodeCount")
+        }
+    }
 
     /** Child of [node] reached by [c], or -1. */
     fun child(node: Int, c: Char): Int {
@@ -112,6 +135,7 @@ private constructor(
 
     /** True if some key ends exactly at [node]. */
     fun isTerminal(node: Int): Boolean {
+        checkNode(node)
         val bits = buf.getLong(bitmapOff + (node ushr 6) * Fmt.BITMAP_BLOCK_BYTES + 4)
         return (bits ushr (node and 63)) and 1L != 0L
     }
@@ -121,9 +145,27 @@ private constructor(
         val v = terminalValue(node)
         return when {
             v < 0 -> 0
-            v and Fmt.MULTI_FLAG != 0 -> Fmt.u8(buf, multiOff + (v and 0x7FFFFF))
+            v and Fmt.MULTI_FLAG != 0 -> multiCount(v)
             else -> 1
         }
+    }
+
+    /** Number of ids of the multi-id record referenced by terminal value [v] (bounds-checked). */
+    private fun multiCount(v: Int): Int {
+        val base = multiOff + (v and 0x7FFFFF)
+        if (base < multiOff || base >= multiEnd)
+            throw DictionaryFormatException("corrupt multi-id offset")
+        val count = Fmt.u8(buf, base)
+        if (base + 1 + count * 3 > multiEnd)
+            throw DictionaryFormatException("corrupt multi-id record")
+        return count
+    }
+
+    private fun checkedWordId(id: Int): Int {
+        if (id < FIRST_WORD_ID || id >= wordCount) {
+            throw DictionaryFormatException("corrupt dictionary: word id $id out of range")
+        }
+        return id
     }
 
     /** The [index]-th word id at [node]; ids are ascending (most probable surface first). */
@@ -132,11 +174,11 @@ private constructor(
         require(v >= 0) { "node $node is not terminal" }
         if (v and Fmt.MULTI_FLAG == 0) {
             require(index == 0) { "index $index out of range" }
-            return v
+            return checkedWordId(v)
         }
-        val base = multiOff + (v and 0x7FFFFF)
-        require(index in 0 until Fmt.u8(buf, base)) { "index $index out of range" }
-        return Fmt.u24(buf, base + 1 + index * 3)
+        val count = multiCount(v)
+        require(index in 0 until count) { "index $index out of range" }
+        return checkedWordId(Fmt.u24(buf, multiOff + (v and 0x7FFFFF) + 1 + index * 3))
     }
 
     /** Word id of the most probable surface form at [node], or -1 if not terminal. */
@@ -144,8 +186,10 @@ private constructor(
         val v = terminalValue(node)
         return when {
             v < 0 -> -1
-            v and Fmt.MULTI_FLAG != 0 -> Fmt.u24(buf, multiOff + (v and 0x7FFFFF) + 1)
-            else -> v
+            v and Fmt.MULTI_FLAG != 0 ->
+                if (multiCount(v) == 0) -1
+                else checkedWordId(Fmt.u24(buf, multiOff + (v and 0x7FFFFF) + 1))
+            else -> checkedWordId(v)
         }
     }
 
@@ -159,8 +203,10 @@ private constructor(
      * Upper bound on [logProb] over every word whose key has the prefix of [node] (exact: it is the
      * maximum quantized value in the subtree, decoded identically to [logProb]).
      */
-    fun maxLogProbInSubtree(node: Int): Float =
-        uniMin + Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 2) * uniStep
+    fun maxLogProbInSubtree(node: Int): Float {
+        checkNode(node)
+        return uniMin + Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 2) * uniStep
+    }
 
     private fun terminalValue(node: Int): Int {
         val blockOff = bitmapOff + (node ushr 6) * Fmt.BITMAP_BLOCK_BYTES
@@ -168,6 +214,7 @@ private constructor(
         val bit = node and 63
         if ((bits ushr bit) and 1L == 0L) return -1
         val rank = buf.getInt(blockOff) + java.lang.Long.bitCount(bits and ((1L shl bit) - 1))
+        if (rank < 0 || rank >= keyCount) throw DictionaryFormatException("corrupt terminal rank")
         return Fmt.u24(buf, termOff + rank * 3)
     }
 
@@ -196,14 +243,32 @@ private constructor(
         return best
     }
 
+    /**
+     * The key of [node], walking up to the root. A valid parent always has a smaller handle and a
+     * key is at most [MAX_KEY_LENGTH] chars, so corrupt parent links cannot loop or run away.
+     */
     private fun keyOfNode(node: Int): String {
+        checkNode(node)
         val sb = StringBuilder()
         var n = node
         while (n != 0) {
+            if (sb.length >= MAX_KEY_LENGTH) {
+                throw DictionaryFormatException("corrupt trie: key longer than $MAX_KEY_LENGTH")
+            }
             sb.append(nodeChar(n))
-            n = parentOf(n)
+            val parent = parentOf(n)
+            if (parent >= n) throw DictionaryFormatException("corrupt trie: parent link cycle")
+            n = parent
         }
         return sb.reverse().toString()
+    }
+
+    /** Terminal node of word [id]'s key from ID_TO_NODE, validated. */
+    private fun nodeOfId(id: Int): Int {
+        val node = Fmt.u24(buf, idNodeOff + id * 3)
+        if (node >= nodeCount)
+            throw DictionaryFormatException("corrupt dictionary: node of word $id")
+        return node
     }
 
     // ---------------------------------------------------------------- words
@@ -234,15 +299,14 @@ private constructor(
         if (id == EOS_ID) return EOS_TOKEN
         val pattern = patternOf(id)
         if (pattern == Fmt.CASE_CUSTOM) return customSurface(id)
-        val node = Fmt.u24(buf, idNodeOff + id * 3)
-        return CaseUtil.apply(keyOfNode(node), pattern)
+        return CaseUtil.apply(keyOfNode(nodeOfId(id)), pattern)
     }
 
     /** Lowercase key under which [id] is stored in the trie (null for reserved ids). */
     fun keyOf(id: Int): String? {
         checkId(id)
         if (id < FIRST_WORD_ID) return null
-        return keyOfNode(Fmt.u24(buf, idNodeOff + id * 3))
+        return keyOfNode(nodeOfId(id))
     }
 
     /**
@@ -277,8 +341,11 @@ private constructor(
             else if (v > id) hi = mid - 1
             else {
                 var p = casePoolOff + Fmt.u24(buf, e + 3)
+                if (p >= casePoolEnd) throw DictionaryFormatException("corrupt case pool offset")
                 val len = Fmt.readVarint(buf, p)
                 p += Fmt.varintSize(len)
+                if (len > casePoolEnd - p)
+                    throw DictionaryFormatException("corrupt case pool length")
                 val bytes = ByteArray(len)
                 for (i in 0 until len) bytes[i] = buf.get(p + i)
                 return String(bytes, Charsets.UTF_8)
@@ -405,6 +472,9 @@ private constructor(
         const val BOS_TOKEN = "<s>"
         const val EOS_TOKEN = "</s>"
 
+        /** Longest trie key (in chars) the reader will reconstruct; the writer enforces it too. */
+        const val MAX_KEY_LENGTH = 256
+
         /** Normalizes a surface string to the trie key: Unicode lowercase, accents kept. */
         @JvmStatic fun normalizeKey(surface: String): String = surface.lowercase()
 
@@ -423,6 +493,8 @@ private constructor(
                 throw e
             } catch (e: IndexOutOfBoundsException) {
                 throw DictionaryFormatException("corrupt dictionary: out-of-bounds read", e)
+            } catch (e: NegativeArraySizeException) {
+                throw DictionaryFormatException("corrupt dictionary: negative length", e)
             }
         }
 
@@ -521,6 +593,17 @@ private constructor(
             val alphaN = Fmt.u16(buf, a)
             if (secLen[Fmt.SEC_ALPHABET] != 2 + 2 * alphaN || alphaN > 255) fail("bad alphabet")
             val alphabet = CharArray(alphaN) { buf.getChar(a + 2 + it * 2) }
+            for (i in 1 until alphaN) if (alphabet[i] <= alphabet[i - 1]) fail("bad alphabet order")
+            if (
+                !uniMin.isFinite() ||
+                    !uniStep.isFinite() ||
+                    !bgMin.isFinite() ||
+                    !bgStep.isFinite() ||
+                    !tgMin.isFinite() ||
+                    !tgStep.isFinite()
+            ) {
+                fail("non-finite quantization parameters")
+            }
 
             val n = nodeCount.toLong()
             val nodesOff = need(Fmt.SEC_TRIE_NODES, n * Fmt.NODE_RECORD)
@@ -544,6 +627,10 @@ private constructor(
                     ((tgLists.toLong() + Fmt.LIST_STRIDE - 1) / Fmt.LIST_STRIDE) * 4,
                 )
             val tgData = need(Fmt.SEC_TRIGRAM_DATA, -1)
+            // Every list takes at least one byte.
+            if (secLen[Fmt.SEC_BIGRAM_DATA] < bgLists || secLen[Fmt.SEC_TRIGRAM_DATA] < tgLists) {
+                fail("n-gram data shorter than its list count")
+            }
 
             // META.
             val m = need(Fmt.SEC_META, -1)
@@ -583,12 +670,34 @@ private constructor(
                 bitmapOff = bitmapOff,
                 termOff = termOff,
                 multiOff = multiOff,
+                multiEnd = multiOff + secLen[Fmt.SEC_MULTI_IDS],
                 infoOff = infoOff,
                 idNodeOff = idNodeOff,
                 caseIdxOff = caseIdxOff,
                 casePoolOff = casePoolOff,
-                bigrams = NgramTable(buf, bgIdx, bgData, bgLists, true, bgMin, bgStep),
-                trigrams = NgramTable(buf, tgIdx, tgData, tgLists, false, tgMin, tgStep),
+                casePoolEnd = casePoolOff + secLen[Fmt.SEC_CASE_POOL],
+                bigrams =
+                    NgramTable(
+                        buf,
+                        bgIdx,
+                        bgData,
+                        bgData + secLen[Fmt.SEC_BIGRAM_DATA],
+                        bgLists,
+                        true,
+                        bgMin,
+                        bgStep,
+                    ),
+                trigrams =
+                    NgramTable(
+                        buf,
+                        tgIdx,
+                        tgData,
+                        tgData + secLen[Fmt.SEC_TRIGRAM_DATA],
+                        tgLists,
+                        false,
+                        tgMin,
+                        tgStep,
+                    ),
             )
         }
     }

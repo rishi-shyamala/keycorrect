@@ -14,6 +14,8 @@ internal class NgramTable(
     private val buf: ByteBuffer,
     private val indexOff: Int,
     private val dataOff: Int,
+    /** Absolute end (exclusive) of the data section; every list read is bounded by it. */
+    private val dataEnd: Int,
     val listCount: Int,
     private val flagged: Boolean,
     private val minLp: Float,
@@ -22,6 +24,31 @@ internal class NgramTable(
     private val indexStride = if (flagged) 8 else 4
     private val skipSize = if (flagged) 9 else 6
 
+    private fun corrupt(msg: String): Nothing =
+        throw DictionaryFormatException("corrupt n-gram data: $msg")
+
+    /** Runs [block], turning any stray out-of-range read into a [DictionaryFormatException]. */
+    private inline fun <T> guard(block: () -> T): T =
+        try {
+            block()
+        } catch (e: IndexOutOfBoundsException) {
+            throw DictionaryFormatException("corrupt n-gram data: out-of-bounds read", e)
+        }
+
+    private fun checkPos(pos: Int) {
+        if (pos < dataOff || pos >= dataEnd) corrupt("list position outside the data section")
+    }
+
+    /**
+     * Validates a list header at [pos] and returns its entry count; `n` entries need >= n bytes.
+     */
+    private fun checkedCount(pos: Int): Int {
+        checkPos(pos)
+        val n = Fmt.readVarint(buf, pos)
+        if (n.toLong() > (dataEnd - pos).toLong()) corrupt("entry count exceeds the section")
+        return n
+    }
+
     fun decode(q: Int): Float = minLp + (q - 1) * step
 
     /**
@@ -29,13 +56,17 @@ internal class NgramTable(
      * pos` where pos is the absolute offset of the list header and flagsBefore the number of
      * flagged entries in all earlier lists (bigram table only).
      */
-    fun locate(ordinal: Int): Long {
+    fun locate(ordinal: Int): Long = guard {
         if (ordinal < 0 || ordinal >= listCount) return -1L
         val j = ordinal ushr Fmt.LIST_SHIFT
-        var pos = dataOff + buf.getInt(indexOff + j * indexStride)
+        val start = buf.getInt(indexOff + j * indexStride)
+        if (start < 0 || start >= dataEnd - dataOff)
+            corrupt("index offset outside the data section")
+        var pos = dataOff + start
         var fl = if (flagged) buf.getInt(indexOff + j * indexStride + 4) else 0
         var t = ordinal and (Fmt.LIST_STRIDE - 1)
         while (t > 0) {
+            checkPos(pos)
             val n = Fmt.readVarint(buf, pos)
             val ns = Fmt.varintSize(n)
             when {
@@ -49,35 +80,39 @@ internal class NgramTable(
                     val len = Fmt.readVarint(buf, pos + ns)
                     val ls = Fmt.varintSize(len)
                     if (flagged) fl += Fmt.readVarint(buf, pos + ns + ls)
+                    if (len.toLong() > (dataEnd - pos).toLong())
+                        corrupt("list length exceeds the section")
                     pos += ns + ls + len
                 }
             }
             t--
         }
+        checkPos(pos)
         if (buf.get(pos).toInt() == 0) return -1L
-        return (fl.toLong() shl 32) or pos.toLong()
+        (fl.toLong() shl 32) or pos.toLong()
     }
 
     fun positionOf(located: Long): Int = located.toInt()
 
     fun flagsBeforeOf(located: Long): Int = (located ushr 32).toInt()
 
-    fun entryCount(pos: Int): Int = Fmt.readVarint(buf, pos)
+    fun entryCount(pos: Int): Int = guard { checkedCount(pos) }
 
     /**
      * Finds [id] in the list at [pos]. Returns -1 if absent, else `(flaggedBeforeInList shl 8) or
      * entryByte`.
      */
-    fun lookup(pos: Int, id: Int): Long {
-        val n = Fmt.readVarint(buf, pos)
+    fun lookup(pos: Int, id: Int): Long = guard {
+        val n = checkedCount(pos)
         var p = pos + Fmt.varintSize(n)
         if (n > 1) {
             p += Fmt.varintSize(Fmt.readVarint(buf, p)) // byte length
             if (flagged) p += Fmt.varintSize(Fmt.readVarint(buf, p)) // flagged count
         }
-        if (n <= Fmt.NGRAM_BLOCK) return scan(p, n, -1, id, 0)
+        if (n <= Fmt.NGRAM_BLOCK) return@guard scan(p, n, -1, id, 0)
         val nb = (n + Fmt.NGRAM_BLOCK - 1) / Fmt.NGRAM_BLOCK
-        if (Fmt.u24(buf, p) > id) return -1L
+        if (p.toLong() + nb.toLong() * skipSize > dataEnd) corrupt("skip table exceeds the section")
+        if (Fmt.u24(buf, p) > id) return@guard -1L
         var lo = 0
         var hi = nb - 1
         while (lo < hi) {
@@ -88,7 +123,9 @@ internal class NgramTable(
         val entries = p + nb * skipSize
         val cnt = minOf(Fmt.NGRAM_BLOCK, n - lo * Fmt.NGRAM_BLOCK)
         val fr = if (flagged) Fmt.u24(buf, s + 6) else 0
-        return scan(entries + Fmt.u24(buf, s + 3), cnt, Fmt.u24(buf, s), id, fr)
+        val blockStart = entries + Fmt.u24(buf, s + 3)
+        if (blockStart >= dataEnd) corrupt("block offset outside the section")
+        scan(blockStart, cnt, Fmt.u24(buf, s), id, fr)
     }
 
     private fun scan(start: Int, cnt: Int, knownFirst: Int, target: Int, flagBase: Int): Long {
@@ -119,24 +156,26 @@ internal class NgramTable(
      * sorted by probability descending (ties: lower id first). Context-only entries are skipped.
      * Returns the number written.
      */
-    fun top(pos: Int, k: Int, outIds: IntArray, outLp: FloatArray): Int {
-        val n = Fmt.readVarint(buf, pos)
+    fun top(pos: Int, k: Int, outIds: IntArray, outLp: FloatArray): Int = guard {
+        val n = checkedCount(pos)
         var p = pos + Fmt.varintSize(n)
         if (n > 1) {
             p += Fmt.varintSize(Fmt.readVarint(buf, p)) // byte length
             if (flagged) p += Fmt.varintSize(Fmt.readVarint(buf, p)) // flagged count
         }
-        if (n <= Fmt.NGRAM_BLOCK) return collect(p, n, -1, k, outIds, outLp, 0)
+        if (n <= Fmt.NGRAM_BLOCK) return@guard collect(p, n, -1, k, outIds, outLp, 0)
         val nb = (n + Fmt.NGRAM_BLOCK - 1) / Fmt.NGRAM_BLOCK
+        if (p.toLong() + nb.toLong() * skipSize > dataEnd) corrupt("skip table exceeds the section")
         val entries = p + nb * skipSize
         var size = 0
         for (b in 0 until nb) {
             val s = p + b * skipSize
             val cnt = minOf(Fmt.NGRAM_BLOCK, n - b * Fmt.NGRAM_BLOCK)
-            size =
-                collect(entries + Fmt.u24(buf, s + 3), cnt, Fmt.u24(buf, s), k, outIds, outLp, size)
+            val blockStart = entries + Fmt.u24(buf, s + 3)
+            if (blockStart >= dataEnd) corrupt("block offset outside the section")
+            size = collect(blockStart, cnt, Fmt.u24(buf, s), k, outIds, outLp, size)
         }
-        return size
+        size
     }
 
     private fun collect(
