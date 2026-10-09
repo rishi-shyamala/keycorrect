@@ -43,6 +43,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             hapticStrength = this[HAPTIC_STRENGTH] ?: d.hapticStrength,
             soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
             soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
+            inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
         )
     }
 
@@ -57,6 +58,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[HAPTIC_STRENGTH] = s.hapticStrength
         this[SOUND_ENABLED] = s.soundEnabled
         this[SOUND_VOLUME] = s.soundVolume
+        this[INLINE_AUTOFILL] = s.inlineAutofill
     }
 
     private companion object {
@@ -70,5 +72,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val HAPTIC_STRENGTH = intPreferencesKey("haptic_strength")
         val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
+        val INLINE_AUTOFILL = booleanPreferencesKey("inline_autofill")
     }
 }

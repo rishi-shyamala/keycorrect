@@ -3,6 +3,7 @@ package dev.keycorrect.core.settings
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -61,6 +62,7 @@ class SettingsRepositoryTest {
         assertThat(d.hapticStrength).isEqualTo(0)
         assertThat(d.soundEnabled).isFalse()
         assertThat(d.soundVolume).isEqualTo(0.5f)
+        assertThat(d.inlineAutofill).isTrue()
     }
 
     @Test
@@ -77,9 +79,19 @@ class SettingsRepositoryTest {
                 hapticStrength = 128,
                 soundEnabled = true,
                 soundVolume = 0.8f,
+                inlineAutofill = false,
             )
         repo.update { custom }
         assertThat(repo.settings.first()).isEqualTo(custom)
+    }
+
+    @Test
+    fun inlineAutofillIsPersistedUnderItsKey() = runTest {
+        repo.update { it.copy(inlineAutofill = false) }
+        assertThat(repo.settings.first().inlineAutofill).isFalse()
+        assertThat(store.data.first()[booleanPreferencesKey("inline_autofill")]).isFalse()
+        repo.update { it.copy(inlineAutofill = true) }
+        assertThat(repo.settings.first().inlineAutofill).isTrue()
     }
 
     @Test

@@ -15,10 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.keycorrect.BuildConfig
 import dev.keycorrect.R
 
 @Composable
-fun AboutScreen(contentPadding: PaddingValues) {
+fun AboutScreen(contentPadding: PaddingValues, onNavigate: (SettingsDestination) -> Unit) {
     val context = LocalContext.current
     val version = remember(context) { context.versionName() }
     SettingsPage(contentPadding) {
@@ -44,6 +45,13 @@ fun AboutScreen(contentPadding: PaddingValues) {
             Text(
                 stringResource(R.string.about_privacy),
                 style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+        if (BuildConfig.DEBUG) {
+            NavRow(
+                title = stringResource(R.string.about_autofill_test),
+                supportingText = stringResource(R.string.about_autofill_test_summary),
+                onClick = { onNavigate(SettingsDestination.AutofillTest) },
             )
         }
     }

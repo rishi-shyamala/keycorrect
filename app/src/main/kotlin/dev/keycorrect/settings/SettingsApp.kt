@@ -96,7 +96,8 @@ fun SettingsApp(
                     SetupScreen(padding, status, onOpenKeyboardSettings, onChooseKeyboard)
                 SettingsDestination.Keyboard -> KeyboardSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Feedback -> FeedbackSettingsScreen(padding, settings, onUpdate)
-                SettingsDestination.About -> AboutScreen(padding)
+                SettingsDestination.About -> AboutScreen(padding, onNavigate = navigate)
+                SettingsDestination.AutofillTest -> AutofillTestScreen(padding)
             }
         }
     }

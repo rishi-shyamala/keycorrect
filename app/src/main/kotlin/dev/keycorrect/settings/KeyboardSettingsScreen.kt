@@ -49,6 +49,12 @@ fun KeyboardSettingsScreen(
             checked = settings.autoCapitalize,
             onCheckedChange = { v -> onUpdate { it.copy(autoCapitalize = v) } },
         )
+        SwitchRow(
+            title = stringResource(R.string.keyboard_inline_autofill),
+            supportingText = stringResource(R.string.keyboard_inline_autofill_summary),
+            checked = settings.inlineAutofill,
+            onCheckedChange = { v -> onUpdate { it.copy(inlineAutofill = v) } },
+        )
 
         TryItSection()
     }

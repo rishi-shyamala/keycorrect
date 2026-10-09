@@ -1,6 +1,9 @@
 package dev.keycorrect.ime
 
+import android.os.Bundle
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -11,6 +14,7 @@ import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardScreen
@@ -33,11 +37,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     private val feedback by lazy { KeyFeedback(this) }
 
+    private val autofill by lazy { InlineAutofillController(this, mainExecutor) }
+
     override fun onCreate() {
         super.onCreate()
         lifecycleScope.launch {
             appContainer.settingsRepository.settings.collect {
                 settingsFlow.value = it
+                if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
             }
         }
@@ -46,13 +53,31 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     @Composable
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
-        KeyCorrectTheme { KeyboardScreen(controller, settings, feedback) }
+        KeyCorrectTheme { KeyboardScreen(controller, settings, feedback, autofill = autofill) }
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // A restart is the same field re-announced; its suggestions are still valid.
+        if (!restarting) autofill.clear()
         controller.onStartInput(FieldProfile.from(editorInfo), settingsFlow.value)
     }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        autofill.clear()
+        super.onFinishInputView(finishingInput)
+    }
+
+    /** Asks the autofill service for chips styled like the keyboard; null opts out (menu). */
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? =
+        if (settingsFlow.value.inlineAutofill) {
+            InlineSuggestionsRequestFactory.create(this, uiExtras)
+        } else {
+            null
+        }
+
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean =
+        if (settingsFlow.value.inlineAutofill) autofill.onResponse(response) else false
 
     override fun onUpdateSelection(
         oldSelStart: Int,

@@ -17,6 +17,8 @@ data class KeyboardSettings(
     val soundEnabled: Boolean = false,
     /** Key-click volume, [SOUND_VOLUME_RANGE]. */
     val soundVolume: Float = 0.5f,
+    /** Show the autofill service's (password manager) inline suggestions in the strip. */
+    val inlineAutofill: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =

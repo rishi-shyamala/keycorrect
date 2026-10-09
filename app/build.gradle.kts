@@ -6,6 +6,8 @@ plugins {
 android {
     namespace = "dev.keycorrect"
 
+    buildFeatures { buildConfig = true }
+
     defaultConfig {
         applicationId = "dev.keycorrect"
         versionCode = 1
@@ -36,6 +38,7 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:settings"))
     implementation(project(":feature:keyboard-ui"))
+    implementation(libs.androidx.autofill)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
