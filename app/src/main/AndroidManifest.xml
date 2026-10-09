@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Privacy: this app intentionally requests NO permissions in Phase 0, and must never request
-  android.permission.INTERNET (docs/PLAN.md §15, decision D3).
+  Privacy: keep permissions minimal, and never request android.permission.INTERNET
+  (docs/PLAN.md §15, decision D3).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Custom key-press haptics (duration/strength settings). Normal, install-time permission. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
+        android:name=".KeyCorrectApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"

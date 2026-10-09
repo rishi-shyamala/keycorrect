@@ -33,6 +33,8 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:ime"))
     implementation(project(":core:input"))
+    implementation(project(":core:layout"))
+    implementation(project(":core:settings"))
     implementation(project(":feature:keyboard-ui"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
