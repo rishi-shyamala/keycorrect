@@ -3,7 +3,15 @@ plugins {
     application
 }
 
-application { mainClass.set("dev.keycorrect.tools.eval.MainKt") }
+application {
+    mainClass.set("dev.keycorrect.tools.eval.MainKt")
+    // One ClassicEngine per worker thread plus per-sentence bookkeeping; the dictionary is mapped.
+    applicationDefaultJvmArgs = listOf("-Xmx2g", "-XX:+UseParallelGC")
+}
+
+// `./gradlew :tools:eval:run --args="..."` resolves relative paths (data/processed, app/src/...)
+// against the repository root, not this module's directory.
+tasks.named<JavaExec>("run") { workingDir = rootProject.projectDir }
 
 dependencies {
     implementation(project(":core:decoder"))
