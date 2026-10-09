@@ -6,6 +6,7 @@ dependencies {
     implementation(libs.android.gradle.plugin)
     implementation(libs.kotlin.gradle.plugin)
     implementation(libs.compose.compiler.gradle.plugin)
+    implementation(libs.kotlin.serialization.gradle.plugin)
 }
 
 gradlePlugin {
@@ -17,6 +18,14 @@ gradlePlugin {
         register("androidLibrary") {
             id = "keycorrect.android.library"
             implementationClass = "AndroidLibraryConventionPlugin"
+        }
+        register("jvmLibrary") {
+            id = "keycorrect.jvm.library"
+            implementationClass = "JvmLibraryConventionPlugin"
+        }
+        register("kotlinSerialization") {
+            id = "keycorrect.kotlin.serialization"
+            implementationClass = "KotlinSerializationConventionPlugin"
         }
         register("androidCompose") {
             id = "keycorrect.android.compose"

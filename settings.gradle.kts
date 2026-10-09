@@ -31,4 +31,8 @@ include(":core:ime")
 
 include(":core:input")
 
+include(":core:layout")
+
+include(":core:settings")
+
 include(":feature:keyboard-ui")
