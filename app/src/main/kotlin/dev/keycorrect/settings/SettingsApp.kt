@@ -13,7 +13,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -29,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.keycorrect.R
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.settings.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** Root of the settings UI: top bar, back stack navigation and the current screen. */
@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsApp(
     repository: SettingsRepository,
+    writeScope: CoroutineScope,
     status: ImeStatus,
     onOpenKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
@@ -58,9 +59,8 @@ fun SettingsApp(
 
     val settings by
         repository.settings.collectAsStateWithLifecycle(initialValue = KeyboardSettings())
-    val scope = rememberCoroutineScope()
     val onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit = { transform ->
-        scope.launch { repository.update(transform) }
+        writeScope.launch { repository.update(transform) }
     }
     val navigate: (SettingsDestination) -> Unit = { backStack.add(it) }
 
