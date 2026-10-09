@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.keycorrect.AppContainer
 import dev.keycorrect.R
+import dev.keycorrect.core.data.KeyTemporarilyUnavailableException
 import dev.keycorrect.core.data.KeyUnavailableException
 import dev.keycorrect.core.data.Validation
 import dev.keycorrect.core.data.ValidationError
@@ -81,6 +82,11 @@ internal fun <T> rememberLoadState(attempt: Int, source: () -> Flow<T>): LoadSta
 /** Whether this failure (or its cause) means the Keystore key is gone and the data is lost. */
 internal fun Throwable.isKeyLost(): Boolean =
     generateSequence(this) { it.cause }.any { it is KeyUnavailableException }
+
+/** Whether this failure is a transient Keystore error: nothing is lost, trying again may work. */
+internal fun Throwable.isKeyTemporarilyUnavailable(): Boolean =
+    !isKeyLost() &&
+        generateSequence(this) { it.cause }.any { it is KeyTemporarilyUnavailableException }
 
 /**
  * Runs [block] on the application scope so a write finishes even if the screen is closed, and calls
@@ -163,14 +169,16 @@ internal fun EmptyState(title: String, body: String) {
 }
 
 /**
- * Friendly error panel for a failed database read. Offers "Try again" and, because
- * [KeyUnavailableException] or a corrupt file leaves the data unreadable for good, a confirmed
- * "Reset personal data" which calls [onReset] ([dev.keycorrect.core.data.KeyCorrectDatabase]
- * .destroy()).
+ * Friendly error panel for a failed database read. Offers "Try again" and, unless the failure is a
+ * retryable [KeyTemporarilyUnavailableException] (where nothing is lost and resetting would destroy
+ * readable data), a confirmed "Reset personal data" which calls [onReset]
+ * ([dev.keycorrect.core.data.KeyCorrectDatabase].destroy()), because [KeyUnavailableException] or a
+ * corrupt file leaves the data unreadable for good.
  */
 @Composable
 internal fun DataErrorState(error: Throwable, onRetry: () -> Unit, onReset: () -> Unit) {
     var confirming by rememberSaveable { mutableStateOf(false) }
+    val retryable = error.isKeyTemporarilyUnavailable()
     CenteredPanel {
         Text(
             stringResource(R.string.data_error_title),
@@ -180,18 +188,24 @@ internal fun DataErrorState(error: Throwable, onRetry: () -> Unit, onReset: () -
         )
         Text(
             stringResource(
-                if (error.isKeyLost()) R.string.data_error_key_lost else R.string.data_error_generic
+                when {
+                    error.isKeyLost() -> R.string.data_error_key_lost
+                    retryable -> R.string.data_error_temporary
+                    else -> R.string.data_error_generic
+                }
             ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Button(onClick = onRetry) { Text(stringResource(R.string.data_action_retry)) }
-        OutlinedButton(onClick = { confirming = true }) {
-            Text(stringResource(R.string.data_reset_action))
+        if (!retryable) {
+            OutlinedButton(onClick = { confirming = true }) {
+                Text(stringResource(R.string.data_reset_action))
+            }
         }
     }
-    if (confirming) {
+    if (confirming && !retryable) {
         AlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text(stringResource(R.string.data_reset_title)) },

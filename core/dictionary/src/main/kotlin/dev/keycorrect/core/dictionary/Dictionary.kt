@@ -360,6 +360,13 @@ private constructor(
 
     // ---------------------------------------------------------------- n-grams
 
+    /** Raw n-gram tables, for tests that must walk every list. */
+    internal val bigramTable: NgramTable
+        get() = bigrams
+
+    internal val trigramTable: NgramTable
+        get() = trigrams
+
     /** `ln P(w2 | w1)` or null when the bigram is not stored (caller backs off). */
     fun bigramLogProb(w1: Int, w2: Int): Float? {
         val v = bigramLogProbOrNaN(w1, w2)

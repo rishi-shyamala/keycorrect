@@ -182,8 +182,10 @@ in-dictionary FC rate is 0.08/1000. Typed errors that are themselves words
 
 `spatial.sigmaXFactor = sigmaYFactor = 1.0` and `autocorrect.contractions = true` (explicit
 apostrophe-less contraction rule, independent of sigma) are now the defaults. Re-run, typist
-sigma 0.25, seed 7, 2000 sentences: 93.80% word accuracy, 2.48 false corrections per 1000 words
-(was 93.68% / 3.88 at sigma 0.45).
+sigma 0.25, seed 7, 2000 sentences, **test split**: 93.80% word accuracy, 2.48 false corrections
+per 1000 words (was 93.68% / 3.88 at model sigma 0.45, same run settings). These 2000-sentence
+numbers are not comparable to the 5000-sentence, seed 1 tables above (e.g. config A's 93.66% /
+2.04 there, which predates the contraction rule); the dev split was only used for the sweeps.
 
 ## Caveats
 

@@ -3,7 +3,9 @@ package dev.keycorrect.core.data
 import android.content.SharedPreferences
 import com.google.common.truth.Truth.assertThat
 import java.security.GeneralSecurityException
+import java.security.UnrecoverableKeyException
 import java.util.Base64
+import javax.crypto.AEADBadTagException
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -82,7 +84,7 @@ class KeystoreDatabaseKeyProviderTest {
         override fun decrypt(iv: ByteArray, ciphertext: ByteArray): ByteArray {
             failWith?.let { throw it }
             if (iv.size != 12 || ciphertext.isEmpty() || ciphertext.last() != 1.toByte()) {
-                throw GeneralSecurityException("tag mismatch")
+                throw AEADBadTagException("tag mismatch")
             }
             val plain =
                 ciphertext.copyOf(ciphertext.size - 1).map { (it.toInt() xor 0x5A).toByte() }
@@ -93,7 +95,9 @@ class KeystoreDatabaseKeyProviderTest {
     private val prefs = FakePrefs()
     private val crypto = FakeCrypto()
     private var cleared = 0
-    private val provider = KeystoreDatabaseKeyProvider(prefs, crypto) { cleared++ }
+    private var databaseExists = false
+    private val provider =
+        KeystoreDatabaseKeyProvider(prefs, crypto, { cleared++ }, { databaseExists })
 
     private fun put(iv: String?, ct: String?) {
         prefs.map["iv"] = iv
@@ -105,7 +109,8 @@ class KeystoreDatabaseKeyProviderTest {
         val first = provider.getOrCreatePassphrase()
         assertThat(first).hasLength(32)
         assertThat(prefs.map.keys).containsExactly("iv", "ct")
-        val second = KeystoreDatabaseKeyProvider(prefs, crypto) {}.getOrCreatePassphrase()
+        val second =
+            KeystoreDatabaseKeyProvider(prefs, crypto, {}, { true }).getOrCreatePassphrase()
         assertThat(second).isEqualTo(first)
     }
 
@@ -148,22 +153,49 @@ class KeystoreDatabaseKeyProviderTest {
     }
 
     @Test
-    fun anyKeystoreFailureIsKeyUnavailable() {
+    fun permanentKeystoreFailuresAreKeyUnavailable() {
         provider.getOrCreatePassphrase()
         for (failure in
             listOf<Exception>(
-                GeneralSecurityException("lost"),
-                java.security.ProviderException("daemon died"),
-                IllegalStateException("keystore"),
-                RuntimeException("anything"),
+                android.security.keystore.KeyPermanentlyInvalidatedException("invalidated"),
+                UnrecoverableKeyException("unrecoverable"),
+                AEADBadTagException("tag"),
+                java.security.KeyStoreException("wrapped", UnrecoverableKeyException("inner")),
+                KeyUnavailableException("entry missing"),
             )) {
             crypto.failWith = failure
             val e =
                 assertThrows(KeyUnavailableException::class.java) {
                     provider.getOrCreatePassphrase()
                 }
+            if (failure !is KeyUnavailableException) {
+                assertThat(e).hasCauseThat().isSameInstanceAs(failure)
+            }
+        }
+    }
+
+    @Test
+    fun transientKeystoreFailuresAreRetryableNotKeyUnavailable() {
+        val first = provider.getOrCreatePassphrase()
+        for (failure in
+            listOf<Exception>(
+                GeneralSecurityException("flaky"),
+                java.security.KeyStoreException("daemon"),
+                java.security.ProviderException("daemon died"),
+                IllegalStateException("keystore"),
+                RuntimeException("dead object"),
+            )) {
+            crypto.failWith = failure
+            val e =
+                assertThrows(KeyTemporarilyUnavailableException::class.java) {
+                    provider.getOrCreatePassphrase()
+                }
+            assertThat(e).isNotInstanceOf(KeyUnavailableException::class.java)
             assertThat(e).hasCauseThat().isSameInstanceAs(failure)
         }
+        // Nothing was lost: the stored blob is untouched and recovery works once it is healthy.
+        crypto.failWith = null
+        assertThat(provider.getOrCreatePassphrase()).isEqualTo(first)
     }
 
     @Test
@@ -174,11 +206,26 @@ class KeystoreDatabaseKeyProviderTest {
     }
 
     @Test
+    fun existingDatabaseWithoutBlobIsKeyUnavailableNotANewKey() {
+        databaseExists = true
+        assertThrows(KeyUnavailableException::class.java) { provider.getOrCreatePassphrase() }
+        assertThat(prefs.map).isEmpty()
+    }
+
+    @Test
+    fun existingDatabaseWithBlobStillRecovers() {
+        val first = provider.getOrCreatePassphrase()
+        databaseExists = true
+        assertThat(provider.getOrCreatePassphrase()).isEqualTo(first)
+    }
+
+    @Test
     fun resetForgetsTheKey() {
         val first = provider.getOrCreatePassphrase()
         provider.reset()
         assertThat(cleared).isEqualTo(1)
         assertThat(prefs.map).isEmpty()
+        databaseExists = false // reset() is paired with deleting the database file
         assertThat(provider.getOrCreatePassphrase()).isNotEqualTo(first)
     }
 

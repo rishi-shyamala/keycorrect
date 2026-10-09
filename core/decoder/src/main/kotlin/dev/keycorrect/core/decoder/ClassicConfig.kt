@@ -19,9 +19,9 @@ data class ClassicConfig(
 /** Per-key Gaussian touch model (§4.4). */
 data class SpatialConfig(
     /** Standard deviation as a fraction of key width. */
-    // 1.0 chosen by the eval harness sweep (docs/EVAL.md): vs 0.45, typist sigma 0.25 gives
-    // 93.83% vs 93.68% accuracy with 2.48 vs 3.88 false corrections per 1000 words, and sigma 0.35
-    // gives 77.90% vs 75.87% with 1.07 vs 1.81.
+    // 1.0 chosen by the eval harness sweep (docs/EVAL.md, "Applied defaults"). Test split, 2000
+    // sentences, seed 7, typist sigma 0.25: 93.80% word accuracy and 2.48 false corrections per
+    // 1000 words, vs 93.68% and 3.88 at model sigma 0.45.
     val sigmaXFactor: Float = 1.0f,
     /** Standard deviation as a fraction of key height. */
     val sigmaYFactor: Float = 1.0f,

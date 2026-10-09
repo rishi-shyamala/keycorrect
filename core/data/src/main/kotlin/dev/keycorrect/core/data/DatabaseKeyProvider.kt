@@ -4,10 +4,15 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import java.io.File
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.security.UnrecoverableKeyException
 import java.util.Base64
+import javax.crypto.AEADBadTagException
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -23,8 +28,11 @@ interface DatabaseKeyProvider {
      * Returns the 32-byte database key, creating and persisting it on first use. The caller owns
      * the returned array and should zero it as soon as it has been handed to the database layer.
      *
-     * @throws KeyUnavailableException when a key was stored previously but can no longer be
-     *   recovered (Keystore entry lost, ciphertext corrupt). The database is then unreadable.
+     * @throws KeyUnavailableException when a key was stored previously but is permanently lost
+     *   (Keystore entry invalidated or missing, ciphertext corrupt). The database is then
+     *   unreadable for good and only [reset] recovers.
+     * @throws KeyTemporarilyUnavailableException on a transient Keystore failure (dead daemon,
+     *   provider error). Nothing is lost; the call can simply be retried later.
      */
     fun getOrCreatePassphrase(): ByteArray
 
@@ -32,8 +40,15 @@ interface DatabaseKeyProvider {
     fun reset()
 }
 
-/** The stored passphrase cannot be recovered, so existing encrypted data is lost. */
+/** The stored passphrase is permanently lost, so existing encrypted data is unreadable. */
 class KeyUnavailableException(message: String, cause: Throwable? = null) :
+    IllegalStateException(message, cause)
+
+/**
+ * The passphrase could not be recovered right now (transient Keystore failure such as a dead binder
+ * or provider error), but nothing indicates it is lost. Retry; do not offer a data reset.
+ */
+class KeyTemporarilyUnavailableException(message: String, cause: Throwable? = null) :
     IllegalStateException(message, cause)
 
 /**
@@ -62,21 +77,27 @@ internal constructor(
     private val prefs: SharedPreferences,
     private val crypto: KeyCrypto,
     private val clearKeystoreEntry: () -> Unit,
+    private val databaseExists: () -> Boolean,
 ) : DatabaseKeyProvider {
     constructor(
         context: Context,
         keyAlias: String = DEFAULT_KEY_ALIAS,
         prefsName: String = DEFAULT_PREFS_NAME,
+        databaseName: String = KeyCorrectDatabase.DATABASE_NAME,
     ) : this(
         preferencesOf(context, prefsName),
         AndroidKeystoreCrypto(keyAlias),
         { AndroidKeystoreCrypto.deleteEntry(keyAlias) },
+        { hasContent(context.applicationContext.getDatabasePath(databaseName)) },
     )
 
     /**
-     * Any failure to recover a previously stored key (missing or half-written preferences, bad
-     * Base64, lost Keystore entry, authentication failure, wrong length, any Keystore error) is a
-     * [KeyUnavailableException]. Only the first-use path (nothing stored) creates a key.
+     * Permanent failures to recover a previously stored key (missing or half-written preferences,
+     * bad Base64, invalidated or missing Keystore entry, authentication failure, wrong length) are
+     * a [KeyUnavailableException]. Other Keystore errors are transient and surface as
+     * [KeyTemporarilyUnavailableException]. Only the first-use path (nothing stored AND no database
+     * file yet) creates a key; a database without a key blob is unrecoverable and must not be
+     * orphaned by silently generating a new key.
      */
     @Synchronized
     override fun getOrCreatePassphrase(): ByteArray {
@@ -91,10 +112,17 @@ internal constructor(
                 }
             } catch (e: KeyUnavailableException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: ClassCastException) {
+                // A non-string value under our keys: the preferences file is corrupt for good.
                 throw KeyUnavailableException("Stored database key cannot be read", e)
+            } catch (e: Exception) {
+                throw KeyTemporarilyUnavailableException("Stored database key cannot be read", e)
             }
-        return if (stored != null) recover(stored.first, stored.second) else createAndStore()
+        if (stored != null) return recover(stored.first, stored.second)
+        if (databaseExists()) {
+            throw KeyUnavailableException("Database exists but its stored key is missing")
+        }
+        return createAndStore()
     }
 
     @SuppressLint("ApplySharedPref")
@@ -141,10 +169,13 @@ internal constructor(
             plain?.fill(0)
             throw e
         } catch (e: Exception) {
-            // GeneralSecurityException, IllegalArgumentException (Base64), ProviderException,
-            // IllegalStateException from the Keystore daemon, ...: all mean "cannot recover".
             plain?.fill(0)
-            throw KeyUnavailableException("Stored database key cannot be recovered", e)
+            if (isPermanentFailure(e)) {
+                throw KeyUnavailableException("Stored database key cannot be recovered", e)
+            }
+            // ProviderException, transient KeyStoreException, RuntimeException from a dead
+            // binder, ...: the key may well be fine, so do not declare the data lost.
+            throw KeyTemporarilyUnavailableException("Keystore temporarily unavailable", e)
         }
     }
 
@@ -155,6 +186,27 @@ internal constructor(
 
         private const val PREF_IV = "iv"
         private const val PREF_CIPHERTEXT = "ct"
+
+        /**
+         * Whether [e] (or a cause) proves the stored key can never be recovered: key invalidated or
+         * unrecoverable, GCM authentication failure, or an undecodable blob. Anything else is
+         * treated as retryable.
+         */
+        internal fun isPermanentFailure(e: Throwable): Boolean =
+            generateSequence(e) { it.cause }
+                .take(MAX_CAUSE_DEPTH)
+                .any {
+                    it is KeyPermanentlyInvalidatedException ||
+                        it is UnrecoverableKeyException ||
+                        it is AEADBadTagException ||
+                        it is BadPaddingException ||
+                        it is java.security.InvalidAlgorithmParameterException ||
+                        it is IllegalArgumentException // bad Base64
+                }
+
+        private const val MAX_CAUSE_DEPTH = 8
+
+        private fun hasContent(file: File): Boolean = file.isFile && file.length() > 0
 
         private fun preferencesOf(context: Context, prefsName: String): SharedPreferences {
             val appContext = context.applicationContext
@@ -173,7 +225,7 @@ internal class SealedKey(val iv: ByteArray, val ciphertext: ByteArray)
 internal interface KeyCrypto {
     fun encrypt(plain: ByteArray): SealedKey
 
-    /** Throws [KeyUnavailableException] or any security exception when it cannot decrypt. */
+    /** Throws [KeyUnavailableException] or any other exception when it cannot decrypt. */
     fun decrypt(iv: ByteArray, ciphertext: ByteArray): ByteArray
 }
 

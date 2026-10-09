@@ -143,3 +143,54 @@ class ContractionTest {
             .isEqualTo("don't")
     }
 }
+
+class ContractionIndexWarmUpTest {
+    @Test
+    fun failedBuildIsCachedAsEmptyAndNotRetried() {
+        var calls = 0
+        val index =
+            ContractionIndex(TestDictionary.dictionary) {
+                calls++
+                throw IllegalStateException("boom")
+            }
+        assertThat(index.lookup("dont")).isNull()
+        assertThat(index.lookup("im")).isNull()
+        index.warmUp()
+        assertThat(calls).isEqualTo(1)
+    }
+
+    @Test
+    fun warmUpIsIdempotentAndBuildsOnce() {
+        var calls = 0
+        val index =
+            ContractionIndex(TestDictionary.dictionary) { d ->
+                calls++
+                ContractionIndex.build(d)
+            }
+        index.warmUp()
+        index.warmUp()
+        assertThat(index.lookup("dont")?.surface).isEqualTo("don't")
+        assertThat(calls).isEqualTo(1)
+    }
+
+    @Test
+    fun engineWarmUpFromAnotherThreadThenPredictWorks() {
+        val engine = ClassicEngine(TestDictionary.dictionary, ClassicConfig())
+        val t = Thread { engine.warmUp() }
+        t.start()
+        t.join()
+        engine.warmUp()
+        val r =
+            engine.predictNow(
+                PredictRequest(
+                    TypingContext("", "", FieldClass.Text),
+                    TestKeyboard.typed("dont"),
+                    TestKeyboard.layout,
+                    3,
+                    0,
+                    true,
+                )
+            )
+        assertThat(r.autocorrect?.text).isEqualTo("don't")
+    }
+}

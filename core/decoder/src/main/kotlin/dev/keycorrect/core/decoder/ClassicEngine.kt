@@ -77,6 +77,15 @@ class ClassicEngine(
     private val phraseIds = IntArray(1)
     private val phraseLogProbs = FloatArray(1)
 
+    /**
+     * Builds the lazily initialised structures (the contraction index) so the first [predictNow]
+     * doesn't pay for them. Safe to call from any background thread, idempotent, and never throws:
+     * a build failure is remembered and the structure treated as empty.
+     */
+    fun warmUp() {
+        contractions.warmUp()
+    }
+
     override suspend fun load() = Unit
 
     override suspend fun unload() = Unit

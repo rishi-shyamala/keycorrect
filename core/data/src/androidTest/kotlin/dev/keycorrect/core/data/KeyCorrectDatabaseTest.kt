@@ -25,7 +25,7 @@ class KeyCorrectDatabaseTest {
     private val id = UUID.randomUUID().toString().take(8)
     private val dbName = "kc_test_$id.db"
     private val keyProvider =
-        KeystoreDatabaseKeyProvider(context, "kc_test_key_$id", "kc_test_prefs_$id")
+        KeystoreDatabaseKeyProvider(context, "kc_test_key_$id", "kc_test_prefs_$id", dbName)
     private val opened = mutableListOf<KeyCorrectDatabase>()
 
     private fun open(

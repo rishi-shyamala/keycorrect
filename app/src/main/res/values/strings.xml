@@ -86,6 +86,7 @@
     <string name="data_save_failed">Couldn\'t save your change. Try again.</string>
     <string name="data_error_title">Personal data unavailable</string>
     <string name="data_error_key_lost">The encryption key protecting your personal data is no longer available, so it can\'t be read.</string>
+    <string name="data_error_temporary">Your personal data is temporarily unavailable. Try again in a moment.</string>
     <string name="data_error_generic">Your personal data couldn\'t be loaded.</string>
     <string name="data_reset_action">Reset personal data</string>
     <string name="data_reset_title">Reset personal data?</string>
@@ -130,13 +131,13 @@
     <string name="licenses_data_header">English dictionary data</string>
     <string name="licenses_data_attribution">Word list and word frequencies: Android Open Source Project, LatinIME English dictionary, licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).\n\nNext-word statistics derived from Simple English Wikipedia (text by Wikipedia contributors, https://simple.wikipedia.org, licensed under CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/) and from sentences on Tatoeba (https://tatoeba.org, by Tatoeba contributors, licensed under CC BY 2.0 FR, https://creativecommons.org/licenses/by/2.0/fr/). The statistics are aggregated word counts; no article or sentence text is included. Changes were made.</string>
     <string name="licenses_data_derived">The compiled dictionary shipped with the app is a derived work and is made available under CC BY-SA 4.0 with the attributions above (see LICENSE-DATA.md in the source code).</string>
-    <string name="licenses_data_aosp">Android Open Source Project (LatinIME English word list) \u2014 Apache-2.0</string>
+    <string name="licenses_data_aosp">Android Open Source Project (LatinIME English word list) \u2014 Apache-2.0. Copyright (c) 2008 The Android Open Source Project</string>
     <string name="licenses_data_wikipedia">Simple English Wikipedia \u2014 CC BY-SA 4.0</string>
     <string name="licenses_data_tatoeba">Tatoeba \u2014 CC BY 2.0 FR</string>
     <string name="licenses_libraries_header">Libraries</string>
     <string name="licenses_androidx">AndroidX and Jetpack Compose (Google) \u2014 Apache-2.0. https://www.apache.org/licenses/LICENSE-2.0</string>
     <string name="licenses_kotlin">Kotlin and kotlinx (coroutines, serialization; JetBrains) \u2014 Apache-2.0. https://www.apache.org/licenses/LICENSE-2.0</string>
-    <string name="licenses_sqlcipher">SQLCipher for Android (Zetetic, LLC) \u2014 BSD-style licence, Community Edition. This product includes software developed by Zetetic, LLC. https://www.zetetic.net/sqlcipher/license/</string>
+    <string name="licenses_sqlcipher">SQLCipher for Android (Zetetic, LLC) \u2014 BSD-style licence, Community Edition. This product includes software developed by Zetetic, LLC. https://www.zetetic.net/sqlcipher/license/ Its cryptography uses the bundled LibTomCrypt library (public domain, https://www.libtom.net/LibTomCrypt/).</string>
     <string name="about_autofill_test">Autofill test</string>
     <string name="about_autofill_test_summary">Debug only: check password manager suggestions</string>
     <string name="autofill_test_title">Autofill test</string>
