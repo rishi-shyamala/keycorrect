@@ -47,7 +47,7 @@ import kotlin.math.roundToInt
  */
 
 /** Maximum content width on large screens (tablets, unfolded devices). */
-private val MaxContentWidth = 640.dp
+internal val MaxContentWidth = 640.dp
 
 /**
  * Scrollable page whose content is capped at [MaxContentWidth] and centred on wide screens.

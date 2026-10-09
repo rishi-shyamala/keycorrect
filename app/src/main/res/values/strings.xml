@@ -34,6 +34,75 @@
     <string name="keyboard_inline_autofill">Password manager suggestions</string>
     <string name="keyboard_inline_autofill_summary">Show autofill suggestions from your password manager in the suggestion bar</string>
 
+    <string name="text_correction_title">Text correction</string>
+    <string name="text_correction_summary">Suggestions, autocorrect, predictions</string>
+    <string name="text_correction_suggestions">Show suggestions</string>
+    <string name="text_correction_suggestions_summary">Show word suggestions above the keyboard while you type</string>
+    <string name="text_correction_autocorrect">Autocorrect</string>
+    <string name="text_correction_autocorrect_summary">Fix likely typos when you press space. Press backspace once to undo.</string>
+    <string name="text_correction_next_word">Next-word predictions</string>
+    <string name="text_correction_next_word_summary">Suggest the next word after you finish one</string>
+    <string name="text_correction_phrases">Phrase completion</string>
+    <string name="text_correction_phrases_summary">Suggest the rest of common phrases as you type</string>
+    <string name="text_correction_auto_space">Add space after suggestion</string>
+    <string name="text_correction_auto_space_summary">Insert a space when you tap a suggestion</string>
+    <string name="text_correction_requires_suggestions">Turn on suggestions to use this option.</string>
+
+    <string name="dictionary_title">Personal dictionary</string>
+    <string name="dictionary_summary">Words you added or the keyboard learned</string>
+    <string name="dictionary_search">Search words</string>
+    <string name="dictionary_add">Add word</string>
+    <string name="dictionary_add_dialog_title">Add word</string>
+    <string name="dictionary_word_label">Word</string>
+    <string name="dictionary_word_hint">A single word, such as a name or a term you use</string>
+    <string name="dictionary_empty_title">No personal words yet</string>
+    <string name="dictionary_empty_body">Words you add here are never marked as typos. Tap Add word to start.</string>
+    <string name="dictionary_no_matches">No words match your search.</string>
+    <string name="dictionary_delete_description">Delete %1$s</string>
+    <string name="dictionary_removed">Removed %1$s</string>
+
+    <string name="shortcuts_title">Text shortcuts</string>
+    <string name="shortcuts_summary">Type a short trigger, get longer text</string>
+    <string name="shortcuts_add">Add shortcut</string>
+    <string name="shortcuts_add_dialog_title">Add shortcut</string>
+    <string name="shortcuts_edit_dialog_title">Edit shortcut</string>
+    <string name="shortcuts_trigger_label">Trigger</string>
+    <string name="shortcuts_expansion_label">Expands to</string>
+    <string name="shortcuts_mode_label">When you type the trigger</string>
+    <string name="shortcuts_mode_suggest">Suggest</string>
+    <string name="shortcuts_mode_auto_expand">Auto-expand</string>
+    <string name="shortcuts_mode_suggest_help">The expansion appears as a suggestion you can tap.</string>
+    <string name="shortcuts_mode_auto_expand_help">The trigger is replaced when you press space.</string>
+    <string name="shortcuts_variables_help">Variables: {date} {time} {cursor} {clipboard}. {cursor} marks where the cursor ends up.</string>
+    <string name="shortcuts_empty_title">No shortcuts yet</string>
+    <string name="shortcuts_empty_body">Create a shortcut to expand a short trigger into longer text. For example: omw → On my way!</string>
+    <string name="shortcuts_delete_description">Delete shortcut %1$s</string>
+    <string name="shortcuts_removed">Removed shortcut %1$s</string>
+
+    <string name="data_action_save">Save</string>
+    <string name="data_action_cancel">Cancel</string>
+    <string name="data_action_undo">Undo</string>
+    <string name="data_action_retry">Try again</string>
+    <string name="data_save_failed">Couldn\'t save your change. Try again.</string>
+    <string name="data_error_title">Personal data unavailable</string>
+    <string name="data_error_key_lost">The encryption key protecting your personal data is no longer available, so it can\'t be read.</string>
+    <string name="data_error_generic">Your personal data couldn\'t be loaded.</string>
+    <string name="data_reset_action">Reset personal data</string>
+    <string name="data_reset_title">Reset personal data?</string>
+    <string name="data_reset_body">This permanently erases your personal dictionary, text shortcuts and learned data on this device. It can\'t be undone.</string>
+    <string name="data_reset_confirm">Erase</string>
+
+    <string name="validation_empty_word">Enter a word.</string>
+    <string name="validation_word_whitespace">A word can\'t contain spaces.</string>
+    <string name="validation_word_too_long">That word is too long. Maximum length: %1$d.</string>
+    <string name="validation_frequency_range">Frequency is out of range.</string>
+    <string name="validation_empty_trigger">Enter a trigger.</string>
+    <string name="validation_trigger_whitespace">A trigger can\'t contain spaces.</string>
+    <string name="validation_trigger_too_long">That trigger is too long. Maximum length: %1$d.</string>
+    <string name="validation_empty_expansion">Enter the text to expand to.</string>
+    <string name="validation_expansion_too_long">That text is too long. Maximum length: %1$d.</string>
+    <string name="validation_trigger_exists">A shortcut with this trigger already exists.</string>
+
     <string name="feedback_title">Feedback</string>
     <string name="feedback_summary">Vibration and sound</string>
     <string name="feedback_section_vibration">Vibration</string>

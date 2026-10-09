@@ -25,18 +25,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.keycorrect.AppContainer
 import dev.keycorrect.R
 import dev.keycorrect.core.settings.KeyboardSettings
-import dev.keycorrect.core.settings.SettingsRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** Root of the settings UI: top bar, back stack navigation and the current screen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsApp(
-    repository: SettingsRepository,
-    writeScope: CoroutineScope,
+    container: AppContainer,
     status: ImeStatus,
     onOpenKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
@@ -57,6 +55,8 @@ fun SettingsApp(
     val canGoBack = backStack.size > 1
     BackHandler(enabled = canGoBack) { backStack.removeAt(backStack.lastIndex) }
 
+    val repository = container.settingsRepository
+    val writeScope = container.applicationScope
     val settings by
         repository.settings.collectAsStateWithLifecycle(initialValue = KeyboardSettings())
     val onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit = { transform ->
@@ -95,6 +95,11 @@ fun SettingsApp(
                 SettingsDestination.Setup ->
                     SetupScreen(padding, status, onOpenKeyboardSettings, onChooseKeyboard)
                 SettingsDestination.Keyboard -> KeyboardSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.TextCorrection ->
+                    TextCorrectionScreen(padding, settings, onUpdate)
+                SettingsDestination.PersonalDictionary ->
+                    PersonalDictionaryScreen(padding, container)
+                SettingsDestination.Shortcuts -> ShortcutsScreen(padding, container)
                 SettingsDestination.Feedback -> FeedbackSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.About -> AboutScreen(padding, onNavigate = navigate)
                 SettingsDestination.AutofillTest -> AutofillTestScreen(padding)

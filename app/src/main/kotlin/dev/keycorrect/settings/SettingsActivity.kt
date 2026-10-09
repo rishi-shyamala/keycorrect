@@ -24,8 +24,7 @@ class SettingsActivity : ComponentActivity() {
         setContent {
             KeyCorrectTheme {
                 SettingsApp(
-                    repository = appContainer.settingsRepository,
-                    writeScope = appContainer.applicationScope,
+                    container = appContainer,
                     status = imeStatus(refreshKey),
                     onOpenKeyboardSettings = {
                         startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))

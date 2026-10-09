@@ -15,6 +15,14 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Keyboard : SettingsDestination("keyboard", R.string.keyboard_title)
 
+    data object TextCorrection :
+        SettingsDestination("text_correction", R.string.text_correction_title)
+
+    data object PersonalDictionary :
+        SettingsDestination("personal_dictionary", R.string.dictionary_title)
+
+    data object Shortcuts : SettingsDestination("shortcuts", R.string.shortcuts_title)
+
     data object Feedback : SettingsDestination("feedback", R.string.feedback_title)
 
     data object About : SettingsDestination("about", R.string.about_title)
@@ -24,8 +32,16 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     companion object {
         private val all by lazy {
-            listOf(Home, Setup, Keyboard, Feedback, About) +
-                if (BuildConfig.DEBUG) listOf(AutofillTest) else emptyList()
+            listOf(
+                Home,
+                Setup,
+                Keyboard,
+                TextCorrection,
+                PersonalDictionary,
+                Shortcuts,
+                Feedback,
+                About,
+            ) + if (BuildConfig.DEBUG) listOf(AutofillTest) else emptyList()
         }
 
         fun fromRoute(route: String): SettingsDestination =
