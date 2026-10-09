@@ -8,6 +8,10 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    // The compiled dictionary is memory-mapped straight out of the APK, so it must be stored
+    // uncompressed.
+    androidResources { noCompress += "kcd" }
+
     defaultConfig {
         applicationId = "dev.keycorrect"
         versionCode = 1
@@ -34,6 +38,8 @@ android {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:ime"))
+    implementation(project(":core:data"))
+    implementation(project(":core:decoder"))
     implementation(project(":core:input"))
     implementation(project(":core:layout"))
     implementation(project(":core:settings"))
