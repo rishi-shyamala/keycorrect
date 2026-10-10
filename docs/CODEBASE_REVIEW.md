@@ -13,7 +13,25 @@
 
 ---
 
-## 0. How to reproduce the analysis
+## 0. Status (2026-10-10, after validation)
+
+Every finding was checked against the code before acting. Done on `phase-3-code-review` and merged
+into `phase-3-learning` (PR #1):
+
+| Item | Outcome |
+|---|---|
+| D1–D3, D5, D6, D8 | Deleted. `rejectWord` became dead in 6692faa when undo moved to `retypeGuard` + keep thresholds (PLAN §6.3 rows 6, 21); not a lost call. |
+| D7 | Field removed. **Correction to this doc:** `thresholds.forgetSince(...)` has a side effect (it prunes outcomes), so the call stays; only the unused count went. |
+| D9–D11 | Kept per user decision; KDoc now says Tiers 0/1, the other capabilities and `load`/`unload` are the Phase 7 plugin contract and unused for now. |
+| F1 + D4 | Done differently from §5.2: no new module. `SentenceContext` moved to `core:learning` (JVM), which both the keyboard and the decoder already depend on; the decoder's `Text` delegates to it. Shim and parity test deleted. |
+| F2 | Done: `RecentWords` uses `core:learning`'s `editDistance`/`fold`. |
+| G2 | Done: `.github/workflows/ci.yml`. |
+| G1 (Detekt) | Deferred: the 1.23.x Gradle plugin targets Kotlin 2.0 and may clash with the forced KGP 2.4.21; its own PR. |
+| G3, F3, F4, F5, §5.3 splits | Deferred to a later refactor branch. |
+
+Tests after the changes: 1066 pass (1067 minus the deleted one-test parity file).
+
+## 0.1 How to reproduce the analysis
 
 Everything was measured on the phase-3 branch. Commands (from the repo root):
 

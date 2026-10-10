@@ -1,0 +1,52 @@
+# Format, unit tests (Android + JVM modules), lint and a debug build on every push and PR.
+# The eval harness's misspell mode needs downloaded data (tools/data/fetch-sources.sh) and is not
+# run here; its unit tests are.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Same packages as docs/SETUP.md; AGP would fetch some of them itself, the NDK it may not.
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-37.0" "build-tools;37.0.0" "ndk;29.0.14206865"
+
+      # Also validates the Gradle wrapper checksum.
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Check, test, lint, build
+        run: ./gradlew --console=plain spotlessCheck testDebugUnitTest test lintDebug assembleDebug
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: reports
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          retention-days: 7

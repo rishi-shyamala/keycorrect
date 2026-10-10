@@ -22,8 +22,8 @@ Read this first when resuming. Other docs:
 | 5–10 | see PLAN §17 |
 
 - **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. `main` and `phase-3-learning` are pushed. The old local branches `phase-1-core-keyboard` and `phase-2-prediction-core` are merged and can be deleted.
-- **CI:** none. The PR has 0 checks. A suggested next step is a GitHub Actions workflow that runs the unit tests, spotless, lint and assemble. Offer it; it hasn't been done.
-- **Tests:** 836 JVM tests pass, and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, lint, debug and release builds are clean.
+- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
+- **Tests:** 1066 unit tests pass (Android + JVM modules, incl. tools), and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, lint, debug and release builds are clean.
 - **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
 
 ## 2. Workflow rules the user set (follow these)
@@ -110,7 +110,7 @@ Read this first when resuming. Other docs:
 app/                 IME service, settings app (Compose), AppContainer, LearningHost, PredictionHost
 core/designsystem    Material 3 dynamic theme
 core/ime             ComposeInputMethodService (lifecycle/saved-state owners for Compose in an IME)
-core/input           EditorSession/TextEditor, FieldProfile (privacy gates), EnterAction, Graphemes, AutoCaps, SentenceContext
+core/input           EditorSession/TextEditor, FieldProfile (privacy gates), EnterAction, Graphemes, AutoCaps
 core/layout          JSON layout format + built-ins + KeyboardComposer + KeyboardGeometry (JVM)
 core/settings        KeyboardSettings + DataStore (DEVICE-PROTECTED storage; non-sensitive only)
 core/data            SQLCipher DB (Keystore-wrapped key), user dictionary, shortcuts, SqlLearningStore (schema v3)
@@ -118,7 +118,8 @@ core/engine-api      TextEngine contract (Generate/Score/Predict tiers), Predict
 core/dictionary      KCD1 mmap binary dictionary reader + writer (JVM)
 core/decoder         ClassicEngine: spatial model, A* trie search, back-off LM, autocorrect policy, contractions,
                      cognitive-misspelling rules, personalization terms, tie rule (JVM)
-core/learning        Events/updates contract, OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
+core/learning        Events/updates contract, SentenceContext (context buckets, shared with the decoder),
+                     OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
 feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), controller, PredictiveInput
                      (composing/autocorrect/undo/learning events), TouchStateMachine, OwnEditTracker, strip, KeyFeedback
 tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
@@ -216,7 +217,7 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
 ## 10. Next steps
 
 1. **The user reviews and merges PR #1** (`phase-3-learning` → `main`). After the merge, pull `main` locally and delete the merged local branches.
-2. **Optional, but offer it:** add a GitHub Actions CI workflow that runs `spotlessCheck`, `testDebugUnitTest`, the JVM module tests, `lintDebug` and `assembleDebug`. Note that the eval harness and the misspell data need downloads, so keep them out of CI.
+2. **Deferred review items:** `docs/CODEBASE_REVIEW.md` §0 lists what was done and what is left (Detekt, test fixtures, settings-list consolidation, tools CLI parser, splitting `PredictiveInput`, `AutocorrectPolicy` predicates). Do them on their own branch, not mixed with Phase 4 features.
 3. **Optional:** run the Phase 3 device checks on the S23 Ultra when the user frees the phone (it's unchecked in the PR test plan).
 4. **Phase 4: editing, clipboard, emoji** (PLAN §9, §10, §11, §8 terminal row). Suggested breakdown, following the usual flow (branch `phase-4-editing`):
    - **Spacebar gestures:** horizontal drag moves the cursor with acceleration; vertical drag moves between lines; long-press then drag selects.
