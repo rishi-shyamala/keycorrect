@@ -1,0 +1,252 @@
+# KeyCorrect — Handoff (end of Phase 3, 2026-10-10)
+
+Read this first when resuming. Other docs:
+- `docs/PLAN.md`: the design and roadmap. §16 has the decisions and §17 the phases.
+- `docs/EVAL.md`: the evaluation harness and its results.
+- `docs/DATA_SOURCES.md` and `LICENSE-DATA.md`: data licences.
+- `docs/LAYOUT_FORMAT.md`: the layout JSON format.
+- `docs/SETUP.md`: the toolchain.
+- `core/dictionary/FORMAT.md`: the binary dictionary format.
+
+---
+
+## 1. Status
+
+| Phase | State |
+|---|---|
+| 0 Foundations | merged to `main`, pushed |
+| 1 Core keyboard | merged to `main`, pushed |
+| 2 Prediction core | merged to `main`, pushed |
+| **3 Learning** | **complete on `phase-3-learning`, pushed, PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1) OPEN** (not merged; merging is the user's call) |
+| 4 Editing, clipboard, emoji | next |
+| 5–10 | see PLAN §17 |
+
+- **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. `main` and `phase-3-learning` are pushed. The old local branches `phase-1-core-keyboard` and `phase-2-prediction-core` are merged and can be deleted.
+- **CI:** none. The PR has 0 checks. A suggested next step is a GitHub Actions workflow that runs the unit tests, spotless, lint and assemble. Offer it; it hasn't been done.
+- **Tests:** 836 JVM tests pass, and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, lint, debug and release builds are clean.
+- **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
+
+## 2. Workflow rules the user set (follow these)
+
+1. **The user decides design questions.** Present options with a recommendation, using AskUserQuestion. Don't silently pick architecture, licensing, defaults that change behaviour, or data/privacy trade-offs.
+2. **Subagents (from `~/.claude/CLAUDE.md`).**
+   - Opus plans, reviews and talks to the user.
+   - `sonnet-worker` takes scoped implementation, debugging, reviews and device tests.
+   - `haiku-helper` takes mechanical, tool-heavy tasks. It struggled on long device tests: 15-turn limit, misread geometry.
+   - Sonnet workers often hit the 40-turn limit. When they do, resume with SendMessage and a narrowed brief ("wrap up: make tests green, report"). Give each agent exclusive file ownership when running them in parallel, and commit each agent's paths separately.
+3. **Review before push.**
+   - Run a separate reviewer agent on every branch or PR before pushing to the remote.
+   - Fix verified findings, then run a short follow-up review of the fix commits.
+   - The flow is: phase branch → implementation → device test → review → fixes → follow-up review → push branch → `gh pr create` → bind with `mcp__ccd_pr__get_status`/`bind_pr`.
+4. **Device testing rules.**
+   - The user stopped using the S23; test on the **Tab S9**.
+   - **Never use Gmail or any app or site with live data.** Use only our app, plus Chrome/Firefox on the **local test page** (below).
+   - Never unlock the device or enter a PIN. If `isKeyguardShowing=true`, stop and ask the user to unlock.
+   - Never tap settings switches unless the test needs it, and verify the result. Earlier test helpers flipped auto-cap and autofill by accident.
+   - **Always restore the Samsung keyboard** afterwards: `ime set com.samsung.android.honeyboard/.service.HoneyBoardService`.
+   - If another app comes to the foreground, back out; never tap inside it.
+   - The user wants device tests run **before** the code review when both are pending.
+
+## 3. Environment and devices
+
+- **Host:** CachyOS (Arch), shell fish. The Bash tool's shell is zsh-like: globs like `--include=*.kt` fail, so quote them. A variable holding a command (`A="adb -s X"; $A …`) doesn't word-split. Use `export ANDROID_SERIAL=…` instead.
+- **JDK:** 21 (`jdk21-openjdk`, archlinux-java default). `android-udev` is installed.
+- **SDK:** installed with Google's **Android CLI** (`~/.local/bin/android`; always pass `--no-metrics`) into `~/Android/Sdk`.
+  - Installed packages: platforms/android-37.0, build-tools 37.0.0 (AGP also pulled in 36.0.0), ndk 29.0.14206865, cmake 3.31.6, platform-tools 37.0.1 (installed by AGP).
+  - The system `adb` is `/usr/bin/adb` (android-tools 37). Both versions coexist.
+  - `local.properties` (git-ignored) holds `sdk.dir`.
+- **Toolchain:**
+  - Gradle 9.8.1 (checksum-pinned wrapper) and AGP 9.4.1 with **built-in Kotlin**; KGP 2.4.21 is forced via the build-logic classpath.
+  - Compose BOM 2026.09.00 with material3 1.4 (Expressive APIs not used yet).
+  - compileSdk/targetSdk 37, minSdk 31, NDK 29.
+  - `abiFilters` are arm64-v8a and x86_64 (32-bit is intentionally unsupported).
+- **Devices:**
+
+| Device | Serial | Notes |
+|---|---|---|
+| Galaxy Tab S9 (SM-X710) | `R52X204HLZV` | Android 16 / One UI 8.5, SD 8 Gen 2, 1600×2560, density 300 (override). Rotates; tests were run in both portrait and landscape. The `adb` authorisation once dropped ("unauthorized"); the user had to re-accept the RSA prompt. |
+| Galaxy S23 Ultra (SM-S918U) | `R5CW22BB7YY` | Android 16 / One UI 8.5, 1440×3088, density 560. **The user needs the phone; don't use it unless asked.** Phase 3 hasn't run on it. |
+
+- **IME ids:**
+  - debug: `dev.keycorrect.debug/dev.keycorrect.ime.KeyCorrectImeService` (debug builds use the `.debug` applicationIdSuffix)
+  - release: `dev.keycorrect/.ime.KeyCorrectImeService`
+  - Right after install, `ime enable/set` often says "Unknown input method". Wait 2–3 s and retry.
+- **Release builds for testing:** `./gradlew :app:assembleRelease`, then sign with the debug key using `~/Android/Sdk/build-tools/37.0.0/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out <out.apk> app/build/outputs/apk/release/app-release-unsigned.apk`. Uninstall the release test package afterwards.
+- **Local web test page:**
+  - Files: `scratchpad/webtest/index.html`, plus a logging server at `scratchpad/webtest_server.py` (it serves `127.0.0.1:8765` and appends events to `webtest/events.jsonl`, masking passwords).
+  - The page has text, search, email, url, password, number, tel, textarea and contenteditable fields, and logs beforeinput/composition events.
+  - Start it with `python3 -I webtest_server.py <dir>` (as a background task), then `adb reverse tcp:8765 tcp:8765`, then open `http://localhost:8765/` in Chrome or Firefox.
+  - The scratchpad is session-specific: **recreate it next session** (the files may be gone). The user stopped the server at the end of this session.
+  - The page's text `<input>` has `autocomplete=off`, so Chrome sends NO_SUGGESTIONS and the keyboard correctly stays inert there. Use the textarea for autocorrect tests.
+
+## 4. Device-test playbook (Tab S9, portrait)
+
+- **Keyboard geometry (default key height 54 dp, no number row):**
+  - The IME window top is at ≈1959. Confirm it with `dumpsys window InputMethod` (frame=…).
+  - Content starts at top + 7.5 px; the 40 dp strip is 75 px tall, so the strip centre is at y≈2004. Its three slots are at x≈267 / 800 / 1333.
+  - Key rows are 101.25 px tall, with centres at y≈2092 / 2193 / 2294 / 2396.
+  - The key unit is u = 158.5 px.
+    - Row 1: x = 7.5+(i+0.5)u
+    - Row 2: x = 7.5+(i+1)u
+    - Row 3: z..m at x = 7.5+(2+i)u, shift at 126, backspace at 1473
+    - Row 4: space at 800
+  - In landscape (2560×1600) the rows were at y 1133/1233/1335/1436, with q=134 … p=2423. Recompute from a screenshot when in doubt.
+- **Reading text:** `uiautomator dump` shows the EditText `text` attribute of our app and Chrome fields. It does NOT see the IME window, and the keys are drawn on a canvas.
+- **Long-press:** `input motionevent DOWN x y`, sleep, then `MOVE`/`UP`. A screenshot taken while holding takes longer than 300 ms, so it triggers the long-press popup.
+- **Perf:**
+  - `dumpsys gfxinfo <pkg> reset`, type, then read `dumpsys gfxinfo <pkg>`.
+  - Measure the **release** build. Debug Compose is far slower: a debug build showed 55% janky frames, while release showed 3.4% with frame p50 5 ms and p99 10 ms at about 22 keys/s.
+  - Samsung hides `Log.d`, so the `DecoderLatency` debug log isn't visible.
+  - A fast typing script, `input tap` chains in one `adb shell "…;…"`, manages about 22 taps/s.
+- **Haptics:** `dumpsys vibrator_manager`. Word events show as `effect` entries with usage TOUCH:
+  - autocorrect: a double 12 ms pulse
+  - unknown word: a single 40 ms pulse
+- **Instrumented tests:** `ANDROID_SERIAL=R52X204HLZV ./gradlew :core:data:connectedDebugAndroidTest` works even while the device is locked.
+- **Test data on the tablet:** our app has "thier" learned (it's in Learned words and Never corrected) from test 2. The user was told to remove it.
+
+## 5. Architecture map
+
+```
+app/                 IME service, settings app (Compose), AppContainer, LearningHost, PredictionHost
+core/designsystem    Material 3 dynamic theme
+core/ime             ComposeInputMethodService (lifecycle/saved-state owners for Compose in an IME)
+core/input           EditorSession/TextEditor, FieldProfile (privacy gates), EnterAction, Graphemes, AutoCaps, SentenceContext
+core/layout          JSON layout format + built-ins + KeyboardComposer + KeyboardGeometry (JVM)
+core/settings        KeyboardSettings + DataStore (DEVICE-PROTECTED storage; non-sensitive only)
+core/data            SQLCipher DB (Keystore-wrapped key), user dictionary, shortcuts, SqlLearningStore (schema v3)
+core/engine-api      TextEngine contract (Generate/Score/Predict tiers), PredictRequest/Result (JVM)
+core/dictionary      KCD1 mmap binary dictionary reader + writer (JVM)
+core/decoder         ClassicEngine: spatial model, A* trie search, back-off LM, autocorrect policy, contractions,
+                     cognitive-misspelling rules, personalization terms, tie rule (JVM)
+core/learning        Events/updates contract, OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
+feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), controller, PredictiveInput
+                     (composing/autocorrect/undo/learning events), TouchStateMachine, OwnEditTracker, strip, KeyFeedback
+tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
+tools/eval           Offline harness: spatial typist, learn mode (simulated user), misspell mode
+build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization)
+```
+
+- **Data flow for a keystroke:**
+  1. The TouchStateMachine maps the touch to a key.
+  2. `KeyboardController` and `PredictiveInput` handle composing.
+  3. `DecoderLoop` runs on its own thread and calls `ClassicEngine.predictNow` with `personalization = { learningHost.personalization() }`, which is `model.snapshot()`.
+  4. The suggestion strip updates.
+  5. On a separator, autocorrect is applied. If no current result is ready, it waits at most 30 ms, then commits as typed.
+  6. Learning events go through one privacy gate to `LearningSink`, then the `LearningHost` thread, then `OutcomeClassifier`, then `PersonalModel`, then `SqlLearningStore` (atomic `commit`/`replaceAll`).
+- **Privacy invariants (tested; keep them):**
+  - Sensitive (password) fields never compose, decode, read text or learn. `EditorSession` refuses reads as well.
+  - No learning in Email, Url or PostalAddress fields. PersonName fields learn, but none of the four records sentence words.
+  - No learning when the field has the no-learning flag, in incognito, or with learning off. The keyboard gate and the host gate both check.
+  - Logs contain only exception class names, never user text.
+  - No INTERNET permission, ever (D3). Backup and device-transfer are disabled. Settings live in device-protected storage and must stay non-sensitive.
+  - The direct-boot-aware IME is **intentionally deferred** to hardening. If it's enabled, the IME can become the lock-screen keyboard, and a bug there could lock the user out of the device.
+
+## 6. Decisions log (user decisions; all in PLAN)
+
+- **D1:** built from scratch, in Kotlin with Compose. **D2:** GPL-3.0-or-later. **D3:** fully local, with no INTERNET permission. Network engines may only ever come as separate plugin APKs.
+- **D4:** English-first. **D5:** minSdk 31. **D6:** a small STT default (≤ ~50 MB weights, loaded only while dictating).
+- **D7:** own shape-matching (SHARK²-style) swipe decoder first, with a neural option later.
+- **D8:** single-canvas key renderer. **D9:** SQLCipher. **D10:** recent-sentence buffer ON by default, 7-day TTL.
+- **Dictionary data:** AOSP wordlist (Apache-2.0), Simple English Wikipedia (CC BY-SA 4.0) and Tatoeba (CC BY 2.0 FR).
+  - Tatoeba's placeholder names "Tom" and "Mary" are filtered out.
+  - Only the compiled dictionary is committed; it is licensed CC BY-SA 4.0 (`LICENSE-DATA.md`).
+  - The Wikipedia misspellings list is used for evaluation only and is never shipped.
+- **Learning:**
+  - An undo counts as a *keep* only if the restored word is finished unchanged.
+  - Implicit add after **N** keeps and suppression after **M ≥ N** keeps, both default 2 and set in Advanced.
+  - The tie rule for non-words is **ON**. The user accepted the trade-off: wrong corrections go from 2.5 to about 4.6 per 1000 in eval, and each one self-heals.
+  - Name fields learn; email, URL and address fields don't.
+  - Keyboard-fit recommendations (PLAN §6.5): the stats are collected now, and the report UI comes in Phase 8.
+- **Haptics:** distinct vibrations for an applied autocorrect and for an unknown word that wasn't corrected (Feedback screen).
+- **Tuning (from data):** spatial sigma is 0.6, plus the cognitive-misspelling rules. See docs/EVAL.md "Applied defaults" for the current numbers.
+
+## 7. Evaluation (tools/eval)
+
+- **Spatial typing:**
+  - Command: `./gradlew -q :tools:eval:run --args="--sentences 2000 --sigma 0.25 --seed 7"`. Use the test split; sweeps tune on the dev split.
+  - Current results: about 94.0% accuracy. False corrections are about 4.5/1000 at σ0.25 with the tie rule on.
+- **Learning:**
+  - Command: `--mode learn --words 20000 --seed 1`, with `--model k=v` and `--classifier k=v` for overrides.
+  - Results: false corrections about 0.5/1000 with learning versus 2.7–5.2 without. 0 wrong corrections after the keep threshold.
+- **Misspellings:**
+  - Command: `--mode misspell`, after the data has been fetched with `tools/data/fetch-sources.sh`.
+  - Results: 76.7% accuracy, top-3 91%.
+- **Data:** `data/raw` and `data/processed` are git-ignored. Refetch with `tools/data/fetch-sources.sh` (checksums are in `tools/data/sources.sha256`), then run `./gradlew :tools:dictbuild:run --args="count"` and `"compile"`.
+- **Probing a single word with the real dictionary:** write a temporary JUnit test in `tools/eval/src/test` that opens `../../app/src/main/assets/dictionaries/en_US.kcd`, builds `ClassicEngine(dict, config)` and an `EvalKeyboard()`, and prints `predictNow`. Delete it afterwards.
+
+## 8. Known issues, limitations and tech debt
+
+- "tset" is now autocorrected because of the tie rule, but real-word misspellings ("form"→"from") are almost never corrected, by design: the literal is a valid word.
+- 2-edit misspellings only reach about 9% accuracy, and 3+ edits 0%.
+- Promoting personal words from typing alone is slow on purpose (≥3 sessions, plus the typo guard). Explicit adds and undo-keeps are the fast paths. Junk typos 2+ edits away from a frequent word can still be promoted, rarely ("rheh").
+- After an undo with a punctuation separator, backspacing the punctuation and finishing the word again records it twice in the sentence buffer.
+- Low-severity review leftovers:
+  - A device clock jumping forward by more than 7 days wipes the sentence buffer.
+  - A tiny forget-vs-drain race can delete a pre-existing dictionary word.
+  - A suppressed runner-up makes real-word near-ties abstain (on the safe side).
+- `forgetSince` can only subtract n-gram, correction and touch evidence from the last 24 h, because that is the journal's retention.
+- The delete-and-retype device failure was fixed by a session-independent check. The exact device repro was never reproduced in unit tests, but it passed on the device afterwards.
+- Accessibility strings in `PredictionStrip` are hard-coded English (TODO: move them to strings.xml).
+- Settings icons are text glyphs, because material-icons isn't a dependency.
+- On a landscape tablet the keys are very wide. Split/floating layouts are planned for Phase 8.
+- The Tab S9 reports `mIsHapticSupported=false` (coin motor) but still plays the effects. Strength isn't adjustable there.
+- In debug builds, the Compose keyboard is janky. Always judge performance on release builds.
+- `LearningSink.onSentenceWord(..., field)` has a default overload. The keyboard gates PersonName itself, and the host also discards those sessions.
+
+## 9. Quirks learned (save time)
+
+- **AGP 9 built-in Kotlin:**
+  - Don't apply `org.jetbrains.kotlin.android`.
+  - Upgrade KGP by putting `kotlin-gradle-plugin` on the build-logic `implementation` classpath.
+  - Plugins such as kotlin-serialization must be applied *inside a convention plugin* (`keycorrect.kotlin.serialization`). Applying them by id in a module fails.
+- **Compose in an IME:**
+  - The service must be its own LifecycleOwner and SavedStateRegistryOwner, initialised before `super.onCreate()`.
+  - Lifecycle: RESUMED while shown, STOP while hidden.
+  - Bottom insets must be `WindowInsets.navigationBars.union(WindowInsets.tappableElement)`. Samsung's IME nav-bar buttons need the 48 dp `tappableElement`; `navigationBars` alone gives only about 15 dp.
+- **Inline autofill:** it worked with Bitwarden once the user had enabled Bitwarden's own inline-autofill setting, and once KeyCorrect's "Password manager suggestions" setting was on. A test helper had switched it off.
+- **SQLCipher:**
+  - The AAR bundles LibTomCrypt (noted in the licences screen).
+  - Reading 120k rows with one cursor is slow (6.8 s), so `SqlLearningStore` pages by rowid in chunks of 4096 (0.5 s).
+  - NaN doubles are stored as NULL, so never persist NaN.
+- **Dictionary asset:** stored uncompressed (`androidResources.noCompress += "kcd"`) so it can be memory-mapped from the APK through `AssetManager.openFd`.
+- **Device tests:** `uiautomator dump` sometimes brings the Google app to the foreground. Check `topResumedActivity` before tapping.
+- **Spotless:** it's a root-level task only. Parallel agents running it reformat each other's files; that's harmless.
+- **Subagent turn limits:** state "be economical with turns, batch edits" in briefs, and give a priority order so a partial result is still useful.
+
+## 10. Next steps
+
+1. **The user reviews and merges PR #1** (`phase-3-learning` → `main`). After the merge, pull `main` locally and delete the merged local branches.
+2. **Optional, but offer it:** add a GitHub Actions CI workflow that runs `spotlessCheck`, `testDebugUnitTest`, the JVM module tests, `lintDebug` and `assembleDebug`. Note that the eval harness and the misspell data need downloads, so keep them out of CI.
+3. **Optional:** run the Phase 3 device checks on the S23 Ultra when the user frees the phone (it's unchecked in the PR test plan).
+4. **Phase 4: editing, clipboard, emoji** (PLAN §9, §10, §11, §8 terminal row). Suggested breakdown, following the usual flow (branch `phase-4-editing`):
+   - **Spacebar gestures:** horizontal drag moves the cursor with acceleration; vertical drag moves between lines; long-press then drag selects.
+   - **Backspace:** swipe left to select and delete words.
+   - **Editing panel:** a D-pad, word jumps, Home/End, a selection toggle, select word/sentence/line/all, cut/copy/paste, undo/redo.
+   - **Selection strip:** expand the selection, toggle case, and a hook for "send to engine".
+   - **Terminal (`TYPE_NULL`) extra-keys row:** ctrl, esc, tab and arrows, sending raw key events.
+   - **Clipboard history:**
+     - Capture with a listener that works only as the default IME.
+     - Never store clips with `EXTRA_IS_SENSITIVE`, clips copied from password fields, or clips matching the heuristics (Luhn card numbers, IBANs, tokens, OTPs held for 3 minutes).
+     - Keep the last N items (default 30) with a TTL (default 7 days); pinned items never expire.
+     - Copy images into private storage at capture time and paste them via `commitContent` and a FileProvider.
+     - Store everything encrypted, and disable history in incognito and direct boot.
+   - **Emoji:**
+     - Data from Unicode `emoji-test.txt` and CLDR annotations (Unicode licence) as a build-time asset, filtered with `Paint.hasGlyph`.
+     - Categories, recents, skin tones, keyword search, and emoji suggestions in the strip.
+   - Then a device test (Chrome page plus our app), a review, fixes, a follow-up review, a PR.
+5. Later phases follow PLAN §17:
+   - 5: swipe
+   - 6: voice (STT ≤ 50 MB default; benchmark Moonshine v2 Streaming Tiny against Zipformer-20M)
+   - 7: neural and plugin engines
+   - 8: UI/UX customization, including the keyboard-fit report and haptic durations per event
+   - 9: hardening, including direct boot, `accessibilityDataSensitive` and the perf pass
+   - 10: optional
+
+## 11. Memory
+
+Claude's persistent memory for this project is in `~/.claude/projects/-home-rishi-Projects-keycorrect/memory/`:
+- `keycorrect-project-plan.md` (status and decisions)
+- `user-final-say-on-design.md`
+- `review-before-push.md`
+
+Update `keycorrect-project-plan.md` when the status changes.
