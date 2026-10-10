@@ -108,6 +108,13 @@ fun LearningScreen(
                 onCheckedChange = { v -> onUpdate { it.copy(sentenceBufferEnabled = v) } },
             )
 
+            Text(
+                stringResource(R.string.learning_stop_note),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+
             LearningDataGate(container, inline = true, onResetFailed = { say(failed) }) { host ->
                 LearningBody(container, host, say, failed, onNavigate)
             }

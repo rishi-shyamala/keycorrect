@@ -54,7 +54,10 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             } else {
                 raw
             }
-        return capNegatives(voiced).filter { it.isFinite() }
+        val field = event.profile.field
+        return capNegatives(voiced)
+            .filter { it.isFinite() }
+            .map { if (it is Preference) it.copy(field = field) else it }
     }
 
     // ---- WordCommitted ---------------------------------------------------------------------

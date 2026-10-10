@@ -4,7 +4,6 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.FieldClass
-import dev.keycorrect.core.learning.RankingFeatures
 import java.io.File
 import java.nio.ByteBuffer
 import org.junit.Test
@@ -20,13 +19,13 @@ class EngineRankingFeaturesTest {
         activity: DecodeActivity = DecodeActivity(),
         budget: DecodeBudget = DecodeBudget(),
         deferred: () -> Unit = {},
-    ) = EngineRankingFeatures(engine, activity, budget, { FieldClass.Text }, onDeferred = deferred)
+    ) = EngineRankingFeatures(engine, activity, budget, onDeferred = deferred)
 
     @Test
     fun featuresOfTheLiteralAndASuggestionWithoutTouches() {
         val b = bridge()
-        val literal = b.features("teh", listOf("in"), "teh")
-        val suggestion = b.features("teh", listOf("in"), "the")
+        val literal = b.features("teh", listOf("in"), "teh", FieldClass.Text)
+        val suggestion = b.features("teh", listOf("in"), "the", FieldClass.Text)
         assertThat(literal).isNotNull()
         assertThat(literal!!.isLiteral).isTrue()
         assertThat(suggestion).isNotNull()
@@ -36,7 +35,7 @@ class EngineRankingFeaturesTest {
 
     @Test
     fun emptyContextIsFine() {
-        assertThat(bridge().features("helo", emptyList(), "hello")).isNotNull()
+        assertThat(bridge().features("helo", emptyList(), "hello", FieldClass.Text)).isNotNull()
     }
 
     @Test
@@ -44,10 +43,12 @@ class EngineRankingFeaturesTest {
         var deferred = 0
         val activity = DecodeActivity()
         val b = bridge(activity, deferred = { deferred++ })
-        activity.track { assertThat(b.features("teh", emptyList(), "the")).isNull() }
+        activity.track {
+            assertThat(b.features("teh", emptyList(), "the", FieldClass.Text)).isNull()
+        }
         assertThat(deferred).isEqualTo(1)
         // And for a short while afterwards.
-        assertThat(b.features("teh", emptyList(), "the")).isNull()
+        assertThat(b.features("teh", emptyList(), "the", FieldClass.Text)).isNull()
         assertThat(deferred).isEqualTo(2)
     }
 
@@ -55,14 +56,16 @@ class EngineRankingFeaturesTest {
     fun skippedWhenTheBudgetIsUsedUp() {
         var deferred = 0
         val b = bridge(budget = DecodeBudget(maxCalls = 1), deferred = { deferred++ })
-        assertThat(b.features("teh", emptyList(), "the")).isNotNull()
-        assertThat(b.features("teh", emptyList(), "the")).isNull()
+        assertThat(b.features("teh", emptyList(), "the", FieldClass.Text)).isNotNull()
+        assertThat(b.features("teh", emptyList(), "the", FieldClass.Text)).isNull()
         assertThat(deferred).isEqualTo(1)
     }
 
     @Test
-    fun aCandidateOutsideThePoolIsNotDecodableNotBusy() {
-        assertThat(bridge().features("teh", emptyList(), "zzzzzz"))
-            .isSameInstanceAs(RankingFeatures.NOT_DECODABLE)
+    fun aCandidateOutsideThePoolIsNullAndDeferredBecauseBusyIsNotDistinguishable() {
+        var deferred = 0
+        val b = bridge(deferred = { deferred++ })
+        assertThat(b.features("teh", emptyList(), "zzzzzz", FieldClass.Text)).isNull()
+        assertThat(deferred).isEqualTo(1)
     }
 }

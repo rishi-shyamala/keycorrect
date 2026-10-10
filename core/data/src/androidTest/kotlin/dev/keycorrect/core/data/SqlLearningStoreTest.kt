@@ -183,6 +183,69 @@ class SqlLearningStoreTest {
     }
 
     @Test
+    fun commitSavesAppendsAndTrimsInOneTransaction() = runBlocking {
+        val store = SqlLearningStore(open())
+        val old = JournalEntry(100, LearningUpdate.BlockWord("old"))
+        val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
+        store.appendJournal(listOf(old))
+        store.commit(small(), listOf(fresh), truncateBefore = 200)
+        assertThat(store.load()).isEqualTo(small())
+        assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(fresh)
+        Unit
+    }
+
+    @Test
+    fun aFailingCommitLeavesStateAndJournalUntouched() = runBlocking {
+        val store = SqlLearningStore(open())
+        val kept = JournalEntry(100, LearningUpdate.BlockWord("kept"))
+        store.save(small())
+        store.appendJournal(listOf(kept))
+        // NaN binds as NULL and violates NOT NULL: the transaction must roll back as a whole.
+        val bad = small().copy(ngrams = listOf(NgramRow(1, "x", Double.NaN, 1)))
+        val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
+        val failedCommit = runCatching { store.commit(bad, listOf(fresh), Long.MAX_VALUE) }
+        assertThat(failedCommit.isFailure).isTrue()
+        val failedReplace = runCatching { store.replaceAll(bad, listOf(fresh)) }
+        assertThat(failedReplace.isFailure).isTrue()
+        assertThat(store.load()).isEqualTo(small())
+        assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(kept)
+        Unit
+    }
+
+    @Test
+    fun replaceAllReplacesStateAndTheWholeJournal() = runBlocking {
+        val store = SqlLearningStore(open())
+        store.save(small())
+        store.appendJournal(
+            listOf(
+                JournalEntry(100, LearningUpdate.BlockWord("a")),
+                JournalEntry(200, LearningUpdate.BlockWord("b")),
+            )
+        )
+        val remaining = listOf(JournalEntry(100, LearningUpdate.BlockWord("a")))
+        val next = small().copy(sentences = emptyList())
+        store.replaceAll(next, remaining)
+        assertThat(store.load()).isEqualTo(next)
+        assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(remaining)
+        store.replaceAll(next, emptyList())
+        assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
+    }
+
+    @Test
+    fun userWordFlagsRoundTrip() = runBlocking {
+        val store = SqlLearningStore(open())
+        val words =
+            listOf(
+                UserWordRow("a", "a", 0, 1, removed = false, preExisting = false),
+                UserWordRow("b", "b", 1, 2, removed = true, preExisting = false),
+                UserWordRow("c", "c", 2, 3, removed = false, preExisting = true),
+                UserWordRow("d", "d", 0, 4, removed = true, preExisting = true),
+            )
+        store.save(small().copy(userWords = words))
+        assertThat(store.load()!!.userWords).isEqualTo(words)
+    }
+
+    @Test
     fun clearLeavesUserDictionaryAndShortcutsIntact() = runBlocking {
         val db = open()
         val words = SqlUserDictionaryStore(db)

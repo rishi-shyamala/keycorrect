@@ -1,6 +1,7 @@
 package dev.keycorrect.core.learning.model
 
 import dev.keycorrect.core.learning.TouchSample
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -42,6 +43,8 @@ internal class TouchModel(private val cfg: PersonalModelConfig) {
         val dx = s.dx
         val dy = s.dy
         if (dx.isNaN() || dy.isNaN() || dx.isInfinite() || dy.isInfinite()) return null
+        // A tap that far off was a neighbouring key (a spelling error), not an offset.
+        if (abs(dx) > cfg.touchOutlierLimit || abs(dy) > cfg.touchOutlierLimit) return null
         val m = cfg.touchSampleClamp
         return dx.coerceIn(-m, m).toDouble() to dy.coerceIn(-m, m).toDouble()
     }
@@ -85,8 +88,10 @@ internal class TouchModel(private val cfg: PersonalModelConfig) {
     fun remove(touchKey: String, samples: List<TouchSample>, ageMillis: Long, now: Long) {
         val map = profiles[touchKey] ?: return
         val f = decay.factor(ageMillis)
+        var any = false
         for (s in samples) {
             val (dx, dy) = clean(s) ?: continue
+            any = true
             val ch = s.char.lowercaseChar()
             val c0 = map[ch] ?: continue
             val c = scaled(c0, now)
@@ -107,8 +112,10 @@ internal class TouchModel(private val cfg: PersonalModelConfig) {
                     )
             }
         }
-        val left = (words[touchKey] ?: 0) - 1
-        if (left <= 0) words.remove(touchKey) else words[touchKey] = left
+        if (any) {
+            val left = (words[touchKey] ?: 0) - 1
+            if (left <= 0) words.remove(touchKey) else words[touchKey] = left
+        }
         if (map.isEmpty()) profiles.remove(touchKey)
         dirty = true
     }

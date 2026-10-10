@@ -1,5 +1,6 @@
 package dev.keycorrect.core.learning.model
 
+import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.learning.LearningUpdate
 import dev.keycorrect.core.learning.LearningUpdate.AddUserWord
 import dev.keycorrect.core.learning.Personalization
@@ -14,6 +15,13 @@ import java.util.concurrent.atomic.AtomicReference
  */
 typealias RankingFeatureProvider =
     (typed: String, context: List<String>, candidate: String) -> RankingFeatures?
+
+/**
+ * Like [RankingFeatureProvider] with the field class the preference was learned in; preferred over
+ * it when set, so feature extraction uses the event's own field and not some global state.
+ */
+typealias FieldRankingFeatureProvider =
+    (typed: String, context: List<String>, candidate: String, field: FieldClass) -> RankingFeatures?
 
 /**
  * The personal-model aggregate (docs/PLAN.md §6.1): user n-gram cache, new-word promotion,
@@ -102,6 +110,19 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
      * [RankingFeatures.NOT_DECODABLE] the preference is dropped at once.
      */
     @Volatile var rankingFeatureProvider: RankingFeatureProvider? = null
+
+    /** Field-aware variant of [rankingFeatureProvider]; wins over it when both are set. */
+    @Volatile var fieldRankingFeatureProvider: FieldRankingFeatureProvider? = null
+
+    private val hasFeatureProvider: Boolean
+        get() = fieldRankingFeatureProvider != null || rankingFeatureProvider != null
+
+    private fun featuresOf(u: LearningUpdate.Preference, candidate: String): RankingFeatures? {
+        fieldRankingFeatureProvider?.let {
+            return it(u.typed, u.context, candidate, u.field)
+        }
+        return rankingFeatureProvider?.invoke(u.typed, u.context, candidate)
+    }
 
     private class PendingPreference(
         val timeMillis: Long,
@@ -299,7 +320,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             w.any { it.isLetter() }
 
     private fun handlePreference(u: LearningUpdate.Preference, now: Long) {
-        if (rankingFeatureProvider == null) return
+        if (!hasFeatureProvider) return
         if (
             tryTrain(u) == Training.Retry &&
                 config.rankerMaxAttempts > 1 &&
@@ -311,11 +332,11 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
 
     /** [Training.Drop] also covers "no provider" and a candidate the decoder will never produce. */
     private fun tryTrain(u: LearningUpdate.Preference): Training {
-        val provider = rankingFeatureProvider ?: return Training.Drop
-        val fp = provider(u.typed, u.context, u.preferred)
+        if (!hasFeatureProvider) return Training.Drop
+        val fp = featuresOf(u, u.preferred)
         if (fp === RankingFeatures.NOT_DECODABLE) return Training.Drop
         if (fp == null) return Training.Retry
-        val fo = provider(u.typed, u.context, u.other)
+        val fo = featuresOf(u, u.other)
         if (fo === RankingFeatures.NOT_DECODABLE) return Training.Drop
         if (fo == null) return Training.Retry
         ranker.train(fp, fo, u.weight)
@@ -331,7 +352,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     @Synchronized
     fun retryPendingPreferences(nowMillis: Long) {
         if (pendingPrefs.isEmpty()) return
-        if (rankingFeatureProvider == null) {
+        if (!hasFeatureProvider) {
             pendingPrefs.clear()
             return
         }
@@ -452,6 +473,18 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         return out
     }
 
+    /**
+     * Puts entries back that [drainJournalForPersistence] handed out but the store failed to take.
+     */
+    @Synchronized
+    fun requeueJournal(entries: List<JournalEntry>) {
+        if (entries.isEmpty()) return
+        journalPending.addAll(0, entries)
+        if (journalPending.size > config.maxJournalEntries) {
+            journalPending.subList(0, journalPending.size - config.maxJournalEntries).clear()
+        }
+    }
+
     @Synchronized fun journalSnapshot(): List<JournalEntry> = journal.toList()
 
     // --------------------------------------------------------- sentences
@@ -504,6 +537,13 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         }
         return changed
     }
+
+    /**
+     * The app found [word] already in its user dictionary when it handled the model's add: the
+     * model did not create that entry, so [forgetSince] will never ask for it to be removed from
+     * the store. Returns true if the model changed (save it).
+     */
+    @Synchronized fun markUserWordPreExisting(word: String): Boolean = lexicon.markPreExisting(word)
 
     /**
      * The strongest learned autocorrections (typed -> target the user accepted), best first, for
@@ -641,7 +681,11 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
 
     /** Replaces all state from [state] (and the 24 h [journal] if the store has one). */
     @Synchronized
-    fun import(state: PersistedLearning, journal: List<JournalEntry> = emptyList()) {
+    fun import(
+        state: PersistedLearning,
+        journal: List<JournalEntry> = emptyList(),
+        nowMillis: Long? = null,
+    ) {
         require(state.formatVersion <= PersistedLearning.FORMAT_VERSION) {
             "Unsupported learning format ${state.formatVersion}"
         }
@@ -653,7 +697,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         touch.importRows(state.touch, state.touchProfiles)
         ranker.importRows(state.rankerWeights, state.rankerUpdates, state.lastCheckpointMillis)
         thresholds.importRows(state.outcomes)
-        sentences.importRows(state.sentences)
+        sentences.importRows(state.sentences, nowMillis)
         keeps.importRows(state.keeps)
         keepsStale = true // the thresholds may differ from when the counts were saved
         pendingAdds.clear()
@@ -690,46 +734,59 @@ class LearningPersistence(
     private val model: PersonalModel,
     private val store: LearningStore,
 ) {
-    /** Loads state and the retained journal; returns false if the store was empty. */
+    /**
+     * Loads state and the retained journal; returns false if the store was empty. Sentences past
+     * their TTL are dropped on the way in, and the store is rewritten at once if that removed any
+     * (expired text must not linger in the database).
+     */
     suspend fun restore(nowMillis: Long): Boolean {
         val state = store.load() ?: return false
+        val before = state.sentences.size
         model.import(
             state,
             store.journalSince(nowMillis - model.config.journalRetentionMillis),
+            nowMillis,
         )
+        if (model.sentences.size() < before) store.save(model.export())
         return true
     }
 
-    /** Persists new journal entries and the full state; trims the journal to its retention. */
+    /**
+     * Persists the full state and the new journal entries, and trims the journal to its retention
+     * and the sentence buffer to its TTL. One atomic [LearningStore.commit]; if it fails the
+     * entries go back to the model's queue and the exception propagates.
+     */
     suspend fun flush(nowMillis: Long) {
         val entries = model.drainJournalForPersistence()
-        if (entries.isNotEmpty()) store.appendJournal(entries)
-        store.save(model.export())
-        store.truncateJournalBefore(nowMillis - model.config.journalRetentionMillis)
+        try {
+            model.sentences.prune(nowMillis)
+            store.commit(model.export(), entries, nowMillis - model.config.journalRetentionMillis)
+        } catch (e: Throwable) {
+            model.requeueJournal(entries)
+            throw e
+        }
     }
 
-    /** Forgets since [timeMillis] and rewrites the store so it matches. */
+    /**
+     * Forgets since [timeMillis] and rewrites state and journal so the store matches, atomically.
+     */
     suspend fun forgetSince(timeMillis: Long, nowMillis: Long): ForgetResult {
         val result = model.forgetSince(timeMillis, nowMillis)
-        store.truncateJournalBefore(Long.MAX_VALUE)
-        val remaining = model.journalSnapshot()
-        if (remaining.isNotEmpty()) store.appendJournal(remaining)
-        model.drainJournalForPersistence()
-        store.save(model.export())
+        rewrite()
         return result
     }
 
     /** Forgets a learned correction and rewrites the store's journal and state to match. */
     suspend fun forgetCorrection(typed: String, target: String, nowMillis: Long): Boolean {
         val changed = model.forgetCorrection(typed, target, nowMillis)
-        if (changed) {
-            store.truncateJournalBefore(Long.MAX_VALUE)
-            val remaining = model.journalSnapshot()
-            if (remaining.isNotEmpty()) store.appendJournal(remaining)
-            model.drainJournalForPersistence()
-            store.save(model.export())
-        }
+        if (changed) rewrite()
         return changed
+    }
+
+    private suspend fun rewrite() {
+        val remaining = model.journalSnapshot()
+        model.drainJournalForPersistence() // the full journal is written below
+        store.replaceAll(model.export(), remaining)
     }
 
     suspend fun clearAll() {

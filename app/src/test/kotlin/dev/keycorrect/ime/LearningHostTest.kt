@@ -57,6 +57,15 @@ class LearningHostTest {
             saves++
             inner.save(state)
         }
+
+        override suspend fun commit(
+            state: PersistedLearning,
+            entries: List<dev.keycorrect.core.learning.model.JournalEntry>,
+            truncateBefore: Long,
+        ) {
+            saves++
+            inner.commit(state, entries, truncateBefore)
+        }
     }
 
     private class Fixture(
@@ -663,5 +672,84 @@ class LearningHostTest {
         )
         f.settle()
         assertThat(f.model.thresholds()).isEqualTo(5 to 5)
+    }
+
+    private fun fieldEvent(f: Fixture, field: FieldClass, word: String, session: Long = 5L) =
+        WordCommitted(
+            timeMillis = f.now,
+            profile = PROFILE.copy(field = field),
+            context = listOf("the"),
+            typed = word,
+            committed = word,
+            method = CommitMethod.Typed,
+            sessionId = session,
+        )
+
+    @Test
+    fun emailUrlAndAddressFieldsAreNeverLearnedButNamesAre() = runTest {
+        val f = fixture(this)
+        f.start()
+        for (field in listOf(FieldClass.Email, FieldClass.Url, FieldClass.PostalAddress)) {
+            f.host.onEvent(fieldEvent(f, field, "secretword"))
+        }
+        f.settle()
+        assertThat(f.model.export().ngrams).isEmpty()
+        f.host.onEvent(fieldEvent(f, FieldClass.PersonName, "Zorbert", 9))
+        f.settle()
+        assertThat(f.model.export().ngrams).isNotEmpty()
+    }
+
+    @Test
+    fun personNameFieldsNeverRecordSentenceWords() = runTest {
+        val f = fixture(this)
+        f.start()
+        f.host.onEvent(fieldEvent(f, FieldClass.PersonName, "Zorbert", 9))
+        f.host.onSentenceWord(9, "Zorbert", true, f.now)
+        f.host.onSentenceWord(10, "hello", true, f.now, FieldClass.PersonName)
+        f.host.onSentenceWord(11, "fine", true, f.now, FieldClass.Text)
+        f.settle()
+        assertThat(f.model.sentences.exportRows().map { it.text }).containsExactly("fine")
+    }
+
+    @Test
+    fun expiredSentencesArePrunedPeriodicallyWithoutNewUpdates() = runTest {
+        val f = fixture(this, LearningHostConfig(sentencePruneIntervalMillis = 10 * MINUTE))
+        f.start()
+        f.host.onSentenceWord(1, "secret", true, f.now)
+        f.settle()
+        f.host.flush()
+        assertThat(f.store.inner.state!!.sentences).hasSize(1)
+        advanceTimeBy(8 * 24 * 60 * MINUTE)
+        f.settle()
+        assertThat(f.host.sentenceBufferSize()).isEqualTo(0)
+        assertThat(f.store.inner.state!!.sentences).isEmpty()
+    }
+
+    @Test
+    fun forgetSinceNeverDeletesAWordTheUserDictionaryAlreadyHad() = runTest {
+        val f = fixture(this)
+        f.users.add("Zorp", frequency = 200)
+        f.start()
+        f.host.onEvent(f.addWord("zorp"))
+        f.host.onEvent(f.addWord("newb"))
+        f.settle()
+        val result = f.host.forgetSince(30)
+        assertThat(result.removedUserWords).containsExactly("newb")
+        assertThat(f.users.snapshotWords()).containsExactly("Zorp")
+    }
+
+    @Test
+    fun aNewerSavedFormatIsUnavailableNotACrash() = runTest {
+        val store = FakeStore()
+        store.inner.save(PersistedLearning(formatVersion = PersistedLearning.FORMAT_VERSION + 1))
+        val f = fixture(this, store = store)
+        f.start()
+        f.settle()
+        assertThat(f.host.state.value).isEqualTo(LearningHostState.Unavailable)
+        f.host.onEvent(f.addWord("dropped"))
+        f.host.requestFlush(FlushReason.TrimMemory)
+        f.settle()
+        assertThat(store.inner.state!!.formatVersion)
+            .isEqualTo(PersistedLearning.FORMAT_VERSION + 1)
     }
 }

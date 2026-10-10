@@ -176,6 +176,7 @@
     <string name="learning_enabled_summary">Adapt suggestions and autocorrect to the words you use. Everything stays on this device.</string>
     <string name="learning_incognito">Incognito</string>
     <string name="learning_incognito_summary">Pause learning for now. Learning is always off automatically in password and private fields.</string>
+    <string name="learning_stop_note">Turning learning off, or using Incognito, stops new learning. What was already learned, and recent learning history (kept up to 24 hours, encrypted), stay until you use Forget or Reset. Reset keeps your personal dictionary words.</string>
     <string name="learning_requires">Turn on learning to use this option.</string>
     <string name="learning_sentences">Keep recent sentences for on-device training</string>
     <string name="learning_sentences_summary">Stored encrypted on this device and deleted after 7 days. Never taken from password or private fields.</string>
@@ -277,7 +278,7 @@
     <string name="learning_accuracy_spread">Spread: \u03C3x %1$.2f, \u03C3y %2$.2f</string>
 
     <string name="learning_reset_title">Reset all learning</string>
-    <string name="learning_reset_summary">Forget everything KeyCorrect learned from your typing, including stored sentences.</string>
+    <string name="learning_reset_summary">Forget everything KeyCorrect learned from your typing, including stored sentences. Your personal dictionary words are kept.</string>
     <string name="learning_reset_action">Reset all learning</string>
     <string name="learning_reset_body">This erases everything KeyCorrect learned from your typing: word frequencies, learned corrections, never-correct and never-suggest lists, typing accuracy data and stored sentences. Your personal dictionary and text shortcuts are kept. This can\'t be undone.</string>
     <string name="learning_reset_confirm">Reset</string>

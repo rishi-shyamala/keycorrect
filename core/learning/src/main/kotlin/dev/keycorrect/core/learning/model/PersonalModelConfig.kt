@@ -85,6 +85,12 @@ data class PersonalModelConfig(
     val touchMaxWeight: Double = 1_000.0,
     /** Individual samples are clamped to +-this before use (outlier guard). */
     val touchSampleClamp: Float = 1.0f,
+    /**
+     * Samples with |dx| or |dy| beyond this (in key sizes) are ignored: a tap that far from the
+     * intended key's centre was a neighbouring key (an adjacent-key spelling error, about 1.0 off),
+     * not a systematic offset, and the learned mean would otherwise drift toward the neighbour.
+     */
+    val touchOutlierLimit: Float = 0.7f,
     /** Words per profile before the keyboard-fit report should make recommendations (§6.5). */
     val touchMinProfileWords: Int = 300,
     // --- fusion ranker ---

@@ -32,7 +32,7 @@ class TouchAndRankerTest {
     @Test
     fun touchOffsetIsClampedToHalfAKey() {
         val m = PersonalModel(testConfig())
-        m.applyAt(0, touches(40, 's', 0.9f, -0.9f))
+        m.applyAt(0, touches(40, 's', 0.65f, -0.65f))
         val o = m.snapshot().touchOffset(key, 's')!!
         assertThat(o.first).isEqualTo(0.5f)
         assertThat(o.second).isEqualTo(-0.5f)

@@ -100,8 +100,12 @@ class SentenceBuffer(private val config: SentenceBufferConfig = SentenceBufferCo
         SentenceRow(it.sessionId, it.text, it.timeMillis)
     }
 
+    /**
+     * Replaces the contents with [rows]. With [nowMillis], sentences past the TTL are dropped right
+     * away (a restored buffer must not resurrect expired text).
+     */
     @Synchronized
-    fun importRows(rows: List<SentenceRow>) {
+    fun importRows(rows: List<SentenceRow>, nowMillis: Long? = null) {
         clear()
         if (!config.enabled) return
         for (r in rows.sortedBy { it.timeMillis }) {
@@ -109,5 +113,18 @@ class SentenceBuffer(private val config: SentenceBufferConfig = SentenceBufferCo
             chars += r.text.length
         }
         trim()
+        if (nowMillis != null) prune(nowMillis)
+    }
+
+    /**
+     * Drops every open and closed sentence of [sessionId] (it turned out to be a private field).
+     */
+    @Synchronized
+    fun discardSession(sessionId: Long): Int {
+        open.remove(sessionId)
+        val before = closed.size
+        closed.removeAll { it.sessionId == sessionId }
+        chars = closed.sumOf { it.text.length }
+        return before - closed.size
     }
 }

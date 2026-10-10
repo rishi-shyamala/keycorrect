@@ -1,5 +1,7 @@
 package dev.keycorrect.core.learning
 
+import dev.keycorrect.core.engineapi.FieldClass
+
 /**
  * The outcome classifier's output: small, model-agnostic updates (docs/PLAN.md §6.3). Weights are
  * relative (1.0 = one ordinary typed word). The classifier is pure: events in, updates out.
@@ -61,6 +63,8 @@ sealed interface LearningUpdate {
         val preferred: String,
         val other: String,
         val weight: Float,
+        /** Field class of the event it came from (for the feature extraction's context bucket). */
+        val field: FieldClass = FieldClass.Text,
     ) : LearningUpdate
 
     /** One autocorrection outcome for the adaptive threshold: true = reverted. */

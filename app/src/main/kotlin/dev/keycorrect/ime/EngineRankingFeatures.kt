@@ -12,25 +12,29 @@ import dev.keycorrect.core.learning.RankingFeatures
  * The model's ranking feature provider, backed by the engine: the features `ClassicEngine` computes
  * for [candidate] when [typed] is decoded after [context]. Learning thread only.
  *
- * `featuresFor` shares the engine's lock with typing decodes, so a call is skipped (null, and
- * [onDeferred] so the model's retry is scheduled for later) while the decoder is busy or the
- * [budget] for the current second is used up; see [PredictionHost]. A candidate the decode does not
- * produce is [RankingFeatures.NOT_DECODABLE], so the model gives up on that preference instead of
- * retrying; an engine failure is null (retried a few times, then dropped).
+ * The engine's lock is shared with typing decodes, so this uses the non-blocking `tryFeaturesFor`:
+ * typing never waits for it. A call is skipped (null, and [onDeferred] so the model's retry is
+ * scheduled for later) while the decoder is busy, the engine lock is held, or the [budget] for the
+ * current second is used up; see [PredictionHost]. An engine failure is null too (retried a few
+ * times, then dropped).
  *
  * The decode is built from the event's context with no touches (the event does not carry the raw
- * taps), so the spatial feature is the literal's neutral value; [field] supplies the field class
- * for the correction-memory bucket.
+ * taps), so the spatial feature is the literal's neutral value; the `field` argument (the field
+ * class of the event the preference came from) supplies the correction-memory bucket.
  */
 internal class EngineRankingFeatures(
     private val engine: ClassicEngine,
     private val activity: DecodeActivity,
     private val budget: DecodeBudget,
-    private val field: () -> FieldClass,
     private val onDeferred: () -> Unit,
     private val onFailure: (Throwable) -> Unit = {},
 ) {
-    fun features(typed: String, context: List<String>, candidate: String): RankingFeatures? {
+    fun features(
+        typed: String,
+        context: List<String>,
+        candidate: String,
+        field: FieldClass,
+    ): RankingFeatures? {
         if (activity.busy() || !budget.tryAcquire()) {
             onDeferred()
             return null
@@ -38,15 +42,18 @@ internal class EngineRankingFeatures(
         val before = context.joinToString(" ", postfix = if (context.isEmpty()) "" else " ")
         val request =
             PredictRequest(
-                context = TypingContext(before = before, field = field()),
+                context = TypingContext(before = before, field = field),
                 composing = ComposingInput(typed, List(typed.length) { null }),
                 layout = NO_LAYOUT,
                 autocorrectAllowed = false,
             )
         return try {
-            // The engine reports a candidate outside the decode's pool as null: that will not
-            // change on a retry, which the model must be told apart from "busy".
-            engine.featuresFor(request, candidate) ?: RankingFeatures.NOT_DECODABLE
+            // Never waits for the engine lock: a typing decode holding it makes this null (busy),
+            // and the model retries later. (A candidate outside the decode's pool is null too, so
+            // it is retried a few times, bounded by the model's attempts, then dropped.)
+            val f = engine.tryFeaturesFor(request, candidate)
+            if (f == null) onDeferred()
+            f
         } catch (e: Exception) {
             onFailure(e)
             null

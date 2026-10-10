@@ -7,6 +7,7 @@ import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.learning.LearningEvent
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.learning.Personalization
+import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.classifier.OutcomeClassifier
 import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.learning.model.LearnedCorrection
@@ -47,6 +48,8 @@ data class LearningHostConfig(
     val retryDelayMillis: Long = 2_000L,
     /** After a failed restore, how long to wait before the next event retries it. */
     val restoreRetryMillis: Long = 30_000L,
+    /** How often expired recent sentences are deleted while the process lives (also saved). */
+    val sentencePruneIntervalMillis: Long = 10 * 60_000L,
 )
 
 /** Where [LearningHost] is with loading the saved state. */
@@ -131,6 +134,11 @@ class LearningHost(
 
         data object Tick : Command
 
+        data object PruneSentences : Command
+
+        /** Drop the recorded sentences of a session that turned out to be in a private field. */
+        class DiscardSession(val sessionId: Long) : Command
+
         data object ClearSentences : Command
 
         class Run(val block: suspend () -> Unit) : Command
@@ -153,6 +161,13 @@ class LearningHost(
     private val acceptingEvents: Boolean
         get() = settingsKnown && learningEnabled && !incognito
 
+    // Sessions seen in fields whose words must never reach the sentence buffer (main + learning).
+    private val noSentenceSessions =
+        object : LinkedHashMap<Long, Boolean>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Boolean>?) =
+                size > MAX_TRACKED_SESSIONS
+        }
+
     private val acceptingSentences: Boolean
         get() = acceptingEvents && sentenceBufferEnabled
 
@@ -162,11 +177,6 @@ class LearningHost(
     val state: StateFlow<LearningHostState> = _state.asStateFlow()
 
     private val changes = MutableStateFlow(0L)
-
-    /** The field class of the event being handled; the ranking feature provider reads it. */
-    @Volatile
-    var rankingField: FieldClass = FieldClass.Text
-        private set
 
     // ---- learning-thread-only state -------------------------------------------------------
     private var persistence: LearningPersistence? = null
@@ -188,6 +198,14 @@ class LearningHost(
     fun start(settings: Flow<KeyboardSettings>) {
         if (!started.compareAndSet(false, true)) return
         scope.launch { settings.collect { applySettings(it) } }
+        if (config.sentencePruneIntervalMillis > 0) {
+            scope.launch {
+                while (true) {
+                    delay(config.sentencePruneIntervalMillis)
+                    commands.trySend(Command.PruneSentences)
+                }
+            }
+        }
         scope.launch {
             restore()
             for (command in commands) handle(command)
@@ -233,7 +251,18 @@ class LearningHost(
     // ---- LearningSink (main thread) -------------------------------------------------------
 
     override fun onEvent(event: LearningEvent) {
-        if (!acceptingEvents || !reserve()) return
+        val field = event.profile.field
+        if (!acceptingEvents || field in NEVER_LEARN_FIELDS) return
+        if (field != FieldClass.Text) {
+            // Names and similar: learned from, but their words never go to the sentence buffer.
+            val session = (event as? WordCommitted)?.sessionId
+            if (session != null) {
+                val first =
+                    synchronized(noSentenceSessions) { noSentenceSessions.put(session, true) }
+                if (first == null) commands.trySend(Command.DiscardSession(session))
+            }
+        }
+        if (!reserve()) return
         commands.trySend(Command.Event(event))
     }
 
@@ -243,9 +272,13 @@ class LearningHost(
         sentenceEnd: Boolean,
         timeMillis: Long,
     ) {
-        if (!acceptingSentences || !reserve()) return
+        if (!acceptingSentences) return
+        if (synchronized(noSentenceSessions) { noSentenceSessions.containsKey(sessionId) }) return
+        if (!reserve()) return
         commands.trySend(Command.Sentence(sessionId, word, sentenceEnd, timeMillis))
     }
+
+    // The interface default (Text only, then the four-argument form) is exactly what is wanted.
 
     private fun reserve(): Boolean {
         if (queuedInputs.incrementAndGet() <= config.maxQueuedInputs) return true
@@ -448,6 +481,8 @@ class LearningHost(
                 }
                 is Command.Flush -> handleFlush(command.force)
                 Command.Tick -> handleTick()
+                Command.PruneSentences -> handlePruneSentences()
+                is Command.DiscardSession -> handleDiscardSession(command.sessionId)
                 Command.ClearSentences -> handleClearSentences()
                 is Command.Run -> command.block()
                 is Command.Thresholds -> handleThresholds(command)
@@ -466,7 +501,7 @@ class LearningHost(
         lastRestoreAttemptAt = now
         try {
             val p = persistence ?: LearningPersistence(model, openStore()).also { persistence = it }
-            p.restore(now)
+            p.restore(now) // also drops expired sentences, saving if it did
             lastFlushAt = now
             enforceSentenceGate()
             drainUserWords()
@@ -495,8 +530,8 @@ class LearningHost(
 
     private suspend fun handleEvent(event: LearningEvent) {
         if (!acceptingEvents || !ensureReady()) return
+        if (event.profile.field in NEVER_LEARN_FIELDS) return // the keyboard gates too
         val updates = classifier.classify(event)
-        rankingField = event.profile.field
         model.apply(updates, event.timeMillis)
         drainUserWords()
         noteChange(updates.size)
@@ -589,6 +624,27 @@ class LearningHost(
         if (retryWanted.getAndSet(false)) scheduleTick(config.retryDelayMillis)
     }
 
+    /** Deletes expired sentences (TTL) from the model and the saved copy; needs no gate. */
+    private suspend fun handlePruneSentences() {
+        if (_state.value != LearningHostState.Ready) return
+        val before = model.sentences.size()
+        model.sentences.prune(wallClock())
+        if (model.sentences.size() != before) {
+            dirty = true
+            changed()
+            flushNow()
+        }
+    }
+
+    private suspend fun handleDiscardSession(sessionId: Long) {
+        if (_state.value != LearningHostState.Ready) return
+        if (model.sentences.discardSession(sessionId) > 0) {
+            dirty = true
+            changed()
+            flushNow()
+        }
+    }
+
     private suspend fun handleClearSentences() {
         if (model.sentences.size() > 0) {
             model.sentences.clear()
@@ -636,7 +692,7 @@ class LearningHost(
         failedAdds.clear()
         for (word in work) {
             try {
-                addIfAbsent(word)
+                if (!addIfAbsent(word) && model.markUserWordPreExisting(word)) dirty = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: InvalidEntryException) {
@@ -648,11 +704,17 @@ class LearningHost(
         }
     }
 
-    /** Adds [word] unless the user dictionary has it (in any casing): keeps their frequency. */
-    private suspend fun addIfAbsent(word: String) {
-        if (userDictionary.snapshot.words.keys.any { it.equals(word, ignoreCase = true) }) return
-        if (userDictionary.contains(word)) return
+    /**
+     * Adds [word] unless the user dictionary has it (in any casing): keeps their frequency. Returns
+     * false when the store already had it (the model must then never delete it).
+     */
+    private suspend fun addIfAbsent(word: String): Boolean {
+        if (userDictionary.snapshot.words.keys.any { it.equals(word, ignoreCase = true) }) {
+            return false
+        }
+        if (userDictionary.contains(word)) return false
         userDictionary.add(word)
+        return true
     }
 
     private suspend fun removeFromUserDictionary(word: String): Boolean {
@@ -674,6 +736,10 @@ class LearningHost(
     private companion object {
         const val TAG = "LearningHost"
         const val MAX_FAILED_ADDS = 256
+        const val MAX_TRACKED_SESSIONS = 64
+
+        /** Never learned from (the keyboard stops emitting them too; this is the second lock). */
+        val NEVER_LEARN_FIELDS = setOf(FieldClass.Email, FieldClass.Url, FieldClass.PostalAddress)
         const val MIN_REVERTS = 1
         const val MAX_REVERTS = 5
     }

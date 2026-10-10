@@ -41,6 +41,8 @@ data class UserWordRow(
     val reason: Int,
     val createdAtMillis: Long,
     val removed: Boolean,
+    /** The app's store already had the word when the model added it (see Lexicon.UserWord). */
+    val preExisting: Boolean = false,
 )
 
 data class CandidateWordRow(
@@ -144,6 +146,33 @@ interface LearningStore {
 
     suspend fun appendJournal(entries: List<JournalEntry>)
 
+    /**
+     * Saves [state], appends [entries] to the journal and deletes journal entries older than
+     * [truncateBefore], ATOMICALLY where the store can (SQL: one transaction). The default does the
+     * steps in this order: state first, so a crash can leave state without its journal entries
+     * (those updates just cannot be forgotten) but never journal entries for unabsorbed updates.
+     */
+    suspend fun commit(
+        state: PersistedLearning,
+        entries: List<JournalEntry>,
+        truncateBefore: Long,
+    ) {
+        save(state)
+        if (entries.isNotEmpty()) appendJournal(entries)
+        truncateJournalBefore(truncateBefore)
+    }
+
+    /**
+     * Replaces the state AND the whole journal with [state] / [journal] atomically (forget
+     * operations rewrite both, and a crash must not leave one half done). The default is
+     * non-atomic: journal first, then state.
+     */
+    suspend fun replaceAll(state: PersistedLearning, journal: List<JournalEntry>) {
+        truncateJournalBefore(Long.MAX_VALUE)
+        if (journal.isNotEmpty()) appendJournal(journal)
+        save(state)
+    }
+
     /** Entries with `timeMillis >= timeMillis`, oldest first. */
     suspend fun journalSince(timeMillis: Long): List<JournalEntry>
 
@@ -175,6 +204,26 @@ class InMemoryLearningStore : LearningStore {
 
     override suspend fun truncateJournalBefore(timeMillis: Long) {
         synchronized(journal) { journal.removeAll { it.timeMillis < timeMillis } }
+    }
+
+    override suspend fun commit(
+        state: PersistedLearning,
+        entries: List<JournalEntry>,
+        truncateBefore: Long,
+    ) {
+        synchronized(journal) {
+            this.state = state
+            journal.addAll(entries)
+            journal.removeAll { it.timeMillis < truncateBefore }
+        }
+    }
+
+    override suspend fun replaceAll(state: PersistedLearning, journal: List<JournalEntry>) {
+        synchronized(this.journal) {
+            this.state = state
+            this.journal.clear()
+            this.journal.addAll(journal)
+        }
     }
 
     override suspend fun clear() {

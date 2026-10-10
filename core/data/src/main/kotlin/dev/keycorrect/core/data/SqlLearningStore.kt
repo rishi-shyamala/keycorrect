@@ -29,9 +29,11 @@ import kotlinx.coroutines.sync.withLock
  * [LearningStore] on the encrypted [KeyCorrectDatabase] (schema v2, see [Schema.migrateV1ToV2]).
  *
  * [save] replaces every learning table in one transaction (DELETE + prepared-statement inserts), so
- * a crash mid-save leaves the previous state intact. Row tables keep list order (rowid order), so
- * `load()` returns exactly what was saved. Sentence-buffer rows are user text: they live only in
- * the SQLCipher database and are removed by [clear]. [clear] never touches `user_words` or
+ * a crash mid-save leaves the previous state intact. [commit] (state + new journal entries + trim)
+ * and [replaceAll] (state + whole journal, used by the forget operations) are each one transaction
+ * too, so a crash can never leave state and journal out of step. Row tables keep list order (rowid
+ * order), so `load()` returns exactly what was saved. Sentence-buffer rows are user text: they live
+ * only in the SQLCipher database and are removed by [clear]. [clear] never touches `user_words` or
  * `shortcuts`.
  *
  * All work runs on the dispatcher injected into [KeyCorrectDatabase]. Calls are serialised so a
@@ -50,19 +52,49 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
 
     override suspend fun appendJournal(entries: List<JournalEntry>) {
         if (entries.isEmpty()) return
+        lock.withLock { database.transaction { db -> insertJournal(db, entries) } }
+    }
+
+    override suspend fun commit(
+        state: PersistedLearning,
+        entries: List<JournalEntry>,
+        truncateBefore: Long,
+    ) {
         lock.withLock {
             database.transaction { db ->
-                db.compileStatement(
-                        "INSERT INTO learning_journal (time_millis, payload) VALUES (?, ?)"
-                    )
-                    .use { st ->
-                        for (e in entries) {
-                            st.bindLong(1, e.timeMillis)
-                            st.bindString(2, JournalCodec.encode(e.update))
-                            st.executeInsert()
-                        }
-                    }
+                writeState(db, state)
+                insertJournal(db, entries)
+                deleteJournalBefore(db, truncateBefore)
             }
+        }
+    }
+
+    override suspend fun replaceAll(state: PersistedLearning, journal: List<JournalEntry>) {
+        lock.withLock {
+            database.transaction { db ->
+                writeState(db, state)
+                deleteJournalBefore(db, Long.MAX_VALUE)
+                insertJournal(db, journal)
+            }
+        }
+    }
+
+    private fun insertJournal(db: SupportSQLiteDatabase, entries: List<JournalEntry>) {
+        if (entries.isEmpty()) return
+        db.compileStatement("INSERT INTO learning_journal (time_millis, payload) VALUES (?, ?)")
+            .use { st ->
+                for (e in entries) {
+                    st.bindLong(1, e.timeMillis)
+                    st.bindString(2, JournalCodec.encode(e.update))
+                    st.executeInsert()
+                }
+            }
+    }
+
+    private fun deleteJournalBefore(db: SupportSQLiteDatabase, timeMillis: Long) {
+        db.compileStatement("DELETE FROM learning_journal WHERE time_millis < ?").use { st ->
+            st.bindLong(1, timeMillis)
+            st.executeUpdateDelete()
         }
     }
 
@@ -87,13 +119,7 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
 
     override suspend fun truncateJournalBefore(timeMillis: Long) {
         lock.withLock {
-            database.transaction { db ->
-                db.compileStatement("DELETE FROM learning_journal WHERE time_millis < ?").use { st
-                    ->
-                    st.bindLong(1, timeMillis)
-                    st.executeUpdateDelete()
-                }
-            }
+            database.transaction { db -> deleteJournalBefore(db, timeMillis) }
         }
     }
 
@@ -155,7 +181,8 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
             st.bindString(2, r.word)
             st.bindLong(3, r.reason.toLong())
             st.bindLong(4, r.createdAtMillis)
-            st.bindLong(5, if (r.removed) 1 else 0)
+            // Flags: bit 0 removed (tombstone), bit 1 pre-existing in the app's user dictionary.
+            st.bindLong(5, (if (r.removed) 1L else 0L) or (if (r.preExisting) 2L else 0L))
         }
         db.insertAll(
             "INSERT INTO learning_candidates " +
@@ -326,7 +353,8 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
                         it.getString(1),
                         it.getInt(2),
                         it.getLong(3),
-                        it.getInt(4) != 0,
+                        it.getInt(4) and 1 != 0,
+                        it.getInt(4) and 2 != 0,
                     )
                 },
             candidates =

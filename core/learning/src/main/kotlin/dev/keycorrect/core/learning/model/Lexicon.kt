@@ -7,6 +7,9 @@ data class UserWordInfo(val word: String, val reason: AddUserWord.Reason, val cr
 
 /** What [PersonalModel.forgetSince] removed, so the app can mirror it in its own stores. */
 data class ForgetResult(
+    /**
+     * Words the model created in the app's user dictionary; pre-existing store words are not here.
+     */
     val removedUserWords: List<String>,
     val removedSuppressions: List<Pair<String, String>>,
     val removedBlocks: List<String>,
@@ -27,6 +30,11 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         val reason: AddUserWord.Reason,
         val createdAt: Long,
         val removed: Boolean,
+        /**
+         * True when the app's user dictionary already had the word before the model "added" it, so
+         * the model did not create that entry and must never delete it ([forgetSince]).
+         */
+        val preExisting: Boolean = false,
     )
 
     class Candidate(
@@ -71,7 +79,19 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         val key = Text.key(word)
         val e = userWords[key] ?: return false
         if (e.removed) return false
-        userWords[key] = UserWord(e.word, e.reason, now, true)
+        userWords[key] = UserWord(e.word, e.reason, now, true, e.preExisting)
+        return true
+    }
+
+    /**
+     * Records that the app's store already had [word] when the model's add was handed over. Returns
+     * true if the model's entry changed.
+     */
+    fun markPreExisting(word: String): Boolean {
+        val key = Text.key(word)
+        val e = userWords[key] ?: return false
+        if (e.removed || e.preExisting) return false
+        userWords[key] = UserWord(e.word, e.reason, e.createdAt, false, true)
         return true
     }
 
@@ -87,7 +107,7 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         val e = userWords[key]
         if (e != null && e.removed) return hadCandidate
         userWords[key] =
-            if (e != null) UserWord(e.word, e.reason, now, true)
+            if (e != null) UserWord(e.word, e.reason, now, true, e.preExisting)
             else UserWord(Text.fold(word), AddUserWord.Reason.Explicit, now, true)
         return true
     }
@@ -185,12 +205,18 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
 
     // ---- forget ----
 
+    /**
+     * Removes what was created at or after [t]. Returns the words the model itself created in the
+     * app's store (to be removed there too; pre-existing store words are forgotten by the model but
+     * never listed), the suppressions and the blocks. Tombstones are never dropped: a word the user
+     * removed must not be promoted again.
+     */
     fun forgetSince(t: Long): Triple<List<String>, List<Pair<String, String>>, List<String>> {
-        val words = userWords.filter { it.value.createdAt >= t }.keys.toList()
+        val words = userWords.filter { it.value.createdAt >= t && !it.value.removed }.keys.toList()
         val removedWords = ArrayList<String>()
         for (k in words) {
             val e = userWords.remove(k)!!
-            if (!e.removed) removedWords += e.word
+            if (!e.preExisting) removedWords += e.word
         }
         val sup = suppressions.filter { it.value >= t }.keys.toList()
         sup.forEach { suppressions.remove(it) }
@@ -210,7 +236,7 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         for (r in state.userWords) {
             val reason =
                 AddUserWord.Reason.entries.getOrElse(r.reason) { AddUserWord.Reason.Explicit }
-            userWords[r.key] = UserWord(r.word, reason, r.createdAtMillis, r.removed)
+            userWords[r.key] = UserWord(r.word, reason, r.createdAtMillis, r.removed, r.preExisting)
         }
         for (r in state.suppressions) suppressions[Text.join(r.typed, r.target)] = r.createdAtMillis
         for (r in state.blocks) blocked[r.word] = r.createdAtMillis
@@ -224,7 +250,9 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
 
     fun userWordRows() =
         userWords
-            .map { (k, v) -> UserWordRow(k, v.word, v.reason.ordinal, v.createdAt, v.removed) }
+            .map { (k, v) ->
+                UserWordRow(k, v.word, v.reason.ordinal, v.createdAt, v.removed, v.preExisting)
+            }
             .sortedBy { it.key }
 
     fun suppressionRows() =

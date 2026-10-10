@@ -12,7 +12,7 @@ import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.learning.Personalization
-import dev.keycorrect.core.learning.model.RankingFeatureProvider
+import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.Predictor
@@ -78,7 +78,7 @@ class PredictionHost(
 
     private val decodeActivity = DecodeActivity()
     private val decodeBudget = DecodeBudget()
-    @Volatile private var installedProvider: RankingFeatureProvider? = null
+    @Volatile private var installedProvider: FieldRankingFeatureProvider? = null
 
     // User words folded for case/apostrophe-insensitive lookup, rebuilt when the store hands out a
     // new snapshot (rarely), so isKnownWord is a few hash lookups.
@@ -197,22 +197,21 @@ class PredictionHost(
                 engine,
                 decodeActivity,
                 decodeBudget,
-                field = { host.rankingField },
                 onDeferred = host::onRankingDeferred,
                 onFailure = { logFailure("ranking features", it) },
             )
-        val provider: RankingFeatureProvider = { typed, context, candidate ->
-            bridge.features(typed, context, candidate)
+        val provider: FieldRankingFeatureProvider = { typed, context, candidate, field ->
+            bridge.features(typed, context, candidate, field)
         }
         installedProvider = provider
-        host.model.rankingFeatureProvider = provider
+        host.model.fieldRankingFeatureProvider = provider
     }
 
     /** Detaches from the singleton learning model; call when the owning service is destroyed. */
     fun close() {
         val host = learning ?: return
-        if (host.model.rankingFeatureProvider === installedProvider) {
-            host.model.rankingFeatureProvider = null
+        if (host.model.fieldRankingFeatureProvider === installedProvider) {
+            host.model.fieldRankingFeatureProvider = null
         }
         installedProvider = null
     }
