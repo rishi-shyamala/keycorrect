@@ -311,6 +311,75 @@ class PredictiveControllerTest {
     }
 
     @Test
+    fun undoingACorrectionTypedWithPunctuationKeepsThePunctuation() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        controller.onKey(KeyAction.Text("."))
+        assertThat(text()).isEqualTo("the.")
+        backspace()
+        assertThat(text()).isEqualTo("teh.")
+        assertThat(editor.composing).isEmpty()
+        assertThat(editor.cursor).isEqualTo(4)
+        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
+        space()
+        assertThat(text()).isEqualTo("teh. ")
+    }
+
+    @Test
+    fun theRestoredWordIsNotLoggedAgainWithEmptyTouches() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        controller.onKey(KeyAction.Text("t"), TouchPoint(1f, 1f, 1))
+        controller.onKey(KeyAction.Text("e"), TouchPoint(2f, 1f, 1))
+        controller.onKey(KeyAction.Text("h"), TouchPoint(3f, 1f, 1))
+        space()
+        val first = controller.touchLog.snapshot().single()
+        backspace()
+        space() // the restored word is finished again
+        assertThat(controller.touchLog.snapshot()).hasSize(1)
+        assertThat(controller.touchLog.snapshot().single().reverted).isTrue()
+        assertThat(first.touches.filterNotNull()).hasSize(3)
+    }
+
+    @Test
+    fun aStripTapDropsTheRetypeGuardSoTheNextFreshWordIsCorrected() {
+        predictor.word("teh", listOf("ten", "the"), autocorrect = "the")
+        start(settings = KeyboardSettings(learningEnabled = false))
+        type("teh")
+        space()
+        backspace() // restored: "teh" is not corrected again while it is put back
+        val strip = controller.strip
+        // Moves on by tapping a suggestion.
+        controller.onSuggestionTap(
+            listOf(strip.centre, strip.left, strip.right).first {
+                it?.insert == "ten"
+            }!!
+        )
+        assertThat(text()).isEqualTo("ten ")
+        // Rewrite the picked word by hand (no key that would settle the guard on its own).
+        repeat(3) { backspace() }
+        assertThat(editor.composing).isEqualTo("t")
+        type("eh")
+        space()
+        assertThat(text()).isEqualTo("the ")
+    }
+
+    @Test
+    fun aNewFieldDropsTheRetypeGuard() {
+        predictor.word("teh", listOf("ten", "the"), autocorrect = "the")
+        start(settings = KeyboardSettings(learningEnabled = false))
+        type("teh")
+        space()
+        backspace()
+        start(settings = KeyboardSettings(learningEnabled = false))
+        space()
+        type("teh")
+        space()
+        assertThat(text()).endsWith("the ")
+    }
+
+    @Test
     fun theRestoredWordCanBeKeptWithPunctuation() {
         predictor.word("teh", listOf("the"), autocorrect = "the")
         start()

@@ -122,6 +122,8 @@ class ReviewFixesTest {
     private class SpyStore(private val inner: InMemoryLearningStore = InMemoryLearningStore()) :
         LearningStore by inner {
         var failCommit = false
+        var cancelCommit = false
+        var failSave = false
         var commits = 0
         var replaces = 0
         val journalSize
@@ -135,9 +137,16 @@ class ReviewFixesTest {
             entries: List<JournalEntry>,
             truncateBefore: Long,
         ) {
+            if (cancelCommit)
+                throw kotlin.coroutines.cancellation.CancellationException("cancelled")
             if (failCommit) throw java.io.IOException("disk")
             commits++
             inner.commit(state, entries, truncateBefore)
+        }
+
+        override suspend fun save(state: PersistedLearning) {
+            if (failSave) throw java.io.IOException("secret path /data/x")
+            inner.save(state)
         }
 
         override suspend fun replaceAll(state: PersistedLearning, journal: List<JournalEntry>) {
@@ -188,6 +197,44 @@ class ReviewFixesTest {
         assertThat(store.commits).isEqualTo(1)
         assertThat(store.journalSize).isEqualTo(1) // the entry was not lost
         assertThat(store.state!!.ngrams.map { it.key }).containsExactly("a")
+    }
+
+    @Test
+    fun aCancelledFlushDoesNotRequeueTheJournalEntries() {
+        val store = SpyStore()
+        val m = PersonalModel(testConfig())
+        val p = LearningPersistence(m, store)
+        m.applyAt(0, used("a", w = 2f))
+        store.cancelCommit = true
+        assertThrows(kotlin.coroutines.cancellation.CancellationException::class.java) {
+            runSuspend { p.flush(10) }
+        }
+        store.cancelCommit = false
+        assertThat(m.drainJournalForPersistence()).isEmpty() // not requeued
+    }
+
+    @Test
+    fun aFailedPostPruneSaveDuringRestoreStillSucceedsAndLogsOnlyTheType() {
+        val store = SpyStore()
+        runSuspend {
+            val seed = PersonalModel(testConfig())
+            seed.applyAt(0, used("a", w = 2f))
+            seed.recordSentenceWord(1, "old", true, 0)
+            store.save(seed.export())
+        }
+        val warnings = ArrayList<String>()
+        val m = PersonalModel(testConfig())
+        store.failSave = true
+        val ok = runSuspend { LearningPersistence(m, store) { warnings += it }.restore(8 * DAY_MS) }
+        assertThat(ok).isTrue()
+        assertThat(m.sentences.exportRows()).isEmpty()
+        assertThat(warnings).hasSize(1)
+        assertThat(warnings.single()).contains("java.io.IOException")
+        assertThat(warnings.single()).doesNotContain("secret")
+        // The next flush persists the pruned state.
+        store.failSave = false
+        runSuspend { LearningPersistence(m, store).flush(8 * DAY_MS) }
+        assertThat(store.state!!.sentences).isEmpty()
     }
 
     @Test

@@ -11,6 +11,7 @@ import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TypingContext
+import dev.keycorrect.core.learning.RankingFeatures
 import java.nio.ByteBuffer
 import kotlin.random.Random
 import org.junit.Test
@@ -203,17 +204,23 @@ class TieRuleTest {
     fun defaultTieBreakIsSeededPerWordAndContext() {
         // Without an injected Random, re-decoding the same literal + context always agrees,
         // across engine instances, so the separator's autocorrect matches the strip.
-        fun pick(before: String) =
-            ClassicEngine(tied)
-                .predictNow(
-                    PredictRequest(
-                        TypingContext(before = before),
-                        TestKeyboard.typed("tset"),
-                        TestKeyboard.layout,
+        fun pick(before: String): String {
+            val r =
+                ClassicEngine(tied)
+                    .predictNow(
+                        PredictRequest(
+                            TypingContext(before = before),
+                            TestKeyboard.typed("tset"),
+                            TestKeyboard.layout,
+                        )
                     )
-                )
-                .autocorrect!!
-                .text
+            // The tie branch is really reached: a runner-up within the tie epsilon exists, so the
+            // pick is the seeded random one rather than a clear winner.
+            assertThat(r.autocorrectRunnerUp).isNotNull()
+            assertThat(setOf(r.autocorrect!!.text, r.autocorrectRunnerUp!!.text))
+                .containsExactly("test", "set")
+            return r.autocorrect!!.text
+        }
         for (ctx in listOf("", "a ", "so the ", "hello there ")) {
             val first = pick(ctx)
             repeat(10) { assertThat(pick(ctx)).isEqualTo(first) }
@@ -248,5 +255,16 @@ class TieRuleTest {
             holder.join(5_000)
         }
         assertThat(engine.tryFeaturesFor(request, "tset")).isNotNull()
+    }
+
+    @Test
+    fun tryFeaturesForDistinguishesNotInPoolFromBusy() {
+        val engine = ClassicEngine(tied)
+        val request =
+            PredictRequest(TypingContext(), TestKeyboard.typed("tset"), TestKeyboard.layout)
+        assertThat(engine.tryFeaturesFor(request, "zzzzzz"))
+            .isSameInstanceAs(RankingFeatures.NOT_DECODABLE)
+        // featuresFor keeps its null for "not among the candidates".
+        assertThat(engine.featuresFor(request, "zzzzzz")).isNull()
     }
 }

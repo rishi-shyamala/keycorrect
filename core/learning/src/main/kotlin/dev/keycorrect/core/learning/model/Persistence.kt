@@ -1,5 +1,6 @@
 package dev.keycorrect.core.learning.model
 
+import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.learning.LearningUpdate
 import dev.keycorrect.core.learning.TouchSample
 
@@ -239,10 +240,11 @@ class InMemoryLearningStore : LearningStore {
  *
  * Format v1: fields joined by U+001F; field 0 = `v1`, field 1 = type tag (W word-used, N new-word,
  * A add-word, R revert-kept, C correction, S suppress, B block, T touch, P preference, O outcome, F
- * phrase, K casing). Strings are percent-escaped for `%`, U+001F and U+001E. A list is one field:
- * `count` followed by its items, all joined by U+001E. Floats use [Float.toString] (exact round
- * trip). A touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions or
- * corrupt data, so an old app never crashes on a newer journal.
+ * phrase, K casing). A P item's trailing field (the FieldClass name) is absent in older rows and
+ * then decodes as Text. Strings are percent-escaped for `%`, U+001F and U+001E. A list is one
+ * field: `count` followed by its items, all joined by U+001E. Floats use [Float.toString] (exact
+ * round trip). A touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions
+ * or corrupt data, so an old app never crashes on a newer journal.
  */
 object JournalCodec {
     const val VERSION = "v1"
@@ -303,6 +305,7 @@ object JournalCodec {
                 f += esc(update.preferred)
                 f += esc(update.other)
                 f += update.weight.toString()
+                f += update.field.name
             }
             is LearningUpdate.AutocorrectOutcome -> {
                 f += "O"
@@ -363,6 +366,9 @@ object JournalCodec {
                     unesc(f[4]),
                     unesc(f[5]),
                     f[6].toFloat(),
+                    // Rows written before the field was journaled have no field 7.
+                    f.getOrNull(7)?.let { n -> FieldClass.entries.firstOrNull { it.name == n } }
+                        ?: FieldClass.Text,
                 )
             "O" -> LearningUpdate.AutocorrectOutcome(f[2] == "1")
             "F" -> LearningUpdate.PhraseFeedback(f[2].toInt(), f[3].toInt())

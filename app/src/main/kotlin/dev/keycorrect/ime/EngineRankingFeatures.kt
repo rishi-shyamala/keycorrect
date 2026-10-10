@@ -16,7 +16,7 @@ import dev.keycorrect.core.learning.RankingFeatures
  * typing never waits for it. A call is skipped (null, and [onDeferred] so the model's retry is
  * scheduled for later) while the decoder is busy, the engine lock is held, or the [budget] for the
  * current second is used up; see [PredictionHost]. An engine failure is null too (retried a few
- * times, then dropped).
+ * times, then dropped). A candidate the decode never produces is `NOT_DECODABLE`.
  *
  * The decode is built from the event's context with no touches (the event does not carry the raw
  * taps), so the spatial feature is the literal's neutral value; the `field` argument (the field
@@ -49,8 +49,8 @@ internal class EngineRankingFeatures(
             )
         return try {
             // Never waits for the engine lock: a typing decode holding it makes this null (busy),
-            // and the model retries later. (A candidate outside the decode's pool is null too, so
-            // it is retried a few times, bounded by the model's attempts, then dropped.)
+            // and the model retries later. A candidate outside the decode's pool comes back as
+            // NOT_DECODABLE, passed through as is so the model drops the preference at once.
             val f = engine.tryFeaturesFor(request, candidate)
             if (f == null) onDeferred()
             f

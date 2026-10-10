@@ -1126,6 +1126,77 @@ class LearningEventsTest {
     }
 
     @Test
+    fun anUndoneCorrectionLeavesOnlyTheFinalWordInTheSentenceBuffer() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        assertThat(text()).isEqualTo("the ")
+        // The corrected word waits for its undo window to close.
+        assertThat(sink.sentence).isEmpty()
+        backspace()
+        space() // the restored word is finished: recorded once
+        type("x")
+        assertThat(sink.sentence.map { it.word to it.end }).containsExactly("teh" to false)
+    }
+
+    @Test
+    fun aCorrectionThatStandsIsRecordedOnceItsUndoWindowCloses() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        assertThat(sink.sentence).isEmpty()
+        type("x")
+        assertThat(sink.sentence.map { it.word to it.end }).containsExactly("the" to false)
+    }
+
+    @Test
+    fun aCorrectionWithTerminalPunctuationKeepsItsSentenceEnd() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh.")
+        assertThat(text()).isEqualTo("the.")
+        space()
+        assertThat(sink.sentence.map { it.word to it.end }).containsExactly("the" to true)
+    }
+
+    @Test
+    fun undoingACorrectionAtPunctuationKeepsThePunctuationAndCountsAsAKeep() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh.")
+        assertThat(text()).isEqualTo("the.")
+        backspace()
+        assertThat(text()).isEqualTo("teh.")
+        assertThat(editor.composing).isEmpty()
+        assertThat(editor.cursor).isEqualTo(4)
+        // Classified at once: the word is finished with its punctuation already there.
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.ImmediateBackspace)
+        assertThat(r.typed).isEqualTo("teh")
+        assertThat(r.corrected).isEqualTo("the")
+        assertThat(r.replacement).isEqualTo("teh")
+        assertThat(committed()).isEmpty()
+        space()
+        assertThat(text()).isEqualTo("teh. ")
+        // Recorded once, as the restored word.
+        assertThat(sink.sentence.map { it.word to it.end }).containsExactly("teh" to true)
+        assertThat(reverts()).hasSize(1)
+    }
+
+    @Test
+    fun undoingACorrectionAtASpaceStillRestoresAComposingWord() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        assertThat(text()).isEqualTo("teh")
+        assertThat(editor.composing).isEqualTo("teh")
+    }
+
+    @Test
     fun aWordEndingWithEnterEndsTheSentence() {
         editor.enterInsertsLineBreak = true
         start(

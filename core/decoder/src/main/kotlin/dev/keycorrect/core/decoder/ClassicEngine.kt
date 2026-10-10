@@ -159,11 +159,15 @@ class ClassicEngine(
             featuresLocked(request, candidateText)
         }
 
-    /** Like [featuresFor] but returns null immediately if a decode currently holds the lock. */
+    /**
+     * Like [featuresFor] but never waits: null means "busy, the lock is held, try again later";
+     * [RankingFeatures.NOT_DECODABLE] means the decode ran and [text] is not among its candidates
+     * (retrying cannot help).
+     */
     fun tryFeaturesFor(request: PredictRequest, text: String): RankingFeatures? {
         if (!lock.tryLock()) return null
         try {
-            return featuresLocked(request, text)
+            return featuresLocked(request, text) ?: RankingFeatures.NOT_DECODABLE
         } finally {
             lock.unlock()
         }

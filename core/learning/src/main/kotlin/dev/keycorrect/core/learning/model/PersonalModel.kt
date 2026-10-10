@@ -6,6 +6,7 @@ import dev.keycorrect.core.learning.LearningUpdate.AddUserWord
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.RankingFeatures
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Computes decoder features for a candidate (see [PersonalModel.rankingFeatureProvider]): the
@@ -733,6 +734,8 @@ private val KEEP_RANGE = 1..5
 class LearningPersistence(
     private val model: PersonalModel,
     private val store: LearningStore,
+    /** Receives a short, content-free warning (an exception TYPE name, never a message). */
+    private val onWarning: (String) -> Unit = {},
 ) {
     /**
      * Loads state and the retained journal; returns false if the store was empty. Sentences past
@@ -747,20 +750,35 @@ class LearningPersistence(
             store.journalSince(nowMillis - model.config.journalRetentionMillis),
             nowMillis,
         )
-        if (model.sentences.size() < before) store.save(model.export())
+        if (model.sentences.size() < before) {
+            // The model is already restored and the pruned text is gone from memory; a failed
+            // rewrite only leaves the expired rows in the store until the next flush persists the
+            // pruned state. Not a restore failure. Cancellation still propagates.
+            try {
+                store.save(model.export())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onWarning("Rewriting pruned learning data failed: ${e.javaClass.name}")
+            }
+        }
         return true
     }
 
     /**
      * Persists the full state and the new journal entries, and trims the journal to its retention
-     * and the sentence buffer to its TTL. One atomic [LearningStore.commit]; if it fails the
-     * entries go back to the model's queue and the exception propagates.
+     * and the sentence buffer to its TTL. One atomic [LearningStore.commit]; if it genuinely fails
+     * the entries go back to the model's queue and the exception propagates. A cancellation
+     * propagates without requeueing: the entries are not lost to a failure, and a cancelled flush
+     * is abandoned along with its caller.
      */
     suspend fun flush(nowMillis: Long) {
         val entries = model.drainJournalForPersistence()
         try {
             model.sentences.prune(nowMillis)
             store.commit(model.export(), entries, nowMillis - model.config.journalRetentionMillis)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             model.requeueJournal(entries)
             throw e

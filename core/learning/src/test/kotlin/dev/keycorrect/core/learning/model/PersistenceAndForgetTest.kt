@@ -1,6 +1,7 @@
 package dev.keycorrect.core.learning.model
 
 import com.google.common.truth.Truth.assertThat
+import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.learning.LearningUpdate
 import dev.keycorrect.core.learning.LearningUpdate.AddUserWord
 import dev.keycorrect.core.learning.LearningUpdate.AutocorrectOutcome
@@ -64,6 +65,7 @@ class PersistenceAndForgetTest {
                 ),
                 TouchEvidence(key, emptyList()),
                 Preference("x", listOf(weird), "y", "z", 2f),
+                Preference("x", listOf("a"), "y", "z", 2f, FieldClass.Email),
                 AutocorrectOutcome(true),
                 PhraseFeedback(5, 2),
                 CasingEvidence("McDonald's"),
@@ -73,6 +75,15 @@ class PersistenceAndForgetTest {
             assertThat(text).startsWith("v1\u001F")
             assertThat(JournalCodec.decode(text)).isEqualTo(u)
         }
+    }
+
+    @Test
+    fun journalCodecDecodesAPreferenceRowWithoutAFieldAsText() {
+        val old = "v1\u001FP\u001Fx\u001F1\u001Ea\u001Fy\u001Fz\u001F2.0"
+        assertThat(JournalCodec.decode(old))
+            .isEqualTo(Preference("x", listOf("a"), "y", "z", 2f, FieldClass.Text))
+        val unknown = old + "\u001FNotAField"
+        assertThat((JournalCodec.decode(unknown) as Preference).field).isEqualTo(FieldClass.Text)
     }
 
     @Test

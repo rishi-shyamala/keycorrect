@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.FieldClass
+import dev.keycorrect.core.learning.RankingFeatures
 import java.io.File
 import java.nio.ByteBuffer
 import org.junit.Test
@@ -62,10 +63,11 @@ class EngineRankingFeaturesTest {
     }
 
     @Test
-    fun aCandidateOutsideThePoolIsNullAndDeferredBecauseBusyIsNotDistinguishable() {
+    fun aCandidateOutsideThePoolIsNotDecodableAndNotDeferred() {
         var deferred = 0
         val b = bridge(deferred = { deferred++ })
-        assertThat(b.features("teh", emptyList(), "zzzzzz", FieldClass.Text)).isNull()
-        assertThat(deferred).isEqualTo(1)
+        assertThat(b.features("teh", emptyList(), "zzzzzz", FieldClass.Text))
+            .isSameInstanceAs(RankingFeatures.NOT_DECODABLE)
+        assertThat(deferred).isEqualTo(0)
     }
 }

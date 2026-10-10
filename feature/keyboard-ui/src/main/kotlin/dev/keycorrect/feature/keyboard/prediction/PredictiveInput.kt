@@ -52,9 +52,11 @@ import dev.keycorrect.feature.keyboard.hapticWanted
  *   auto-expanding shortcut of the freshest result is applied if allowed, otherwise the word stays.
  *   A layer switch or an unexpected cursor move finishes it as it is.
  * - *Undo window*. After a correction or expansion, the very next backspace restores the typed word
- *   (separator kept); while the user is putting that word back (backspacing over the separator and
- *   finishing it again) it is not auto-corrected again, but that is for this occurrence only: the
- *   permanent behaviour comes from the learning thresholds. Any other key closes the window.
+ *   (a space separator is dropped, so the next space or punctuation keeps it without a double
+ *   space; punctuation the user typed deliberately stays, see [undoCorrection]); while the user is
+ *   putting that word back (finishing it again) it is not auto-corrected again, but that is for
+ *   this occurrence only: the permanent behaviour comes from the learning thresholds. Any other key
+ *   closes the window.
  * - *Held revert*. The learning layer is told about an undone (or deleted and retyped) correction
  *   only once the restored word is finished, since the user often undoes a wrong fix in order to
  *   type the word they meant (see [resolveEdit]).
@@ -122,6 +124,12 @@ internal class PredictiveInput(
      */
     private var retypeGuard: String? = null
 
+    /**
+     * The word an undo just put back (its touches are unknown). Its first log entry already exists,
+     * so finishing it must not log it again with all-null touches; see [record].
+     */
+    private var restoredWord: String? = null
+
     private var stripBase = StripModel.Empty
     private var addWord: String? = null
     private var addWordTimer: TimeoutHandle? = null
@@ -161,6 +169,13 @@ internal class PredictiveInput(
         val tracked: Tracked?,
         /** The "kept" event, emitted once the undo window closes without a backspace. */
         var pendingKept: WordCommitted?,
+        /**
+         * The corrected word for the sentence buffer, recorded only once the undo window closes (an
+         * undone correction must not leave the corrected word in the buffer next to the restored
+         * one); see [keep]. Dropped by an undo.
+         */
+        var pendingWord: String? = null,
+        var pendingWordEnd: Boolean = false,
     )
 
     /**
@@ -426,6 +441,7 @@ internal class PredictiveInput(
         closeUndo()
         flushSentence(null)
         settleHeldRevert()
+        retypeGuard = null // a strip tap moves on from the restored word, however it is settled
         if (slot.kind == SlotKind.Literal) keepLiteral() else pick(slot)
     }
 
@@ -725,36 +741,67 @@ internal class PredictiveInput(
     }
 
     /**
-     * Backspace right after a correction: puts the typed word back as the composing word, with the
-     * cursor at its end and WITHOUT the separator that followed the correction, so the user can
-     * keep it with the next space or punctuation (no double space) or edit it. Only done if the
-     * text before the cursor is still exactly what we wrote (UTF-16 units, so emoji and combining
-     * marks count like the editor counts them); returns false, changing nothing, if not (the cursor
-     * moved or the text was edited without us hearing of it yet).
+     * Backspace right after a correction: puts the typed word back. Only done if the text before
+     * the cursor is still exactly what we wrote (UTF-16 units, so emoji and combining marks count
+     * like the editor counts them); returns false, changing nothing, if not (the cursor moved or
+     * the text was edited without us hearing of it yet).
      *
-     * The word is then an edit session on the remembered correction, so keep / edit / switch is
-     * classified when it is finished (see [resolveEdit]).
+     * After a space the word comes back as the composing word with the cursor at its end and
+     * WITHOUT the space, so the user can keep it with the next space or punctuation (no double
+     * space) or edit it. It is then an edit session on the remembered correction, so keep / edit /
+     * switch is classified when it is finished (see [resolveEdit]).
+     *
+     * After punctuation (or a line break) the user typed that on purpose, so the restored word
+     * keeps it: `teh.` stays `teh.`, as committed text with the cursor after it, like the old
+     * behaviour. There is no composing word to finish later, so the classification is settled now:
+     * the punctuation already being there is the "finished unchanged" case, i.e. the restored word
+     * counts as kept (an AutocorrectReverted with the immediate-backspace kind). The user can still
+     * backspace the punctuation and edit the word; that is a plain recompose and not tracked.
      */
     private fun undoCorrection(u: Undo): Boolean {
         val expected = u.applied + u.separator
         if (editor.textBeforeCursor(expected.length)?.toString() != expected) return false
+        val keepsSeparator = isDeliberateSeparator(u.separator)
         editor.batchEdit {
             editor.deleteSurroundingText(expected.length, 0)
-            editor.setComposingText(u.typed)
+            if (keepsSeparator) editor.commitText(u.typed + u.separator)
+            else editor.setComposingText(u.typed)
         }
         if (beforeKnown) before.setLength(maxOf(0, before.length - expected.length))
-        composing.append(u.typed)
-        repeat(u.typed.length) { touches.add(null) }
         touchLog.markLastReverted(u.applied)
         edit = null
+        u.correction?.pendingWord = null // the corrected word is not recorded; see below
         u.correction?.let { reportImmediateRevert(it) }
+        if (keepsSeparator) {
+            appendBefore(u.typed + u.separator)
+            flushPendingRevert() // finished as typed, punctuation already there: a keep
+            if (u.typed.any { it.isLetter() }) {
+                learn.sentenceWord(u.typed, SentenceContext.endsSentence(u.separator))
+            }
+            // Still no auto-correction if the user backspaces the punctuation and finishes again.
+            retypeGuard = u.typed.lowercase()
+            restoredWord = u.typed
+            loop.advance()
+            latest = null
+            publish(StripModel.Empty)
+            requestNextWord()
+            return true
+        }
+        composing.append(u.typed)
+        repeat(u.typed.length) { touches.add(null) }
         val held = u.correction?.tracked
         if (learn.open && held != null && pendingRevertTracked === held) {
             edit = EditSession(u.typed, held)
         }
         retypeGuard = u.typed.lowercase() // after the hold: holding another revert clears it
+        restoredWord = u.typed
         requestWord()
         return true
+    }
+
+    /** Punctuation or a line break the user typed on purpose (anything but a plain space). */
+    private fun isDeliberateSeparator(separator: String): Boolean = separator.any {
+        !it.isWhitespace() || it == '\n'
     }
 
     /**
@@ -868,6 +915,7 @@ internal class PredictiveInput(
                     false,
                 )
         }
+        retypeGuard = null // settling a held revert may have set it again; the word is dealt with
         publish(StripModel.Empty)
         requestNextWord()
     }
@@ -902,6 +950,7 @@ internal class PredictiveInput(
             if (space) false else null,
             false,
         )
+        retypeGuard = null // the literal is kept (and remembered in revertedWords)
         publish(StripModel.Empty)
         if (
             profile?.learningEnabled == true &&
@@ -1056,6 +1105,8 @@ internal class PredictiveInput(
     }
 
     private fun resetWordState() {
+        retypeGuard = null
+        restoredWord = null
         composing.setLength(0)
         touches.clear()
         invalidateContext()
@@ -1082,6 +1133,9 @@ internal class PredictiveInput(
     ) {
         val p = profile ?: return
         if (!p.learningEnabled || p.sensitive || !learn.open) return
+        val restored = restoredWord
+        restoredWord = null
+        if (restored != null && restored == typed && touchList.all { it == null }) return
         touchLog.record(WordRecord(typed, committed, touchList, layout.id, method))
     }
 
@@ -1172,6 +1226,7 @@ internal class PredictiveInput(
         pendingSentence = null
         pendingRevertTracked = null
         undo?.correction?.pendingKept = null
+        undo?.correction?.pendingWord = null
         touchLog.clear()
     }
 
@@ -1197,7 +1252,10 @@ internal class PredictiveInput(
     }
 
     private fun keep(c: Correction?) {
-        val event = c?.pendingKept ?: return
+        if (c == null) return
+        c.pendingWord?.let { learn.sentenceWord(it, c.pendingWordEnd) }
+        c.pendingWord = null
+        val event = c.pendingKept ?: return
         c.pendingKept = null
         learn.emit(event)
     }
@@ -1535,8 +1593,14 @@ internal class PredictiveInput(
             learn.emit(event)
         }
         if (committed.any { it.isLetter() }) {
-            if (sentenceEnd != null) learn.sentenceWord(committed, sentenceEnd)
-            else pendingSentence = committed
+            if (correction != null && sentenceEnd != null) {
+                correction.pendingWord = committed
+                correction.pendingWordEnd = sentenceEnd
+            } else if (sentenceEnd != null) {
+                learn.sentenceWord(committed, sentenceEnd)
+            } else {
+                pendingSentence = committed
+            }
         }
         return correction
     }

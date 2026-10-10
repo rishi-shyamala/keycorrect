@@ -441,7 +441,10 @@ class LearningHost(
      * in the personal dictionary. Also recovers from [LearningHostState.Unavailable].
      */
     suspend fun resetAll() = onLearningThread {
-        val p = persistence ?: LearningPersistence(model, openStore()).also { persistence = it }
+        val p =
+            persistence
+                ?: LearningPersistence(model, openStore()) { Log.w(TAG, it) }
+                    .also { persistence = it }
         p.clearAll()
         failedAdds.clear()
         dirty = false
@@ -500,7 +503,10 @@ class LearningHost(
         val now = wallClock()
         lastRestoreAttemptAt = now
         try {
-            val p = persistence ?: LearningPersistence(model, openStore()).also { persistence = it }
+            val p =
+                persistence
+                    ?: LearningPersistence(model, openStore()) { Log.w(TAG, it) }
+                        .also { persistence = it }
             p.restore(now) // also drops expired sentences, saving if it did
             lastFlushAt = now
             enforceSentenceGate()
