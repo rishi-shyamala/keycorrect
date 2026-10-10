@@ -1,6 +1,8 @@
 package dev.keycorrect.tools.eval
 
 import dev.keycorrect.core.decoder.ClassicConfig
+import dev.keycorrect.core.learning.classifier.ClassifierConfig
+import dev.keycorrect.core.learning.model.PersonalModelConfig
 import java.nio.file.Files
 import java.util.Random
 import java.util.concurrent.Callable
@@ -59,6 +61,9 @@ class LearnMain(private val o: Options) {
                 user,
                 reactions,
                 o.seed,
+                modelConfig = ConfigOverrides.applyFlat(PersonalModelConfig(), o.modelConfig),
+                classifierConfig =
+                    ConfigOverrides.applyFlat(ClassifierConfig(), o.classifierConfig),
                 log = { synchronized(this) { println(it) } },
                 traceWords = o.traceWords,
             )
@@ -89,6 +94,8 @@ class LearnMain(private val o: Options) {
                 "tapProbability" to o.tapProbability,
                 "windowEnds" to ends,
                 "configOverrides" to o.config,
+                "modelOverrides" to o.modelConfig,
+                "classifierOverrides" to o.classifierConfig,
                 "label" to o.label,
             )
         val json = LearnReport.json(options, user, learn, base).toMutableMap()
@@ -133,6 +140,10 @@ class LearnMain(private val o: Options) {
                 append("phrases: ${user.phrases.joinToString("; ") { it.joinToString(" ") }}\n")
             }
             if (o.config.isNotEmpty()) append("config overrides: ${o.config}\n")
+            if (o.modelConfig.isNotEmpty()) append("model overrides: ${o.modelConfig}\n")
+            if (o.classifierConfig.isNotEmpty()) {
+                append("classifier overrides: ${o.classifierConfig}\n")
+            }
         }
     }
 }

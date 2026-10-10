@@ -45,6 +45,12 @@ class LearnWindow(val from: Int, val to: Int) {
     var taps = 0
     var retypes = 0
 
+    /** Autocorrections the keyboard applied. */
+    var fired = 0
+
+    /** Autocorrect threshold delta the model asked for at the end of the window. */
+    var thresholdDelta = Float.NaN
+
     /** Target (or the right literal) on the 3-slot strip. */
     var top3 = 0
     var personalTop3 = 0
@@ -315,6 +321,7 @@ class LearnArm(
                 if (keyboardRight) w.keyboardCorrect++
                 if (literalRight) w.literalCorrect++
                 if (falseCorrection) w.falseCorrections++
+                if (fired) w.fired++
                 if (undone) w.reverts++
                 if (reaction is Reaction.Revert) w.correctWordReverts++
                 if (reaction is Reaction.Tap) w.taps++
@@ -362,18 +369,14 @@ class LearnArm(
                     reverted.add(PersonalUser.fold(literal))
                 }
                 if (typed.typo == TypoKind.None && token.text.length == literal.length) {
-                    val samples = builder.touches(typed)
                     for (i in literal.indices) {
-                        val sample = samples[i] ?: continue
                         val meant = keyboard.key(token.text[i]) ?: continue
-                        val p = typed.input.touches[i]!!
-                        oracle.add(
-                            meant.char.lowercaseChar(),
-                            (p.x - meant.centerX) / meant.width,
-                            (p.y - meant.centerY) / meant.height,
-                        )
-                        if (sample.char == meant.char.lowercaseChar()) {
-                            conf.add(sample.char, sample.dx, sample.dy)
+                        val p = typed.input.touches[i] ?: continue
+                        val dx = (p.x - meant.centerX) / meant.width
+                        val dy = (p.y - meant.centerY) / meant.height
+                        oracle.add(meant.char.lowercaseChar(), dx, dy)
+                        if (literal[i].lowercaseChar() == meant.char.lowercaseChar()) {
+                            conf.add(meant.char.lowercaseChar(), dx, dy)
                         }
                     }
                 }
@@ -423,6 +426,7 @@ class LearnArm(
         val by = typistConfig.biasY.toDouble()
         if (learning) {
             val snap = model.snapshot()
+            w.thresholdDelta = snap.autocorrectThresholdDelta
             var keys = 0
             var dx = 0.0
             var dy = 0.0
@@ -476,7 +480,9 @@ class LearnArm(
     }
 
     private fun userWordBreakdown(targets: Set<String>): UserWordBreakdown {
-        val words = model.userWords().map { it.word }
+        val infos = model.userWords()
+        val words = infos.map { it.word }
+        val reasons = infos.associate { PersonalUser.fold(it.word) to it.reason.name }
         val keys = words.map { PersonalUser.fold(it) }.toSet()
         var personal = 0
         var other = 0
@@ -486,7 +492,7 @@ class LearnArm(
             when {
                 user.isPersonal(w) -> personal++
                 k in targets -> other++
-                else -> pollution.add(w)
+                else -> pollution.add("$w(${reasons[k]?.take(4)})")
             }
         }
         val missing =

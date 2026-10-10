@@ -32,10 +32,21 @@ enum class DeviceClass {
     HardwareKeyboard,
 }
 
-/** A touch for one typed character, relative to the centre of the key that registered it. */
+/**
+ * A touch for one typed character, relative to the centre of the INTENDED key.
+ *
+ * Contract (emitter side): the intended key is the key of the char at the same position of the
+ * committed word, not the key that registered the tap. [WordCommitted.touches] is filled only for
+ * substitution-aligned words (typed and committed have the same length and differ at most by
+ * substituted chars), so a tap that landed on a neighbouring key still yields a sample (this is
+ * what keeps learned offsets unbiased; using only taps that hit the intended key would shrink them
+ * toward zero). Samples with |dx| or |dy| > 1.2 are dropped by the emitter: such a tap was a
+ * different letter, not an offset. For other words the list is empty or all null.
+ */
 data class TouchSample(
+    /** The intended key's char (lowercase): `committed[i]` for the sample at position i. */
     val char: Char,
-    /** Offset from the key centre in key widths (x) and key heights (y). */
+    /** Offset from the intended key's centre in key widths (x) and key heights (y). */
     val dx: Float,
     val dy: Float,
 )
@@ -78,7 +89,11 @@ data class WordCommitted(
     val pickedRank: Int? = null,
     /** Suggestions visible while typing, most recent snapshot per text. */
     val shown: List<ShownSuggestion> = emptyList(),
-    /** One per typed char (null where the char didn't come from a tap). */
+    /**
+     * One per typed char (null where the char didn't come from a tap or the sample was dropped),
+     * relative to the intended key; see [TouchSample]. Empty unless typed and committed are
+     * substitution-aligned.
+     */
     val touches: List<TouchSample?> = emptyList(),
     val sentenceInitial: Boolean = false,
     /** True when [committed] (case-insensitively) is in the main dictionary or user words. */

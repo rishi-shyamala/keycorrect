@@ -11,6 +11,7 @@ import dev.keycorrect.core.learning.ShownSuggestion
 import dev.keycorrect.core.learning.TouchSample
 import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
+import kotlin.math.abs
 
 /** Everything the event builder needs to know about one finished word. */
 class WordRecord(
@@ -40,8 +41,9 @@ class WordRecord(
  * * a tapped replacement after an undone correction adds its own `WordCommitted(SuggestionPicked)`;
  * * a typo deleted and typed again adds `WordReplaced(original -> target)` after a `Typed` commit.
  *
- * Touches are in key units relative to the centre of the key that registered each tap. `shown` is
- * the final strip with the visibility the user had of each entry (see [shown]).
+ * Touches follow the [TouchSample] contract: key units relative to the centre of the intended key
+ * (the committed word's char) for substitution-aligned words. `shown` is the final strip with the
+ * visibility the user had of each entry (see [shown]).
  */
 class EventBuilder(
     val profile: InputProfile = DEFAULT_PROFILE,
@@ -53,7 +55,6 @@ class EventBuilder(
     fun build(w: WordRecord): List<LearningEvent> {
         val literal = w.typed.text
         val shown = shown(w.strips, extra = w.runnerUp)
-        val touches = touches(w.typed)
         val t = w.timeMillis
 
         fun commit(
@@ -77,7 +78,7 @@ class EventBuilder(
                         pickedRank
                     },
                 shown = shown,
-                touches = touches,
+                touches = touches(w.typed, committed),
                 sentenceInitial = w.sentenceInitial,
                 committedIsKnown = isKnown(committed),
                 typedIsKnown = isKnown(literal),
@@ -144,20 +145,46 @@ class EventBuilder(
         }
     }
 
-    /** One sample per typed char: its offset from the centre of the key that registered it. */
-    fun touches(typed: TypedWord): List<TouchSample?> =
-        typed.input.touches.mapIndexed { i, p ->
-            val key = if (p == null) null else keyboard.key(typed.text[i])
+    /**
+     * What the keyboard emits for a word that ends up as [committed] (the [TouchSample] contract):
+     * for a substitution-aligned word (same length as the literal, not a transposition) one sample
+     * per tapped char, relative to the centre of the INTENDED key (the committed word's char, not
+     * the key that registered the tap) with |dx| or |dy| > [MAX_OFFSET] dropped (null); otherwise
+     * an empty list.
+     */
+    fun touches(typed: TypedWord, committed: String): List<TouchSample?> {
+        val literal = typed.text
+        if (literal.length != committed.length || isTransposition(literal, committed)) {
+            return emptyList()
+        }
+        return typed.input.touches.mapIndexed { i, p ->
+            val key = if (p == null) null else keyboard.key(committed[i])
             if (p == null || key == null) {
                 null
             } else {
-                TouchSample(
-                    key.char.lowercaseChar(),
-                    (p.x - key.centerX) / key.width,
-                    (p.y - key.centerY) / key.height,
-                )
+                val dx = (p.x - key.centerX) / key.width
+                val dy = (p.y - key.centerY) / key.height
+                if (abs(dx) > MAX_OFFSET || abs(dy) > MAX_OFFSET) {
+                    null
+                } else {
+                    TouchSample(key.char.lowercaseChar(), dx, dy)
+                }
             }
         }
+    }
+
+    private fun isTransposition(a: String, b: String): Boolean {
+        for (i in 0 until a.length - 1) {
+            if (
+                a[i].lowercaseChar() != b[i].lowercaseChar() &&
+                    a[i].lowercaseChar() == b[i + 1].lowercaseChar() &&
+                    a[i + 1].lowercaseChar() == b[i].lowercaseChar()
+            ) {
+                return true
+            }
+        }
+        return false
+    }
 
     /**
      * What the user saw: for each suggestion of the final strip (the last of [strips]) the slot and
@@ -184,6 +211,9 @@ class EventBuilder(
     }
 
     companion object {
+        /** Taps further than this from the intended key (key units) are not offsets. */
+        const val MAX_OFFSET = 1.2f
+
         val DEFAULT_PROFILE = InputProfile(DeviceClass.Phone, false, "qwerty@54dp", FieldClass.Text)
     }
 }

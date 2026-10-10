@@ -45,8 +45,17 @@ data class PersonalModelConfig(
     /** Weight of the bucket-free score when blending with the bucket score (0 = ignore). */
     val correctionBackoff: Double = 0.5,
     // --- new-word promotion ---
-    val promoteMinCommits: Double = 2.0,
-    val promoteMinSessions: Int = 2,
+    /**
+     * An unknown word is promoted to the user dictionary once its candidate weight reaches this (a
+     * typo the user never fixed rarely survives three sessions)
+     */
+    val promoteMinCommits: Double = 3.0,
+    /** ... in at least this many distinct sessions. */
+    val promoteMinSessions: Int = 3,
+    /** Fast path for explicit keeps (literal taps weigh 2.0 each): this much weight ... */
+    val promoteFastWeight: Double = 4.0,
+    /** ... in at least this many sessions promotes without waiting for [promoteMinSessions]. */
+    val promoteFastSessions: Int = 2,
     /** Per-session weight needed for the session to count as distinct (voice at 0.3 does not). */
     val promoteSessionMinWeight: Double = 0.5,
     val maxCandidateWords: Int = 5_000,

@@ -87,10 +87,10 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         c.lastSeen = now
         c.sessions[sessionId] = (c.sessions[sessionId] ?: 0.0) + weight
         while (c.sessions.size > 16) c.sessions.remove(c.sessions.keys.first())
+        val sessions = c.sessions.values.count { it >= cfg.promoteSessionMinWeight }
         if (
-            c.commitWeight >= cfg.promoteMinCommits &&
-                c.sessions.values.count { it >= cfg.promoteSessionMinWeight } >=
-                    cfg.promoteMinSessions
+            (c.commitWeight >= cfg.promoteMinCommits && sessions >= cfg.promoteMinSessions) ||
+                (c.commitWeight >= cfg.promoteFastWeight && sessions >= cfg.promoteFastSessions)
         ) {
             return if (addUserWord(c.word, AddUserWord.Reason.Promoted, now)) c.word else null
         }

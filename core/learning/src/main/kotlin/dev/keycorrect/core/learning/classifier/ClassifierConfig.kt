@@ -21,8 +21,8 @@ data class ClassifierConfig(
 
     // ---- unknown words (row 4) ---------------------------------------------------------------
     /**
-     * Row 4: weight of one [NewWordEvidence] commit; promotion (>=2 commits, >=2 sessions) is the
-     * model's.
+     * Row 4: weight of one [NewWordEvidence] commit; promotion (>=3 weight in >=3 sessions by
+     * default) is the model's.
      */
     val newWordEvidenceWeight: Float = 1.0f,
     /** Row 8: tapping the literal of an unknown word is an explicit keep: strong evidence. */
@@ -33,10 +33,20 @@ data class ClassifierConfig(
      */
     val unknownWordUsedScale: Float = 0.3f,
     /**
-     * Row 4: an unknown typed word that is edit-distance 1 from a shown suggestion is probably a
-     * typo; all its evidence (new-word and word-used) is multiplied by this.
+     * Row 4: an unknown typed word with a shown known suggestion within the typo edit distance
+     * (below) is probably an unfixed typo: it emits no NewWordEvidence and its WordUsed is
+     * multiplied by this on top of [unknownWordUsedScale].
      */
     val likelyTypoScale: Float = 0.25f,
+    /** Words up to this length use [typoMaxEditsShort], longer ones [typoMaxEditsLong]. */
+    val typoShortLength: Int = 4,
+    val typoMaxEditsShort: Int = 1,
+    val typoMaxEditsLong: Int = 2,
+    /**
+     * Unknown words shorter than this are never counted as new words from plain typing (single
+     * stray letters); an explicit add, a revert or a literal tap still can.
+     */
+    val newWordMinLength: Int = 3,
 
     // ---- visibility (row 2/3) ----------------------------------------------------------------
     /** A suggestion visible at least this long counts as seen (row 2). */
@@ -83,6 +93,17 @@ data class ClassifierConfig(
      * pair.
      */
     val pickedCorrectionDelta: Float = 0.5f,
+    /**
+     * Whether a revert counts toward the adaptive autocorrect threshold's revert rate (the "kept"
+     * outcome was already counted when the correction was applied):
+     * - [rankingRevertsCount]: the user switched to another suggestion or edited the corrected word
+     *   into something else (rows 7/22). The correction was wanted but the wrong word; a stricter
+     *   threshold would only leave the typo, and the correction memory handles the pair.
+     * - [implicitAddRevertsCount]: the user restored the literal and the revert added it to the
+     *   dictionary (rows 6/23). A missing word, not an over-eager threshold.
+     */
+    val rankingRevertsCount: Boolean = false,
+    val implicitAddRevertsCount: Boolean = true,
     /** Row 8: negative for the top correction-like candidate the user declined. */
     val literalRejectDelta: Float = 1.5f,
 
@@ -118,11 +139,11 @@ data class ClassifierConfig(
 
     // ---- touch alignment (row 5, §6.5) ---------------------------------------------------------
     /**
-     * Autocorrections only yield touch evidence when typed and committed have the same length and
-     * differ in at most this many positions (substitution-only); only the matching positions are
-     * used.
+     * Touch evidence is only used when typed and committed have the same length (the keyboard emits
+     * samples relative to the intended key for those words) and differ in at most this many
+     * positions; with more mismatches the word is more likely a different word than sloppy taps.
      */
-    val alignmentMaxMismatches: Int = 1,
+    val alignmentMaxMismatches: Int = 2,
 
     // ---- defensive input filtering (row 15) ----------------------------------------------------
     /** Longer "words" are bulk text (paste-like) and ignored. */

@@ -42,7 +42,15 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
 
     private val ref = AtomicReference(PersonalSnapshot.Empty)
 
-    /** Live [Personalization] that always reads the latest snapshot (one atomic read per call). */
+    /**
+     * Live [Personalization] that always reads the latest snapshot (one atomic read per call).
+     *
+     * The decoder caches its spatial models (with the learned touch offsets) per [Personalization]
+     * instance, so this stable view never makes it rebuild them and learned touch offsets would
+     * never reach the keyboard. The app must wire `personalization = { model.snapshot() }` to the
+     * engine instead (a new immutable object after every publish); this view is for callers that
+     * only need the other, per-call lookups.
+     */
     val personalization: Personalization =
         object : Personalization {
             override fun userLogProb(context: List<String>, word: String) =

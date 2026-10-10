@@ -173,15 +173,35 @@ class OutcomeClassifierRowsTest {
     }
 
     @Test
-    fun row04_unknownWordNearShownSuggestion_isLikelyTypo_reduced() {
+    fun row04_unknownWordNearShownSuggestion_isLikelyTypo_noNewWordEvidence() {
         val out =
             classifier.classify(
                 committed("recieve", known = false, shown = listOf(seen("receive", 0)))
             )
-        assertThat(out.all<NewWordEvidence>().single().weight)
+        assertThat(out.all<NewWordEvidence>()).isEmpty()
+        assertThat(out.all<WordUsed>().single().weight)
             .isWithin(1e-6f)
-            .of(cfg.newWordEvidenceWeight * cfg.likelyTypoScale)
+            .of(cfg.typedWordWeight * cfg.unknownWordUsedScale * cfg.likelyTypoScale)
         assertThat(out.all<Preference>()).isEmpty() // not "ignored a suggestion"
+    }
+
+    @Test
+    fun row04_longUnknownWordTwoEditsFromShown_isLikelyTypo_shortOneIsNot() {
+        val long =
+            classifier.classify(
+                committed("recieved", known = false, shown = listOf(seen("receives", 0)))
+            )
+        assertThat(long.all<NewWordEvidence>()).isEmpty()
+        // A 4-letter word two edits away from the suggestion is not flagged.
+        val short =
+            classifier.classify(committed("zorp", known = false, shown = listOf(seen("zero", 0))))
+        assertThat(short.all<NewWordEvidence>()).hasSize(1)
+    }
+
+    @Test
+    fun row04_tinyUnknownWord_isNeverANewWord() {
+        assertThat(classifier.classify(committed("zq", known = false)).all<NewWordEvidence>())
+            .isEmpty()
     }
 
     @Test
@@ -295,8 +315,15 @@ class OutcomeClassifierRowsTest {
                 CorrectionEvidence("tset", "test", BUCKET, -cfg.editedLaterNegativeDelta),
                 CorrectionEvidence("tset", "set", BUCKET, cfg.editedLaterPositiveDelta),
                 WordUsed(ctx, "set", cfg.typedWordWeight),
-                AutocorrectOutcome(reverted = true),
             )
+        // Ranking errors (right idea, wrong word) don't move the adaptive threshold by default.
+        val counted = OutcomeClassifier(cfg.copy(rankingRevertsCount = true))
+        assertThat(
+                counted.classify(
+                    reverted("tset", "test", RevertKind.EditedLater, replacement = "set")
+                )
+            )
+            .contains(AutocorrectOutcome(reverted = true))
     }
 
     @Test
@@ -331,7 +358,6 @@ class OutcomeClassifierRowsTest {
                 CorrectionEvidence("tset", "test", BUCKET, -cfg.switchNegativeDelta),
                 CorrectionEvidence("tset", "set", BUCKET, cfg.switchPositiveDelta),
                 Preference("tset", ctx, "set", "test", cfg.switchPreferenceWeight),
-                AutocorrectOutcome(reverted = true),
             )
         assertThat(out.all<AddUserWord>()).isEmpty()
         assertThat(out.all<SuppressCorrection>()).isEmpty()

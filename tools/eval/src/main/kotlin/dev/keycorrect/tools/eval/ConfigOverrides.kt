@@ -98,6 +98,31 @@ object ConfigOverrides {
         val current =
             properties(section.value!!).firstOrNull { it.name == field }
                 ?: throw IllegalArgumentException("unknown config key '$key' (try --help)")
+        val parsed = parseValue(key, current.value, v)
+        return copyWith(c, sectionName, copyWith(section.value!!, field, parsed)) as ClassicConfig
+    }
+
+    /**
+     * Applies flat `field=value` overrides (same value syntax, `xN` multiplies) to any data class
+     * whose constructor properties are primitives, e.g. `PersonalModelConfig` or
+     * `ClassifierConfig`; unknown fields and non-primitive fields fail loudly.
+     */
+    fun <T : Any> applyFlat(base: T, overrides: Map<String, String>): T {
+        var c: Any = base
+        for ((key, v) in overrides) {
+            val current =
+                properties(c).firstOrNull { it.name == key }
+                    ?: throw IllegalArgumentException(
+                        "unknown field '$key' in ${c.javaClass.simpleName}"
+                    )
+            c = copyWith(c, key, parseValue(key, current.value, v))
+        }
+        @Suppress("UNCHECKED_CAST")
+        return c as T
+    }
+
+    private fun parseValue(key: String, currentValue: Any?, v: String): Any {
+        val current = Prop(key, currentValue)
         val factor = if (v.startsWith("x")) v.substring(1).toDoubleOrNull() else null
         val parsed: Any =
             when (current.value) {
@@ -119,6 +144,6 @@ object ConfigOverrides {
                 ?: throw IllegalArgumentException(
                     "$key: '$v' is not a valid ${current.value!!.javaClass.simpleName}"
                 )
-        return copyWith(c, sectionName, copyWith(section.value!!, field, parsed)) as ClassicConfig
+        return parsed
     }
 }

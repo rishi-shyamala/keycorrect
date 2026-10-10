@@ -42,6 +42,12 @@ data class Options(
     val tapProbability: Float = 0.6f,
     /** Learn mode: write a per-word trace CSV of the first N words of each arm. */
     val traceWords: Int = 0,
+    /**
+     * Learn mode: `field=value` overrides of `PersonalModelConfig` (e.g. `targetRevertRate=0.1`).
+     */
+    val modelConfig: Map<String, String> = emptyMap(),
+    /** Learn mode: `field=value` overrides of `ClassifierConfig`. */
+    val classifierConfig: Map<String, String> = emptyMap(),
 ) {
     enum class Mode {
         Eval,
@@ -100,6 +106,8 @@ data class Options(
               --personal-rate F    share of words replaced by the user's personal words (0.04)
               --bias-x F --bias-y F  the user's touch bias in key widths/heights (-0.10, +0.20)
               --trace-words N      write trace_learning.csv / trace_baseline.csv for the first N words
+              --model k=v,...      PersonalModelConfig overrides (e.g. targetRevertRate=0.1,thresholdMaxUp=1)
+              --classifier k=v,... ClassifierConfig overrides (e.g. typoMaxEditsLong=1)
               --tap-prob P         taps the target if it is on the strip but not applied (0.6)
 
             config keys: ${ConfigOverrides.KEYS.joinToString(", ")}
@@ -196,6 +204,13 @@ data class Options(
                     "--bias-x" -> o = o.copy(biasX = v().toFloat())
                     "--bias-y" -> o = o.copy(biasY = v().toFloat())
                     "--trace-words" -> o = o.copy(traceWords = v().toInt())
+                    "--model" ->
+                        o = o.copy(modelConfig = o.modelConfig + ConfigOverrides.parse(v()))
+                    "--classifier" ->
+                        o =
+                            o.copy(
+                                classifierConfig = o.classifierConfig + ConfigOverrides.parse(v())
+                            )
                     "--tap-prob" -> o = o.copy(tapProbability = v().toFloat())
                     "--help",
                     "-h" -> o = o.copy(help = true)

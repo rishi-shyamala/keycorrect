@@ -95,21 +95,30 @@ class CorrectionAndLexiconTest {
     }
 
     @Test
-    fun promotionNeedsTwoCommitsInTwoSessions() {
+    fun promotionNeedsThreeCommitsInThreeSessions() {
         val m = PersonalModel(testConfig())
         m.applyAt(0, NewWordEvidence("Zorblax", 1, 1f), NewWordEvidence("zorblax", 1, 1f))
-        m.applyAt(1, NewWordEvidence("zorblax", 1, 1f)) // 3 commits, still one session
+        m.applyAt(1, NewWordEvidence("zorblax", 2, 1f)) // 3 commits, two sessions
         assertThat(m.pendingUserDictionaryAdds()).isEmpty()
         assertThat(m.snapshot().isUserWord("zorblax")).isFalse()
-        m.applyAt(2, NewWordEvidence("zorblax", 2, 1f))
+        m.applyAt(2, NewWordEvidence("zorblax", 3, 1f))
         val adds = m.pendingUserDictionaryAdds()
         assertThat(adds).hasSize(1)
         assertThat(adds[0].reason).isEqualTo(AddUserWord.Reason.Promoted)
         assertThat(adds[0].word).isEqualTo("Zorblax")
         assertThat(m.snapshot().isUserWord("ZORBLAX")).isTrue()
         assertThat(m.pendingUserDictionaryAdds()).isEmpty() // drained
-        m.applyAt(3, NewWordEvidence("zorblax", 3, 1f))
+        m.applyAt(3, NewWordEvidence("zorblax", 4, 1f))
         assertThat(m.pendingUserDictionaryAdds()).isEmpty() // not re-emitted
+    }
+
+    @Test
+    fun explicitKeepsPromoteOnTheFastPath() {
+        val m = PersonalModel(testConfig())
+        m.applyAt(0, NewWordEvidence("quibblex", 1, 2f))
+        assertThat(m.pendingUserDictionaryAdds()).isEmpty()
+        m.applyAt(1, NewWordEvidence("quibblex", 2, 2f)) // two literal taps, two sessions
+        assertThat(m.pendingUserDictionaryAdds()).hasSize(1)
     }
 
     @Test

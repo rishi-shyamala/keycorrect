@@ -69,22 +69,19 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             CommitMethod.PredictionPicked ->
                 listOf(WordUsed(e.context, e.committed, config.predictionPickedWeight))
             // Row 12: gesture-specific memory is Phase 5; for now just word use. No touches.
-            CommitMethod.Gesture -> wordEvidence(e, config.typedWordWeight, 1f)
+            CommitMethod.Gesture -> wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
             // Row 16: evidence like typing; the 0.3x scaling happens in classify().
-            CommitMethod.Voice -> wordEvidence(e, config.typedWordWeight, 1f)
+            CommitMethod.Voice -> wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
         }
     }
 
     /** Rows 2, 3, 4, 13: user typed [WordCommitted.committed] and finished it themselves. */
     private fun typed(e: WordCommitted): List<LearningUpdate> {
         val out = ArrayList<LearningUpdate>()
-        // Row 4: unknown typed word with a distance-1 neighbour on the strip is probably a typo.
-        val likelyTypo =
-            !e.typedIsKnown &&
-                !e.committedIsKnown &&
-                e.shown.any { editDistance(fold(it.text), fold(e.committed)) == 1 }
-        out +=
-            wordEvidence(e, config.typedWordWeight, if (likelyTypo) config.likelyTypoScale else 1f)
+        // Row 4: an unknown typed word with a close known neighbour on the strip is probably a
+        // typo the user did not bother to fix; it is not counted as a new word.
+        val likelyTypo = isLikelyTypo(e)
+        out += wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
 
         val match = e.shown.firstOrNull { sameWord(it.text, e.committed) }
         if (match != null) {
@@ -172,22 +169,54 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
     /**
      * WordUsed (+ NewWordEvidence for unknown words, row 4). Decision: unknown words emit both,
      * with WordUsed scaled by [ClassifierConfig.unknownWordUsedScale] so the n-gram cache can learn
-     * a genuinely new word quickly without fully trusting something that may be a typo.
+     * a genuinely new word quickly without fully trusting something that may be a typo. With
+     * [typoCheck], an unknown word that looks like an unfixed typo of a shown known word emits no
+     * NewWordEvidence and only a minimal WordUsed ([ClassifierConfig.likelyTypoScale]).
      */
     private fun wordEvidence(
         e: WordCommitted,
         usedWeight: Float,
         scale: Float,
         newWordWeight: Float = config.newWordEvidenceWeight,
+        typoCheck: Boolean = false,
     ): List<LearningUpdate> =
-        if (e.committedIsKnown) {
-            listOf(WordUsed(e.context, e.committed, usedWeight * scale))
-        } else {
-            listOf(
-                NewWordEvidence(e.committed, e.sessionId, newWordWeight * scale),
-                WordUsed(e.context, e.committed, usedWeight * config.unknownWordUsedScale * scale),
-            )
+        when {
+            e.committedIsKnown -> listOf(WordUsed(e.context, e.committed, usedWeight * scale))
+            typoCheck && isLikelyTypo(e) ->
+                listOf(
+                    WordUsed(
+                        e.context,
+                        e.committed,
+                        usedWeight * config.unknownWordUsedScale * config.likelyTypoScale * scale,
+                    )
+                )
+            else ->
+                listOf(
+                    NewWordEvidence(e.committed, e.sessionId, newWordWeight * scale),
+                    WordUsed(
+                        e.context,
+                        e.committed,
+                        usedWeight * config.unknownWordUsedScale * scale,
+                    ),
+                )
         }
+
+    /**
+     * An unknown committed word with a shown suggestion (a known word) within edit distance
+     * [ClassifierConfig.typoMaxEditsShort] (length <= [ClassifierConfig.typoShortLength]) or
+     * [ClassifierConfig.typoMaxEditsLong]: most likely a typo the user didn't bother to fix, not a
+     * new word. The shown list also carries the user's own words, so "Damiabo" next to a learned
+     * "Damiano" is covered too.
+     */
+    private fun isLikelyTypo(e: WordCommitted): Boolean {
+        if (e.committedIsKnown) return false
+        if (e.committed.length < config.newWordMinLength) return true // a stray tap, not a word
+        val c = fold(e.committed)
+        val limit =
+            if (c.length <= config.typoShortLength) config.typoMaxEditsShort
+            else config.typoMaxEditsLong
+        return e.shown.any { editDistance(fold(it.text), c) in 1..limit }
+    }
 
     /** 1 when the user plausibly saw [s] in time to act on it, else the low-visibility scale. */
     private fun visibility(s: ShownSuggestion, typedLength: Int): Float {
@@ -200,15 +229,17 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
     // ---- touches (§6.5) ----------------------------------------------------------------------
 
     /**
-     * Touches are reliable labels only where the typed char is the intended char: all positions of
-     * a literal that equals the committed word, and, for a substitution-only autocorrection of the
-     * same length, the positions the correction left unchanged. The key geometry isn't known here,
-     * so mis-hit positions are never relabelled. Unknown committed words are skipped (typo risk).
+     * [TouchSample]s are relative to the INTENDED key (the committed word's char at that position),
+     * and the keyboard only emits them for substitution-aligned words (same length, substitutions
+     * only, |dx| or |dy| > 1.2 dropped). Every non-null sample of such a word is therefore usable,
+     * including taps that landed on a neighbouring key (autocorrected or picked words): using only
+     * taps that registered on the intended key would learn offsets shrunk toward zero. Unknown
+     * committed words are skipped (typo risk: the intended key is unknown).
      */
     private fun touchEvidence(e: WordCommitted): List<LearningUpdate> {
         if (e.method !in TOUCH_METHODS || e.typed.isEmpty() || e.touches.isEmpty())
             return emptyList()
-        if (!e.committedIsKnown && e.method != CommitMethod.Autocorrected) return emptyList()
+        if (!e.committedIsKnown) return emptyList()
         val aligned = alignedTouches(e.typed, e.committed, e.touches)
         return if (aligned.isEmpty()) emptyList()
         else listOf(TouchEvidence(e.profile.touchKey, aligned))
@@ -224,14 +255,30 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
         for (i in typed.indices) if (typed[i].lowercaseChar() != committed[i].lowercaseChar())
             mismatches++
         if (mismatches > config.alignmentMaxMismatches) return emptyList()
+        if (isTransposition(typed, committed)) return emptyList()
         val out = ArrayList<TouchSample>()
         for (i in typed.indices) {
             val t = touches[i] ?: continue
-            if (typed[i].lowercaseChar() != committed[i].lowercaseChar()) continue
-            if (t.char.lowercaseChar() != typed[i].lowercaseChar()) continue
+            if (t.char.lowercaseChar() != committed[i].lowercaseChar()) continue
             out += t
         }
         return out
+    }
+
+    /** Adjacent letters swapped: the taps belong to the other key, not to an offset. */
+    private fun isTransposition(typed: String, committed: String): Boolean {
+        for (i in 0 until typed.length - 1) {
+            val a = typed[i].lowercaseChar()
+            val b = typed[i + 1].lowercaseChar()
+            if (
+                a != committed[i].lowercaseChar() &&
+                    a == committed[i + 1].lowercaseChar() &&
+                    b == committed[i].lowercaseChar()
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     // ---- casing (row 13) ---------------------------------------------------------------------
@@ -268,13 +315,15 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
                 e.kind
             }
         val out = ArrayList<LearningUpdate>()
+        var countsForThreshold: Boolean
         when (kind) {
             RevertKind.ImmediateBackspace,
             RevertKind.DeletedAndRetyped -> {
                 // Decided 2026-10-09: the first revert implicitly adds the literal and suppresses
                 // the pair.
-                if (isTrainableWord(e.typed))
-                    out += AddUserWord(e.typed, AddUserWord.Reason.RevertedAutocorrect)
+                val adds = isTrainableWord(e.typed)
+                countsForThreshold = !adds || config.implicitAddRevertsCount
+                if (adds) out += AddUserWord(e.typed, AddUserWord.Reason.RevertedAutocorrect)
                 out += SuppressCorrection(e.typed, e.corrected)
                 out += CorrectionEvidence(e.typed, e.corrected, b, -config.revertDelta)
                 out += WordUsed(e.context, e.typed, config.typedWordWeight)
@@ -282,6 +331,7 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             RevertKind.EditedLater -> {
                 if (e.replacement.isBlank() || sameWord(e.replacement, e.corrected))
                     return emptyList()
+                countsForThreshold = config.rankingRevertsCount
                 out += CorrectionEvidence(e.typed, e.corrected, b, -config.editedLaterNegativeDelta)
                 out +=
                     CorrectionEvidence(e.typed, e.replacement, b, config.editedLaterPositiveDelta)
@@ -292,6 +342,7 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
                 // replacement is not given WordUsed here; its own WordCommitted (picked) does that.
                 if (e.replacement.isBlank() || sameWord(e.replacement, e.corrected))
                     return emptyList()
+                countsForThreshold = config.rankingRevertsCount
                 out += CorrectionEvidence(e.typed, e.corrected, b, -config.switchNegativeDelta)
                 out += CorrectionEvidence(e.typed, e.replacement, b, config.switchPositiveDelta)
                 out +=
@@ -304,7 +355,7 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
                     )
             }
         }
-        out += AutocorrectOutcome(reverted = true)
+        if (countsForThreshold) out += AutocorrectOutcome(reverted = true)
         return out
     }
 
@@ -464,8 +515,13 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
 
     private companion object {
         const val CONTEXT_WORDS = 2
-        /** Methods whose typed chars were really tapped keys (row 5/8 and plain typing). */
+        /** Methods whose typed chars were really tapped keys (row 1/5/8 and plain typing). */
         val TOUCH_METHODS =
-            setOf(CommitMethod.Typed, CommitMethod.Autocorrected, CommitMethod.LiteralPicked)
+            setOf(
+                CommitMethod.Typed,
+                CommitMethod.Autocorrected,
+                CommitMethod.SuggestionPicked,
+                CommitMethod.LiteralPicked,
+            )
     }
 }

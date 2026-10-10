@@ -119,11 +119,28 @@ class LearnTest {
         val typed =
             Typist(keyboard, noTypos.copy(sigmaX = 0f, sigmaY = 0f, biasX = -0.1f, biasY = 0.2f))
                 .type("ab", Random(1))
-        val t = builder.touches(typed)
+        val t = builder.touches(typed, "ab")
         assertThat(t).hasSize(2)
         assertThat(t[0]!!.char).isEqualTo('a')
         assertThat(t[0]!!.dx).isWithin(1e-3f).of(-0.1f)
         assertThat(t[0]!!.dy).isWithin(1e-3f).of(0.2f)
+    }
+
+    @Test
+    fun touchesAreRelativeToTheIntendedKeyAndOnlyForAlignedWords() {
+        // A tap on the left part of "g" is a sample of the intended "f" (dx about +0.6).
+        val f = keyboard.key('f')!!
+        val typed =
+            Typist(keyboard, noTypos.copy(sigmaX = 0f, sigmaY = 0f, biasX = -0.4f, biasY = 0f))
+                .type("g", Random(1))
+        // Typed literal "g"; committed "f": aligned, sample is for f.
+        val t = builder.touches(typed, "f")
+        assertThat(t).hasSize(1)
+        assertThat(t[0]!!.char).isEqualTo('f')
+        assertThat(t[0]!!.dx).isGreaterThan(0.4f)
+        // Different length: nothing is emitted.
+        assertThat(builder.touches(typed, "fa")).isEmpty()
+        assertThat(f.char).isEqualTo('f')
     }
 
     @Test

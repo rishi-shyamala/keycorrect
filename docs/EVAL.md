@@ -246,44 +246,96 @@ Extra flags: `--personal-rate`, `--bias-x`, `--bias-y`, `--tap-prob`. 20k words 
 * **Note-2 check.** After a personal word's first revert, count each later occurrence where the
   word was typed correctly and the keyboard changed it anyway.
 
-### Results (seed 1, 20 000 words, learning / baseline, sigma 0.35 plus bias)
+### Results (20 000 words, learning / baseline, sigma 0.35 plus bias)
+
+Seed 1 (windows 0-2k, 2-5k, 5-10k, 10-20k, all):
 
 | window | 0-2k | 2-5k | 5-10k | 10-20k | all |
 |---|---|---|---|---|---|
-| word accuracy % | 86.0 / 89.2 | 85.7 / 87.9 | 86.1 / 87.9 | 86.9 / 88.4 | 86.4 / 88.3 |
-| personal-word accuracy % | 39.5 / 46.5 | 56.1 / 42.3 | 54.7 / 40.8 | 60.0 / 43.8 | 56.0 / 43.1 |
-| false corrections /1000 | 1.5 / 3.5 | 0.7 / 2.0 | 0.4 / 2.8 | 0.3 / 2.6 | 0.5 / 2.65 |
-| false corrections /1000 personal | 11.6 / 23.3 | 8.1 / 24.4 | 4.5 / 44.8 | 2.4 / 30.6 | 4.7 / 32.7 |
-| reverts /1000 | 82 / 130 | 75 / 114 | 70 / 111 | 74 / 109 | 74 / 112 |
-| top-3 recall % | 75.3 / 74.8 | 76.5 / 74.7 | 77.8 / 76.2 | 77.9 / 75.9 | 77.4 / 75.7 |
-| personal top-3 recall % | 11.6 / 9.3 | 44.7 / 16.3 | 39.9 / 13.0 | 47.5 / 14.6 | 41.5 / 13.9 |
-| touch offset error (learned / none) | 0.111 / 0.224 | 0.120 | 0.121 | 0.128 | |
+| word accuracy % | 88.75 / 89.20 | 87.93 / 87.87 | 88.06 / 87.90 | 88.85 / 88.36 | 88.51 / 88.26 |
+| personal-word accuracy % | 46.5 / 46.5 | 52.0 / 42.3 | 52.5 / 40.8 | 57.4 / 43.8 | 54.3 / 43.1 |
+| false corrections /1000 | 2.0 / 3.5 | 0.33 / 2.0 | 0.40 / 2.8 | 0.40 / 2.6 | 0.55 / 2.65 |
+| reverts /1000 | 118 / 130 | 101 / 114 | 94 / 111 | 94 / 109 | 98 / 112 |
+| personal top-3 recall % | 14.0 / 9.3 | 34.2 / 16.3 | 38.6 / 13.0 | 44.7 / 14.6 | 38.5 / 13.9 |
+| touch offset error (learned / none 0.224) | 0.055 | 0.049 | 0.062 | 0.068 | |
 
-Note-2: after a personal word's first revert, the word was typed right 34 times (learning) and the
-keyboard changed it 0 times; in the baseline 59 times and 34 changed (17 personal). The rule
-works end to end.
+Seed 2, all windows: accuracy 88.64 / 88.88, personal-word accuracy 60.0 / 54.2, false corrections
+0.50 / 5.20, reverts 95.6 / 116.9, personal top-3 recall 40.4 / 24.1, touch error 0.056-0.060. Note-2:
+0 changes after a first revert (learning) against 34 (seed 1) and 87 (seed 2) in the baseline.
 
-### Findings
+Before the phase-3 fixes below (seed 1 / seed 2, all windows): accuracy 86.44 / 86.93 (baseline 88.26 /
+88.88), personal-word accuracy 56.0 / 64.3, reverts 74 / 73, touch error 0.128 / 0.123, user
+dictionary 104 / 84 words of which 77 / 64 were uncorrected typos.
 
-* Personal words are learned: accuracy 43% -> 56-60% (baseline flat), top-3 recall 14% -> 41-48%,
-  false corrections of personal words 33 -> 4.7 per 1000 personal words. Many rare personal words
-  (Zipf tail) are never learned within 20k words (34 of 50 typed but not in the user dictionary).
-* Overall word accuracy is about 2 points LOWER with learning (86.4 vs 88.3). Keyboard accuracy
-  before reaction is 1.2 points lower. In the first 2000 words the learned autocorrect threshold
-  (`AdaptiveThresholds`: revert rate far above the 3% target, so the threshold is raised)
-  suppresses about 13% of autocorrections: wrong ones drop by 36% but correct ones by 5%. The
-  reaction model makes wrong corrections cheap (95% are noticed and repaired) while an unfixed typo
-  is repaired only 30-50% of the time, so the accuracy metric favours aggressive autocorrect; reverts
-  fall 112 -> 74 per 1000, the effort metric favours learning.
-* Learned touch offsets are shrunk to about (-0.04, +0.10) vs the true (-0.10, +0.20), error 0.11-0.13
-  vs 0.224 without learning. Part of this is unavoidable: only taps that registered on the intended key
-  are usable (attainable error 0.105). It does not improve after 2k words (0.111 -> 0.128).
-* 77 of the 104 learned user-dictionary words are typos the user left uncorrected and typed twice in
-  two sessions (promoted by `NewWordEvidence`), e.g. "Damiabo", "Benexito", "Cjmon", "aanf". A user word
-  is never autocorrected, so a promoted typo is protected.
+### Fixes (phase 3)
+
+* **Typo promotion.** `OutcomeClassifier` emits no `NewWordEvidence` (and a minimal `WordUsed`) for
+  an unknown committed word when a shown suggestion (the strip also carries the user's own words) is
+  a different word within edit distance 1 (length <= 4) or 2 (length >= 5), and none for unknown words
+  shorter than 3 letters (`ClassifierConfig.typoShortLength/typoMaxEditsShort/typoMaxEditsLong/
+  newWordMinLength`). The model promotes at weight >= 3.0 in >= 3 sessions (`PersonalModelConfig.
+  promoteMinCommits/promoteMinSessions`); a fast path (weight >= 4.0 in >= 2 sessions, i.e. two
+  literal taps) and the revert / explicit-add paths are unchanged. User dictionary pollution: 77 / 64
+  typos -> 6 / 11, total size 104 / 84 -> 22 / 23.
+* **Threshold over-tightening.** Two lines of evidence. (1) Controller state: the simulated revert
+  rate is about 18% of applied autocorrections (target 3%), so `thresholdDelta` sat at the +2 cap
+  and ~13% fewer autocorrections were applied. (2) Composition: in the baseline arm, of the undone
+  autocorrections only 50 per 20 000 words restored a correct literal (rows 6/23); 1860 were
+  `EditedLater` and 330 `SwitchedToSuggestion`, i.e. the correction was wanted but wrong. A stricter
+  threshold only turns those into uncorrected typos, and PLAN row 6 only says the literal restore
+  counts toward the revert rate. So `AutocorrectOutcome(reverted = true)` is now emitted only for
+  literal restores (`ClassifierConfig.rankingRevertsCount = false`); the pair is still demoted via
+  correction memory and preferences. Reverts that trigger an implicit add still count
+  (`implicitAddRevertsCount = true`): excluding them changed accuracy by 0.03 points (86.37 -> 86.40,
+  rare in the simulation) and they are the signal for false corrections of real dictionary words.
+  Effect: the revert rate falls under the target, the delta sits at the -0.5 floor, accuracy goes
+  from 86.4 to 88.5 (seed 1).
+  Sweep (seed 1 / seed 2 accuracy, baseline 88.26 / 88.88; all with the typo fix; reverts per 1000):
+  | variant | acc s1 / s2 | reverts s1 |
+  |---|---|---|
+  | all reverts count, target 3% (old) | 86.37 / 86.32 | 73 |
+  | target 10% | 87.35 / 87.41 | 84 |
+  | target 20% | 88.44 / - | 97 |
+  | max raise 1.0 | 87.02 / 86.96 | 80 |
+  | max raise 0.5 | 87.60 / 87.56 (max lower 0) | 87 |
+  | controller off | 88.15 / - | 93 |
+  | literal restores only, max lower 0.5 (chosen) | 88.51 / 88.64 | 98 |
+  | literal restores only, max lower 0.25 | 88.31 / 88.49 | 95 |
+  | literal restores only, max lower 0 | 88.15 / 88.25 | 93 |
+  With sigma 0.25 (seed 1) the old controller was already neutral to positive (94.96 vs 94.84, delta
+  settling at +0.9); lower thresholds were better still in every setting (95.65 for the chosen one).
+  The simulation rewards aggression because it assumes 95% of wrong corrections are noticed.
+* **Touch selection bias.** `TouchSample.dx/dy` are relative to the INTENDED key (the committed
+  word's char) and are emitted for substitution-aligned words only (same length, |dx| and |dy| <= 1.2).
+  The classifier uses all non-null samples of aligned Typed / Autocorrected / SuggestionPicked /
+  LiteralPicked words (max 2 mismatches, transposed pairs rejected). The eval's `EventBuilder.touches`
+  builds them from its geometry the same way. Learned offset error 0.12-0.13 -> 0.05-0.07 (mean
+  offset about (-0.075, +0.145) vs true (-0.10, +0.20)). The confirmed-taps-only bound (0.105) no
+  longer limits it.
+* **Wiring.** The app must pass `personalization = { model.snapshot() }` to the engine. The decoder
+  caches its spatial models per `Personalization` instance, so the stable `PersonalModel.personalization`
+  view never refreshes learned touch offsets (documented on that property).
+
+New options for sweeps: `--model k=v,...` (`PersonalModelConfig`) and `--classifier k=v,...`
+(`ClassifierConfig`); the report now includes autocorrections applied and the threshold delta.
+
+### Findings and remaining weaknesses
+
+* Personal words are learned (accuracy 43 -> 54 on seed 1, 54 -> 60 on seed 2; top-3 recall 14 -> 39),
+  but stricter promotion costs speed: 9 / 5 of 50 personal words reach the dictionary within 20k words
+  (was 14 / 11). Rare Zipf-tail words are never learned. Personal-word accuracy on seed 1 is below
+  the pre-fix 56.0.
+* Overall accuracy: +0.25 (seed 1) / -0.24 (seed 2) points against the baseline, i.e. level. The
+  remaining 6 / 11 promoted typos are garbage strings of 4+ letters that are 2+ edits from the intended
+  frequent word (e.g. "rheh" for "they"), so the strip check cannot see them; a candidate-vs-candidate
+  dominance check in the lexicon ("Zirj" next to a much more frequent "Ziri") is the obvious next step.
+* A reverted autocorrection also feeds the touch model before the revert is known (the correction's
+  chars label the taps); not measured separately.
+* The controller sits at its -0.5 floor in the simulation; whether real users revert literals as rarely
+  is unknown.
 
 ### Caveats
 
 The reaction model, bias, and injection rate are assumptions, not data; absolute numbers depend on
-them. A single seed was run. The word-accuracy metric does not count user effort (reverts, retypes,
+them. Seeds 1 and 2 were run. The word-accuracy metric does not count user effort (reverts, retypes,
 taps), so read it together with reverts and taps per 1000.

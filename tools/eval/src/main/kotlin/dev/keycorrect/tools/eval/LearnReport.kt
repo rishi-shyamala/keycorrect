@@ -38,6 +38,7 @@ object LearnReport {
             Metric("false corrections / 1000 personal", 1) {
                 per1000(it.personalFalseCorrections, it.personalWords)
             },
+            Metric("autocorrections applied / 1000 words", 1) { per1000(it.fired, it.words) },
             Metric("reverts / 1000 words", 2) { per1000(it.reverts, it.words) },
             Metric("reverts / 1000 personal", 1) { per1000(it.personalReverts, it.personalWords) },
             Metric("strip taps / 1000 words", 1) { per1000(it.taps, it.words) },
@@ -62,6 +63,7 @@ object LearnReport {
             t.reverts += w.reverts
             t.personalReverts += w.personalReverts
             t.taps += w.taps
+            t.fired += w.fired
             t.retypes += w.retypes
             t.top3 += w.top3
             t.personalTop3 += w.personalTop3
@@ -115,6 +117,7 @@ object LearnReport {
             for (w in lw) sb.append(String.format(Locale.ROOT, "%-18s", f(w)))
             sb.append('\n')
         }
+        row("autocorrect threshold delta (window end)") { fmt(it.thresholdDelta.toDouble(), 2) }
         row("keys with a learned offset (of 26)") { it.learnedKeys.toString() }
         row("mean learned offset (dx, dy)") {
             if (it.learnedKeys == 0) "-"
