@@ -86,4 +86,10 @@ data class PredictResult(
     val autocorrect: Candidate?,
     val phrase: Candidate? = null,
     val sequence: Long = 0,
+    /**
+     * When [autocorrect] was chosen between near-tied candidates for a non-word literal
+     * (docs/PLAN.md §6.3 row 22), the runner-up — so the keyboard can learn from which one the user
+     * keeps.
+     */
+    val autocorrectRunnerUp: Candidate? = null,
 )
