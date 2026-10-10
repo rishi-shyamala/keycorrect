@@ -180,12 +180,104 @@ in-dictionary FC rate is 0.08/1000. Typed errors that are themselves words
 
 ## Applied defaults
 
-`spatial.sigmaXFactor = sigmaYFactor = 1.0` and `autocorrect.contractions = true` (explicit
+`spatial.sigmaXFactor = sigmaYFactor = 1.0` (**superseded: now 0.6**, see "Cognitive
+misspellings") and `autocorrect.contractions = true` (explicit
 apostrophe-less contraction rule, independent of sigma) are now the defaults. Re-run, typist
 sigma 0.25, seed 7, 2000 sentences, **test split**: 93.80% word accuracy, 2.48 false corrections
 per 1000 words (was 93.68% / 3.88 at model sigma 0.45, same run settings). These 2000-sentence
 numbers are not comparable to the 5000-sentence, seed 1 tables above (e.g. config A's 93.66% /
 2.04 there, which predates the contraction rule); the dev split was only used for the sweeps.
+
+## Cognitive misspellings (`--mode misspell`)
+
+The spatial typist only injects omission/insertion/transposition at 1% each. Real users also
+misspell words they do not know how to spell ("thier", "wierd", "seperate"), with every key hit
+exactly. `--mode misspell` measures that directly.
+
+**Data.** Wikipedia "Lists of common misspellings/For machines" (CC BY-SA 4.0), pinned to
+revision 1199637275, fetched by `tools/data/fetch-sources.sh` into git-ignored `data/raw/`, SHA-256
+in `sources.sha256`, evaluation only (never shipped; docs/DATA_SOURCES.md section 4). 4310 lines:
+5 dropped (non-letter / under 2 chars), 123 dropped (no single-word dictionary correction), 4182
+kept; of those 57 are real-word misspellings (typed word is in the dictionary; reported apart) and
+174 list several corrections (any of them counts). The split is 50/50 by hash of the typed word:
+2060 entries in test (`--split test`), the rest are dev (sweeps only).
+
+**Conditions and metrics.** Each non-word entry is typed at key centres with no context and with
+three neutral prefixes ("I really ", "It was ", "We need "); a noisy condition (`--sigma`, default
+0.25) uses the same prefixes. Reported: *accuracy* (autocorrect applied equals a listed
+correction), *top-3* (a listed correction in the strip), *abstain* (no autocorrect), *wrong*
+(autocorrect applied to something else). Per-slip-category breakdown too (ie/ei, doubled letter,
+vowel for vowel, 2 edits, ...). Files: `misspell/report.txt`, `results.json`, `failures.csv`.
+
+```
+tools/eval/build/install/eval/bin/eval --mode misspell --split test --sentences 2000 --seed 7
+tools/eval/build/install/eval/bin/eval --mode misspell --probe thier,wierd,seperate   # candidate dump
+tools/eval/build/install/eval/bin/eval --mode misspell --sweep --sweep-grid "spatial.sigma=0.6,0.8,1.0;edits.multiEditPenalty=-1,-2,-3"
+```
+
+The misspell sweep is **joint**: objective is the mean accuracy of the non-word entries in the
+key-centre no-context and neutral-context conditions (dev split), subject to the spatial
+typist accuracy at sigma 0.25/0.35 not regressing and false corrections/1000 at most
+max(`--target-fc`, baseline FC). The run also prints the spatial test result at sigma 0.25 and
+0.35, so every misspell run shows both sides.
+
+**Root causes found** (via `--probe`): (a) far-key vowel substitutions were never explored (the
+Gaussian puts them below `substitutionCutoff`), so "seperate" never reached "separate"; (b) two
+cheap spatial substitutions plus a high unigram frequency beat one natural transposition
+("thier" -> "this"/"the", "wierd" -> "where" at sigma 1.0); (c) the OOV literal skipped the context
+back-off that every candidate pays, which withheld corrections in context.
+
+**New knobs** (all `ClassicConfig`, off-switchable):
+
+| knob | default | effect |
+|---|---|---|
+| `edits.vowelTranspositionPenalty` | -1.5 (was -3 generic) | adjacent vowel pair swapped (ie/ei) |
+| `edits.phoneticSubstitutions` / `phoneticSubstitutionPenalty` | true / -3 | vowel for vowel (a,e,i,o,u; y-i) scored against the typed key's own touch, so key distance does not matter |
+| `edits.multiEditPenalty` | -3 | extra cost for each edit after the first |
+| `scoring.oovBackoff` | true | the OOV literal pays the same context back-off as candidates |
+| `spatial.sigma` | 0.6 (was 1.0) | tighter touch model, re-tuned jointly |
+
+`edits.doubleLetterPenalty` (-2) already existed and was kept; doubled letters were already good.
+
+**Sweep.** 108 dev points: sigma {0.6, 0.8, 1.0} x multiEdit {-1,-2,-3} x phonetic penalty
+{-1,-2,-3} x oovBackoff {off,on} x threshold {2.5,3.5}. The winner (sigma 0.6, multiEdit -3,
+phonetic -3, oovBackoff on, threshold 2.5) is on the edge of the grid for sigma, multiEdit and
+phonetic penalty, so a wider grid may find a little more; not explored.
+
+**Results** (test split, 2000 sentences, seed 7, typist cognitive typos 1% each). Misspellings:
+non-word entries, key-centre taps.
+
+| | before (old defaults) | after |
+|---|---|---|
+| no context: accuracy / top-3 / abstain / wrong | 59.48 / 69.65 / 27.55 / 12.97 | **76.72 / 90.86 / 16.21 / 7.07** |
+| neutral context: accuracy / top-3 / abstain / wrong | 54.99 / 69.11 / 32.17 / 12.84 | **76.54 / 90.85 / 16.09 / 7.37** |
+| sigma 0.25 + context: accuracy / top-3 / abstain / wrong | 41.52 / 54.94 / 46.63 / 11.85 | **52.57 / 73.25 / 39.88 / 7.55** |
+| spatial sigma 0.25: accuracy / FC per 1000 | 93.92 / 4.62 | 94.04 / 4.48 |
+| spatial sigma 0.35: accuracy / FC per 1000 | 78.44 / 2.21 | 77.10 / 2.28 |
+
+"Before" = `spatial.sigma=1.0, edits.phoneticSubstitutions=false, edits.multiEditPenalty=0,
+edits.vowelTranspositionPenalty=-3, scoring.oovBackoff=false`. Per category (context-free, accuracy
+before -> after): ie/ei transposition 64.7 -> 97.1, vowel for vowel 37.2 -> 92.8, doubled letter
+missing 87.2 -> 93.1. The cost is **-1.3 points of spatial accuracy at sigma 0.35** (+0.1 at 0.25),
+the price of the tighter sigma; it stays within the sweep constraint on FC.
+
+**Baseline FC discrepancy.** The "Applied defaults" run above (93.80% / 2.48 FC) no longer
+reproduces: the current repo gives 93.92% / 4.62. Cause: `autocorrect.nonWordTieRule=true`
+(default) corrects unknown names (Sami -> Sam, Yanni -> Sunni); with it false the result is
+93.80 / 2.48 again. The tie rule was left alone (PLAN section 6.3 row 22), so the sweep's FC limit
+is max(3, baseline FC).
+
+**Regression tests.** `CognitiveSpellingTest` (synthetic dictionary: ie/ei beats frequent
+two-edit words, vowel-for-vowel at any key distance, doubled letters, legacy costs fail,
+extra edits cost more) and `realDictionaryCommonMisspellings` (skipped if the `en_US.kcd` asset
+is absent): thier -> their, wierd -> weird, seperate -> separate, recieve -> receive,
+beleive -> believe, freind -> friend, teh -> the.
+
+**Remaining failures** (key-centre, accuracy): "2 edits" 9% (top-3 61%) and "3+ edits" 0%, which
+the 2-edit cap and multi-edit penalty deliberately do not chase; "other substitution" 46%;
+"transposition, other" 89% and "letter missing" 84% (short or ambiguous words); real-word
+misspellings are almost never corrected (0-4%, abstain 92-96%) because the typed word is valid.
+At sigma 0.25 abstains rise to 40% because noise lowers the margin.
 
 ## Caveats
 

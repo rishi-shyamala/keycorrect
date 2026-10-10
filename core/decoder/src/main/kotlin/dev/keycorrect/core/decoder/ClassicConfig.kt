@@ -19,12 +19,12 @@ data class ClassicConfig(
 /** Per-key Gaussian touch model (§4.4). */
 data class SpatialConfig(
     /** Standard deviation as a fraction of key width. */
-    // 1.0 chosen by the eval harness sweep (docs/EVAL.md, "Applied defaults"). Test split, 2000
-    // sentences, seed 7, typist sigma 0.25: 93.80% word accuracy and 2.48 false corrections per
-    // 1000 words, vs 93.68% and 3.88 at model sigma 0.45.
-    val sigmaXFactor: Float = 1.0f,
+    // 0.6 chosen by the joint misspelling + spatial-noise sweep (docs/EVAL.md, "Cognitive
+    // misspellings"); the earlier spatial-only sweep picked 1.0, which made far-key substitutions
+    // so cheap that "wierd" became "where". With the cognitive edit costs below, 0.6 is best.
+    val sigmaXFactor: Float = 0.6f,
     /** Standard deviation as a fraction of key height. */
-    val sigmaYFactor: Float = 1.0f,
+    val sigmaYFactor: Float = 0.6f,
     /** Lower bound of a per-char log-likelihood, so one far touch never dominates a word. */
     val floorLogLikelihood: Float = -12f,
     /** Added when a base letter's key is used for an accented letter (e -> é). */
@@ -43,6 +43,26 @@ data class EditConfig(
     val deletionPenalty: Float = -4f,
     /** Two adjacent typed chars in the wrong order. */
     val transpositionPenalty: Float = -3f,
+    /**
+     * Two adjacent typed vowels in the wrong order ("wierd", "recieve", "freind": ie/ei). A
+     * cognitive slip, far likelier than the generic [transpositionPenalty] says; see docs/EVAL.md
+     * ("Cognitive misspellings").
+     */
+    val vowelTranspositionPenalty: Float = -1.5f,
+    /**
+     * A typed vowel standing for another vowel ("seperate", "definate", "existance"): the user hit
+     * the key they meant, so the touch is scored against the typed key (not the distant intended
+     * one) and only this penalty is paid. Used where it beats the spatial substitution. Applies to
+     * a<->e<->i<->o<->u and y<->i; turn it off with [phoneticSubstitutions].
+     */
+    val phoneticSubstitutionPenalty: Float = -3f,
+    val phoneticSubstitutions: Boolean = true,
+    /**
+     * Extra cost of every edit beyond the first (insertion, deletion, substitution, transposition;
+     * apostrophe edits exempt): keeps several cheap edits plus a high unigram frequency from
+     * outweighing one natural slip ("thier" -> "the"/"this" instead of "their").
+     */
+    val multiEditPenalty: Float = -3f,
     /** Insertion/deletion of a char that repeats its neighbour ("helllo", "helo"). */
     val doubleLetterPenalty: Float = -2f,
     /** Insertion/deletion of an apostrophe ("dont", "don't"). */
@@ -100,6 +120,13 @@ data class ScoringConfig(
     val bigramBackoffPenalty: Float = -1.3f,
     /** The unknown-word log-probability is the dictionary's rarest word plus this offset. */
     val oovOffset: Float = -1f,
+    /**
+     * An out-of-vocabulary literal pays the same context back-off as a candidate that is unseen
+     * after the left context ([trigramBackoffPenalty] / [bigramBackoffPenalty]). Without it a
+     * correction has to beat the literal by [AutocorrectConfig.threshold] PLUS the back-off the
+     * candidate alone pays, so corrections that succeed with no context are withheld in context.
+     */
+    val oovBackoff: Boolean = true,
 )
 
 /** When a suggestion may be applied without the user tapping it (§6.3). */

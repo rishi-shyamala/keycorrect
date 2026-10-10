@@ -29,7 +29,24 @@ data class Options(
     val whatIf: Set<WhatIf> = emptySet(),
     val label: String = "",
     val help: Boolean = false,
-    /** `eval` (default) or `learn`: the personal-user learning simulation. */
+    /** Misspell mode: the common-misspellings list (eval only, fetched by tools/data). */
+    val misspellFile: Path = Paths.get("data/raw/wikipedia-misspellings-1199637275.txt"),
+    /** Misspell mode: words to print the ranked candidates and score breakdown of, then exit. */
+    val probe: List<String> = emptyList(),
+    val probeContext: String = "",
+    /** Misspell mode: touch sigma of the noisy condition (0 = skip it). */
+    val misspellSigma: Float = 0.25f,
+    /** Misspell mode: noisy draws per entry. */
+    val misspellDraws: Int = 3,
+    /** Misspell mode: failure rows written to misspell_failures.csv. */
+    val misspellFailures: Int = 20_000,
+    /**
+     * Misspell mode: typist sigmas of the spatial-noise sentence runs (empty with --no-spatial).
+     */
+    val spatialSigmas: List<Float> = listOf(0.25f, 0.35f),
+    /** Misspell sweep: allowed drop of spatial accuracy at the first sigma, in points (0.3). */
+    val maxSpatialDrop: Double = 0.3,
+    /** `eval` (default), `learn` (personal-user simulation) or `misspell`. */
     val mode: Mode = Mode.Eval,
     /** Learn mode: words typed by the personal user. */
     val words: Int = 20_000,
@@ -52,6 +69,7 @@ data class Options(
     enum class Mode {
         Eval,
         Learn,
+        Misspell,
     }
 
     companion object {
@@ -100,6 +118,19 @@ data class Options(
               --target-fc F        false corrections per 1000 words allowed by the recommendation (3)
               --what-if A,B        post-process answers to size a decoder change: ${WhatIf.entries.joinToString { it.flag }}
               --label TEXT         free text stored in the JSON
+
+              --mode misspell      cognitive-misspelling eval (+ joint spatial run); options:
+              --misspell-file F    wikipedia-misspellings list (default data/raw/wikipedia-misspellings-1199637275.txt)
+              --misspell-sigma F   touch sigma of the noisy condition (0.25; 0 = skip)
+              --misspell-draws N   noisy draws per entry (3)
+              --spatial-sigmas A,B typist sigmas of the joint spatial-noise runs (0.25,0.35)
+              --probe a,b          print ranked candidates + score breakdown of these typed words (key-centre taps,
+                                   no context; add --probe-context "text before" ) and exit
+              --probe-context T    left context for --probe
+              --no-spatial         skip the spatial-noise sentence runs
+              --max-spatial-drop P sweep: allowed spatial accuracy drop in points (0.3)
+                                   (--split, --sentences, --seed, --config, --sweep, --sweep-grid, --target-fc apply;
+                                   --split dev|test partitions the entries 50/50 by hash)
 
               --mode learn         learning simulation (outputs under <out>/learn/); options:
               --words N            words typed by the personal user (default 20000)
@@ -190,13 +221,28 @@ data class Options(
                                 whatIf = o.whatIf + v().split(',').map { WhatIf.parse(it.trim()) }
                             )
                     "--label" -> o = o.copy(label = v())
+                    "--misspell-file" -> o = o.copy(misspellFile = Paths.get(v()))
+                    "--misspell-sigma" -> o = o.copy(misspellSigma = v().toFloat())
+                    "--misspell-draws" -> o = o.copy(misspellDraws = v().toInt())
+                    "--spatial-sigmas" ->
+                        o = o.copy(spatialSigmas = v().split(',').map { it.trim().toFloat() })
+                    "--probe" ->
+                        o =
+                            o.copy(
+                                probe = v().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                            )
+                    "--probe-context" -> o = o.copy(probeContext = v())
+                    "--no-spatial" -> o = o.copy(spatialSigmas = emptyList())
+                    "--max-spatial-drop" -> o = o.copy(maxSpatialDrop = v().toDouble())
                     "--mode" -> {
                         val value = v()
                         o =
                             o.copy(
                                 mode =
                                     Mode.entries.firstOrNull { it.name.equals(value, true) }
-                                        ?: throw IllegalArgumentException("--mode: eval | learn")
+                                        ?: throw IllegalArgumentException(
+                                            "--mode: eval | learn | misspell"
+                                        )
                             )
                     }
                     "--words" -> o = o.copy(words = v().toInt())

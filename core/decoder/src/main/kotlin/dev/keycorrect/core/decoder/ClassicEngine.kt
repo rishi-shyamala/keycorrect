@@ -257,7 +257,7 @@ class ClassicEngine(
         var literalNode = dictionary.findNode(key)
         if (literalNode >= 0 && !dictionary.isTerminal(literalNode)) literalNode = -1
         val literalIsUser = lexicon.containsWord(key)
-        var literalBase = lm.oovLogProb
+        var literalBase = if (scoring.oovBackoff) lm.oovLogProbInContext() else lm.oovLogProb
         var literalLm = lm.blend(literalBase, text)
         var literalRight = if (right >= 0) lm.rightLogProb(-1, right) else 0f
         if (literalNode >= 0) {

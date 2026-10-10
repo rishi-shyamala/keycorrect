@@ -22,8 +22,11 @@ fun main(args: Array<String>) {
         return
     }
     try {
-        if (options.mode == Options.Mode.Learn) LearnMain(options).run()
-        else EvalMain(options).run()
+        when (options.mode) {
+            Options.Mode.Learn -> LearnMain(options).run()
+            Options.Mode.Misspell -> MisspellMain(options).run()
+            Options.Mode.Eval -> EvalMain(options).run()
+        }
     } catch (e: IllegalArgumentException) {
         System.err.println("error: ${e.message}")
         exitProcess(2)

@@ -79,6 +79,18 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     /** Log-probability of the rarest word; typed gibberish is assumed barely less likely. */
     val oovLogProb: Float = dict.logProb(dict.wordCount - 1) + config.oovOffset
 
+    /**
+     * [oovLogProb] after the back-off an unseen word pays in the current context (what
+     * [baseLogProb] charges a dictionary word that has no trigram / bigram entry), so a typed
+     * out-of-vocabulary literal and a candidate unseen after the same words compare like for like.
+     */
+    fun oovLogProbInContext(): Float {
+        var p = oovLogProb
+        if (triList >= 0) p += config.trigramBackoffPenalty
+        if (biList >= 0) p += config.bigramBackoffPenalty
+        return p
+    }
+
     private val tmpIds = IntArray(POOL)
     private val tmpLp = FloatArray(POOL)
     private val poolIds = IntArray(POOL * 3)

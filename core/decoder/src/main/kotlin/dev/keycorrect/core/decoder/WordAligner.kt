@@ -97,9 +97,22 @@ internal class WordAligner(
         val ll = scorer.ll(c, pos)
         if (scorer.sameLetter(c, pos)) {
             offer(cell, spatial[from] + ll, penalty[from], used[from])
-        } else if (used[from] < budget && ll >= edits.substitutionCutoff) {
-            val cost = edits.substitutionPenalty + if (pos == 0) edits.firstCharPenalty else 0f
-            offer(cell, spatial[from] + ll, penalty[from] + cost, used[from] + 1)
+        } else if (used[from] < budget) {
+            var sp = ll
+            var cost = edits.substitutionPenalty
+            var viable = ll >= edits.substitutionCutoff
+            if (edits.phoneticSubstitutions && Phonetic.confusable(scorer.typedChar(pos), c)) {
+                val alt = scorer.exactLogLikelihood(pos)
+                if (!viable || alt + edits.phoneticSubstitutionPenalty > ll + cost) {
+                    sp = alt
+                    cost = edits.phoneticSubstitutionPenalty
+                    viable = true
+                }
+            }
+            if (viable) {
+                val total = cost + multi(from) + first(pos)
+                offer(cell, spatial[from] + sp, penalty[from] + total, used[from] + 1)
+            }
         }
     }
 
@@ -117,8 +130,8 @@ internal class WordAligner(
         val cost =
             when {
                 typed == '\'' -> edits.apostrophePenalty
-                j > 0 && typed == word[j - 1] -> edits.doubleLetterPenalty
-                else -> edits.insertionPenalty
+                j > 0 && typed == word[j - 1] -> edits.doubleLetterPenalty + multi(from)
+                else -> edits.insertionPenalty + multi(from)
             }
         offer(cell, spatial[from], penalty[from] + cost + first(i - 1), used[from] + 1)
     }
@@ -130,8 +143,8 @@ internal class WordAligner(
         val cost =
             when {
                 c == '\'' -> edits.apostrophePenalty
-                j > 1 && c == word[j - 2] -> edits.doubleLetterPenalty
-                else -> edits.deletionPenalty
+                j > 1 && c == word[j - 2] -> edits.doubleLetterPenalty + multi(from)
+                else -> edits.deletionPenalty + multi(from)
             }
         offer(cell, spatial[from], penalty[from] + cost + first(i), used[from] + 1)
     }
@@ -150,13 +163,25 @@ internal class WordAligner(
         val ll1 = scorer.ll(word[j - 2], i - 1)
         val ll2 = scorer.ll(word[j - 1], i - 2)
         if (ll1 < edits.transpositionCutoff || ll2 < edits.transpositionCutoff) return
+        val swapCost =
+            if (
+                Phonetic.isVowel(scorer.typedChar(i - 2)) &&
+                    Phonetic.isVowel(scorer.typedChar(i - 1))
+            ) {
+                edits.vowelTranspositionPenalty
+            } else {
+                edits.transpositionPenalty
+            }
         offer(
             cell,
             spatial[from] + ll1 + ll2,
-            penalty[from] + edits.transpositionPenalty + first(i - 2),
+            penalty[from] + swapCost + multi(from) + first(i - 2),
             used[from] + 1,
         )
     }
+
+    /** Extra cost of an edit made after [from] already used one (see `multiEditPenalty`). */
+    private fun multi(from: Int): Float = if (used[from] > 0) edits.multiEditPenalty else 0f
 
     private fun first(pos: Int): Float = if (pos == 0) edits.firstCharPenalty else 0f
 
