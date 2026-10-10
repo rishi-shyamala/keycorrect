@@ -38,6 +38,18 @@ data class KeyboardSettings(
     val sentenceBufferEnabled: Boolean = true,
     /** Pause all learning and history until turned off. */
     val incognito: Boolean = false,
+    /** Undos of an autocorrection of a word before it's added to the user dictionary. */
+    val implicitAddReverts: Int = 2,
+    /** Undos before that word is never auto-corrected again; always >= [implicitAddReverts]. */
+    val suppressCorrectionReverts: Int = 2,
+    /**
+     * Non-dictionary word with near-tied candidates: autocorrect to the best guess (§6.3 row 22).
+     */
+    val nonWordTieRule: Boolean = true,
+    /** Distinct vibration when a word is auto-corrected. */
+    val hapticOnAutocorrect: Boolean = true,
+    /** Distinct vibration when a finished word is not in any dictionary and wasn't corrected. */
+    val hapticOnUnknownWord: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -46,6 +58,11 @@ data class KeyboardSettings(
             longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
             hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
             hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
+            implicitAddReverts = implicitAddReverts.coerceIn(REVERTS_RANGE),
+            suppressCorrectionReverts =
+                suppressCorrectionReverts
+                    .coerceIn(REVERTS_RANGE)
+                    .coerceAtLeast(implicitAddReverts.coerceIn(REVERTS_RANGE)),
             soundVolume =
                 if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
                 else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
@@ -57,6 +74,7 @@ data class KeyboardSettings(
         val HAPTIC_DURATION_MS_RANGE = 0..100
         val HAPTIC_STRENGTH_RANGE = 0..255
         val SOUND_VOLUME_RANGE = 0f..1f
+        val REVERTS_RANGE = 1..5
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }
 }
