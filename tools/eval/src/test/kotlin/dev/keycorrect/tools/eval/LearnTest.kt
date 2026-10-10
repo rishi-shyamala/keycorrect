@@ -9,6 +9,8 @@ import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
 import dev.keycorrect.core.learning.classifier.ClassifierConfig
 import dev.keycorrect.core.learning.classifier.OutcomeClassifier
+import dev.keycorrect.core.learning.model.PersonalModel
+import dev.keycorrect.core.learning.model.PersonalModelConfig
 import java.util.Random
 import org.junit.Test
 
@@ -219,7 +221,7 @@ class LearnTest {
     }
 
     @Test
-    fun revertTeachesTheClassifierToKeepTheWord() {
+    fun revertIsAKeepAndOnlyTheModelsThresholdsAddTheWord() {
         val r =
             record(
                 "Sami",
@@ -228,9 +230,16 @@ class LearnTest {
             )
         val classifier = OutcomeClassifier(ClassifierConfig())
         val updates = builder.build(r).flatMap { classifier.classify(it) }
-        assertThat(updates.filterIsInstance<LearningUpdate.AddUserWord>().map { it.word })
-            .contains("Sami")
-        assertThat(updates.filterIsInstance<LearningUpdate.SuppressCorrection>()).isNotEmpty()
+        assertThat(updates).contains(LearningUpdate.RevertKept("Sami", "Sam"))
+        assertThat(updates.filterIsInstance<LearningUpdate.AddUserWord>()).isEmpty()
+        assertThat(updates.filterIsInstance<LearningUpdate.SuppressCorrection>()).isEmpty()
+
+        val model = PersonalModel(PersonalModelConfig().eager())
+        model.apply(updates, 1_000L)
+        assertThat(model.snapshot().isUserWord("Sami")).isFalse() // one keep, thresholds 2
+        model.apply(updates, 2_000L)
+        assertThat(model.snapshot().isUserWord("Sami")).isTrue()
+        assertThat(model.snapshot().isSuppressed("Sami", "Sam")).isTrue()
     }
 
     // ---- personal stream and typist bias

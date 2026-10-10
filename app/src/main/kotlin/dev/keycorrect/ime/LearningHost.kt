@@ -134,6 +134,9 @@ class LearningHost(
         data object ClearSentences : Command
 
         class Run(val block: suspend () -> Unit) : Command
+
+        /** The revert thresholds changed: pass them to the model and apply them retroactively. */
+        class Thresholds(val addAfter: Int, val suppressAfter: Int) : Command
     }
 
     private val commands = Channel<Command>(Channel.UNLIMITED)
@@ -145,6 +148,7 @@ class LearningHost(
     @Volatile private var learningEnabled = true
     @Volatile private var incognito = false
     @Volatile private var sentenceBufferEnabled = true
+    @Volatile private var thresholds: Pair<Int, Int>? = null
 
     private val acceptingEvents: Boolean
         get() = settingsKnown && learningEnabled && !incognito
@@ -199,6 +203,23 @@ class LearningHost(
         sentenceBufferEnabled = settings.sentenceBufferEnabled
         settingsKnown = true
         if (!settings.sentenceBufferEnabled) commands.trySend(Command.ClearSentences)
+        applyThresholds(settings)
+    }
+
+    /**
+     * Rows 6/7 of docs/PLAN.md §6.3: the restored literal of a reverted autocorrection is a "keep"
+     * and it takes [KeyboardSettings.implicitAddReverts] keeps to add the word to the user
+     * dictionary and [KeyboardSettings.suppressCorrectionReverts] to stop correcting the pair. The
+     * model gets the (clamped, M >= N) values on the learning thread and re-checks what it already
+     * counted, so changing a setting takes effect on existing keeps.
+     */
+    private fun applyThresholds(settings: KeyboardSettings) {
+        val n = settings.implicitAddReverts.coerceIn(MIN_REVERTS, MAX_REVERTS)
+        val m = settings.suppressCorrectionReverts.coerceAtLeast(n)
+        val next = n to m
+        if (thresholds == next) return
+        thresholds = next
+        commands.trySend(Command.Thresholds(n, m))
     }
 
     /**
@@ -429,6 +450,7 @@ class LearningHost(
                 Command.Tick -> handleTick()
                 Command.ClearSentences -> handleClearSentences()
                 is Command.Run -> command.block()
+                is Command.Thresholds -> handleThresholds(command)
             }
         } catch (e: CancellationException) {
             throw e
@@ -478,6 +500,17 @@ class LearningHost(
         model.apply(updates, event.timeMillis)
         drainUserWords()
         noteChange(updates.size)
+    }
+
+    private suspend fun handleThresholds(c: Command.Thresholds) {
+        model.updateThresholds(c.addAfter, c.suppressAfter)
+        // While learning is off nothing may change; the model re-checks on its next apply.
+        if (!acceptingEvents || !ensureReady()) return
+        val before = model.userWords().size + model.suppressedCorrections().size
+        model.apply(emptyList(), wallClock())
+        drainUserWords()
+        // Only a threshold that actually added / suppressed something is a change worth saving.
+        if (model.userWords().size + model.suppressedCorrections().size != before) noteChange(0)
     }
 
     private suspend fun handleSentence(s: Command.Sentence) {
@@ -641,5 +674,7 @@ class LearningHost(
     private companion object {
         const val TAG = "LearningHost"
         const val MAX_FAILED_ADDS = 256
+        const val MIN_REVERTS = 1
+        const val MAX_REVERTS = 5
     }
 }

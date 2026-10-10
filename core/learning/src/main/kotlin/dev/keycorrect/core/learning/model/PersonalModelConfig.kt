@@ -60,6 +60,20 @@ data class PersonalModelConfig(
     val promoteSessionMinWeight: Double = 0.5,
     val maxCandidateWords: Int = 5_000,
     val candidateTtlMillis: Long = 60 * DAY,
+    // --- keeps of reverted autocorrections (§6.3 rows 6/7) ---
+    /**
+     * Initial thresholds, changed at runtime by [PersonalModel.updateThresholds]: the typed word is
+     * added to the user dictionary after this many keeps ...
+     */
+    val implicitAddKeeps: Int = 2,
+    /**
+     * ... and the pair typed -> corrected is never auto-corrected after this many (>= the above).
+     */
+    val suppressKeeps: Int = 2,
+    /** Keep counters retained per kind (word / pair); the least recently kept go first. */
+    val maxKeepEntries: Int = 5_000,
+    /** Words longer than this (or with whitespace, URLs, no letter) are never added by keeps. */
+    val maxKeptWordLength: Int = 40,
     // --- casing ---
     val casingMinObservations: Double = 2.0,
     // --- touch model ---

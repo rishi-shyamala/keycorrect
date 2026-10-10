@@ -70,6 +70,9 @@ object LearnReport {
             t.afterRevertOccurrences += w.afterRevertOccurrences
             t.afterRevertCorrected += w.afterRevertCorrected
             t.personalAfterRevertCorrected += w.personalAfterRevertCorrected
+            t.afterKeepsOccurrences += w.afterKeepsOccurrences
+            t.afterKeepsCorrected += w.afterKeepsCorrected
+            t.personalAfterKeepsCorrected += w.personalAfterKeepsCorrected
         }
         return t
     }
@@ -128,7 +131,9 @@ object LearnReport {
         row("oracle: per-key mean of all taps") { fmt(it.oracleError, 3) }
         row("attainable: mean of confirmed taps") { fmt(it.attainableError, 3) }
 
-        sb.append("\n== Note-2 rule: a reverted literal is never corrected again ==\n")
+        sb.append(
+            "\n== Note-2 rule: a kept literal is not corrected again (N keeps: user word) ==\n"
+        )
         val lt = total(lw)
         val bt = total(bw)
         sb.append(
@@ -142,6 +147,20 @@ object LearnReport {
                 lt.personalAfterRevertCorrected,
                 bt.afterRevertCorrected,
                 bt.personalAfterRevertCorrected,
+            )
+        )
+        sb.append(
+            String.format(
+                Locale.ROOT,
+                "after N=%d keeps the same word was typed right %d times (learning) / %d (baseline);\n" +
+                    "the keyboard changed it anyway %d times (learning, %d personal) / %d times (baseline, %d personal)\n",
+                learn.keepsToAdd,
+                lt.afterKeepsOccurrences,
+                bt.afterKeepsOccurrences,
+                lt.afterKeepsCorrected,
+                lt.personalAfterKeepsCorrected,
+                bt.afterKeepsCorrected,
+                bt.personalAfterKeepsCorrected,
             )
         )
         learn.userWords?.let {
@@ -241,6 +260,8 @@ object LearnReport {
             "personalTop3Recall" to pct(w.personalTop3, w.personalWords) / 100,
             "afterRevertOccurrences" to w.afterRevertOccurrences,
             "afterRevertCorrected" to w.afterRevertCorrected,
+            "afterKeepsOccurrences" to w.afterKeepsOccurrences,
+            "afterKeepsCorrected" to w.afterKeepsCorrected,
             "touch" to
                 linkedMapOf(
                     "learnedKeys" to w.learnedKeys,

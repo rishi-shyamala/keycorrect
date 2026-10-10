@@ -608,4 +608,60 @@ class LearningHostTest {
         assertThat(seen.last().userWords.map { it.word }).containsExactly("zorp")
         job.cancel()
     }
+
+    private fun keep(at: Long): LearningEvent =
+        dev.keycorrect.core.learning.AutocorrectReverted(
+            timeMillis = at,
+            profile = PROFILE,
+            context = listOf("the"),
+            typed = "tset",
+            corrected = "test",
+            kind = dev.keycorrect.core.learning.RevertKind.ImmediateBackspace,
+            replacement = "tset",
+        )
+
+    @Test
+    fun revertThresholdsComeFromTheSettingsAndApplyRetroactively() = runTest {
+        val f =
+            fixture(
+                this,
+                settings = KeyboardSettings(implicitAddReverts = 3, suppressCorrectionReverts = 3),
+            )
+        f.start()
+        f.settle()
+        f.host.onEvent(keep(f.now))
+        f.host.onEvent(keep(f.now + 1))
+        f.settle()
+        assertThat(f.model.thresholds()).isEqualTo(3 to 3)
+        assertThat(f.users.snapshotWords()).isEmpty()
+        assertThat(f.host.suppressedCorrections()).isEmpty()
+
+        // Lowering N to 2 adds the word that already has two keeps; M below N is clamped to N.
+        f.host.applySettings(
+            KeyboardSettings(implicitAddReverts = 2, suppressCorrectionReverts = 1)
+        )
+        f.settle()
+        assertThat(f.model.thresholds()).isEqualTo(2 to 2)
+        assertThat(f.users.snapshotWords()).containsExactly("tset")
+        assertThat(f.host.suppressedCorrections()).containsExactly("tset" to "test")
+    }
+
+    @Test
+    fun oneKeepAddsAtThresholdOneAndOutOfRangeValuesAreClamped() = runTest {
+        val f =
+            fixture(
+                this,
+                settings = KeyboardSettings(implicitAddReverts = 1, suppressCorrectionReverts = 1),
+            )
+        f.start()
+        f.settle()
+        f.host.onEvent(keep(f.now))
+        f.settle()
+        assertThat(f.users.snapshotWords()).containsExactly("tset")
+        f.host.applySettings(
+            KeyboardSettings(implicitAddReverts = 99, suppressCorrectionReverts = 0)
+        )
+        f.settle()
+        assertThat(f.model.thresholds()).isEqualTo(5 to 5)
+    }
 }

@@ -55,6 +55,7 @@ class PersistenceAndForgetTest {
                 NewWordEvidence(weird, -7L, 1.25f),
                 AddUserWord(weird, AddUserWord.Reason.RevertedAutocorrect),
                 CorrectionEvidence(weird, "t", "", -0.5f),
+                LearningUpdate.RevertKept(weird, "t"),
                 SuppressCorrection("a", weird),
                 BlockWord(weird),
                 TouchEvidence(

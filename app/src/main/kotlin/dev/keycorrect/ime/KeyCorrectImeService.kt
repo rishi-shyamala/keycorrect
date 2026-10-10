@@ -59,6 +59,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             PredictionEnvironment.create(this, predictionHost),
             learning = learningHost,
             wallClock = appContainer.wallClock,
+            wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
         )
     }
 
@@ -79,6 +80,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 settingsFlow.value = it
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
+                predictionHost.applySettings(it)
             }
         }
     }

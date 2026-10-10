@@ -10,6 +10,7 @@ import dev.keycorrect.core.learning.model.CasingRow
 import dev.keycorrect.core.learning.model.CorrectionRow
 import dev.keycorrect.core.learning.model.JournalCodec
 import dev.keycorrect.core.learning.model.JournalEntry
+import dev.keycorrect.core.learning.model.KeepRow
 import dev.keycorrect.core.learning.model.LearningStore
 import dev.keycorrect.core.learning.model.NgramRow
 import dev.keycorrect.core.learning.model.OutcomeRow
@@ -101,14 +102,14 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
     }
 
     private fun deleteAll(db: SupportSQLiteDatabase) {
-        Schema.LEARNING_V2_TABLES.forEach { db.execSQL("DELETE FROM $it") }
+        Schema.LEARNING_TABLES.forEach { db.execSQL("DELETE FROM $it") }
     }
 
     // ---- write ----
 
     private fun writeState(db: SupportSQLiteDatabase, s: PersistedLearning) {
         // The journal is not part of the state snapshot; keep it across saves.
-        Schema.LEARNING_V2_TABLES.filter { it != "learning_journal" }
+        Schema.LEARNING_TABLES.filter { it != "learning_journal" }
             .forEach { db.execSQL("DELETE FROM $it") }
 
         db.insertAll(
@@ -174,6 +175,17 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
             st.bindString(1, r.key)
             st.bindLong(2, r.sessionId)
             st.bindDouble(3, r.weight)
+        }
+        db.insertAll(
+            "INSERT INTO learning_keeps (typed, corrected, count, first_millis, last_millis) " +
+                "VALUES (?, ?, ?, ?, ?)",
+            s.keeps,
+        ) { st, r ->
+            st.bindString(1, r.typed)
+            st.bindString(2, r.corrected)
+            st.bindLong(3, r.count.toLong())
+            st.bindLong(4, r.firstMillis)
+            st.bindLong(5, r.lastMillis)
         }
         db.insertAll(
             "INSERT INTO learning_casing (key, surface, count) VALUES (?, ?, ?)",
@@ -332,6 +344,18 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
             candidateSessions =
                 db.readAll("SELECT key, session_id, weight FROM learning_candidate_sessions") {
                     CandidateSessionRow(it.getString(0), it.getLong(1), it.getDouble(2))
+                },
+            keeps =
+                db.readAll(
+                    "SELECT typed, corrected, count, first_millis, last_millis FROM learning_keeps"
+                ) {
+                    KeepRow(
+                        it.getString(0),
+                        it.getString(1),
+                        it.getInt(2),
+                        it.getLong(3),
+                        it.getLong(4),
+                    )
                 },
             casing =
                 db.readAll("SELECT key, surface, count FROM learning_casing") {

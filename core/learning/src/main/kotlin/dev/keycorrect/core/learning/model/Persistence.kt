@@ -83,6 +83,19 @@ data class OutcomeRow(val kind: Int, val timeMillis: Long, val a: Int, val b: In
 
 data class SentenceRow(val sessionId: Long, val text: String, val timeMillis: Long)
 
+/**
+ * Keeps of a reverted autocorrection (rows 6/7). [corrected] "" = the count for the typed word over
+ * every correction of it; otherwise the count for that (typed, corrected) pair. [typed] and
+ * [corrected] are surface forms (apostrophes folded); lookups normalise them.
+ */
+data class KeepRow(
+    val typed: String,
+    val corrected: String,
+    val count: Int,
+    val firstMillis: Long,
+    val lastMillis: Long,
+)
+
 /** A user-dictionary add the app has not yet confirmed to have stored. */
 data class PendingAddRow(val word: String, val reason: Int)
 
@@ -107,9 +120,12 @@ data class PersistedLearning(
     val outcomes: List<OutcomeRow> = emptyList(),
     val sentences: List<SentenceRow> = emptyList(),
     val pendingAdds: List<PendingAddRow> = emptyList(),
+    /** Added in format 2; absent (empty) in older states. */
+    val keeps: List<KeepRow> = emptyList(),
 ) {
     companion object {
-        const val FORMAT_VERSION = 1
+        /** 2: [keeps]. A format-1 state loads unchanged with no keeps. */
+        const val FORMAT_VERSION = 2
     }
 }
 
@@ -173,11 +189,11 @@ class InMemoryLearningStore : LearningStore {
  * Stable text encoding of a [LearningUpdate] for the journal store.
  *
  * Format v1: fields joined by U+001F; field 0 = `v1`, field 1 = type tag (W word-used, N new-word,
- * A add-word, C correction, S suppress, B block, T touch, P preference, O outcome, F phrase, K
- * casing). Strings are percent-escaped for `%`, U+001F and U+001E. A list is one field: `count`
- * followed by its items, all joined by U+001E. Floats use [Float.toString] (exact round trip). A
- * touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions or corrupt
- * data, so an old app never crashes on a newer journal.
+ * A add-word, R revert-kept, C correction, S suppress, B block, T touch, P preference, O outcome, F
+ * phrase, K casing). Strings are percent-escaped for `%`, U+001F and U+001E. A list is one field:
+ * `count` followed by its items, all joined by U+001E. Floats use [Float.toString] (exact round
+ * trip). A touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions or
+ * corrupt data, so an old app never crashes on a newer journal.
  */
 object JournalCodec {
     const val VERSION = "v1"
@@ -211,6 +227,11 @@ object JournalCodec {
                 f += esc(update.target)
                 f += esc(update.contextBucket)
                 f += update.delta.toString()
+            }
+            is LearningUpdate.RevertKept -> {
+                f += "R"
+                f += esc(update.typed)
+                f += esc(update.corrected)
             }
             is LearningUpdate.SuppressCorrection -> {
                 f += "S"
@@ -275,6 +296,7 @@ object JournalCodec {
                     unesc(f[4]),
                     f[5].toFloat(),
                 )
+            "R" -> LearningUpdate.RevertKept(unesc(f[2]), unesc(f[3]))
             "S" -> LearningUpdate.SuppressCorrection(unesc(f[2]), unesc(f[3]))
             "B" -> LearningUpdate.BlockWord(unesc(f[2]))
             "T" ->

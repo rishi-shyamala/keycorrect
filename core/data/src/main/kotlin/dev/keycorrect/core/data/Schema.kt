@@ -13,10 +13,11 @@ class Migration(val from: Int, val to: Int, val migrate: (SupportSQLiteDatabase)
 
 internal object Schema {
     /** Current schema version. Bump together with a new entry in [MIGRATIONS]. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** Ordered migrations. The database is created at v1 and migrated up, so there is one path. */
-    val MIGRATIONS: List<Migration> = listOf(Migration(1, 2, ::migrateV1ToV2))
+    val MIGRATIONS: List<Migration> =
+        listOf(Migration(1, 2, ::migrateV1ToV2), Migration(2, 3, ::migrateV2ToV3))
 
     /** The frozen v1 DDL. Never edit; add a [Migration] instead. */
     fun createV1(db: SupportSQLiteDatabase) {
@@ -54,6 +55,18 @@ internal object Schema {
     fun migrateV1ToV2(db: SupportSQLiteDatabase) {
         LEARNING_V2_DDL.forEach(db::execSQL)
     }
+
+    /** v3: per-word / per-pair counts of kept undos (implicit-add and suppression thresholds). */
+    fun migrateV2ToV3(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE learning_keeps (typed TEXT NOT NULL, corrected TEXT NOT NULL, " +
+                "count INTEGER NOT NULL, first_millis INTEGER NOT NULL, last_millis INTEGER NOT NULL)"
+        )
+    }
+
+    /** Every learning table in the current schema (v2 tables plus later additions). */
+    val LEARNING_TABLES: List<String>
+        get() = LEARNING_V2_TABLES + "learning_keeps"
 
     /** Names of the tables created by [migrateV1ToV2], row tables first. */
     val LEARNING_V2_TABLES: List<String> =

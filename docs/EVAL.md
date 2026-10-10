@@ -224,7 +224,7 @@ Extra flags: `--personal-rate`, `--bias-x`, `--bias-y`, `--tap-prob`. 20k words 
 * **Closed loop, per word.** Decode each prefix for the strip (autocorrect off), decode the full
   word with autocorrect on, then draw the user's reaction (`Reaction.kt`): a correct autocorrection
   is accepted; a changed correct literal is noticed with p=0.95 and reverted (ImmediateBackspace
-  70%, DeletedAndRetyped 30%); a wrong autocorrection of a typo is noticed with p=0.95 and
+  70%, DeletedAndRetyped 30%; both finish the restored literal unchanged, i.e. are "keeps"); a wrong autocorrection of a typo is noticed with p=0.95 and
   switched to the target if it is in the strip or the tie runner-up (SwitchedToSuggestion), else
   retyped (EditedLater); with no autocorrection and the target in the strip the user taps it with
   p=0.6, else retypes with p=0.5; with no help from the strip a typo is retyped with p=0.3.
@@ -243,8 +243,9 @@ Extra flags: `--personal-rate`, `--bias-x`, `--bias-y`, `--tap-prob`. 20k words 
   the learned per-key offset and the true bias, averaged over keys with an offset. "Attainable" is
   the same for the mean of taps that registered on the intended key (what the classifier can see),
   "oracle" for all taps relative to the intended key.
-* **Note-2 check.** After a personal word's first revert, count each later occurrence where the
-  word was typed correctly and the keyboard changed it anyway.
+* **Note-2 check.** After a personal word's first keep (a revert finished unchanged), and after its
+  N-th keep (N = `implicitAddKeeps`, the user-dictionary threshold), count each later occurrence
+  where the word was typed correctly and the keyboard changed it anyway.
 
 ### Results (20 000 words, learning / baseline, sigma 0.35 plus bias)
 
@@ -267,6 +268,43 @@ Before the phase-3 fixes below (seed 1 / seed 2, all windows): accuracy 86.44 / 
 88.88), personal-word accuracy 56.0 / 64.3, reverts 74 / 73, touch error 0.128 / 0.123, user
 dictionary 104 / 84 words of which 77 / 64 were uncorrected typos.
 
+### Revert thresholds (2026-10-10, PLAN §6.3 rows 6/7)
+
+A revert whose restored literal is finished unchanged is a **keep**. `OutcomeClassifier` no longer
+adds the literal and suppresses the pair at the first one: it emits `RevertKept(typed, corrected)`
+(plus the strong negative `CorrectionEvidence`, the typed `WordUsed` and
+`AutocorrectOutcome(reverted = true)` as before). `PersonalModel` counts keeps per word and per
+(word, correction) pair (`PersistedLearning.keeps`, format 2) and adds the word to the user
+dictionary after N keeps of the word (`PersonalModelConfig.implicitAddKeeps`, setting `implicitAddReverts`,
+default 2, 1..5) and suppresses the pair after M >= N keeps of the pair (`suppressCorrectionReverts`,
+default 2). `PersonalModel.updateThresholds(n, m)` changes both at runtime and is applied
+retroactively on the next `apply`. In the eval: `--model implicitAddKeeps=N,suppressKeeps=M`
+(defaults 2/2).
+
+20 000 words, seed 1, all windows, learning / baseline. N=M=1 reproduces the previous
+(immediate add + suppress) run exactly.
+
+| thresholds N/M | word acc % | personal acc % | false corr /1000 | reverts /1000 | personal top-3 % | user words (personal / typos) | suppressed pairs | wrong corrections after N keeps (personal) |
+|---|---|---|---|---|---|---|---|---|
+| 1 / 1 (previous) | 88.51 | 54.3 | 0.55 | 97.7 | 38.5 | 22 (9 / 6) | 11 | 0 of 36 |
+| 2 / 2 (default) | 88.43 | 52.9 | 0.60 | 98.2 | 35.9 | 15 (6 / 6) | 0 | 0 of 4 |
+| 3 / 3 | 88.41 | 52.6 | 0.65 | 98.1 | 35.5 | 15 (6 / 6) | 0 | 0 of 1 |
+
+Baseline (no learning) is 88.26 / 43.1 / 2.65 / 112.3 / 13.9. Seed 2 at 2 / 2 (previous in
+brackets): accuracy 88.42 (88.64), personal-word accuracy 56.1 (60.0), false corrections 0.55
+(0.50), reverts 95.6 (95.6), personal top-3 40.4 -> 31.7, 15 user words of which 11 promoted typos
+(unchanged by this change: they come from the promotion path, not from reverts). Typo promotion
+through reverts is unaffected: no `RevertKept` can promote a string the user did not finish.
+
+Reading: a higher N costs personal-word accuracy (the word needs more keeps before it is a user word,
+so it is corrected, reverted and retyped N-1 more times; about 1.5 points at N=2) and buys nothing in
+this simulation, where the user always finishes the literal unchanged. The cost is the price of the
+safety against one-off accidental reverts the setting is meant for. The note-2 rule holds at N:
+after N keeps the word is a user word and is never corrected again (0 changes). Between the first and
+the N-th keep a correct literal is still changed (1 time at N=2, 2 at N=3 for seed 1). Suppressed
+pairs drop to 0 because the same pair rarely gets M keeps before the word itself is a user word
+(and a user word is never autocorrected, which makes the suppression moot).
+
 ### Fixes (phase 3)
 
 * **Typo promotion.** `OutcomeClassifier` emits no `NewWordEvidence` (and a minimal `WordUsed`) for
@@ -285,9 +323,8 @@ dictionary 104 / 84 words of which 77 / 64 were uncorrected typos.
   threshold only turns those into uncorrected typos, and PLAN row 6 only says the literal restore
   counts toward the revert rate. So `AutocorrectOutcome(reverted = true)` is now emitted only for
   literal restores (`ClassifierConfig.rankingRevertsCount = false`); the pair is still demoted via
-  correction memory and preferences. Reverts that trigger an implicit add still count
-  (`implicitAddRevertsCount = true`): excluding them changed accuracy by 0.03 points (86.37 -> 86.40,
-  rare in the simulation) and they are the signal for false corrections of real dictionary words.
+  correction memory and preferences. Literal restores (`RevertKept`, see "Revert thresholds") always
+  count: they are the signal for false corrections of real dictionary words.
   Effect: the revert rate falls under the target, the delta sits at the -0.5 floor, accuracy goes
   from 86.4 to 88.5 (seed 1).
   Sweep (seed 1 / seed 2 accuracy, baseline 88.26 / 88.88; all with the typo fix; reverts per 1000):

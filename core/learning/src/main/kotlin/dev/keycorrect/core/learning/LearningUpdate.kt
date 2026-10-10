@@ -13,7 +13,9 @@ sealed interface LearningUpdate {
     data class NewWordEvidence(val word: String, val sessionId: Long, val weight: Float) :
         LearningUpdate
 
-    /** Add to the user dictionary now (explicit add, or implicit add from rows 6/7/23). */
+    /**
+     * Add to the user dictionary now (explicit add, or implicit add from enough keeps, rows 6/7).
+     */
     data class AddUserWord(val word: String, val reason: Reason) : LearningUpdate {
         enum class Reason {
             Explicit,
@@ -32,7 +34,15 @@ sealed interface LearningUpdate {
         val delta: Float,
     ) : LearningUpdate
 
-    /** Never correct [typed] to [target] again (rows 6, 7, 8). */
+    /**
+     * The user undid the autocorrection [typed] -> [corrected] and the restored [typed] was
+     * finished unchanged (rows 6/7: "keep [typed]"). One keep is only evidence; the model counts
+     * keeps per word and per pair and adds [typed] to the user dictionary / suppresses the pair
+     * when the runtime-configurable thresholds are reached (`PersonalModel.updateThresholds`).
+     */
+    data class RevertKept(val typed: String, val corrected: String) : LearningUpdate
+
+    /** Never correct [typed] to [target] again (rows 8, and rows 6/7 once enough keeps counted). */
     data class SuppressCorrection(val typed: String, val target: String) : LearningUpdate
 
     /** Never suggest [word] (row 11). */

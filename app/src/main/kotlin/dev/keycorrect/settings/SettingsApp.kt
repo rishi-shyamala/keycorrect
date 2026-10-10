@@ -108,6 +108,7 @@ fun SettingsApp(
                 SettingsDestination.NeverCorrected -> NeverCorrectedScreen(padding, container)
                 SettingsDestination.NeverSuggested -> NeverSuggestedScreen(padding, container)
                 SettingsDestination.Feedback -> FeedbackSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.Advanced -> AdvancedScreen(padding, settings, onUpdate)
                 SettingsDestination.About -> AboutScreen(padding, onNavigate = navigate)
                 SettingsDestination.Licenses -> LicensesScreen(padding)
                 SettingsDestination.AutofillTest -> AutofillTestScreen(padding)

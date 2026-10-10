@@ -38,6 +38,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Feedback : SettingsDestination("feedback", R.string.feedback_title)
 
+    data object Advanced : SettingsDestination("advanced", R.string.advanced_title)
+
     data object About : SettingsDestination("about", R.string.about_title)
 
     data object Licenses : SettingsDestination("licenses", R.string.licenses_title)
@@ -60,6 +62,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 NeverCorrected,
                 NeverSuggested,
                 Feedback,
+                Advanced,
                 About,
                 Licenses,
             ) + if (BuildConfig.DEBUG) listOf(AutofillTest) else emptyList()

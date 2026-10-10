@@ -72,12 +72,12 @@ class SchemaTest {
                 List::class.java.isAssignableFrom(it.type)
             }
         // Row tables + journal + meta.
-        assertThat(Schema.LEARNING_V2_TABLES).hasSize(lists + 2)
+        assertThat(Schema.LEARNING_TABLES).hasSize(lists + 2)
     }
 
     @Test
-    fun versionIsTwo() {
-        assertThat(Schema.VERSION).isEqualTo(2)
+    fun versionIsThree() {
+        assertThat(Schema.VERSION).isEqualTo(3)
         assertThat(Schema.plan(Schema.MIGRATIONS, 1, 2)).hasSize(1)
     }
 }

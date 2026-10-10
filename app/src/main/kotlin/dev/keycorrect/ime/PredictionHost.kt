@@ -7,10 +7,13 @@ import dev.keycorrect.core.data.ShortcutSnapshot
 import dev.keycorrect.core.data.ShortcutStore
 import dev.keycorrect.core.data.UserDictionaryStore
 import dev.keycorrect.core.data.UserWordSnapshot
+import dev.keycorrect.core.decoder.AutocorrectConfig
+import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.model.RankingFeatureProvider
+import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.Predictor
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
@@ -21,6 +24,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Connects the keyboard to the app's prediction data: the memory-mapped base dictionary, the user's
@@ -64,6 +69,13 @@ class PredictionHost(
 
     @Volatile private var started = false
 
+    // Decoder settings (docs/PLAN.md §6.3 row 22). A change builds a new engine over the already
+    // loaded dictionary (cheap: the dictionary is memory-mapped, only the engine's own caches are
+    // rebuilt) and swaps it in; a decode in flight finishes on the old engine.
+    @Volatile private var nonWordTieRule = AutocorrectConfig().nonWordTieRule
+    @Volatile private var engineTieRule: Boolean? = null
+    private val engineLock = Mutex()
+
     private val decodeActivity = DecodeActivity()
     private val decodeBudget = DecodeBudget()
     @Volatile private var installedProvider: RankingFeatureProvider? = null
@@ -97,27 +109,50 @@ class PredictionHost(
             }
             val dict = dictionaryLoad.await() ?: return@launch
             dictionary = dict
-            val engine =
-                ClassicEngine(
-                    dict,
-                    userWords = { userDictionary.snapshot.words.keys },
-                    shortcuts = ::shortcutExpansions,
-                    personalization =
-                        learning?.let { host -> { host.personalization() } }
-                            ?: {
-                                Personalization.None
-                            },
-                    touchKey = touchKey,
-                )
-            engine.load()
-            installRankingProvider(engine)
-            predictor = Predictor { request, stale ->
-                decodeActivity.track { engine.predictNow(request, stale) }
-            }
-            // Build the contraction index here, off the main thread, rather than in the first
-            // decode (which may be a separator decode on main). Predictions need not wait for it.
-            runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }
+            engineLock.withLock { installEngine(dict) }
         }
+    }
+
+    /**
+     * Applies the decoder-affecting settings: today [KeyboardSettings.nonWordTieRule]. Safe to call
+     * at any time, from any thread; before the dictionary is loaded it only records the value.
+     */
+    fun applySettings(settings: KeyboardSettings) {
+        if (nonWordTieRule == settings.nonWordTieRule) return
+        nonWordTieRule = settings.nonWordTieRule
+        val dict = dictionary ?: return // start() builds the engine with the recorded value
+        scope.launch(io) {
+            engineLock.withLock {
+                if (engineTieRule != nonWordTieRule) installEngine(dict)
+            }
+        }
+    }
+
+    /** Builds the engine for the current settings over [dict] and publishes the [predictor]. */
+    private suspend fun installEngine(dict: Dictionary) {
+        val tieRule = nonWordTieRule
+        val engine =
+            ClassicEngine(
+                dict,
+                ClassicConfig(autocorrect = AutocorrectConfig(nonWordTieRule = tieRule)),
+                userWords = { userDictionary.snapshot.words.keys },
+                shortcuts = ::shortcutExpansions,
+                personalization =
+                    learning?.let { host -> { host.personalization() } }
+                        ?: {
+                            Personalization.None
+                        },
+                touchKey = touchKey,
+            )
+        engine.load()
+        installRankingProvider(engine)
+        engineTieRule = tieRule
+        predictor = Predictor { request, stale ->
+            decodeActivity.track { engine.predictNow(request, stale) }
+        }
+        // Build the contraction index here, off the main thread, rather than in the first
+        // decode (which may be a separator decode on main). Predictions need not wait for it.
+        runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }
     }
 
     override fun shortcutFor(trigger: String): ShortcutRule? =

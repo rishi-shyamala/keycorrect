@@ -13,6 +13,7 @@ import dev.keycorrect.core.learning.LearningUpdate.CorrectionEvidence
 import dev.keycorrect.core.learning.LearningUpdate.NewWordEvidence
 import dev.keycorrect.core.learning.LearningUpdate.PhraseFeedback
 import dev.keycorrect.core.learning.LearningUpdate.Preference
+import dev.keycorrect.core.learning.LearningUpdate.RevertKept
 import dev.keycorrect.core.learning.LearningUpdate.SuppressCorrection
 import dev.keycorrect.core.learning.LearningUpdate.TouchEvidence
 import dev.keycorrect.core.learning.LearningUpdate.WordUsed
@@ -319,12 +320,11 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
         when (kind) {
             RevertKind.ImmediateBackspace,
             RevertKind.DeletedAndRetyped -> {
-                // Decided 2026-10-09: the first revert implicitly adds the literal and suppresses
-                // the pair.
-                val adds = isTrainableWord(e.typed)
-                countsForThreshold = !adds || config.implicitAddRevertsCount
-                if (adds) out += AddUserWord(e.typed, AddUserWord.Reason.RevertedAutocorrect)
-                out += SuppressCorrection(e.typed, e.corrected)
+                // Revised 2026-10-10: the restored literal is a "keep". Whether it is added to the
+                // user dictionary / the pair suppressed depends on how many keeps there have been
+                // (the model's runtime thresholds), so only the evidence is emitted here.
+                countsForThreshold = true
+                out += RevertKept(e.typed, e.corrected)
                 out += CorrectionEvidence(e.typed, e.corrected, b, -config.revertDelta)
                 out += WordUsed(e.context, e.typed, config.typedWordWeight)
             }

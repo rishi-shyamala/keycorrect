@@ -57,6 +57,11 @@ fun HomeScreen(
             onClick = { onNavigate(SettingsDestination.Feedback) },
         )
         NavRow(
+            title = stringResource(R.string.advanced_title),
+            supportingText = stringResource(R.string.advanced_summary),
+            onClick = { onNavigate(SettingsDestination.Advanced) },
+        )
+        NavRow(
             title = stringResource(R.string.about_title),
             supportingText = stringResource(R.string.about_summary),
             onClick = { onNavigate(SettingsDestination.About) },

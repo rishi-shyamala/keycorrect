@@ -12,6 +12,7 @@ import dev.keycorrect.core.learning.LearningUpdate.CorrectionEvidence
 import dev.keycorrect.core.learning.LearningUpdate.NewWordEvidence
 import dev.keycorrect.core.learning.LearningUpdate.PhraseFeedback
 import dev.keycorrect.core.learning.LearningUpdate.Preference
+import dev.keycorrect.core.learning.LearningUpdate.RevertKept
 import dev.keycorrect.core.learning.LearningUpdate.SuppressCorrection
 import dev.keycorrect.core.learning.LearningUpdate.TouchEvidence
 import dev.keycorrect.core.learning.LearningUpdate.WordUsed
@@ -275,12 +276,13 @@ class OutcomeClassifierRowsTest {
     // ---- rows 6 / 7 / 23 ----------------------------------------------------------------------
 
     @Test
-    fun row06_immediateBackspace_implicitAddSuppressAndStrongNegative() {
+    fun row06_immediateBackspace_isAKeep_notAnImmediateAddOrSuppress() {
         val out = classifier.classify(reverted("tset", "test", RevertKind.ImmediateBackspace))
+        assertThat(out.all<AddUserWord>()).isEmpty()
+        assertThat(out.all<SuppressCorrection>()).isEmpty()
         assertThat(out)
             .containsExactly(
-                AddUserWord("tset", AddUserWord.Reason.RevertedAutocorrect),
-                SuppressCorrection("tset", "test"),
+                RevertKept("tset", "test"),
                 CorrectionEvidence("tset", "test", BUCKET, -cfg.revertDelta),
                 WordUsed(ctx, "tset", cfg.typedWordWeight),
                 AutocorrectOutcome(reverted = true),
@@ -300,8 +302,9 @@ class OutcomeClassifierRowsTest {
             classifier.classify(
                 reverted("tset", "test", RevertKind.EditedLater, replacement = "tset")
             )
-        assertThat(a.all<AddUserWord>()).hasSize(1)
-        assertThat(a.all<SuppressCorrection>()).hasSize(1)
+        assertThat(a.all<RevertKept>()).containsExactly(RevertKept("tset", "test"))
+        assertThat(a.all<AddUserWord>()).isEmpty()
+        assertThat(a.all<SuppressCorrection>()).isEmpty()
     }
 
     @Test

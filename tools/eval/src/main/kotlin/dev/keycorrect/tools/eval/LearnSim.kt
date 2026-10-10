@@ -62,6 +62,14 @@ class LearnWindow(val from: Int, val to: Int) {
     var afterRevertCorrected = 0
     var personalAfterRevertCorrected = 0
 
+    /**
+     * Same, once the literal has been kept [LearnArm.keepsToAdd] times (the user-dictionary
+     * threshold N): the word is then a user word and must not be corrected any more.
+     */
+    var afterKeepsOccurrences = 0
+    var afterKeepsCorrected = 0
+    var personalAfterKeepsCorrected = 0
+
     // Touch model at the end of the window (key units).
     var learnedKeys = 0
     var learnedMeanDx = Double.NaN
@@ -119,6 +127,8 @@ class ArmResult(
     val seconds: Double,
     /** One CSV line per word (first `traceWords` words); empty unless tracing. */
     val trace: List<String> = emptyList(),
+    /** N, the keeps that add a literal to the user dictionary (thresholds of the learning arm). */
+    val keepsToAdd: Int = 2,
 )
 
 /**
@@ -148,6 +158,11 @@ class LearnArm(
     private val log: (String) -> Unit = {},
     private val traceWords: Int = 0,
 ) {
+    /**
+     * N of the revert thresholds ([PersonalModelConfig.implicitAddKeeps], clamped as the model).
+     */
+    val keepsToAdd = modelConfig.implicitAddKeeps.coerceIn(1, 5)
+
     private val profile = EventBuilder.DEFAULT_PROFILE
     private val typist = Typist(keyboard, typistConfig)
 
@@ -206,7 +221,7 @@ class LearnArm(
         val perWordLast = HashMap<String, WordTally>()
         val targets = HashSet<String>()
         val examples = ArrayList<String>()
-        val reverted = HashSet<String>()
+        val keeps = HashMap<String, Int>() // finished-unchanged reverts per literal
         val trace = ArrayList<String>()
         // Touch statistics of the typed stream: confirmed taps (intended key = registered key,
         // relative to that key) and all taps relative to the key meant. Cognitive slips excluded.
@@ -354,11 +369,19 @@ class LearnArm(
                 }
                 // Note-2 rule: a literal whose autocorrection was reverted before must not be
                 // corrected again.
-                if (literalRight && PersonalUser.fold(literal) in reverted) {
+                val keepCount = keeps[PersonalUser.fold(literal)] ?: 0
+                if (literalRight && keepCount >= 1) {
                     w.afterRevertOccurrences++
                     if (fired) {
                         w.afterRevertCorrected++
                         if (personal) w.personalAfterRevertCorrected++
+                    }
+                }
+                if (literalRight && keepCount >= keepsToAdd) {
+                    w.afterKeepsOccurrences++
+                    if (fired) {
+                        w.afterKeepsCorrected++
+                        if (personal) w.personalAfterKeepsCorrected++
                     }
                 }
                 if (
@@ -366,7 +389,7 @@ class LearnArm(
                         (reaction.kind == RevertKind.ImmediateBackspace ||
                             reaction.kind == RevertKind.DeletedAndRetyped)
                 ) {
-                    reverted.add(PersonalUser.fold(literal))
+                    keeps.merge(PersonalUser.fold(literal), 1, Int::plus)
                 }
                 if (typed.typo == TypoKind.None && token.text.length == literal.length) {
                     for (i in literal.indices) {
@@ -418,6 +441,7 @@ class LearnArm(
             if (learning) model.suppressedCorrections().size else 0,
             (System.nanoTime() - started) / 1e9,
             trace,
+            keepsToAdd,
         )
     }
 

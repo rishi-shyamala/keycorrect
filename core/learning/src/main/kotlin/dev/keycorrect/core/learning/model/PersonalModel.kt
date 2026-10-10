@@ -41,6 +41,12 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     private val ranker = FusionRanker(config)
     private val thresholds = AdaptiveThresholds(config)
     private val lexicon = Lexicon(config)
+    private val keeps = KeepCounts(config.maxKeepEntries)
+    private var addThreshold = config.implicitAddKeeps.coerceIn(KEEP_RANGE)
+    private var suppressThreshold = config.suppressKeeps.coerceAtLeast(addThreshold)
+
+    /** Set when the thresholds or the keep counts changed outside [handle]: re-check all keeps. */
+    private var keepsStale = true
 
     /** The sentence buffer (D10). The keyboard feeds it via [recordSentenceWord]. */
     val sentences = SentenceBuffer(config.sentence)
@@ -138,16 +144,38 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
 
     // ------------------------------------------------------------------ apply
 
+    /**
+     * Sets how many keeps (a reverted autocorrection whose restored literal was finished unchanged)
+     * it takes to add the typed word to the user dictionary ([addAfter], clamped to 1..5) and to
+     * suppress the pair typed -> corrected ([suppressAfter], at least [addAfter]). Applied
+     * retroactively: the next [apply] (an empty list will do) checks every kept word and pair
+     * against the new values, so lowering a threshold adds / suppresses what already has enough
+     * keeps. Raising one never takes back what was already added or suppressed.
+     */
+    @Synchronized
+    fun updateThresholds(addAfter: Int, suppressAfter: Int) {
+        val n = addAfter.coerceIn(KEEP_RANGE)
+        val m = suppressAfter.coerceAtLeast(n)
+        if (n == addThreshold && m == suppressThreshold) return
+        addThreshold = n
+        suppressThreshold = m
+        keepsStale = true
+    }
+
+    /** The thresholds in force as (add after, suppress after). */
+    @Synchronized fun thresholds(): Pair<Int, Int> = addThreshold to suppressThreshold
+
     @Synchronized
     fun apply(updates: List<LearningUpdate>, nowMillis: Long) {
         if (updates.isEmpty()) {
+            val urgent = reevaluateKeeps(nowMillis)
             retryPendingPreferences(nowMillis)
-            maybePublish(nowMillis, urgent = false)
+            maybePublish(nowMillis, urgent)
             return
         }
         advanceClock(nowMillis)
         ranker.maybeCheckpoint(nowMillis)
-        var urgent = false
+        var urgent = reevaluateKeeps(nowMillis)
         for (u in updates) if (handle(u, nowMillis)) urgent = true
         sincePublish += updates.size
         retryPendingPreferences(nowMillis)
@@ -198,6 +226,12 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                 record(now, u)
                 return true
             }
+            is LearningUpdate.RevertKept -> {
+                if (Text.key(u.typed).isEmpty() || Text.key(u.corrected).isEmpty()) return false
+                keeps.add(u.typed, u.corrected, now)
+                record(now, u)
+                return applyKeeps(u.typed, u.corrected, now)
+            }
             is LearningUpdate.SuppressCorrection -> {
                 lexicon.suppress(u.typed, u.target, now)
                 lexDirty = true
@@ -225,6 +259,44 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         }
         return false
     }
+
+    /** Adds / suppresses [typed] and [corrected] if their keep counts reached the thresholds. */
+    private fun applyKeeps(typed: String, corrected: String?, now: Long): Boolean {
+        var changed = false
+        if (keeps.wordCount(typed) >= addThreshold && isAddable(typed)) {
+            if (lexicon.addUserWord(typed, AddUserWord.Reason.RevertedAutocorrect, now)) {
+                pendingAdds += AddUserWord(Text.fold(typed), AddUserWord.Reason.RevertedAutocorrect)
+                changed = true
+            }
+        }
+        if (corrected != null && keeps.pairCount(typed, corrected) >= suppressThreshold) {
+            val key = lexicon.suppressionKey(typed, corrected)
+            if (key !in lexicon.suppressions) {
+                lexicon.suppress(typed, corrected, now)
+                changed = true
+            }
+        }
+        if (changed) lexDirty = true
+        return changed
+    }
+
+    /** After a threshold change or an import: checks every kept word and pair once. */
+    private fun reevaluateKeeps(now: Long): Boolean {
+        if (!keepsStale) return false
+        keepsStale = false
+        var changed = false
+        for (e in keeps.pairs.values.toList()) if (applyKeeps(e.surface, e.target, now))
+            changed = true
+        for (e in keeps.words.values.toList()) if (applyKeeps(e.surface, null, now)) changed = true
+        return changed
+    }
+
+    private fun isAddable(w: String): Boolean =
+        w.isNotBlank() &&
+            w.length <= config.maxKeptWordLength &&
+            w.none { it.isWhitespace() } &&
+            !w.contains("://") &&
+            w.any { it.isLetter() }
 
     private fun handlePreference(u: LearningUpdate.Preference, now: Long) {
         if (rankingFeatureProvider == null) return
@@ -472,6 +544,8 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     @Synchronized
     fun removeSuppression(typed: String, target: String, nowMillis: Long): Boolean =
         lexicon.removeSuppression(typed, target).also {
+            // The keeps that caused it go too, or they would suppress the pair again on a restart.
+            keeps.forgetPair(typed, target)
             if (it) {
                 lexDirty = true
                 publish(nowMillis)
@@ -519,6 +593,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                     )
                 is LearningUpdate.TouchEvidence -> touch.remove(u.touchKey, u.samples, age, active)
                 is LearningUpdate.CasingEvidence -> lexicon.addCasing(u.surface, -1.0)
+                is LearningUpdate.RevertKept -> keeps.remove(u.typed, u.corrected)
                 else -> Unit
             }
         }
@@ -560,6 +635,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             outcomes = thresholds.exportRows(),
             sentences = sentences.exportRows(),
             pendingAdds = pendingAdds.map { PendingAddRow(it.word, it.reason.ordinal) },
+            keeps = keeps.exportRows(),
         )
     }
 
@@ -578,6 +654,8 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         ranker.importRows(state.rankerWeights, state.rankerUpdates, state.lastCheckpointMillis)
         thresholds.importRows(state.outcomes)
         sentences.importRows(state.sentences)
+        keeps.importRows(state.keeps)
+        keepsStale = true // the thresholds may differ from when the counts were saved
         pendingAdds.clear()
         for (r in state.pendingAdds) {
             pendingAdds +=
@@ -601,6 +679,8 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         sentences.clear()
     }
 }
+
+private val KEEP_RANGE = 1..5
 
 /**
  * Glue between a [PersonalModel] (learning thread) and a [LearningStore]. Call these from the

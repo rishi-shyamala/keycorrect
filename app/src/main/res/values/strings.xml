@@ -114,10 +114,34 @@
     <string name="feedback_strength_unsupported">This device does not support adjusting vibration strength.</string>
     <string name="feedback_strength_needs_duration">Set a vibration duration to adjust strength.</string>
     <string name="feedback_test_vibration">Test vibration</string>
+    <string name="feedback_haptic_autocorrect">Vibrate when a word is auto-corrected</string>
+    <string name="feedback_haptic_unknown_word">Vibrate for words not in the dictionary</string>
+    <string name="feedback_test_button">Test</string>
     <string name="feedback_sound">Sound on keypress</string>
     <string name="feedback_sound_summary">Follows the system touch sounds setting</string>
     <string name="feedback_sound_volume">Volume</string>
     <string name="feedback_test_sound">Test sound</string>
+
+    <string name="advanced_title">Advanced</string>
+    <string name="advanced_summary">Fine-tune autocorrect and learning</string>
+    <string name="advanced_section_undo">Learning from undo</string>
+    <string name="advanced_undo_explanation">An undo counts only when you keep the word you typed. If you fix it to a different word instead, KeyCorrect learns that correction.</string>
+    <plurals name="advanced_add_after_undos">
+        <item quantity="one">Add a word to your dictionary after %1$d undo</item>
+        <item quantity="other">Add a word to your dictionary after %1$d undos</item>
+    </plurals>
+    <plurals name="advanced_stop_after_undos">
+        <item quantity="one">Stop correcting a word after %1$d undo</item>
+        <item quantity="other">Stop correcting a word after %1$d undos</item>
+    </plurals>
+    <plurals name="advanced_undo_count">
+        <item quantity="one">%1$d undo</item>
+        <item quantity="other">%1$d undos</item>
+    </plurals>
+    <string name="advanced_stop_at_least_note">Can\'t be lower than the number of undos needed to add a word.</string>
+    <string name="advanced_section_autocorrect">Autocorrect</string>
+    <string name="advanced_tie_rule">Pick the best guess for unknown words</string>
+    <string name="advanced_tie_rule_summary">When you type a word that isn\'t in the dictionary and two or more corrections are almost equally likely, correct to the best guess instead of leaving the word as typed.</string>
 
     <string name="about_title">About</string>
     <string name="about_summary">Version, licence, privacy</string>

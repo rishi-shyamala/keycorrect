@@ -95,15 +95,13 @@ data class ClassifierConfig(
     val pickedCorrectionDelta: Float = 0.5f,
     /**
      * Whether a revert counts toward the adaptive autocorrect threshold's revert rate (the "kept"
-     * outcome was already counted when the correction was applied):
-     * - [rankingRevertsCount]: the user switched to another suggestion or edited the corrected word
-     *   into something else (rows 7/22). The correction was wanted but the wrong word; a stricter
-     *   threshold would only leave the typo, and the correction memory handles the pair.
-     * - [implicitAddRevertsCount]: the user restored the literal and the revert added it to the
-     *   dictionary (rows 6/23). A missing word, not an over-eager threshold.
+     * outcome was already counted when the correction was applied). A literal restore (rows 6/7:
+     * `RevertKept`) always counts. [rankingRevertsCount]: the user switched to another suggestion
+     * or edited the corrected word into something else (rows 7/22); the correction was wanted but
+     * the wrong word, a stricter threshold would only leave the typo, and the correction memory
+     * handles the pair.
      */
     val rankingRevertsCount: Boolean = false,
-    val implicitAddRevertsCount: Boolean = true,
     /** Row 8: negative for the top correction-like candidate the user declined. */
     val literalRejectDelta: Float = 1.5f,
 
