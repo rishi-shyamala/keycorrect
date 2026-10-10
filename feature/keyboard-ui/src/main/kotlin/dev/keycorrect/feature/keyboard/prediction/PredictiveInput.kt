@@ -15,7 +15,6 @@ import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.Graphemes
-import dev.keycorrect.core.input.SentenceContext
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
@@ -23,6 +22,7 @@ import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.learning.PhraseOutcome
 import dev.keycorrect.core.learning.RevertKind
+import dev.keycorrect.core.learning.SentenceContext
 import dev.keycorrect.core.learning.ShownSuggestion
 import dev.keycorrect.core.learning.TouchSample
 import dev.keycorrect.core.learning.UserAction

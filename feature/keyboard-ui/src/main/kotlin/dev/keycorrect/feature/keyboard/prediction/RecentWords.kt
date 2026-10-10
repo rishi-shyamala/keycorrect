@@ -2,6 +2,8 @@ package dev.keycorrect.feature.keyboard.prediction
 
 import dev.keycorrect.core.learning.CommitMethod as Learned
 import dev.keycorrect.core.learning.RevertKind
+import dev.keycorrect.core.learning.classifier.editDistance
+import dev.keycorrect.core.learning.classifier.fold
 import kotlin.math.ceil
 
 /**
@@ -146,8 +148,6 @@ internal fun phraseWords(text: String): List<String> =
 
 internal fun sameWord(a: String, b: String): Boolean = fold(a) == fold(b)
 
-internal fun fold(s: String): String = s.lowercase().replace('’', '\'').replace('‘', '\'')
-
 /**
  * Whether [x], what the user turned an autocorrected word into, is plausibly a correction of the
  * same word (close to what they typed [t] or to the correction) rather than a rewording. The
@@ -158,25 +158,4 @@ internal fun relatedEdit(typed: String, corrected: String, x: String): Boolean {
     val limit = maxOf(1, ceil(a.length / 3.0).toInt())
     val b = fold(x)
     return minOf(editDistance(a, b), editDistance(fold(corrected), b)) <= limit
-}
-
-/** Optimal-string-alignment distance (Levenshtein plus adjacent transposition = 1). */
-internal fun editDistance(a: String, b: String): Int {
-    if (a == b) return 0
-    if (a.isEmpty()) return b.length
-    if (b.isEmpty()) return a.length
-    val d = Array(a.length + 1) { IntArray(b.length + 1) }
-    for (i in 0..a.length) d[i][0] = i
-    for (j in 0..b.length) d[0][j] = j
-    for (i in 1..a.length) {
-        for (j in 1..b.length) {
-            val cost = if (a[i - 1] == b[j - 1]) 0 else 1
-            var best = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
-            if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
-                best = minOf(best, d[i - 2][j - 2] + 1)
-            }
-            d[i][j] = best
-        }
-    }
-    return d[a.length][b.length]
 }

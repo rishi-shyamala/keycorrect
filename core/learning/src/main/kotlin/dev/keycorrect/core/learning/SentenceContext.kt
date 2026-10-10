@@ -1,9 +1,9 @@
-package dev.keycorrect.core.input
+package dev.keycorrect.core.learning
 
 /**
- * The learning context of a word: the last words of the sentence before it, built exactly the way
- * the decoder builds its own (`Text.lastSentenceWords` in core/decoder), so that correction-memory
- * buckets recorded from the keyboard match the ones the decoder looks up. Keep the two in step.
+ * The learning context of a word: the last words of the sentence before it. The keyboard records
+ * correction-memory buckets with this and the decoder looks them up with it, so both always agree.
+ * The character classes are shared with the decoder's tokenizer for the same reason.
  */
 object SentenceContext {
     /** Words kept as context (the learning layer uses at most two). */
@@ -67,16 +67,17 @@ object SentenceContext {
 
     private const val WINDOW = 192
 
-    private fun isWordChar(c: Char): Boolean =
+    fun isWordChar(c: Char): Boolean =
         Character.isLetterOrDigit(c) ||
             Character.getType(c).let {
                 it == Character.NON_SPACING_MARK.toInt() ||
                     it == Character.COMBINING_SPACING_MARK.toInt()
             }
 
-    private fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == '‘' || c == 'ʼ'
+    fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == '‘' || c == 'ʼ'
 
-    private fun isHyphen(c: Char): Boolean = c == '-' || c == '‐' || c == '‑'
+    fun isHyphen(c: Char): Boolean = c == '-' || c == '‐' || c == '‑'
 
-    private fun isSentenceEnd(c: Char): Boolean = c == '.' || c == '!' || c == '?' || c == '…'
+    /** Sentence-final punctuation; it ends a sentence only when followed by whitespace. */
+    fun isSentenceEnd(c: Char): Boolean = c == '.' || c == '!' || c == '?' || c == '…'
 }

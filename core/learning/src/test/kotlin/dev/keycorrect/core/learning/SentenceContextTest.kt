@@ -1,9 +1,9 @@
-package dev.keycorrect.core.input
+package dev.keycorrect.core.learning
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
-/** Mirrors the decoder's `Text.lastSentenceWords` contract; both must give the same buckets. */
+/** The context buckets shared by the keyboard (recording) and the decoder (lookup). */
 class SentenceContextTest {
     private fun words(s: String, n: Int = 2) = SentenceContext.lastWords(s, n)
 

@@ -1,20 +1,17 @@
 package dev.keycorrect.core.decoder
 
+import dev.keycorrect.core.learning.SentenceContext
+
 /** Character classes and normalisation shared by the context parser and the casing rules. */
 internal object Text {
-    fun isWordChar(c: Char): Boolean =
-        Character.isLetterOrDigit(c) ||
-            Character.getType(c).let {
-                it == Character.NON_SPACING_MARK.toInt() ||
-                    it == Character.COMBINING_SPACING_MARK.toInt()
-            }
+    fun isWordChar(c: Char): Boolean = SentenceContext.isWordChar(c)
 
-    fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == '‘' || c == 'ʼ'
+    fun isApostrophe(c: Char): Boolean = SentenceContext.isApostrophe(c)
 
-    fun isHyphen(c: Char): Boolean = c == '-' || c == '‐' || c == '‑'
+    fun isHyphen(c: Char): Boolean = SentenceContext.isHyphen(c)
 
     /** Sentence-final punctuation; it ends a sentence only when followed by whitespace. */
-    fun isSentenceEnd(c: Char): Boolean = c == '.' || c == '!' || c == '?' || c == '…'
+    fun isSentenceEnd(c: Char): Boolean = SentenceContext.isSentenceEnd(c)
 
     /** The trie key of [text]: lowercase, with typographic apostrophes straightened. */
     fun key(text: CharSequence): String {
@@ -49,56 +46,9 @@ internal object Text {
         return x.substring(i + 2) == y.substring(i + 2)
     }
 
-    /**
-     * The last [n] words of the sentence ending [before] (empty at a sentence start), normalised
-     * the way the learning layer records context: apostrophes folded to `'`, case kept. Words may
-     * contain inner apostrophes and hyphens ("don't", "well-known").
-     */
-    fun lastSentenceWords(before: String, n: Int): List<String> {
-        val out = ArrayDeque<String>(n + 1)
-        var i = maxOf(0, before.length - 192)
-        while (i > 0 && i < before.length && isWordChar(before[i - 1]) && isWordChar(before[i])) i++
-        while (i < before.length) {
-            val c = before[i]
-            when {
-                isWordChar(c) -> {
-                    val start = i
-                    i++
-                    while (i < before.length) {
-                        val d = before[i]
-                        if (isWordChar(d)) {
-                            i++
-                        } else if (
-                            (isApostrophe(d) || isHyphen(d)) &&
-                                i + 1 < before.length &&
-                                isWordChar(before[i + 1])
-                        ) {
-                            i += 2
-                        } else {
-                            break
-                        }
-                    }
-                    val sb = StringBuilder(i - start)
-                    for (k in start until i) sb.append(
-                        if (isApostrophe(before[k])) '\'' else before[k]
-                    )
-                    out.addLast(sb.toString())
-                    if (out.size > n) out.removeFirst()
-                }
-                c == '\n' -> {
-                    out.clear()
-                    i++
-                }
-                isSentenceEnd(c) -> {
-                    val next = if (i + 1 < before.length) before[i + 1] else ' '
-                    if (next.isWhitespace()) out.clear()
-                    i++
-                }
-                else -> i++
-            }
-        }
-        return out.toList()
-    }
+    /** The learning context of the word after [before]; see [SentenceContext.lastWords]. */
+    fun lastSentenceWords(before: String, n: Int): List<String> =
+        SentenceContext.lastWords(before, n)
 
     fun hasLetter(text: CharSequence): Boolean = text.any { it.isLetter() }
 
@@ -136,13 +86,4 @@ internal object Casing {
         val letters = literal.count { it.isLetter() }
         return letters >= 2 && literal.all { !it.isLetter() || it.isUpperCase() }
     }
-}
-
-/**
- * Public view of the decoder's sentence-context extraction, so a module that can see both this and
- * `core/input` `SentenceContext.lastWords` can pin the two to identical output (core/decoder may
- * not depend on core/input, so the logic exists twice).
- */
-object DecoderSentenceContext {
-    fun lastWords(before: String, n: Int): List<String> = Text.lastSentenceWords(before, n)
 }

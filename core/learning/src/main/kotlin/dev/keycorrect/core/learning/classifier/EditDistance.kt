@@ -1,7 +1,7 @@
 package dev.keycorrect.core.learning.classifier
 
 /** Optimal-string-alignment distance (Levenshtein plus adjacent transposition = 1). */
-internal fun editDistance(a: String, b: String): Int {
+fun editDistance(a: String, b: String): Int {
     if (a == b) return 0
     if (a.isEmpty()) return b.length
     if (b.isEmpty()) return a.length
@@ -22,4 +22,4 @@ internal fun editDistance(a: String, b: String): Int {
 }
 
 /** Lowercase with typographic apostrophes folded, the comparison form used across learning. */
-internal fun fold(s: String): String = s.lowercase().replace('’', '\'').replace('‘', '\'')
+fun fold(s: String): String = s.lowercase().replace('’', '\'').replace('‘', '\'')
