@@ -9,6 +9,7 @@ dependencies {
     // Public API exposes Flow (stores) and SupportSQLiteDatabase (KeyCorrectDatabase.transaction).
     api(libs.kotlinx.coroutines.android)
     api(libs.androidx.sqlite)
+    api(project(":core:learning"))
     implementation(libs.sqlcipher.android)
 
     testImplementation(libs.kotlinx.coroutines.test)

@@ -13,10 +13,10 @@ class Migration(val from: Int, val to: Int, val migrate: (SupportSQLiteDatabase)
 
 internal object Schema {
     /** Current schema version. Bump together with a new entry in [MIGRATIONS]. */
-    const val VERSION = 1
+    const val VERSION = 2
 
     /** Ordered migrations. The database is created at v1 and migrated up, so there is one path. */
-    val MIGRATIONS: List<Migration> = emptyList()
+    val MIGRATIONS: List<Migration> = listOf(Migration(1, 2, ::migrateV1ToV2))
 
     /** The frozen v1 DDL. Never edit; add a [Migration] instead. */
     fun createV1(db: SupportSQLiteDatabase) {
@@ -45,6 +45,71 @@ internal object Schema {
                 .trimIndent()
         )
     }
+
+    /**
+     * v1 -> v2: the learning tables (one per `PersistedLearning` row list, plus journal and meta).
+     * Frozen: never edit; add a [Migration] instead. Row tables have no primary key on purpose:
+     * rowid order is the list order, which makes save/load a lossless round trip.
+     */
+    fun migrateV1ToV2(db: SupportSQLiteDatabase) {
+        LEARNING_V2_DDL.forEach(db::execSQL)
+    }
+
+    /** Names of the tables created by [migrateV1ToV2], row tables first. */
+    val LEARNING_V2_TABLES: List<String> =
+        listOf(
+            "learning_ngrams",
+            "learning_corrections",
+            "learning_suppressions",
+            "learning_blocks",
+            "learning_user_words",
+            "learning_candidates",
+            "learning_candidate_sessions",
+            "learning_casing",
+            "learning_touch",
+            "learning_touch_profiles",
+            "learning_ranker_weights",
+            "learning_outcomes",
+            "learning_sentences",
+            "learning_pending_adds",
+            "learning_journal",
+            "learning_meta",
+        )
+
+    private val LEARNING_V2_DDL: List<String> =
+        listOf(
+            "CREATE TABLE learning_ngrams (ord INTEGER NOT NULL, key TEXT NOT NULL, " +
+                "weight REAL NOT NULL, last_active INTEGER NOT NULL)",
+            "CREATE TABLE learning_corrections (typed TEXT NOT NULL, target TEXT NOT NULL, " +
+                "bucket TEXT NOT NULL, score REAL NOT NULL, last_active INTEGER NOT NULL)",
+            "CREATE TABLE learning_suppressions (typed TEXT NOT NULL, target TEXT NOT NULL, " +
+                "created_at INTEGER NOT NULL)",
+            "CREATE TABLE learning_blocks (word TEXT NOT NULL, created_at INTEGER NOT NULL)",
+            "CREATE TABLE learning_user_words (key TEXT NOT NULL, word TEXT NOT NULL, " +
+                "reason INTEGER NOT NULL, created_at INTEGER NOT NULL, removed INTEGER NOT NULL)",
+            "CREATE TABLE learning_candidates (key TEXT NOT NULL, word TEXT NOT NULL, " +
+                "commit_weight REAL NOT NULL, first_seen INTEGER NOT NULL, " +
+                "last_seen INTEGER NOT NULL)",
+            "CREATE TABLE learning_candidate_sessions (key TEXT NOT NULL, " +
+                "session_id INTEGER NOT NULL, weight REAL NOT NULL)",
+            "CREATE TABLE learning_casing (key TEXT NOT NULL, surface TEXT NOT NULL, " +
+                "count REAL NOT NULL)",
+            "CREATE TABLE learning_touch (touch_key TEXT NOT NULL, char_code INTEGER NOT NULL, " +
+                "samples INTEGER NOT NULL, weight REAL NOT NULL, sum_x REAL NOT NULL, " +
+                "sum_y REAL NOT NULL, sum_xx REAL NOT NULL, sum_yy REAL NOT NULL, " +
+                "last_active INTEGER NOT NULL)",
+            "CREATE TABLE learning_touch_profiles (touch_key TEXT NOT NULL, words INTEGER NOT NULL)",
+            "CREATE TABLE learning_ranker_weights (checkpoint_millis INTEGER NOT NULL, " +
+                "idx INTEGER NOT NULL, value REAL NOT NULL)",
+            "CREATE TABLE learning_outcomes (kind INTEGER NOT NULL, time_millis INTEGER NOT NULL, " +
+                "a INTEGER NOT NULL, b INTEGER NOT NULL)",
+            "CREATE TABLE learning_sentences (session_id INTEGER NOT NULL, text TEXT NOT NULL, " +
+                "time_millis INTEGER NOT NULL)",
+            "CREATE TABLE learning_pending_adds (word TEXT NOT NULL, reason INTEGER NOT NULL)",
+            "CREATE TABLE learning_journal (time_millis INTEGER NOT NULL, payload TEXT NOT NULL)",
+            "CREATE INDEX learning_journal_time ON learning_journal (time_millis)",
+            "CREATE TABLE learning_meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
+        )
 
     /**
      * Picks the chain of migrations leading from [from] to [to].
