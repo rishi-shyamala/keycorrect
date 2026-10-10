@@ -1,5 +1,7 @@
 package dev.keycorrect.ime
 
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
@@ -28,15 +30,27 @@ import kotlinx.coroutines.launch
 class KeyCorrectImeService : ComposeInputMethodService() {
     private val settingsFlow = MutableStateFlow(KeyboardSettings())
 
-    private val predictionHost by lazy {
+    /**
+     * The process-wide learning system; it gates itself on the settings as well as the keyboard.
+     */
+    private val learningHost
+        get() = appContainer.learningHost
+
+    @Volatile
+    private var device = DeviceProfile(tablet = false, landscape = false, hardwareKeyboard = false)
+
+    private val predictionHostLazy = lazy {
         PredictionHost(
             assets,
             appContainer.userDictionary,
             appContainer.shortcuts,
             appContainer.applicationScope,
             Dispatchers.IO,
+            learning = learningHost,
+            touchKey = ::currentTouchKey,
         )
     }
+    private val predictionHost by predictionHostLazy
 
     private val controller by lazy {
         KeyboardController(
@@ -46,6 +60,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             ),
             appContainer.keyboardComposer,
             PredictionEnvironment.create(this, predictionHost),
+            learning = learningHost,
+            wallClock = appContainer.wallClock,
         )
     }
 
@@ -58,6 +74,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        updateDevice(resources.configuration)
         // Dictionary and user data load in the background; suggestions appear once they're ready.
         predictionHost.start()
         lifecycleScope.launch {
@@ -67,6 +84,45 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 controller.updateSettings(it)
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateDevice(newConfig)
+    }
+
+    /** Tells the keyboard (for event profiles) and the decoder (touch profile) what we run on. */
+    private fun updateDevice(config: Configuration) {
+        val profile = DeviceProfile.from(config)
+        device = profile
+        controller.updateDevice(profile.tablet, profile.landscape, profile.hardwareKeyboard)
+    }
+
+    /**
+     * The touch-statistics key of the layout on screen, from the controller's state and the same
+     * inputs it builds its own layout key from (see [InputProfiles]). Read on the decoder thread.
+     */
+    private fun currentTouchKey(): String {
+        val settings = settingsFlow.value
+        return InputProfiles.touchKey(
+            device,
+            controller.state.layerId,
+            settings.numberRow || controller.profile.sensitive,
+            settings.keyHeightDp,
+        )
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            learningHost.requestFlush(FlushReason.TrimMemory)
+        }
+    }
+
+    override fun onDestroy() {
+        learningHost.requestFlush(FlushReason.TrimMemory)
+        if (predictionHostLazy.isInitialized()) predictionHost.close()
+        super.onDestroy()
     }
 
     @Composable
@@ -97,6 +153,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         controller.onFinishInput()
+        learningHost.requestFlush(FlushReason.KeyboardHidden)
         super.onFinishInputView(finishingInput)
     }
 

@@ -43,8 +43,10 @@ dependencies {
     implementation(project(":core:ime"))
     implementation(project(":core:data"))
     implementation(project(":core:decoder"))
+    implementation(project(":core:engine-api"))
     implementation(project(":core:input"))
     implementation(project(":core:layout"))
+    implementation(project(":core:learning"))
     implementation(project(":core:settings"))
     implementation(project(":feature:keyboard-ui"))
     implementation(libs.androidx.autofill)
@@ -52,4 +54,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.compose.foundation)
+
+    testImplementation(libs.kotlinx.coroutines.test)
 }
