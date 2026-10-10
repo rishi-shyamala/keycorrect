@@ -195,3 +195,95 @@ shorter and cleaner than chat text. Use the numbers to compare configs, not as
 absolute user-facing accuracy. Re-run the baseline after any decoder change;
 the harness reads `ClassicConfig` by field name so renamed knobs show up as
 `--config` errors rather than silently being ignored.
+
+## Learning (`--mode learn`)
+
+Measures whether the personal model (`core/learning`) improves a simulated user's experience over
+time, against the same decoder with no learning on the identical stream.
+
+```
+./gradlew :tools:eval:run --offline -q --args="--mode learn --words 20000 --seed 1"
+```
+
+Outputs go to `tools/eval/build/eval/learn/`: `learn_report.txt`, `learn.json`, `learn_curve.csv`,
+`personal_words.csv` (`--trace-words N` adds per-word `trace_learning.csv` / `trace_baseline.csv`).
+Extra flags: `--personal-rate`, `--bias-x`, `--bias-y`, `--tap-prob`. 20k words take about 45 s
+(the two arms run in parallel threads).
+
+### Method
+
+* **Stream.** The dev split (never the test split), sentence by sentence until N typeable words.
+  Each evaluated, apostrophe-free word is replaced by a personal word with probability 4%
+  (`personalRate`; Zipf, exponent 1.0, over 50 words). With probability 3% a sentence starts with a
+  habitual phrase ("Thanks X, ...", "Love you X", "See you at X", "Lol <slang>").
+* **Personal vocabulary (50).** 30 capitalised out-of-vocabulary names that occur in the dev split
+  (e.g. Jugurtha, Damiano, Cephas), 10 invented names (Kovari, Zephyra, ...), 10 invented
+  lowercase slang words (snerkle, blorp, ...). All are unknown to the dictionary.
+* **Typist.** The usual Gaussian typist (sigma 0.35) plus a personal bias of +0.2 key heights down
+  and -0.1 key widths, applied to every tap (`TypistConfig.biasX/biasY`).
+* **Closed loop, per word.** Decode each prefix for the strip (autocorrect off), decode the full
+  word with autocorrect on, then draw the user's reaction (`Reaction.kt`): a correct autocorrection
+  is accepted; a changed correct literal is noticed with p=0.95 and reverted (ImmediateBackspace
+  70%, DeletedAndRetyped 30%); a wrong autocorrection of a typo is noticed with p=0.95 and
+  switched to the target if it is in the strip or the tie runner-up (SwitchedToSuggestion), else
+  retyped (EditedLater); with no autocorrection and the target in the strip the user taps it with
+  p=0.6, else retypes with p=0.5; with no help from the strip a typo is retyped with p=0.3.
+  Everything else is accepted. The reaction random stream is the same for both arms.
+* **Events.** `EventBuilder` builds the `WordCommitted` / `AutocorrectReverted` / `WordReplaced`
+  events as the keyboard would (touches in key units from the registered key's centre, `shown` with
+  slot, appearance char and visible time, tie runner-up, a 20-sentence session with 45 minute gaps),
+  then `OutcomeClassifier.classify` -> `PersonalModel.apply` -> `publishNow` after every word.
+  The engine is wired to the model with `personalization = { model.snapshot() }` (see weaknesses),
+  `userWords` from the model and `rankingFeatureProvider` -> `engine.featuresFor`.
+* **Windows.** 0-2k, 2-5k, 5-10k, 10-20k words (scaled by N), plus "all".
+* **Metrics.** Word accuracy of the final text after the user's reaction; keyboard accuracy before
+  the reaction; false corrections per 1000 (a correct literal changed, i.e. autocorrect not equal
+  to the target when the literal was right, and the correction applied); reverts per 1000 (undone
+  autocorrections of any kind); top-3 recall of the strip; touch-model error = L2 distance between
+  the learned per-key offset and the true bias, averaged over keys with an offset. "Attainable" is
+  the same for the mean of taps that registered on the intended key (what the classifier can see),
+  "oracle" for all taps relative to the intended key.
+* **Note-2 check.** After a personal word's first revert, count each later occurrence where the
+  word was typed correctly and the keyboard changed it anyway.
+
+### Results (seed 1, 20 000 words, learning / baseline, sigma 0.35 plus bias)
+
+| window | 0-2k | 2-5k | 5-10k | 10-20k | all |
+|---|---|---|---|---|---|
+| word accuracy % | 86.0 / 89.2 | 85.7 / 87.9 | 86.1 / 87.9 | 86.9 / 88.4 | 86.4 / 88.3 |
+| personal-word accuracy % | 39.5 / 46.5 | 56.1 / 42.3 | 54.7 / 40.8 | 60.0 / 43.8 | 56.0 / 43.1 |
+| false corrections /1000 | 1.5 / 3.5 | 0.7 / 2.0 | 0.4 / 2.8 | 0.3 / 2.6 | 0.5 / 2.65 |
+| false corrections /1000 personal | 11.6 / 23.3 | 8.1 / 24.4 | 4.5 / 44.8 | 2.4 / 30.6 | 4.7 / 32.7 |
+| reverts /1000 | 82 / 130 | 75 / 114 | 70 / 111 | 74 / 109 | 74 / 112 |
+| top-3 recall % | 75.3 / 74.8 | 76.5 / 74.7 | 77.8 / 76.2 | 77.9 / 75.9 | 77.4 / 75.7 |
+| personal top-3 recall % | 11.6 / 9.3 | 44.7 / 16.3 | 39.9 / 13.0 | 47.5 / 14.6 | 41.5 / 13.9 |
+| touch offset error (learned / none) | 0.111 / 0.224 | 0.120 | 0.121 | 0.128 | |
+
+Note-2: after a personal word's first revert, the word was typed right 34 times (learning) and the
+keyboard changed it 0 times; in the baseline 59 times and 34 changed (17 personal). The rule
+works end to end.
+
+### Findings
+
+* Personal words are learned: accuracy 43% -> 56-60% (baseline flat), top-3 recall 14% -> 41-48%,
+  false corrections of personal words 33 -> 4.7 per 1000 personal words. Many rare personal words
+  (Zipf tail) are never learned within 20k words (34 of 50 typed but not in the user dictionary).
+* Overall word accuracy is about 2 points LOWER with learning (86.4 vs 88.3). Keyboard accuracy
+  before reaction is 1.2 points lower. In the first 2000 words the learned autocorrect threshold
+  (`AdaptiveThresholds`: revert rate far above the 3% target, so the threshold is raised)
+  suppresses about 13% of autocorrections: wrong ones drop by 36% but correct ones by 5%. The
+  reaction model makes wrong corrections cheap (95% are noticed and repaired) while an unfixed typo
+  is repaired only 30-50% of the time, so the accuracy metric favours aggressive autocorrect; reverts
+  fall 112 -> 74 per 1000, the effort metric favours learning.
+* Learned touch offsets are shrunk to about (-0.04, +0.10) vs the true (-0.10, +0.20), error 0.11-0.13
+  vs 0.224 without learning. Part of this is unavoidable: only taps that registered on the intended key
+  are usable (attainable error 0.105). It does not improve after 2k words (0.111 -> 0.128).
+* 77 of the 104 learned user-dictionary words are typos the user left uncorrected and typed twice in
+  two sessions (promoted by `NewWordEvidence`), e.g. "Damiabo", "Benexito", "Cjmon", "aanf". A user word
+  is never autocorrected, so a promoted typo is protected.
+
+### Caveats
+
+The reaction model, bias, and injection rate are assumptions, not data; absolute numbers depend on
+them. A single seed was run. The word-accuracy metric does not count user effort (reverts, retypes,
+taps), so read it together with reverts and taps per 1000.

@@ -18,6 +18,12 @@ data class TypistConfig(
     val transpositionRate: Float = 0.01f,
     /** Milliseconds between taps (touch time stamps). */
     val tapIntervalMs: Long = 150L,
+    /**
+     * Systematic touch offset added to every tap, in key widths (x, positive = right) and key
+     * heights (y, positive = down): the "thumb bias" a personal user has (learn mode).
+     */
+    val biasX: Float = 0f,
+    val biasY: Float = 0f,
 )
 
 /** The cognitive slip applied to a word, if any. */
@@ -107,8 +113,12 @@ class Typist(private val keyboard: EvalKeyboard, val config: TypistConfig = Typi
                 text.append(intended)
                 touches.add(null)
             } else {
-                val x = key.centerX + (rng.nextGaussian() * config.sigmaX * key.width).toFloat()
-                val y = key.centerY + (rng.nextGaussian() * config.sigmaY * key.height).toFloat()
+                val x =
+                    key.centerX +
+                        ((rng.nextGaussian() * config.sigmaX + config.biasX) * key.width).toFloat()
+                val y =
+                    key.centerY +
+                        ((rng.nextGaussian() * config.sigmaY + config.biasY) * key.height).toFloat()
                 val hit = keyboard.charAt(x, y) ?: key.char.lowercaseChar()
                 if (hit != key.char.lowercaseChar()) slips++
                 // Shift state follows the intended char, as it does for a real user.

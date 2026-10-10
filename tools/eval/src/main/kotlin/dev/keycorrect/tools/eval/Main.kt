@@ -22,7 +22,8 @@ fun main(args: Array<String>) {
         return
     }
     try {
-        EvalMain(options).run()
+        if (options.mode == Options.Mode.Learn) LearnMain(options).run()
+        else EvalMain(options).run()
     } catch (e: IllegalArgumentException) {
         System.err.println("error: ${e.message}")
         exitProcess(2)

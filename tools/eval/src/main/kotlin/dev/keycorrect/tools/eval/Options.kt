@@ -29,7 +29,25 @@ data class Options(
     val whatIf: Set<WhatIf> = emptySet(),
     val label: String = "",
     val help: Boolean = false,
+    /** `eval` (default) or `learn`: the personal-user learning simulation. */
+    val mode: Mode = Mode.Eval,
+    /** Learn mode: words typed by the personal user. */
+    val words: Int = 20_000,
+    /** Learn mode: share of typed words replaced by personal words. */
+    val personalRate: Float = 0.04f,
+    /** Learn mode: the user's touch bias in key widths / key heights. */
+    val biasX: Float = -0.10f,
+    val biasY: Float = 0.20f,
+    /** Learn mode: probability of tapping the target when it is in the strip but not applied. */
+    val tapProbability: Float = 0.6f,
+    /** Learn mode: write a per-word trace CSV of the first N words of each arm. */
+    val traceWords: Int = 0,
 ) {
+    enum class Mode {
+        Eval,
+        Learn,
+    }
+
     companion object {
         /** Back-off penalties of the language model, whatever the decoder calls them today. */
         private val BACKOFF_KEYS: String by lazy {
@@ -76,6 +94,13 @@ data class Options(
               --target-fc F        false corrections per 1000 words allowed by the recommendation (3)
               --what-if A,B        post-process answers to size a decoder change: ${WhatIf.entries.joinToString { it.flag }}
               --label TEXT         free text stored in the JSON
+
+              --mode learn         learning simulation (outputs under <out>/learn/); options:
+              --words N            words typed by the personal user (default 20000)
+              --personal-rate F    share of words replaced by the user's personal words (0.04)
+              --bias-x F --bias-y F  the user's touch bias in key widths/heights (-0.10, +0.20)
+              --trace-words N      write trace_learning.csv / trace_baseline.csv for the first N words
+              --tap-prob P         taps the target if it is on the strip but not applied (0.6)
 
             config keys: ${ConfigOverrides.KEYS.joinToString(", ")}
             """
@@ -157,6 +182,21 @@ data class Options(
                                 whatIf = o.whatIf + v().split(',').map { WhatIf.parse(it.trim()) }
                             )
                     "--label" -> o = o.copy(label = v())
+                    "--mode" -> {
+                        val value = v()
+                        o =
+                            o.copy(
+                                mode =
+                                    Mode.entries.firstOrNull { it.name.equals(value, true) }
+                                        ?: throw IllegalArgumentException("--mode: eval | learn")
+                            )
+                    }
+                    "--words" -> o = o.copy(words = v().toInt())
+                    "--personal-rate" -> o = o.copy(personalRate = v().toFloat())
+                    "--bias-x" -> o = o.copy(biasX = v().toFloat())
+                    "--bias-y" -> o = o.copy(biasY = v().toFloat())
+                    "--trace-words" -> o = o.copy(traceWords = v().toInt())
+                    "--tap-prob" -> o = o.copy(tapProbability = v().toFloat())
                     "--help",
                     "-h" -> o = o.copy(help = true)
                     else -> throw IllegalArgumentException("unknown option: $arg (try --help)")
