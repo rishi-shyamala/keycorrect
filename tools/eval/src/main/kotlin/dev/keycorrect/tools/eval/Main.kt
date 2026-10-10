@@ -46,7 +46,7 @@ class EvalMain(private val o: Options) {
 
     /** One engine per call; wrapped by the requested what-if experiments. */
     private fun factory(config: ClassicConfig): () -> Predictor = {
-        val engine = ClassicEngine(dictionary, config)
+        val engine = ClassicEngine(dictionary, config, random = kotlin.random.Random(o.seed))
         WhatIfPredictor(Predictor { engine.predictNow(it) }, dictionary, o.whatIf)
     }
 
@@ -182,7 +182,7 @@ class EvalMain(private val o: Options) {
                     ),
             )
         for ((name, c) in settings) {
-            val engine = ClassicEngine(dictionary, c)
+            val engine = ClassicEngine(dictionary, c, random = kotlin.random.Random(o.seed))
             out[name] =
                 measureLatency(
                     sample,

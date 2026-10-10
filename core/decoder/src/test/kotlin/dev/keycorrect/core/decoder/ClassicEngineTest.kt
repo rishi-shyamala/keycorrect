@@ -119,8 +119,11 @@ class ClassicEngineTest {
         val exact = engine.predictNow(request(TestKeyboard.pasted("hello")))
         assertThat(exact.autocorrect).isNull()
         val typo = engine.predictNow(request(TestKeyboard.pasted("helli")))
-        // Without touches nothing says "i" is near "o", so correcting is not justified.
-        assertThat(typo.autocorrect).isNull()
+        // Without touches nothing says "i" is near "o": the candidates are near-tied, so the
+        // non-word tie rule (§6.3 row 22) picks one and exposes the other for learning.
+        assertThat(typo.autocorrect).isNotNull()
+        assertThat(typo.autocorrectRunnerUp).isNotNull()
+        assertThat(typo.autocorrectRunnerUp?.text).isNotEqualTo(typo.autocorrect?.text)
     }
 
     @Test

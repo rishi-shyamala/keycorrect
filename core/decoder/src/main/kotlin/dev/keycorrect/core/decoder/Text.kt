@@ -49,6 +49,57 @@ internal object Text {
         return x.substring(i + 2) == y.substring(i + 2)
     }
 
+    /**
+     * The last [n] words of the sentence ending [before] (empty at a sentence start), normalised
+     * the way the learning layer records context: apostrophes folded to `'`, case kept. Words may
+     * contain inner apostrophes and hyphens ("don't", "well-known").
+     */
+    fun lastSentenceWords(before: String, n: Int): List<String> {
+        val out = ArrayDeque<String>(n + 1)
+        var i = maxOf(0, before.length - 192)
+        while (i > 0 && i < before.length && isWordChar(before[i - 1]) && isWordChar(before[i])) i++
+        while (i < before.length) {
+            val c = before[i]
+            when {
+                isWordChar(c) -> {
+                    val start = i
+                    i++
+                    while (i < before.length) {
+                        val d = before[i]
+                        if (isWordChar(d)) {
+                            i++
+                        } else if (
+                            (isApostrophe(d) || isHyphen(d)) &&
+                                i + 1 < before.length &&
+                                isWordChar(before[i + 1])
+                        ) {
+                            i += 2
+                        } else {
+                            break
+                        }
+                    }
+                    val sb = StringBuilder(i - start)
+                    for (k in start until i) sb.append(
+                        if (isApostrophe(before[k])) '\'' else before[k]
+                    )
+                    out.addLast(sb.toString())
+                    if (out.size > n) out.removeFirst()
+                }
+                c == '\n' -> {
+                    out.clear()
+                    i++
+                }
+                isSentenceEnd(c) -> {
+                    val next = if (i + 1 < before.length) before[i + 1] else ' '
+                    if (next.isWhitespace()) out.clear()
+                    i++
+                }
+                else -> i++
+            }
+        }
+        return out.toList()
+    }
+
     fun hasLetter(text: CharSequence): Boolean = text.any { it.isLetter() }
 
     fun capitalizeFirst(s: String): String =

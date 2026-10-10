@@ -108,8 +108,27 @@ data class AutocorrectConfig(
     val threshold: Float = 2.5f,
     /** Same, when the literal is itself a dictionary word (real-word correction). */
     val realWordMargin: Float = 6f,
-    /** The candidate must beat the runner-up by this much. */
+    /**
+     * The candidate must beat the runner-up by this much when the literal is a known word. For an
+     * unknown literal see [nonWordTieRule].
+     */
     val runnerUpMargin: Float = 0.7f,
+    /**
+     * Docs/PLAN.md §6.3 row 22: when the literal is not a known word (dictionary or user word) the
+     * [runnerUpMargin] does not apply; the best eligible candidate is applied (all other gates
+     * still hold). Set false to restore the conservative margin for every literal.
+     */
+    val nonWordTieRule: Boolean = true,
+    /**
+     * Unknown literal only: if the top two complete-word candidates are within this many ln units
+     * of each other the pick between them is random.
+     */
+    val tieEpsilon: Float = 0.05f,
+    /**
+     * When an autocorrection was chosen and the top two candidates are closer than this, the
+     * runner-up is reported in `PredictResult.autocorrectRunnerUp` so learning sees near ties.
+     */
+    val nearTieMargin: Float = 0.7f,
     /** Added to the threshold in person-name and address fields, where unknown words are normal. */
     val nameFieldExtraMargin: Float = 2f,
     val minLiteralLength: Int = 2,
@@ -144,4 +163,9 @@ data class UserDataConfig(
     val wordLogProb: Float = -7f,
     /** Words beyond this many are ignored by the linear scan. */
     val maxWords: Int = 4000,
+    /**
+     * Weight of the personal n-gram in the interpolated language model: `ln(w * P_user + (1 - w) *
+     * P_base)`, used where `Personalization.userLogProb` is non-null.
+     */
+    val userNgramWeight: Float = 0.25f,
 )

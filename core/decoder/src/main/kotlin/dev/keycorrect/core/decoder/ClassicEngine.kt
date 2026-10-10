@@ -9,7 +9,11 @@ import dev.keycorrect.core.engineapi.EngineInfo
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.PredictiveEngine
+import dev.keycorrect.core.learning.Personalization
+import dev.keycorrect.core.learning.RankingFeatures
+import dev.keycorrect.core.learning.contextBucket
 import kotlin.math.ln
+import kotlin.random.Random
 
 /**
  * The built-in prediction engine (docs/PLAN.md §4.4): spatial touch model + trie search with edit
@@ -30,8 +34,31 @@ import kotlin.math.ln
  * data changes). [isStale] is polled while working; when it returns true the request is abandoned
  * and an empty result returned, so a newer keystroke never waits behind an old one.
  *
+ * Personalization (docs/PLAN.md §6.1): [personalization] is read once per decode and must return an
+ * immutable snapshot (a new instance when the learned data changes). It is used for
+ * - the language model: the personal n-gram is interpolated into every LM score (candidates, the
+ *   literal, user words, next-word predictions and phrase steps; `UserDataConfig.userNgramWeight`);
+ *   next-word candidates still come from the dictionary's successor lists since the personal model
+ *   cannot enumerate its own;
+ * - correction memory: `correctionBias` is added to every non-literal candidate's score; pairs with
+ *   `isSuppressed` are never autocorrected but may still appear in the suggestion strip;
+ *   `isBlocked` words are never suggested (candidates, next words, phrases);
+ * - casing: `preferredCasing` replaces the dictionary casing when the literal has no capitals;
+ * - touch: `touchOffset(touchKey, c)` shifts each key's Gaussian mean by that many key sizes;
+ * - gates: `autocorrectThresholdDelta` shifts the autocorrect threshold (see
+ *   [AutocorrectInput.thresholdDelta]); `phraseGateDelta` is added to the ln-domain phrase
+ *   thresholds (positive = stricter);
+ * - ranking: `rankerScore` of each candidate's [RankingFeatures] is added to its final score (word
+ *   decodes only). [featuresFor] exposes the features for learning. With [Personalization.None] the
+ *   engine behaves exactly as without it.
+ *
+ * Tie rule (§6.3 row 22): see [AutocorrectPolicy]. [random] picks between exactly (± `tieEpsilon`)
+ * tied candidates for an unknown literal; inject a seeded one for determinism.
+ *
  * @param touchCorrection learned per-key touch offsets (Phase 3); the spatial models are rebuilt
  *   when it returns a different instance.
+ * @param touchKey `InputProfile.touchKey` of the current layout/device, or null when unknown (then
+ *   no personal touch offsets are applied).
  */
 class ClassicEngine(
     private val dictionary: Dictionary,
@@ -40,6 +67,9 @@ class ClassicEngine(
     private val shortcuts: () -> Map<String, String> = { emptyMap() },
     private val touchCorrection: () -> TouchCorrection = { TouchCorrection.Identity },
     private val isStale: () -> Boolean = { false },
+    private val personalization: () -> Personalization = { Personalization.None },
+    private val touchKey: () -> String? = { null },
+    private val random: Random = Random(System.nanoTime()),
 ) : PredictiveEngine {
     /** The autocorrect policy; adjust [AutocorrectPolicy.threshold] to tune aggressiveness. */
     val autocorrectPolicy = AutocorrectPolicy(config.autocorrect)
@@ -77,6 +107,12 @@ class ClassicEngine(
     private val phraseIds = IntArray(1)
     private val phraseLogProbs = FloatArray(1)
 
+    // Per-decode personalization state (set under the predictRanked lock).
+    private var pers: Personalization = Personalization.None
+    private var active = false
+    private var bucket = ""
+    private var gateDelta = 0f
+
     /**
      * Builds the lazily initialised structures (the contraction index) so the first [predictNow]
      * doesn't pay for them. Safe to call from any background thread, idempotent, and never throws:
@@ -104,13 +140,79 @@ class ClassicEngine(
             autocorrect = ranked.autocorrect?.toCandidate(),
             phrase = ranked.phrase,
             sequence = request.sequence,
+            autocorrectRunnerUp = ranked.autocorrectRunnerUp?.toCandidate(),
         )
+    }
+
+    /**
+     * The [RankingFeatures] of [candidateText] (the literal or a suggestion) for [request] under
+     * the current personalization snapshot, or null if it is not among the decode's candidates. For
+     * the learning layer's `Preference` updates. `rank` is the candidate's position before the
+     * learned ranker score was added.
+     */
+    @Synchronized
+    fun featuresFor(request: PredictRequest, candidateText: String): RankingFeatures? {
+        val wide =
+            if (request.maxCandidates < FEATURE_POOL) request.copy(maxCandidates = FEATURE_POOL)
+            else request
+        val r = predictRanked(wide)
+        val lit = r.literal
+        if (lit != null && lit.text == candidateText) {
+            return featuresOf(lit, lexicon.containsWord(Text.key(lit.text)))
+        }
+        val c =
+            r.candidates.firstOrNull { it.text == candidateText }
+                ?: r.candidates.firstOrNull { it.text.equals(candidateText, ignoreCase = true) }
+        return c?.let { featuresOf(it, it.source == CandidateSource.UserDictionary) }
+    }
+
+    private fun featuresOf(c: RankedCandidate, isUserWord: Boolean) =
+        RankingFeatures(
+            spatial = c.breakdown.spatial,
+            lm = c.breakdown.lm - c.breakdown.userLm,
+            edits = c.breakdown.edits,
+            completionChars = c.breakdown.completionChars,
+            userLm = c.breakdown.userLm,
+            correctionBias = c.breakdown.correctionBias,
+            isLiteral = c.source == CandidateSource.Literal,
+            isUserWord = isUserWord,
+            rank = c.rank,
+        )
+
+    private fun rankerScore(c: RankedCandidate, isUserWord: Boolean): Float {
+        val v = pers.rankerScore(featuresOf(c, isUserWord))
+        return if (v.isFinite()) v else 0f
+    }
+
+    private fun bias(literal: String, candidate: String): Float {
+        val v = pers.correctionBias(literal, candidate, bucket)
+        return if (v.isFinite()) v else 0f
+    }
+
+    /** Preferred surface for [form] after the literal's casing, see class docs. */
+    private fun shaped(form: String, literal: String): String {
+        val cased = Casing.apply(form, literal)
+        if (!active || literal.any { it.isUpperCase() }) return cased
+        return pers.preferredCasing(Text.key(form)) ?: cased
     }
 
     /** Like [predictNow] but keeps each candidate's [ScoreBreakdown] for the learning layer. */
     @Synchronized
     fun predictRanked(request: PredictRequest, stale: () -> Boolean = isStale): RankedPrediction {
         if (stale()) return RankedPrediction.Empty
+        pers = personalization()
+        active = pers !== Personalization.None
+        gateDelta = if (active) pers.phraseGateDelta else 0f
+        lm.bindPersonalization(pers, config.user.userNgramWeight)
+        bucket =
+            if (active) {
+                contextBucket(
+                    Text.lastSentenceWords(request.context.before, 2),
+                    request.context.field.name,
+                )
+            } else {
+                ""
+            }
         return if (request.composing.isEmpty) predictNextWord(request)
         else predictWord(request, stale)
     }
@@ -138,30 +240,46 @@ class ClassicEngine(
         lm.setContext(request.context.before)
         val sentenceInitial = lm.atSentenceStart
         val right = lm.parseRightContext(request.context.after)
-        scorer.bind(spatialModels.get(request.layout, touchCorrection()), input)
+        val tk = if (active) touchKey() else null
+        val unit = if (tk != null) KeyUnitOffsets { pers.touchOffset(tk, it) } else null
+        scorer.bind(
+            spatialModels.get(
+                request.layout,
+                touchCorrection(),
+                unit,
+                if (unit != null) pers else null,
+                tk,
+            ),
+            input,
+        )
 
         // The literal: what the user typed, scored like any candidate.
         var literalNode = dictionary.findNode(key)
         if (literalNode >= 0 && !dictionary.isTerminal(literalNode)) literalNode = -1
         val literalIsUser = lexicon.containsWord(key)
-        var literalLm = lm.oovLogProb
+        var literalBase = lm.oovLogProb
+        var literalLm = lm.blend(literalBase, text)
         var literalRight = if (right >= 0) lm.rightLogProb(-1, right) else 0f
         if (literalNode >= 0) {
             literalLm = Float.NEGATIVE_INFINITY
             for (j in 0 until dictionary.wordIdCountAt(literalNode)) {
                 val id = dictionary.wordIdAt(literalNode, j)
-                val v = lm.logProb(id)
+                val base = lm.baseLogProb(id)
+                val v = lm.blend(base, dictionary.word(id))
                 if (v > literalLm) {
                     literalLm = v
+                    literalBase = base
                     if (right >= 0) literalRight = lm.rightLogProb(id, right)
                 }
             }
+        } else if (literalIsUser && config.user.wordLogProb > literalBase) {
+            literalBase = config.user.wordLogProb
+            literalLm = lm.blend(literalBase, text)
         }
-        if (literalIsUser && config.user.wordLogProb > literalLm)
-            literalLm = config.user.wordLogProb
         val literalBreakdown =
             literalBreakdown(scorer.literalLogLikelihood(), literalLm, literalRight)
-        val literal = RankedCandidate(text, literalBreakdown.total(scoring), literalBreakdown, -1)
+                .copy(userLm = literalLm - literalBase)
+        var literal = RankedCandidate(text, literalBreakdown.total(scoring), literalBreakdown, -1)
 
         if (stale()) return RankedPrediction.Empty
         if (!search.run(scorer, literalNode, stale)) return RankedPrediction.Empty
@@ -171,6 +289,18 @@ class ClassicEngine(
         collectUserCandidates(text, key, right, ranked)
         if (stale()) return RankedPrediction.Empty
         ranked.sortWith(RANK_ORDER)
+        if (active) {
+            for (i in ranked.indices) ranked[i].rank = i
+            literal = literal.withScore(literal.score + rankerScore(literal, literalIsUser))
+            for (i in ranked.indices) {
+                val c = ranked[i]
+                ranked[i] =
+                    c.withScore(
+                        c.score + rankerScore(c, c.source == CandidateSource.UserDictionary)
+                    )
+            }
+            ranked.sortWith(RANK_ORDER)
+        }
         if (literalNode < 0 && !literalIsUser) addContraction(key, text, literal, ranked)
 
         // Candidate strip: shortcut first, then the capitalised pronoun fix, then the ranking.
@@ -183,27 +313,34 @@ class ClassicEngine(
             if (c.text != text) out.add(c)
         }
 
-        val autocorrect =
+        val decision =
             if (
                 pronoun != null &&
                     request.autocorrectAllowed &&
                     !autocorrectPolicy.blocksField(field)
             ) {
-                pronoun
+                AutocorrectDecision(pronoun, null)
             } else {
-                autocorrectPolicy.choose(
+                // Suppressed pairs stay in the strip but are not eligible for autocorrect.
+                autocorrectPolicy.decide(
                     AutocorrectInput(
                         literal = text,
                         literalScore = literal.score,
                         literalIsDictionaryWord = literalNode >= 0,
                         literalIsUserWord = literalIsUser,
-                        candidates = ranked.filter { it.text != text },
+                        candidates =
+                            ranked.filter {
+                                it.text != text && !(active && pers.isSuppressed(text, it.text))
+                            },
                         field = field,
                         allowed = request.autocorrectAllowed,
                         sentenceInitial = sentenceInitial,
-                    )
+                        thresholdDelta = if (active) pers.autocorrectThresholdDelta else 0f,
+                    ),
+                    random,
                 )
             }
+        val autocorrect = decision.chosen
 
         var phrase: Candidate? = null
         if (request.maxPhraseWords >= 2 && !autocorrectPolicy.blocksField(field)) {
@@ -218,7 +355,7 @@ class ClassicEngine(
                     )
             }
         }
-        return RankedPrediction(literal, out, autocorrect, phrase)
+        return RankedPrediction(literal, out, autocorrect, phrase, decision.runnerUp)
     }
 
     private fun literalBreakdown(spatial: Float, lmValue: Float, rightLm: Float) =
@@ -242,16 +379,22 @@ class ClassicEngine(
             val node = search.resultNode[k]
             var bestId = -1
             var bestLm = Float.NEGATIVE_INFINITY
+            var bestBase = 0f
             for (j in 0 until dictionary.wordIdCountAt(node)) {
                 val id = dictionary.wordIdAt(node, j)
                 if (dictionary.flags(id) and EXCLUDED_FLAGS != 0) continue
-                val v = lm.logProb(id)
+                val word = dictionary.word(id)
+                if (active && pers.isBlocked(word)) continue
+                val base = lm.baseLogProb(id)
+                val v = lm.blend(base, word)
                 if (v > bestLm) {
                     bestLm = v
+                    bestBase = base
                     bestId = id
                 }
             }
             if (bestId < 0) continue
+            val surface = shaped(dictionary.word(bestId), literal)
             val rightLm = if (right >= 0) lm.rightLogProb(bestId, right) else 0f
             val breakdown =
                 ScoreBreakdown(
@@ -262,10 +405,12 @@ class ClassicEngine(
                     editCount = search.resultEdits[k],
                     completionChars = search.resultExtra[k],
                     source = CandidateSource.Dictionary,
+                    userLm = bestLm - bestBase,
+                    correctionBias = if (active) bias(literal, surface) else 0f,
                 )
             out.add(
                 RankedCandidate(
-                    Casing.apply(dictionary.word(bestId), literal),
+                    surface,
                     breakdown.total(config.scoring),
                     breakdown,
                     bestId,
@@ -288,19 +433,24 @@ class ClassicEngine(
             if (lexicon.isInDictionary(u)) continue
             val userKey = lexicon.key(u)
             if (userKey == literalKey || !aligner.align(scorer, userKey, budget)) continue
+            if (active && pers.isBlocked(lexicon.surface(u))) continue
+            val userLm = lm.blend(config.user.wordLogProb, lexicon.surface(u))
+            val surface = Casing.apply(lexicon.surface(u), literal)
             val breakdown =
                 ScoreBreakdown(
                     spatial = aligner.resultSpatial,
-                    lm = config.user.wordLogProb,
+                    lm = userLm,
                     rightLm = rightLm,
                     edits = aligner.resultPenalty,
                     editCount = aligner.resultEdits,
                     completionChars = aligner.resultExtra,
                     source = CandidateSource.UserDictionary,
+                    userLm = userLm - config.user.wordLogProb,
+                    correctionBias = if (active) bias(literal, surface) else 0f,
                 )
             out.add(
                 RankedCandidate(
-                    Casing.apply(lexicon.surface(u), literal),
+                    surface,
                     breakdown.total(config.scoring),
                     breakdown,
                     -1,
@@ -325,6 +475,7 @@ class ClassicEngine(
     ) {
         if (!config.autocorrect.contractions || key.any { Text.isApostrophe(it) }) return
         val entry = contractions.lookup(key) ?: return
+        if (active && pers.isBlocked(entry.surface)) return
         val existing = ranked.indexOfFirst { it.wordId == entry.id }
         val base = if (existing >= 0) ranked[existing].breakdown else null
         val breakdown =
@@ -367,6 +518,7 @@ class ClassicEngine(
         val fixed = "I" + key.substring(1)
         val id = dictionary.wordId(fixed)
         if (id < 0 || fixed == text) return null
+        if (active && (pers.isBlocked(fixed) || pers.isSuppressed(text, fixed))) return null
         val score = maxOf(literal.score, best?.score ?: literal.score) + 1f
         return RankedCandidate(
             fixed,
@@ -389,22 +541,34 @@ class ClassicEngine(
         val out = ArrayList<RankedCandidate>(count)
         for (j in 0 until count) {
             var word = dictionary.word(nextIds[j])
+            if (active) pers.preferredCasing(Text.key(word))?.let { word = it }
             if (sentenceStart && word == word.lowercase()) word = Text.capitalizeFirst(word)
             if (!seen.add(word.lowercase())) continue
             val lp = nextLogProbs[j]
+            val userGain = if (lm.hasUser) lp - lm.baseLogProb(nextIds[j]) else 0f
             out.add(
                 RankedCandidate(
-                    word,
-                    lp,
-                    ScoreBreakdown(0f, lp, 0f, 0f, 0, 0, CandidateSource.Dictionary),
-                    nextIds[j],
-                )
+                        word,
+                        lp,
+                        ScoreBreakdown(
+                            0f,
+                            lp,
+                            0f,
+                            0f,
+                            0,
+                            0,
+                            CandidateSource.Dictionary,
+                            userLm = userGain,
+                        ),
+                        nextIds[j],
+                    )
+                    .also { it.rank = out.size }
             )
         }
         var phrase: Candidate? = null
         if (request.maxPhraseWords >= 2 && !atDocumentStart && out.isNotEmpty()) {
             val first = out[0]
-            if (first.score >= ln(config.phrase.minStepProbability)) {
+            if (first.score >= ln(config.phrase.minStepProbability) + gateDelta) {
                 phrase = buildPhrase(first.text, first.wordId, first.score, request.maxPhraseWords)
             }
         }
@@ -427,8 +591,8 @@ class ClassicEngine(
         anchoredLogProb: Float,
         maxWords: Int,
     ): Candidate? {
-        val minStep = ln(config.phrase.minStepProbability)
-        val minTotal = ln(config.phrase.minTotalProbability)
+        val minStep = ln(config.phrase.minStepProbability) + gateDelta
+        val minTotal = ln(config.phrase.minTotalProbability) + gateDelta
         val sb = StringBuilder(firstText)
         var words = 1
         var total = anchoredLogProb
@@ -448,6 +612,7 @@ class ClassicEngine(
     companion object {
         const val ID = "classic"
         private const val MAX_NEXT_WORDS = 16
+        private const val FEATURE_POOL = 16
         private const val EXCLUDED_FLAGS = WordFlags.POSSIBLY_OFFENSIVE or WordFlags.NOT_A_WORD
 
         /** Best score first; ties by source, then word id, then text: fully deterministic. */
