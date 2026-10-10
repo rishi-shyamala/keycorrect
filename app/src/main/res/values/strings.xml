@@ -146,6 +146,125 @@
     <string name="autofill_test_sign_in">Sign in</string>
     <string name="about_privacy">KeyCorrect has no internet access. Everything you type stays on this device.</string>
 
+    <string name="learning_title">Learning &amp; privacy</string>
+    <string name="learning_summary">What KeyCorrect has learned from your typing</string>
+    <string name="learning_enabled">Learn from my typing</string>
+    <string name="learning_enabled_summary">Adapt suggestions and autocorrect to the words you use. Everything stays on this device.</string>
+    <string name="learning_incognito">Incognito</string>
+    <string name="learning_incognito_summary">Pause learning for now. Learning is always off automatically in password and private fields.</string>
+    <string name="learning_requires">Turn on learning to use this option.</string>
+    <string name="learning_sentences">Keep recent sentences for on-device training</string>
+    <string name="learning_sentences_summary">Stored encrypted on this device and deleted after 7 days. Never taken from password or private fields.</string>
+    <plurals name="learning_sentences_count">
+        <item quantity="one">%d sentence stored</item>
+        <item quantity="other">%d sentences stored</item>
+    </plurals>
+    <string name="learning_sentences_clear">Clear now</string>
+    <string name="learning_sentences_cleared">Stored sentences cleared</string>
+
+    <string name="learning_forget_title">Forget recent learning</string>
+    <string name="learning_forget_body">Undo what KeyCorrect learned from your typing in the last while. Older learning is kept.</string>
+    <string name="learning_forget_15m">15 min</string>
+    <string name="learning_forget_1h">1 hour</string>
+    <string name="learning_forget_24h">24 hours</string>
+    <string name="learning_forget_action">Forget…</string>
+    <string name="learning_forget_confirm_title">Forget the last %1$s?</string>
+    <string name="learning_forget_confirm_body">Words and corrections learned in that time are removed. Your personal dictionary entries and shortcuts that you added yourself are kept. This can\'t be undone.</string>
+    <string name="learning_forget_confirm">Forget</string>
+    <string name="learning_forgot_prefix">Forgot: %1$s</string>
+    <string name="learning_forgot_nothing">Nothing to forget from that time</string>
+    <plurals name="learning_forgot_words">
+        <item quantity="one">%d learned word</item>
+        <item quantity="other">%d learned words</item>
+    </plurals>
+    <plurals name="learning_forgot_never_corrected">
+        <item quantity="one">%d never-correct rule</item>
+        <item quantity="other">%d never-correct rules</item>
+    </plurals>
+    <plurals name="learning_forgot_never_suggested">
+        <item quantity="one">%d never-suggest block</item>
+        <item quantity="other">%d never-suggest blocks</item>
+    </plurals>
+    <plurals name="learning_forgot_sentences">
+        <item quantity="one">%d stored sentence</item>
+        <item quantity="other">%d stored sentences</item>
+    </plurals>
+    <plurals name="learning_forgot_updates">
+        <item quantity="one">%d learning update undone</item>
+        <item quantity="other">%d learning updates undone</item>
+    </plurals>
+
+    <string name="learning_section_learned">What KeyCorrect learned</string>
+    <plurals name="learning_items_count">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <string name="learning_words_title">Learned words</string>
+    <string name="learning_words_summary">Words added to your dictionary</string>
+    <string name="learning_corrections_title">Corrections it learned</string>
+    <string name="learning_corrections_summary">Typos it now fixes for you</string>
+    <string name="learning_never_corrected_title">Never corrected</string>
+    <string name="learning_never_corrected_summary">Words it leaves alone</string>
+    <string name="learning_never_suggested_title">Never suggested</string>
+    <string name="learning_never_suggested_summary">Words it won\'t suggest</string>
+
+    <string name="learning_search">Search</string>
+    <string name="learning_no_matches">Nothing matches your search.</string>
+    <string name="learning_load_failed">Couldn\'t load what was learned.</string>
+    <string name="learning_action_remove">Remove</string>
+    <string name="learning_action_forget">Forget</string>
+    <string name="learning_action_allow">Allow again</string>
+    <string name="learning_action_unblock">Unblock</string>
+    <string name="learning_reason_explicit">Added by you</string>
+    <string name="learning_reason_reverted">Added because you undid a correction</string>
+    <string name="learning_reason_promoted">Learned from repeated use</string>
+    <string name="learning_pair_corrected">%1$s \u2192 %2$s</string>
+    <string name="learning_pair_never">%1$s \u21AB %2$s</string>
+
+    <string name="learning_words_empty_title">No learned words yet</string>
+    <string name="learning_words_empty_body">Words you type again and again, or keep after an autocorrect, show up here.</string>
+    <string name="learning_words_remove_description">Remove learned word %1$s</string>
+    <string name="learning_words_removed">Removed %1$s</string>
+    <string name="learning_corrections_contextual">Mostly after one particular word</string>
+    <string name="learning_corrections_empty_title">No learned corrections yet</string>
+    <string name="learning_corrections_empty_body">When you fix the same typo the same way a few times, KeyCorrect will fix it for you and list it here.</string>
+    <string name="learning_corrections_forget_description">Forget correction %1$s to %2$s</string>
+    <string name="learning_corrections_forgotten">Forgot %1$s \u2192 %2$s</string>
+    <string name="learning_never_corrected_empty_title">Nothing is blocked from correction</string>
+    <string name="learning_never_corrected_empty_body">When you undo an autocorrect, KeyCorrect stops making that correction and lists it here.</string>
+    <string name="learning_never_corrected_allow_description">Allow correcting %1$s to %2$s again</string>
+    <string name="learning_never_corrected_allowed">%1$s can be corrected to %2$s again</string>
+    <string name="learning_never_suggested_empty_title">No blocked words</string>
+    <string name="learning_never_suggested_empty_body">Words you choose \u201CNever suggest\u201D for appear here.</string>
+    <string name="learning_never_suggested_unblock_description">Allow suggesting %1$s again</string>
+    <string name="learning_never_suggested_unblocked">%1$s can be suggested again</string>
+
+    <string name="learning_accuracy_title">Typing accuracy (beta)</string>
+    <string name="learning_accuracy_body">How closely your taps land on the keys you meant. Only positions are recorded, never text. Spread is in key sizes: smaller means more precise.</string>
+    <string name="learning_accuracy_none">No data yet. It builds up as you type.</string>
+    <string name="learning_accuracy_later">Keyboard size recommendations will appear here once there\'s enough data.</string>
+    <string name="learning_profile_label">%1$s, %2$s</string>
+    <string name="learning_profile_phone">Phone</string>
+    <string name="learning_profile_tablet">Tablet</string>
+    <string name="learning_profile_hardware">Hardware keyboard</string>
+    <string name="learning_profile_portrait">portrait</string>
+    <string name="learning_profile_landscape">landscape</string>
+    <string name="learning_accuracy_samples">%1$d words, %2$d touches</string>
+    <string name="learning_accuracy_spread">Spread: \u03C3x %1$.2f, \u03C3y %2$.2f</string>
+
+    <string name="learning_reset_title">Reset all learning</string>
+    <string name="learning_reset_summary">Forget everything KeyCorrect learned from your typing, including stored sentences.</string>
+    <string name="learning_reset_action">Reset all learning</string>
+    <string name="learning_reset_body">This erases everything KeyCorrect learned from your typing: word frequencies, learned corrections, never-correct and never-suggest lists, typing accuracy data and stored sentences. Your personal dictionary and text shortcuts are kept. This can\'t be undone.</string>
+    <string name="learning_reset_confirm">Reset</string>
+    <string name="learning_reset_done">All learning was reset</string>
+
+    <string name="learning_restoring">Loading what KeyCorrect learned\u2026</string>
+    <string name="learning_unavailable_title">Learning data unavailable</string>
+    <string name="learning_unavailable_body">What KeyCorrect learned couldn\'t be loaded. It will try again automatically while you type. If this keeps happening you can reset the learning data.</string>
+    <string name="learning_unavailable_reset">Reset learning data</string>
+    <string name="learning_unavailable_reset_title">Reset learning data?</string>
+
     <string name="value_dp">%1$d dp</string>
     <string name="value_ms">%1$d ms</string>
     <string name="value_percent">%1$d%%</string>
