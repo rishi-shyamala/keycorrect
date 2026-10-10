@@ -1044,6 +1044,13 @@ internal class PredictiveInput(
     /** The kind of device and orientation the keyboard is used on (part of the input profile). */
     fun setDevice(device: DeviceClass, landscape: Boolean) = learn.setDevice(device, landscape)
 
+    /**
+     * The touch-statistics key ([InputProfile.touchKey]) of the layout on screen: the same value
+     * the learning events carry. Safe to read from any thread.
+     */
+    val touchKey: String
+        get() = learn.touchKey
+
     /** Layer plus key height, e.g. "letters@54dp" (the input profile's layout key). */
     fun setLayoutKey(key: String) = learn.setLayoutKey(key)
 

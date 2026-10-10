@@ -36,9 +36,6 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     private val learningHost
         get() = appContainer.learningHost
 
-    @Volatile
-    private var device = DeviceProfile(tablet = false, landscape = false, hardwareKeyboard = false)
-
     private val predictionHostLazy = lazy {
         PredictionHost(
             assets,
@@ -47,12 +44,12 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             appContainer.applicationScope,
             Dispatchers.IO,
             learning = learningHost,
-            touchKey = ::currentTouchKey,
+            touchKey = { controller.currentTouchKey },
         )
     }
     private val predictionHost by predictionHostLazy
 
-    private val controller by lazy {
+    private val controller: KeyboardController by lazy {
         KeyboardController(
             EditorSession(
                 connection = { currentInputConnection },
@@ -91,25 +88,10 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         updateDevice(newConfig)
     }
 
-    /** Tells the keyboard (for event profiles) and the decoder (touch profile) what we run on. */
+    /** Tells the keyboard what we run on; its input profile feeds both events and the decoder. */
     private fun updateDevice(config: Configuration) {
         val profile = DeviceProfile.from(config)
-        device = profile
         controller.updateDevice(profile.tablet, profile.landscape, profile.hardwareKeyboard)
-    }
-
-    /**
-     * The touch-statistics key of the layout on screen, from the controller's state and the same
-     * inputs it builds its own layout key from (see [InputProfiles]). Read on the decoder thread.
-     */
-    private fun currentTouchKey(): String {
-        val settings = settingsFlow.value
-        return InputProfiles.touchKey(
-            device,
-            controller.state.layerId,
-            settings.numberRow || controller.profile.sensitive,
-            settings.keyHeightDp,
-        )
     }
 
     override fun onTrimMemory(level: Int) {

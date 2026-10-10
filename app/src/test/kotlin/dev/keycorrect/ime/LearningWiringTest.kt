@@ -2,30 +2,9 @@ package dev.keycorrect.ime
 
 import android.content.res.Configuration
 import com.google.common.truth.Truth.assertThat
-import dev.keycorrect.core.learning.DeviceClass
 import org.junit.Test
 
 class LearningWiringTest {
-    @Test
-    fun touchKeyFormatIsPinned() {
-        // Must equal InputProfile(device, landscape, "<layer>[+nr]@<h>dp", field).touchKey as the
-        // keyboard controller emits it in its events.
-        val phone = DeviceProfile(tablet = false, landscape = false, hardwareKeyboard = false)
-        assertThat(InputProfiles.touchKey(phone, "letters", false, 54))
-            .isEqualTo("Phone/port/letters@54dp")
-        val tablet = DeviceProfile(tablet = true, landscape = true, hardwareKeyboard = false)
-        assertThat(InputProfiles.touchKey(tablet, "letters", true, 60))
-            .isEqualTo("Tablet/land/letters+nr@60dp")
-    }
-
-    @Test
-    fun deviceClassPrecedence() {
-        assertThat(DeviceProfile(true, false, true).deviceClass)
-            .isEqualTo(DeviceClass.HardwareKeyboard)
-        assertThat(DeviceProfile(true, false, false).deviceClass).isEqualTo(DeviceClass.Tablet)
-        assertThat(DeviceProfile(false, true, false).deviceClass).isEqualTo(DeviceClass.Phone)
-    }
-
     @Test
     fun deviceProfileFromConfiguration() {
         val tabletLandscape =

@@ -6,7 +6,12 @@ import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.RankingFeatures
 import java.util.concurrent.atomic.AtomicReference
 
-/** Computes decoder features for a candidate (see [PersonalModel.rankingFeatureProvider]). */
+/**
+ * Computes decoder features for a candidate (see [PersonalModel.rankingFeatureProvider]): the
+ * features; null when they cannot be computed right now (busy, retry later); or
+ * [RankingFeatures.NOT_DECODABLE] when the candidate is not among what the decoder produces for the
+ * typed text (retrying is pointless).
+ */
 typealias RankingFeatureProvider =
     (typed: String, context: List<String>, candidate: String) -> RankingFeatures?
 
@@ -86,11 +91,24 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
      * provider returns null for either candidate (cannot be scored right now) the preference is
      * buffered (at most [PersonalModelConfig.rankerPendingMax], for
      * [PersonalModelConfig.rankerPendingTtlMillis]) and retried on the next [apply] or
-     * [retryPendingPreferences].
+     * [retryPendingPreferences], at most every [PersonalModelConfig.rankerRetryGapMillis] and until
+     * [PersonalModelConfig.rankerMaxAttempts] attempts failed. If it returns
+     * [RankingFeatures.NOT_DECODABLE] the preference is dropped at once.
      */
     @Volatile var rankingFeatureProvider: RankingFeatureProvider? = null
 
-    private class PendingPreference(val timeMillis: Long, val update: LearningUpdate.Preference)
+    private class PendingPreference(
+        val timeMillis: Long,
+        val update: LearningUpdate.Preference,
+        var attempts: Int,
+        var nextAttemptMillis: Long,
+    )
+
+    private enum class Training {
+        Trained,
+        Retry,
+        Drop,
+    }
 
     private val pendingPrefs = ArrayDeque<PendingPreference>()
 
@@ -210,21 +228,34 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
 
     private fun handlePreference(u: LearningUpdate.Preference, now: Long) {
         if (rankingFeatureProvider == null) return
-        if (!tryTrain(u) && pendingPrefs.size < config.rankerPendingMax) {
-            pendingPrefs.addLast(PendingPreference(now, u))
+        if (
+            tryTrain(u) == Training.Retry &&
+                config.rankerMaxAttempts > 1 &&
+                pendingPrefs.size < config.rankerPendingMax
+        ) {
+            pendingPrefs.addLast(PendingPreference(now, u, 1, now + config.rankerRetryGapMillis))
         }
     }
 
-    /** True when consumed (trained, or no provider so it is dropped); false = retry later. */
-    private fun tryTrain(u: LearningUpdate.Preference): Boolean {
-        val provider = rankingFeatureProvider ?: return true
-        val fp = provider(u.typed, u.context, u.preferred) ?: return false
-        val fo = provider(u.typed, u.context, u.other) ?: return false
+    /** [Training.Drop] also covers "no provider" and a candidate the decoder will never produce. */
+    private fun tryTrain(u: LearningUpdate.Preference): Training {
+        val provider = rankingFeatureProvider ?: return Training.Drop
+        val fp = provider(u.typed, u.context, u.preferred)
+        if (fp === RankingFeatures.NOT_DECODABLE) return Training.Drop
+        if (fp == null) return Training.Retry
+        val fo = provider(u.typed, u.context, u.other)
+        if (fo === RankingFeatures.NOT_DECODABLE) return Training.Drop
+        if (fo == null) return Training.Retry
         ranker.train(fp, fo, u.weight)
-        return true
+        return Training.Trained
     }
 
-    /** Retries buffered preferences whose features could not be computed earlier. */
+    /**
+     * Retries buffered preferences whose features could not be computed earlier. A preference is
+     * attempted at most once per [PersonalModelConfig.rankerRetryGapMillis] and dropped after
+     * [PersonalModelConfig.rankerMaxAttempts] failed attempts, when it expires or when the provider
+     * says its candidate is not decodable.
+     */
     @Synchronized
     fun retryPendingPreferences(nowMillis: Long) {
         if (pendingPrefs.isEmpty()) return
@@ -238,9 +269,19 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             val p = it.next()
             if (nowMillis - p.timeMillis > config.rankerPendingTtlMillis) {
                 it.remove()
-            } else if (tryTrain(p.update)) {
-                it.remove()
-                trained = true
+            } else if (nowMillis >= p.nextAttemptMillis) {
+                when (tryTrain(p.update)) {
+                    Training.Trained -> {
+                        it.remove()
+                        trained = true
+                    }
+                    Training.Drop -> it.remove()
+                    Training.Retry -> {
+                        p.attempts++
+                        p.nextAttemptMillis = nowMillis + config.rankerRetryGapMillis
+                        if (p.attempts >= config.rankerMaxAttempts) it.remove()
+                    }
+                }
             }
         }
         if (trained) sincePublish++
@@ -373,6 +414,51 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                 publish(nowMillis)
             }
         }
+
+    /**
+     * The user removed [word] from the personal dictionary elsewhere: the model stops treating it
+     * as learned (see [Lexicon.forgetUserWord]). Unlike [removeUserWord] this also tombstones a
+     * word the model never learned, and discards its not-yet-drained dictionary add. Returns true
+     * if anything changed.
+     */
+    @Synchronized
+    fun forgetUserWord(word: String, nowMillis: Long): Boolean {
+        val key = Text.key(word)
+        val pendingGone = pendingAdds.removeAll { Text.key(it.word) == key }
+        val changed = lexicon.forgetUserWord(word, nowMillis) || pendingGone
+        if (changed) {
+            lexDirty = true
+            publish(nowMillis)
+        }
+        return changed
+    }
+
+    /**
+     * The strongest learned autocorrections (typed -> target the user accepted), best first, for
+     * the settings UI. Suppressions are listed by [suppressedCorrections], not here.
+     */
+    @Synchronized
+    fun topCorrections(limit: Int): List<LearnedCorrection> = corrections.top(active, limit)
+
+    /**
+     * Drops what was learned for typed -> target: correction memory in every context and its
+     * journaled evidence (so a later [forgetSince] cannot subtract it again). A suppression of the
+     * pair is kept. Returns true if anything was dropped.
+     */
+    @Synchronized
+    fun forgetCorrection(typed: String, target: String, nowMillis: Long): Boolean {
+        val t = Text.key(typed)
+        val c = Text.key(target)
+        val removed = corrections.forget(typed, target)
+        fun matches(e: JournalEntry) =
+            (e.update as? LearningUpdate.CorrectionEvidence)?.let {
+                Text.key(it.typed) == t && Text.key(it.target) == c
+            } == true
+        val journaled = journal.removeAll(::matches)
+        journalPending.removeAll(::matches)
+        if (removed) publish(nowMillis)
+        return removed || journaled
+    }
 
     @Synchronized
     fun unblock(word: String, nowMillis: Long): Boolean =
@@ -551,6 +637,19 @@ class LearningPersistence(
         model.drainJournalForPersistence()
         store.save(model.export())
         return result
+    }
+
+    /** Forgets a learned correction and rewrites the store's journal and state to match. */
+    suspend fun forgetCorrection(typed: String, target: String, nowMillis: Long): Boolean {
+        val changed = model.forgetCorrection(typed, target, nowMillis)
+        if (changed) {
+            store.truncateJournalBefore(Long.MAX_VALUE)
+            val remaining = model.journalSnapshot()
+            if (remaining.isNotEmpty()) store.appendJournal(remaining)
+            model.drainJournalForPersistence()
+            store.save(model.export())
+        }
+        return changed
     }
 
     suspend fun clearAll() {

@@ -329,6 +329,14 @@ class KeyboardController(
         input.setDevice(device, landscape)
     }
 
+    /**
+     * The touch-statistics key of the layout on screen (device, orientation, layer, number row and
+     * key height): the single definition shared by the learning events and the decoder's touch
+     * personalisation. Safe to read from any thread (the decoder reads it per decode).
+     */
+    val currentTouchKey: String
+        get() = input.touchKey
+
     /** Layer (and number row) plus key height: touch offsets are only comparable within one. */
     private fun updateLayoutKey() {
         val rows = if (options.numberRow) "+nr" else ""

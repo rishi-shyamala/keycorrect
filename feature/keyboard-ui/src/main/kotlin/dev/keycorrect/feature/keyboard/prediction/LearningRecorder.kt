@@ -38,6 +38,15 @@ internal class LearningRecorder(
     private var fieldClass = FieldClass.Text
     private var cached: InputProfile? = null
 
+    /**
+     * [InputProfile.touchKey] of the layout on screen, the single definition the decoder's touch
+     * personalisation reads. Republished on every device or layout change, so any thread may read
+     * it (the cached [profile] itself is main-thread only).
+     */
+    @Volatile
+    var touchKey: String = InputProfile(device, landscape, layoutKey, fieldClass).touchKey
+        private set
+
     /** Opens or closes the gate. [sentenceBuffer] is the extra switch for sentence words. */
     fun configure(open: Boolean, sentenceBuffer: Boolean) {
         this.open = open
@@ -53,12 +62,18 @@ internal class LearningRecorder(
         this.device = device
         this.landscape = landscape
         cached = null
+        publishTouchKey()
     }
 
     fun setLayoutKey(key: String) {
         if (layoutKey == key) return
         layoutKey = key
         cached = null
+        publishTouchKey()
+    }
+
+    private fun publishTouchKey() {
+        touchKey = InputProfile(device, landscape, layoutKey, fieldClass).touchKey
     }
 
     fun setField(field: FieldClass) {

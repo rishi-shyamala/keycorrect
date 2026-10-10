@@ -14,7 +14,9 @@ import dev.keycorrect.core.learning.RankingFeatures
  *
  * `featuresFor` shares the engine's lock with typing decodes, so a call is skipped (null, and
  * [onDeferred] so the model's retry is scheduled for later) while the decoder is busy or the
- * [budget] for the current second is used up; see [PredictionHost].
+ * [budget] for the current second is used up; see [PredictionHost]. A candidate the decode does not
+ * produce is [RankingFeatures.NOT_DECODABLE], so the model gives up on that preference instead of
+ * retrying; an engine failure is null (retried a few times, then dropped).
  *
  * The decode is built from the event's context with no touches (the event does not carry the raw
  * taps), so the spatial feature is the literal's neutral value; [field] supplies the field class
@@ -42,7 +44,9 @@ internal class EngineRankingFeatures(
                 autocorrectAllowed = false,
             )
         return try {
-            engine.featuresFor(request, candidate)
+            // The engine reports a candidate outside the decode's pool as null: that will not
+            // change on a retry, which the model must be told apart from "busy".
+            engine.featuresFor(request, candidate) ?: RankingFeatures.NOT_DECODABLE
         } catch (e: Exception) {
             onFailure(e)
             null

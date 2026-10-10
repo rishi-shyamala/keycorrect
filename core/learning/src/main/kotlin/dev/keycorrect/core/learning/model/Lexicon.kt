@@ -75,6 +75,23 @@ internal class Lexicon(private val cfg: PersonalModelConfig) {
         return true
     }
 
+    /**
+     * The user removed [word] from their dictionary: tombstones it whether or not the model had it
+     * (so old candidate evidence cannot promote it again; only an explicit add resurrects it) and
+     * drops that evidence. Returns true if anything changed.
+     */
+    fun forgetUserWord(word: String, now: Long): Boolean {
+        val key = Text.key(word)
+        if (key.isEmpty()) return false
+        val hadCandidate = candidates.remove(key) != null
+        val e = userWords[key]
+        if (e != null && e.removed) return hadCandidate
+        userWords[key] =
+            if (e != null) UserWord(e.word, e.reason, now, true)
+            else UserWord(Text.fold(word), AddUserWord.Reason.Explicit, now, true)
+        return true
+    }
+
     // ---- new-word promotion (§6.3 row 4) ----
 
     /** Accumulates evidence; returns the promoted word's surface form when it crosses the rule. */

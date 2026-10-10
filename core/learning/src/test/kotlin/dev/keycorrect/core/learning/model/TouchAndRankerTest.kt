@@ -117,7 +117,16 @@ class TouchAndRankerTest {
 
     @Test
     fun preferencesAreBufferedUntilFeaturesAreAvailable() {
-        val m = PersonalModel(testConfig())
+        val m =
+            PersonalModel(
+                testConfig(
+                    PersonalModelConfig(
+                        minTotalEvidence = 5.0,
+                        rankerMaxAttempts = 1000,
+                        rankerRetryGapMillis = 0,
+                    )
+                )
+            )
         var ready = false
         val p = provider()
         m.rankingFeatureProvider = { t, c, cand -> if (ready) p(t, c, cand) else null }
@@ -130,7 +139,16 @@ class TouchAndRankerTest {
 
     @Test
     fun bufferedPreferencesExpire() {
-        val m = PersonalModel(testConfig())
+        val m =
+            PersonalModel(
+                testConfig(
+                    PersonalModelConfig(
+                        minTotalEvidence = 5.0,
+                        rankerMaxAttempts = 1000,
+                        rankerRetryGapMillis = 0,
+                    )
+                )
+            )
         var ready = false
         val p = provider()
         m.rankingFeatureProvider = { t, c, cand -> if (ready) p(t, c, cand) else null }
@@ -138,6 +156,80 @@ class TouchAndRankerTest {
         ready = true
         m.apply(emptyList(), 60 * 60_000L)
         assertThat(m.snapshot().rankerScore(good)).isEqualTo(0f)
+    }
+
+    @Test
+    fun aPreferenceIsGivenUpOnAfterMaxFailedAttempts() {
+        val m = PersonalModel(testConfig(PersonalModelConfig(rankerRetryGapMillis = 0)))
+        var calls = 0
+        m.rankingFeatureProvider = { _, _, _ ->
+            calls++
+            null // always busy
+        }
+        m.applyAt(0, pref()) // attempt 1 (one call: the preferred candidate is already busy)
+        repeat(10) { m.apply(emptyList(), 1L + it) }
+        assertThat(calls).isEqualTo(3) // rankerMaxAttempts
+    }
+
+    @Test
+    fun retriesAreSpacedByTheRetryGap() {
+        val m =
+            PersonalModel(
+                testConfig(PersonalModelConfig(rankerMaxAttempts = 5, rankerRetryGapMillis = 1_000))
+            )
+        var calls = 0
+        m.rankingFeatureProvider = { _, _, _ ->
+            calls++
+            null
+        }
+        m.applyAt(0, pref())
+        repeat(10) { m.apply(emptyList(), 10L * it) } // all within the gap of the first attempt
+        assertThat(calls).isEqualTo(1)
+        m.apply(emptyList(), 1_000)
+        assertThat(calls).isEqualTo(2)
+        m.apply(emptyList(), 1_500)
+        assertThat(calls).isEqualTo(2)
+        m.apply(emptyList(), 2_000)
+        assertThat(calls).isEqualTo(3)
+    }
+
+    @Test
+    fun aCandidateTheDecoderCannotProduceDropsThePreferenceAtOnce() {
+        val m = PersonalModel(testConfig(PersonalModelConfig(rankerRetryGapMillis = 0)))
+        var calls = 0
+        m.rankingFeatureProvider = { _, _, c ->
+            calls++
+            if (c == "good") good else RankingFeatures.NOT_DECODABLE
+        }
+        m.applyAt(0, pref())
+        repeat(5) { m.apply(emptyList(), 1L + it) }
+        assertThat(calls).isEqualTo(2) // one decode per candidate, never retried
+        assertThat(m.snapshot().rankerScore(good)).isEqualTo(0f)
+    }
+
+    @Test
+    fun aNotDecodablePreferredCandidateSkipsTheSecondDecode() {
+        val m = PersonalModel(testConfig())
+        var calls = 0
+        m.rankingFeatureProvider = { _, _, _ ->
+            calls++
+            RankingFeatures.NOT_DECODABLE
+        }
+        m.applyAt(0, pref())
+        m.apply(emptyList(), 1)
+        assertThat(calls).isEqualTo(1)
+    }
+
+    @Test
+    fun aBusyPreferenceStillTrainsOnceTheProviderRecovers() {
+        val m = PersonalModel(testConfig(PersonalModelConfig(rankerRetryGapMillis = 0)))
+        var busy = true
+        val p = provider()
+        m.rankingFeatureProvider = { t, c, cand -> if (busy) null else p(t, c, cand) }
+        m.applyAt(0, pref())
+        busy = false
+        m.apply(emptyList(), 1) // second attempt, within the limit
+        assertThat(m.snapshot().rankerScore(good)).isGreaterThan(m.snapshot().rankerScore(bad))
     }
 
     @Test

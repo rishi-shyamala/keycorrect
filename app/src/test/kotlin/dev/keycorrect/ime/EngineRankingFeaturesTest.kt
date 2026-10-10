@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.FieldClass
+import dev.keycorrect.core.learning.RankingFeatures
 import java.io.File
 import java.nio.ByteBuffer
 import org.junit.Test
@@ -60,7 +61,8 @@ class EngineRankingFeaturesTest {
     }
 
     @Test
-    fun unknownCandidateGivesNull() {
-        assertThat(bridge().features("teh", emptyList(), "zzzzzz")).isNull()
+    fun aCandidateOutsideThePoolIsNotDecodableNotBusy() {
+        assertThat(bridge().features("teh", emptyList(), "zzzzzz"))
+            .isSameInstanceAs(RankingFeatures.NOT_DECODABLE)
     }
 }

@@ -82,6 +82,13 @@ data class PersonalModelConfig(
     val rankerMaxUpdateWeight: Float = 2f,
     val rankerPendingMax: Int = 64,
     val rankerPendingTtlMillis: Long = 10 * 60_000L,
+    /**
+     * A preference whose features could not be computed is given up on after this many failed
+     * attempts (the first try included); each attempt costs up to two decodes.
+     */
+    val rankerMaxAttempts: Int = 3,
+    /** Minimum time between two attempts at the same buffered preference. */
+    val rankerRetryGapMillis: Long = 2_000L,
     val checkpointIntervalMillis: Long = HOUR,
     val checkpointRetention: Int = 26,
     // --- adaptive thresholds ---

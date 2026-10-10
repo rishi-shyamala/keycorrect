@@ -74,7 +74,18 @@ data class RankingFeatures(
     val isLiteral: Boolean,
     val isUserWord: Boolean,
     val rank: Int,
-)
+) {
+    companion object {
+        /**
+         * What a ranking feature provider returns for a candidate that the decoder will never
+         * produce for the typed text (so retrying cannot help), as opposed to `null`, which means
+         * "cannot compute right now, try again later" (the decoder is busy). Compare by identity
+         * (`===`); the values are meaningless.
+         */
+        val NOT_DECODABLE =
+            RankingFeatures(0f, 0f, 0f, 0, 0f, 0f, isLiteral = false, isUserWord = false, rank = -1)
+    }
+}
 
 /** Context bucket for correction memory: previous word (lowercase, folded) + field class. */
 fun contextBucket(context: List<String>, field: String): String =

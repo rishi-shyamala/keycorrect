@@ -9,6 +9,7 @@ import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.classifier.OutcomeClassifier
 import dev.keycorrect.core.learning.model.ForgetResult
+import dev.keycorrect.core.learning.model.LearnedCorrection
 import dev.keycorrect.core.learning.model.LearningPersistence
 import dev.keycorrect.core.learning.model.LearningStore
 import dev.keycorrect.core.learning.model.PersonalModel
@@ -293,6 +294,51 @@ class LearningHost(
         changed()
         flushNow()
         removedFromModel || removedFromStore
+    }
+
+    /**
+     * The strongest learned autocorrections (typed -> target, best first, at most [limit]) for the
+     * settings screen; see [PersonalModel.topCorrections]. Typed and target are normalised
+     * (lower-case) keys.
+     */
+    suspend fun topCorrections(limit: Int): List<LearnedCorrection> = onLearningThread {
+        model.topCorrections(limit)
+    }
+
+    /**
+     * Drops the learned correction [typed] -> [target] (correction memory in every context and its
+     * journaled evidence; a "never autocorrect" suppression of the pair is left alone). Returns
+     * true if something was dropped.
+     */
+    suspend fun forgetCorrection(typed: String, target: String): Boolean = onLearningThread {
+        requireReady()
+        checkNotNull(persistence).forgetCorrection(typed, target, wallClock()).also {
+            if (it) {
+                dirty = false
+                updatesSinceFlush = 0
+                lastFlushAt = wallClock()
+                bump()
+            }
+        }
+    }
+
+    /**
+     * Tells the model that the user removed [word] from the personal dictionary (the settings
+     * dictionary screen calls this after its own store removal; this does not touch the store). The
+     * model stops treating the word as learned and will not promote it again from old evidence;
+     * only an explicit add (by the user, through the keyboard's add-word flow) brings it back.
+     * Works even while learning is off, and is a no-op while the saved state is unavailable.
+     * Returns true if the model changed.
+     */
+    suspend fun onUserWordRemoved(word: String): Boolean = onLearningThread {
+        if (_state.value != LearningHostState.Ready) return@onLearningThread false
+        failedAdds.removeAll { it.equals(word, ignoreCase = true) }
+        model.forgetUserWord(word, wallClock()).also {
+            if (it) {
+                changed()
+                flushNow()
+            }
+        }
     }
 
     /** Lifts a "never suggest" block. */

@@ -9,6 +9,7 @@ import dev.keycorrect.core.learning.CommitMethod
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.InputProfile
 import dev.keycorrect.core.learning.LearningEvent
+import dev.keycorrect.core.learning.LearningUpdate
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.UserAction
 import dev.keycorrect.core.learning.WordCommitted
@@ -472,6 +473,67 @@ class LearningHostTest {
         assertThat(f.host.learnedWords()).isEmpty()
         assertThat(f.users.snapshotWords()).isEmpty()
         assertThat(f.store.inner.state!!.blocks).isEmpty()
+    }
+
+    @Test
+    fun topCorrectionsAndForgetCorrection() = runTest {
+        val f = fixture(this)
+        f.start()
+        f.model.apply(
+            listOf(LearningUpdate.CorrectionEvidence("teh", "the", "in|Text", 1f)),
+            f.now,
+        )
+        assertThat(f.host.topCorrections(5).map { it.typed to it.target })
+            .containsExactly("teh" to "the")
+        assertThat(f.host.topCorrections(0)).isEmpty()
+
+        assertThat(f.host.forgetCorrection("teh", "the")).isTrue()
+        assertThat(f.host.topCorrections(5)).isEmpty()
+        assertThat(f.store.inner.state!!.corrections).isEmpty()
+        assertThat(f.host.forgetCorrection("teh", "the")).isFalse()
+    }
+
+    @Test
+    fun onUserWordRemovedStopsTheModelTreatingItAsLearned() = runTest {
+        val f = fixture(this)
+        f.start()
+        f.host.onEvent(f.addWord("zorp"))
+        f.settle()
+        assertThat(f.host.learnedWords().map { it.word }).containsExactly("zorp")
+
+        // The dictionary screen removed it from the store; now the model is told.
+        f.users.remove("zorp")
+        assertThat(f.host.onUserWordRemoved("zorp")).isTrue()
+        assertThat(f.host.learnedWords()).isEmpty()
+        assertThat(f.model.snapshot().isUserWord("zorp")).isFalse()
+        assertThat(f.store.inner.state!!.userWords.single().removed).isTrue() // saved at once
+
+        // Old evidence does not bring it back; an explicit add does.
+        f.model.apply(
+            listOf(
+                LearningUpdate.NewWordEvidence("zorp", 1, 1f),
+                LearningUpdate.NewWordEvidence("zorp", 2, 1f),
+                LearningUpdate.NewWordEvidence("zorp", 3, 1f),
+            ),
+            f.now,
+        )
+        f.settle()
+        assertThat(f.host.learnedWords()).isEmpty()
+        assertThat(f.host.onUserWordRemoved("zorp")).isFalse()
+        f.host.onEvent(f.addWord("zorp"))
+        f.settle()
+        assertThat(f.host.learnedWords().map { it.word }).containsExactly("zorp")
+    }
+
+    @Test
+    fun onUserWordRemovedWorksWhileLearningIsOff() = runTest {
+        val f = fixture(this, settings = KeyboardSettings(learningEnabled = true))
+        f.start()
+        f.host.onEvent(f.addWord("zorp"))
+        f.settle()
+        f.host.applySettings(KeyboardSettings(learningEnabled = false))
+        assertThat(f.host.onUserWordRemoved("zorp")).isTrue()
+        assertThat(f.host.learnedWords()).isEmpty()
     }
 
     @Test
