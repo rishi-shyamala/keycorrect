@@ -193,8 +193,6 @@ internal class PredictiveInput(
         val replacedCorrection: Tracked?,
     )
 
-    private class LearnedWord(val tracked: Tracked?, val pendingKept: WordCommitted?)
-
     private sealed interface Decision {
         data class Correct(val text: String, val runnerUp: String?) : Decision
 
@@ -207,10 +205,6 @@ internal class PredictiveInput(
      * sensitive. Every other path checks this and nothing else.
      */
     fun canPredict(): Boolean = predictionOn
-
-    /** True while a word is being composed. */
-    val isComposing: Boolean
-        get() = composing.isNotEmpty()
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -1258,11 +1252,6 @@ internal class PredictiveInput(
         val event = c.pendingKept ?: return
         c.pendingKept = null
         learn.emit(event)
-    }
-
-    private fun rejectWord(word: String) {
-        revertedWords.addLast(word.lowercase())
-        while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
     }
 
     /**

@@ -4,6 +4,10 @@ package dev.keycorrect.core.engineapi
  * A pluggable autocorrect/autocomplete engine (docs/PLAN.md §4). Engines declare what they can do
  * through [EngineInfo.capabilities]; the keyboard uses whatever is available. All calls may be made
  * from a background thread and must be safe to cancel.
+ *
+ * Only Tier 2 ([PredictiveEngine], [Capability.Predict]) is used today, by the built-in engine.
+ * Tiers 0 and 1, the other capabilities, and [load]/[unload] are the plugin contract for neural and
+ * external engines (Phase 7); nothing calls them yet.
  */
 interface TextEngine {
     val info: EngineInfo
@@ -36,7 +40,7 @@ data class EngineInfo(
     val remote: Boolean = false,
 )
 
-/** Tier 0: any model that maps text to text. */
+/** Tier 0: any model that maps text to text. Unused until Phase 7. */
 interface GenerativeEngine : TextEngine {
     suspend fun generate(request: GenerateRequest): GenerateResult
 }
@@ -50,7 +54,10 @@ data class GenerateRequest(
 
 data class GenerateResult(val outputs: List<String>)
 
-/** Tier 1: scores candidate strings, the best fit for reranking dictionary candidates. */
+/**
+ * Tier 1: scores candidate strings, the best fit for reranking dictionary candidates. Unused until
+ * Phase 7.
+ */
 interface ScoringEngine : TextEngine {
     /** Natural-log probability of each candidate following [context]; same order as input. */
     suspend fun score(context: TypingContext, candidates: List<String>): FloatArray

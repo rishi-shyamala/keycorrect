@@ -643,13 +643,13 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         val (words, sups, blocks) = lexicon.forgetSince(timeMillis)
         val removedKeys = words.map(Text::key).toSet()
         pendingAdds.removeAll { Text.key(it.word) in removedKeys }
-        val dropped = thresholds.forgetSince(timeMillis)
+        thresholds.forgetSince(timeMillis)
         pendingPrefs.removeAll { it.timeMillis >= timeMillis }
         val restored = ranker.restoreBefore(timeMillis)
         val sentencesRemoved = sentences.forgetSince(timeMillis)
         lexDirty = true
         publish(nowMillis)
-        return ForgetResult(words, sups, blocks, doomed.size, dropped, sentencesRemoved, restored)
+        return ForgetResult(words, sups, blocks, doomed.size, sentencesRemoved, restored)
     }
 
     // ------------------------------------------------------- persistence

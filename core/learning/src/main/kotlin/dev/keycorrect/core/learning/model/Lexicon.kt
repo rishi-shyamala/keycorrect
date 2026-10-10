@@ -14,7 +14,6 @@ data class ForgetResult(
     val removedSuppressions: List<Pair<String, String>>,
     val removedBlocks: List<String>,
     val subtractedUpdates: Int,
-    val droppedOutcomes: Int,
     val removedSentences: Int,
     /** Time of the ranker checkpoint the weights were restored from, null = reset to initial. */
     val rankerRestoredFromMillis: Long?,

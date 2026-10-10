@@ -30,12 +30,10 @@ internal class AdaptiveThresholds(private val cfg: PersonalModelConfig) {
         while (phrase.size > cfg.outcomeWindow) phrase.removeFirst()
     }
 
-    /** Drops outcomes at or after [timeMillis]; returns how many. */
-    fun forgetSince(timeMillis: Long): Int {
-        val n = autocorrect.size + phrase.size
+    /** Drops outcomes at or after [timeMillis]. */
+    fun forgetSince(timeMillis: Long) {
         autocorrect.removeAll { it.timeMillis >= timeMillis }
         phrase.removeAll { it.timeMillis >= timeMillis }
-        return n - autocorrect.size - phrase.size
     }
 
     fun revertRate(): Double {

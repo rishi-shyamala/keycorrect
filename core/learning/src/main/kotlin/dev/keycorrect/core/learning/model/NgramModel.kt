@@ -18,15 +18,6 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
     private val ctx2 = ShardedMap<Cell>()
     private var uniTotal = Cell(0.0, 0)
 
-    val unigramCount: Int
-        get() = uni.size
-
-    val bigramCount: Int
-        get() = bi.size
-
-    val trigramCount: Int
-        get() = tri.size
-
     private fun bump(map: ShardedMap<Cell>, key: String, delta: Double, now: Long) {
         val c = decay.add(map[key], delta, now)
         if (c.weight <= 0.0) map.remove(key) else map.put(key, c)

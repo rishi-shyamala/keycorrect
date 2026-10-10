@@ -58,10 +58,6 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     val hasUser: Boolean
         get() = user != null
 
-    /** The words the personal n-gram sees as left context (≤ 2, normalised, case kept). */
-    val userContextWords: List<String>
-        get() = userContext
-
     /**
      * Interpolates the personal estimate for [word] after the current context into [base]; [base]
      * itself where the personal model has no estimate.
