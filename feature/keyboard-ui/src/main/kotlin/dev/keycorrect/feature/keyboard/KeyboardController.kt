@@ -49,6 +49,12 @@ class KeyboardController(
     private val clock: () -> Long = SystemClock::uptimeMillis,
     learning: LearningSink = LearningSink.None,
     wallClock: () -> Long = System::currentTimeMillis,
+    /**
+     * Gets the word events that deserve their own vibration (an autocorrection, an unknown word),
+     * once per word at the separator and only if the settings want it. The host plays it (see
+     * [KeyFeedback.onWordEvent]).
+     */
+    wordFeedback: WordFeedback = WordFeedback.None,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
@@ -71,7 +77,15 @@ class KeyboardController(
         private set
 
     private val input =
-        PredictiveInput(tracked, prediction, { strip = it }, learning, clock, wallClock)
+        PredictiveInput(
+            tracked,
+            prediction,
+            { strip = it },
+            learning,
+            clock,
+            wallClock,
+            wordFeedback::onWordFeedback,
+        )
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog

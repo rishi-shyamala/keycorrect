@@ -537,23 +537,195 @@ class LearningEventsTest {
     // ------------------------------------------------------------------ AutocorrectReverted
 
     @Test
-    fun oneBackspaceIsAnImmediateRevert() {
+    fun oneBackspaceIsHeldUntilTheRestoredWordIsFinished() {
         predictor.word("teh", listOf("the"), autocorrect = "the")
         start()
         type("teh")
         space()
         backspace()
         assertThat(text()).isEqualTo("teh ")
+        assertThat(reverts()).isEmpty() // not yet: the user may be about to edit it
+        assertThat(committed()).isEmpty() // and there is no "kept" event for the correction
+        type("w") // moves on without touching it: the word is kept as typed
         val r = reverts().single()
         assertThat(r.kind).isEqualTo(RevertKind.ImmediateBackspace)
         assertThat(r.typed).isEqualTo("teh")
         assertThat(r.corrected).isEqualTo("the")
         assertThat(r.replacement).isEqualTo("teh")
-        assertThat(committed()).isEmpty() // no "kept" event for a reverted correction
+        assertThat(committed()).isEmpty()
     }
 
     @Test
-    fun deletingTheCorrectionAndRetypingTheOriginalIsReportedAndNotCorrectedAgain() {
+    fun anUndoneWordRefinishedUnchangedIsAKeepOnceTheUserMovesOn() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace() // undo
+        backspace() // the space: composed again
+        assertThat(editor.composing).isEqualTo("teh")
+        space() // finished unchanged, but they could still go back to it
+        assertThat(text()).isEqualTo("teh ")
+        assertThat(reverts()).isEmpty()
+        type("w")
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.ImmediateBackspace)
+        assertThat(r.replacement).isEqualTo("teh")
+    }
+
+    @Test
+    fun enterKeepsAnUndoneWord() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        assertThat(reverts()).isEmpty()
+        controller.onKey(KeyAction.Enter)
+        assertThat(reverts().single().kind).isEqualTo(RevertKind.ImmediateBackspace)
+    }
+
+    @Test
+    fun undoThenEditingTheWordIntoAnotherIsEditedLaterAndNotAKeep() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace() // undo: "teh "
+        backspace() // "teh" composed again
+        backspace() // "te"
+        type("a") // "tea": what they meant
+        assertThat(reverts()).isEmpty()
+        space()
+        type("w")
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.EditedLater)
+        assertThat(r.typed).isEqualTo("teh")
+        assertThat(r.corrected).isEqualTo("the")
+        assertThat(r.replacement).isEqualTo("tea")
+    }
+
+    @Test
+    fun undoThenEditingAnAlreadyFinishedWordIsEditedLater() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        space() // finished unchanged: held
+        backspace() // they come back to it
+        backspace()
+        type("a")
+        space()
+        type("w")
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.EditedLater)
+        assertThat(r.replacement).isEqualTo("tea")
+    }
+
+    @Test
+    fun undoThenPickingASuggestionIsSwitchedToSuggestion() {
+        predictor.word("tset", listOf("test", "set"), autocorrect = "test")
+        start()
+        type("tset")
+        space()
+        backspace()
+        backspace() // "tset" composed again
+        predictor.word("tset", listOf("test", "set"))
+        type("")
+        assertThat(reverts()).isEmpty()
+        controller.onSuggestionTap(
+            dev.keycorrect.feature.keyboard.prediction.StripSlot(
+                "set",
+                SlotKind.Suggestion,
+                "Suggestion: set",
+            )
+        )
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.SwitchedToSuggestion)
+        assertThat(r.replacement).isEqualTo("set")
+    }
+
+    @Test
+    fun undoThenAbandoningTheWordReportsNothing() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        backspace()
+        backspace()
+        backspace() // the word is gone
+        assertThat(text()).isEmpty()
+        space()
+        type("w")
+        controller.onKey(KeyAction.Enter)
+        assertThat(reverts()).isEmpty()
+        assertThat(committed().none { it.method == CommitMethod.Autocorrected }).isTrue()
+    }
+
+    @Test
+    fun undoThenLeavingTheFieldReportsNothing() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        controller.onFinishInput()
+        start()
+        type("w")
+        assertThat(reverts()).isEmpty()
+    }
+
+    @Test
+    fun undoThenTheCursorMovingAwayReportsNothing() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        editor.echo(controller)
+        editor.moveCursor(0)
+        editor.echo(controller)
+        type("w")
+        assertThat(reverts()).isEmpty()
+    }
+
+    @Test
+    fun anUndoneWordIsOnlyHeldBackFromCorrectionForThatOccurrence() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace() // "teh "
+        backspace()
+        space() // not corrected again while they put it back
+        assertThat(text()).isEqualTo("teh ")
+        type("teh")
+        space() // a new occurrence is corrected again (the learning thresholds decide for good)
+        assertThat(text()).isEqualTo("teh the ")
+    }
+
+    @Test
+    fun theOccurrenceGuardAlsoWorksWhereLearningIsOff() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start(settings = KeyboardSettings(incognito = true))
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        space()
+        assertThat(text()).isEqualTo("teh ")
+        type("teh")
+        space()
+        assertThat(text()).isEqualTo("teh the ")
+        assertThat(sink.isSilent).isTrue()
+    }
+
+    @Test
+    fun deletingTheCorrectionAndRetypingTheOriginalIsKeptAndNotCorrectedAgain() {
         predictor.word("teh", listOf("the"), autocorrect = "the")
         start()
         type("teh")
@@ -571,11 +743,31 @@ class LearningEventsTest {
         assertThat(controller.strip.centre?.kind).isNotEqualTo(SlotKind.Autocorrect)
         space()
         assertThat(text()).isEqualTo("teh ")
+        assertThat(reverts()).isEmpty() // finished, but it could still be edited
+        type("w")
         val r = reverts().single()
         assertThat(r.kind).isEqualTo(RevertKind.DeletedAndRetyped)
         assertThat(r.typed).isEqualTo("teh")
         assertThat(r.corrected).isEqualTo("the")
         assertThat(r.replacement).isEqualTo("teh")
+    }
+
+    @Test
+    fun deletingTheCorrectionAndTypingSomethingElseIsEditedLater() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        type("w")
+        backspace()
+        backspace()
+        repeat(3) { backspace() }
+        type("tea")
+        space()
+        type("w")
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.EditedLater)
+        assertThat(r.replacement).isEqualTo("tea")
     }
 
     @Test

@@ -6,6 +6,8 @@ import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
+import dev.keycorrect.core.learning.AutocorrectReverted
+import dev.keycorrect.core.learning.RevertKind
 import dev.keycorrect.core.settings.KeyboardSettings
 import org.junit.Test
 
@@ -106,5 +108,99 @@ class NonCoalescingEditorTest {
         editor.echo(controller)
         assertThat(editor.composing).isEmpty()
         assertThat(text()).isEqualTo("hel")
+    }
+}
+
+/** The deferred revert classification with an editor that reports every intermediate state. */
+class NonCoalescingRevertTest {
+    private val editor = SimEditor()
+    private val backend = FakeBackend()
+    private val predictor = ScriptedPredictor()
+    private val sink = RecordingSink()
+    private val controller: KeyboardController
+
+    init {
+        backend.predictor = predictor
+        controller =
+            KeyboardController(
+                editor,
+                KeyboardComposer(BuiltInLayouts.repository()),
+                testEnv(backend),
+                clock = { 10_000L },
+                learning = sink,
+            )
+        editor.onOperation = { editor.echo(controller) }
+        controller.onStartInput(
+            FieldProfile.from(InputType.TYPE_CLASS_TEXT, 0),
+            KeyboardSettings(),
+            false,
+            null,
+            editor.cursor,
+            editor.cursor,
+        )
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+    }
+
+    private fun type(text: String) = text.forEach { controller.onKey(KeyAction.Text("$it")) }
+
+    private fun space() = controller.onKey(KeyAction.Space)
+
+    private fun backspace() = controller.onKey(KeyAction.Backspace)
+
+    private fun reverts() = sink.of<AutocorrectReverted>()
+
+    @Test
+    fun undoThenFinishingUnchangedIsAKeepWhenTheUserMovesOn() {
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        space()
+        assertThat(editor.text.toString()).isEqualTo("teh ")
+        assertThat(reverts()).isEmpty()
+        type("w")
+        assertThat(reverts().single().kind).isEqualTo(RevertKind.ImmediateBackspace)
+    }
+
+    @Test
+    fun undoThenEditingIntoAnotherWordIsEditedLater() {
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        backspace()
+        type("a")
+        space()
+        type("w")
+        val r = reverts().single()
+        assertThat(r.kind).isEqualTo(RevertKind.EditedLater)
+        assertThat(r.replacement).isEqualTo("tea")
+    }
+
+    @Test
+    fun undoThenAbandoningTheWordReportsNothing() {
+        type("teh")
+        space()
+        backspace()
+        repeat(4) { backspace() }
+        assertThat(editor.text.toString()).isEmpty()
+        space()
+        type("w")
+        assertThat(reverts()).isEmpty()
+    }
+
+    @Test
+    fun deleteAndRetypeIsKeptWhenTheUserMovesOn() {
+        type("teh")
+        space()
+        type("w")
+        backspace()
+        backspace()
+        repeat(3) { backspace() }
+        type("teh")
+        space()
+        assertThat(reverts()).isEmpty()
+        type("w")
+        assertThat(reverts().single().kind).isEqualTo(RevertKind.DeletedAndRetyped)
     }
 }

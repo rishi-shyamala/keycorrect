@@ -1,7 +1,7 @@
 package dev.keycorrect.feature.keyboard.prediction
 
-import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
+import dev.keycorrect.core.learning.RevertKind
 import kotlin.math.ceil
 
 /**
@@ -23,12 +23,12 @@ internal class Tracked(
     val runnerUp: String? = null,
 ) {
     /**
-     * Set when the user took this autocorrection back with one backspace but it was a near-tie
-     * (docs/PLAN.md §6.3 row 22): the revert is held back in case they now pick the other
-     * candidate, which makes it a switch instead. Until then the text says [typed], not
-     * [committed].
+     * Set while this autocorrection was taken back (one backspace, or deleted and retyped) and the
+     * restored word has not been finished yet: the revert is held back until it is known whether
+     * the user keeps [typed] (reported as this kind), edits it into something else or picks another
+     * suggestion. The text says [typed], not [committed], for as long as this is set.
      */
-    var pendingRevert: AutocorrectReverted? = null
+    var undone: RevertKind? = null
 
     /** Position in the order words were finished; set by [WordMemory.add]. */
     var serial = 0L
@@ -78,8 +78,7 @@ internal class WordMemory(
         counter - t.serial < windowWords && now - t.at <= windowMillis
 
     /** What the editor currently says for [t]: the typed word once its correction was undone. */
-    private fun shownText(t: Tracked): String =
-        if (t.pendingRevert != null) t.typed else t.committed
+    private fun shownText(t: Tracked): String = if (t.undone != null) t.typed else t.committed
 
     fun remove(t: Tracked) {
         words.remove(t)
@@ -105,7 +104,7 @@ internal class WordMemory(
  * [tracked] is the remembered word it matches (null for an older one nobody remembers). [deleted]
  * turns true once the whole word was deleted: from then on it is a replacement, not a touch-up.
  */
-internal class EditSession(val original: String, val tracked: Tracked?) {
+internal class EditSession(val original: String, var tracked: Tracked?) {
     var deleted = false
 }
 

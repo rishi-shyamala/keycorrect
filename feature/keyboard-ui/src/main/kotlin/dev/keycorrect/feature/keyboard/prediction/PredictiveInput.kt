@@ -29,7 +29,9 @@ import dev.keycorrect.core.learning.UserAction
 import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.FeedbackKind
 import dev.keycorrect.feature.keyboard.TimeoutHandle
+import dev.keycorrect.feature.keyboard.hapticWanted
 
 /**
  * The typing side of prediction: owns the composing word, talks to the editor, feeds the decoder
@@ -50,7 +52,12 @@ import dev.keycorrect.feature.keyboard.TimeoutHandle
  *   auto-expanding shortcut of the freshest result is applied if allowed, otherwise the word stays.
  *   A layer switch or an unexpected cursor move finishes it as it is.
  * - *Undo window*. After a correction or expansion, the very next backspace restores the typed word
- *   (separator kept) and that word is never auto-corrected again. Any other key closes it.
+ *   (separator kept); while the user is putting that word back (backspacing over the separator and
+ *   finishing it again) it is not auto-corrected again, but that is for this occurrence only: the
+ *   permanent behaviour comes from the learning thresholds. Any other key closes the window.
+ * - *Held revert*. The learning layer is told about an undone (or deleted and retyped) correction
+ *   only once the restored word is finished, since the user often undoes a wrong fix in order to
+ *   type the word they meant (see [resolveEdit]).
  *
  * Every input event advances the decoder's sequence, so results for older input are dropped. The
  * text before the cursor (≤ [TypingContext.MAX_BEFORE_CHARS]) is read from the editor when input
@@ -68,6 +75,8 @@ internal class PredictiveInput(
     learning: LearningSink = LearningSink.None,
     private val clock: () -> Long = { 0L },
     wallClock: () -> Long = System::currentTimeMillis,
+    /** Told of word events that deserve a vibration, already filtered by the settings. */
+    private val onWordFeedback: (FeedbackKind) -> Unit = {},
 ) {
     /** The touches of recently finished words, for Phase 3. In memory only. */
     val touchLog = WordTouchLog()
@@ -99,7 +108,16 @@ internal class PredictiveInput(
 
     private var latest: PredictResult? = null
     private var undo: Undo? = null
+
+    /** Words kept as typed by tapping the literal chip; not auto-corrected again this session. */
     private val revertedWords = ArrayDeque<String>()
+
+    /**
+     * The (lower-cased) word whose autocorrection was just taken back: while the user puts it back
+     * it isn't corrected again. Lives only until they move on, so it is no lasting rule. Kept even
+     * where learning is off.
+     */
+    private var retypeGuard: String? = null
 
     private var stripBase = StripModel.Empty
     private var addWord: String? = null
@@ -245,7 +263,7 @@ internal class PredictiveInput(
         dismissPrompts()
         closeUndo()
         flushSentence(text)
-        if (edit == null) flushPendingRevert()
+        settleHeldRevert()
         val c = text.singleOrNull()
         val composingNow = composing.isNotEmpty()
         if (c != null && composingNow && (c.isLetterOrDigit() || isApostrophe(c))) {
@@ -266,7 +284,7 @@ internal class PredictiveInput(
         dismissPrompts()
         closeUndo()
         flushSentence(text)
-        if (edit == null) flushPendingRevert()
+        settleHeldRevert()
         separator(text)
     }
 
@@ -320,7 +338,7 @@ internal class PredictiveInput(
         loop.advance()
         latest = null
         if (!recomposePreviousWord()) {
-            flushPendingRevert()
+            dropPendingRevert() // the restored word can't be followed any more
             publish(StripModel.Empty)
         }
     }
@@ -338,6 +356,7 @@ internal class PredictiveInput(
         flushSentence("\n")
         if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
         endEdit()
+        flushPendingRevert() // Enter finishes a restored word as it is
         if (commitsLineBreak) appendBefore("\n")
         loop.advance()
         latest = null
@@ -396,7 +415,7 @@ internal class PredictiveInput(
         dismissPrompts()
         closeUndo()
         flushSentence(null)
-        if (edit == null) flushPendingRevert()
+        settleHeldRevert()
         if (slot.kind == SlotKind.Literal) keepLiteral() else pick(slot)
     }
 
@@ -521,6 +540,7 @@ internal class PredictiveInput(
      */
     private fun finishWord(separator: String?, allowUndo: Boolean) {
         val typed = composing.toString()
+        val keptAsTyped = userKeepsAsTyped(typed)
         val touchList = ArrayList(touches)
         val pre = capturePre()
         val decision = decide(typed)
@@ -584,6 +604,54 @@ internal class PredictiveInput(
             }
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
         record(typed, committed, touchList, method)
+        wordFeedback(decision, typed, separator, keptAsTyped)
+    }
+
+    /**
+     * The vibration for the word just finished at a separator: a double tick for an autocorrection,
+     * a soft buzz for a word that is in no dictionary and wasn't corrected. Only here, once per
+     * word, never per key; shortcuts, words the user explicitly keeps, single letters and anything
+     * that isn't a plain word (digits, symbols, addresses) stay silent.
+     */
+    private fun wordFeedback(
+        decision: Decision?,
+        typed: String,
+        separator: String?,
+        keptAsTyped: Boolean,
+    ) {
+        val kind =
+            when (decision) {
+                is Decision.Correct -> FeedbackKind.Autocorrected
+                is Decision.Expand -> return
+                null ->
+                    if (!keptAsTyped && !startsAddress(separator) && isUnknownPlainWord(typed)) {
+                        FeedbackKind.UnknownWord
+                    } else return
+            }
+        if (hapticWanted(kind, settings)) onWordFeedback(kind)
+    }
+
+    /** A word followed by one of these is the start of an address or path, not a word. */
+    private fun startsAddress(separator: String?): Boolean =
+        separator != null && separator.length == 1 && separator[0] in ADDRESS_SEPARATORS
+
+    private fun isUnknownPlainWord(word: String): Boolean {
+        if (backend.predictor == null) return false // the dictionary isn't loaded: all is unknown
+        val kind = profile?.kind
+        if (kind == FieldKind.Email || kind == FieldKind.Url) return false
+        if (word.count { it.isLetter() } < 2) return false
+        if (!word.first().isLetter() || !word.all { it.isLetter() || isApostrophe(it) }) {
+            return false
+        }
+        return backend.shortcutFor(word) == null && !isKnown(word)
+    }
+
+    /** The user has explicitly said to keep [word] as typed: no need to buzz about it. */
+    private fun userKeepsAsTyped(word: String): Boolean {
+        val editing = edit?.tracked
+        return word.lowercase() in revertedWords ||
+            retypeGuard?.let { sameWord(it, word) } == true ||
+            (editing != null && editing.autocorrected && sameWord(word, editing.typed))
     }
 
     /**
@@ -634,6 +702,7 @@ internal class PredictiveInput(
         // The user is putting back what an autocorrection replaced: not this time.
         val editing = edit?.tracked
         if (editing != null && editing.autocorrected && sameWord(word, editing.typed)) return false
+        if (retypeGuard?.let { sameWord(it, word) } == true) return false
         return settings.autocorrectEnabled &&
             p.autocorrectEnabled &&
             !(word.isNotEmpty() && isApostrophe(word.last())) &&
@@ -657,9 +726,9 @@ internal class PredictiveInput(
             before.setLength(maxOf(0, before.length - expected.length))
             appendBefore(u.typed + u.separator)
         }
-        rejectWord(u.typed)
         touchLog.markLastReverted(u.applied)
-        u.correction?.let { reportImmediateRevert(u, it) }
+        u.correction?.let { reportImmediateRevert(it) }
+        retypeGuard = u.typed.lowercase() // after the hold: holding another revert clears it
         loop.advance()
         latest = null
         publish(StripModel.Empty)
@@ -1090,7 +1159,7 @@ internal class PredictiveInput(
         finishAsTyped()
         closeUndo()
         endEdit()
-        flushPendingRevert()
+        dropPendingRevert() // the field changed before the restored word was finished
         judgeTakenPhrase()
         phraseWatch = null
         flushSentence(null)
@@ -1114,37 +1183,69 @@ internal class PredictiveInput(
         while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
     }
 
-    /** One backspace took the correction back (rows 6, 7). A near-tie waits for a possible pick. */
-    private fun reportImmediateRevert(u: Undo, c: Correction) {
+    /**
+     * One backspace took the correction back (rows 6, 7, 22). Nothing is reported yet: the user may
+     * be undoing a wrong fix to type the word they meant. The revert is held until the restored
+     * word is finished (see [resolveEdit]).
+     */
+    private fun reportImmediateRevert(c: Correction) {
         c.pendingKept = null
         val t = c.tracked ?: return
         if (!learn.open) return
-        val event =
+        hold(t, RevertKind.ImmediateBackspace)
+    }
+
+    /**
+     * Holds the revert of [t], whose restored word [Tracked.typed] is in the text, until it is
+     * finished. Settled by [resolveEdit] (edited or swapped), [flushPendingRevert] (the user moved
+     * on, so it was kept) or [dropPendingRevert] (abandoned: nothing is reported).
+     */
+    private fun hold(t: Tracked, kind: RevertKind) {
+        if (pendingRevertTracked != null && pendingRevertTracked !== t) flushPendingRevert()
+        t.undone = kind
+        pendingRevertTracked = t
+        retypeGuard = t.typed.lowercase()
+    }
+
+    /** The user typed on without touching the restored word: it stands, so the revert is a keep. */
+    private fun flushPendingRevert() {
+        retypeGuard = null
+        val t = pendingRevertTracked ?: return
+        pendingRevertTracked = null
+        val kind = t.undone
+        t.undone = null
+        memory.remove(t)
+        if (edit?.tracked === t) edit?.tracked = null
+        if (kind == null || !learn.open) return
+        learn.emit(
             AutocorrectReverted(
                 learn.stamp(),
                 learn.profile,
-                c.context,
-                u.typed,
-                u.applied,
-                RevertKind.ImmediateBackspace,
-                u.typed,
+                t.context,
+                t.typed,
+                t.committed,
+                kind,
+                t.typed,
             )
-        if (t.runnerUp != null) {
-            flushPendingRevert()
-            t.pendingRevert = event
-            pendingRevertTracked = t
-        } else {
-            learn.emit(event)
-            memory.remove(t)
-        }
+        )
     }
 
-    private fun flushPendingRevert() {
+    /**
+     * The restored word was abandoned (deleted entirely, or the field or cursor changed before it
+     * was finished): there is no evidence either way, so nothing is reported.
+     */
+    private fun dropPendingRevert() {
+        retypeGuard = null
         val t = pendingRevertTracked ?: return
         pendingRevertTracked = null
-        t.pendingRevert?.let(learn::emit)
-        t.pendingRevert = null
+        t.undone = null
         memory.remove(t)
+        if (edit?.tracked === t) edit?.tracked = null
+    }
+
+    /** A key was typed: if no restored word is being edited, it was left alone and stands. */
+    private fun settleHeldRevert() {
+        if (edit == null && composing.isEmpty()) flushPendingRevert()
     }
 
     /** The word [word] before the cursor was re-composed for editing. */
@@ -1152,76 +1253,89 @@ internal class PredictiveInput(
         edit = null
         if (!learn.open) return
         val found = memory.find(word, SentenceContext.lastWords(before), learn.now())
-        if (pendingRevertTracked != null && pendingRevertTracked !== found) flushPendingRevert()
+        if (pendingRevertTracked != null && pendingRevertTracked !== found) dropPendingRevert()
         edit = EditSession(word, found)
     }
 
     /** The edit was abandoned (the user moved on without finishing the word). */
     private fun endEdit() {
+        val e = edit ?: return
         edit = null
-        flushPendingRevert()
+        val held = pendingRevertTracked
+        if (held != null && e.tracked === held) dropPendingRevert()
     }
 
     private enum class Resolution {
         None,
         Unchanged,
         Reported,
+
+        /** An autocorrection's typed word is back and held; the caller adds no new word for it. */
+        Deferred,
     }
 
     /**
      * A re-composed word ended as [x]. If it was a remembered word, says what happened to it: an
      * autocorrection put back, edited or swapped for a suggestion; or any other word replaced.
+     *
+     * An undone or deleted-and-retyped autocorrection of T into C is classified by how the restored
+     * word ends, not by the undo itself:
+     * - finished as T again: nothing yet, it is [Resolution.Deferred] (a keep once the user moves
+     *   on, see [flushPendingRevert]; an edit of it later is judged here again);
+     * - finished as an X ≠ T related to T or C: `EditedLater` with X (the user meant X; no keep),
+     *   or `SwitchedToSuggestion` if X came from a suggestion tap;
+     * - finished as C, or as an unrelated word: nothing is reported (a rewording, not a verdict on
+     *   the correction);
+     * - abandoned or left with the field: [dropPendingRevert], nothing is reported.
      */
     private fun resolveEdit(s: EditSession?, x: String, viaPick: Boolean): Resolution {
         if (s == null) return Resolution.None
         val t = s.tracked
-        val pending = t?.pendingRevert
         if (t == null) {
             return if (sameWord(x, s.original)) Resolution.Unchanged else Resolution.None
         }
+        val held = t.undone
         if (pendingRevertTracked === t) pendingRevertTracked = null
-        t.pendingRevert = null
-        if (!memory.isFresh(t, learn.now())) {
+        t.undone = null
+        // A held revert waits for the user, not for the clock.
+        if (held == null && !memory.isFresh(t, learn.now())) {
             memory.remove(t)
             return if (sameWord(x, s.original)) Resolution.Unchanged else Resolution.None
         }
-        if (sameWord(x, t.committed) && (pending == null || !t.autocorrected)) {
-            return Resolution.Unchanged
-        }
+        if (held == null && sameWord(x, t.committed)) return Resolution.Unchanged
         val profile = learn.profile
         if (t.autocorrected) {
+            if (!sameWord(x, t.committed) && sameWord(x, t.typed)) {
+                val kind =
+                    when {
+                        s.deleted -> RevertKind.DeletedAndRetyped
+                        held != null -> held
+                        else -> RevertKind.EditedLater
+                    }
+                hold(t, kind)
+                return Resolution.Deferred
+            }
             memory.remove(t)
+            retypeGuard = null
             val kind =
                 when {
                     sameWord(x, t.committed) -> null
-                    sameWord(x, t.typed) ->
-                        when {
-                            pending != null -> RevertKind.ImmediateBackspace
-                            s.deleted -> RevertKind.DeletedAndRetyped
-                            else -> RevertKind.EditedLater
-                        }
                     !relatedEdit(t.typed, t.committed, x) -> null
                     viaPick -> RevertKind.SwitchedToSuggestion
                     else -> RevertKind.EditedLater
                 }
             if (kind == null) return Resolution.None
-            if (kind == RevertKind.ImmediateBackspace && pending != null) {
-                learn.emit(pending)
-            } else {
-                val replacement = if (sameWord(x, t.typed)) t.typed else x
-                learn.emit(
-                    AutocorrectReverted(
-                        learn.stamp(),
-                        profile,
-                        t.context,
-                        t.typed,
-                        t.committed,
-                        kind,
-                        replacement,
-                    )
+            learn.emit(
+                AutocorrectReverted(
+                    learn.stamp(),
+                    profile,
+                    t.context,
+                    t.typed,
+                    t.committed,
+                    kind,
+                    x,
                 )
-            }
-            if (sameWord(x, t.typed)) rejectWord(t.typed)
+            )
             return Resolution.Reported
         }
         memory.remove(t)
@@ -1309,10 +1423,14 @@ internal class PredictiveInput(
         val resolution = resolveEdit(session, committed, isPick)
         advancePhrase(committed, pre, startWatch = true)
         if (resolution == Resolution.Unchanged) return null
-        val tracked = Tracked(typed, committed, pre.context, method, learn.now(), runnerUp)
-        memory.add(tracked)
+        val settled = resolution == Resolution.Reported || resolution == Resolution.Deferred
+        // A restored word stays the one remembered word; it must not be remembered twice.
+        val tracked =
+            if (resolution == Resolution.Deferred) null
+            else Tracked(typed, committed, pre.context, method, learn.now(), runnerUp)
+        tracked?.let(memory::add)
         val event =
-            if (resolution == Resolution.Reported && !isPick) {
+            if (settled && !isPick) {
                 null
             } else {
                 WordCommitted(
@@ -1541,6 +1659,9 @@ internal class PredictiveInput(
         const val MIN_TRUSTED_BEFORE = 32
 
         /** Text ending in one of these needs no space before an inserted next word. */
+        /** Separators that make the word before them part of an address or path. */
+        const val ADDRESS_SEPARATORS = "@/\\_"
+
         const val NO_SPACE_AFTER = "([{<\"'“‘/@#-"
 
         /** A word may start right after one of these. */
