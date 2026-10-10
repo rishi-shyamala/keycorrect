@@ -73,6 +73,22 @@ internal class WordMemory(
             ?: sameContext.firstOrNull { shortened(shownText(it), word) }
     }
 
+    /**
+     * The autocorrections still inside the window that said [context] before them and whose
+     * restored word is not (yet) in the text, newest first. [typed], if given, narrows them to the
+     * ones whose typed word is that word. This is the candidate list for a corrected word that was
+     * deleted without a word being re-composed (see `PredictiveInput.deletedCorrection`).
+     */
+    fun autocorrections(context: List<String>, typed: String?, now: Long): List<Tracked> {
+        prune(now)
+        return words.asReversed().filter {
+            it.autocorrected &&
+                it.undone == null &&
+                it.context == context &&
+                (typed == null || sameWord(typed, it.typed))
+        }
+    }
+
     /** True while [t] is still inside the tracking window. */
     fun isFresh(t: Tracked, now: Long): Boolean =
         counter - t.serial < windowWords && now - t.at <= windowMillis

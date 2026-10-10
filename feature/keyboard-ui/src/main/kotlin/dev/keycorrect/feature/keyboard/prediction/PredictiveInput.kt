@@ -171,6 +171,8 @@ internal class PredictiveInput(
         val phraseKept: Int,
         /** The phrase on the strip when the word was finished. */
         val offered: List<String>,
+        /** The autocorrection whose deleted word this one replaces; see [deletedCorrection]. */
+        val replacedCorrection: Tracked?,
     )
 
     private class LearnedWord(val tracked: Tracked?, val pendingKept: WordCommitted?)
@@ -651,7 +653,8 @@ internal class PredictiveInput(
         val editing = edit?.tracked
         return word.lowercase() in revertedWords ||
             retypeGuard?.let { sameWord(it, word) } == true ||
-            (editing != null && editing.autocorrected && sameWord(word, editing.typed))
+            (editing != null && editing.autocorrected && sameWord(word, editing.typed)) ||
+            deletedCorrection(word) != null
     }
 
     /**
@@ -703,6 +706,8 @@ internal class PredictiveInput(
         val editing = edit?.tracked
         if (editing != null && editing.autocorrected && sameWord(word, editing.typed)) return false
         if (retypeGuard?.let { sameWord(it, word) } == true) return false
+        // The corrected word was deleted and this is the word they typed originally, put back.
+        if (deletedCorrection(word) != null) return false
         return settings.autocorrectEnabled &&
             p.autocorrectEnabled &&
             !(word.isNotEmpty() && isApostrophe(word.last())) &&
@@ -1377,7 +1382,61 @@ internal class PredictiveInput(
             shown.snapshot(learn.now()),
             kept,
             offered(),
+            if (known && edit?.tracked == null) deletedCorrection(null, context) else null,
         )
+    }
+
+    /**
+     * The remembered autocorrection T→C whose corrected word C was deleted from the text, so that
+     * the word now being written ([typed], or any word when null) stands where C stood, whether or
+     * not the deletion went through a re-composed word. Found by what the text says, not by an
+     * [EditSession]: a session ends at any unrelated edit or cursor report, while the deletion of a
+     * word the user wrote a moment ago can take many keystrokes (and characters typed after the
+     * word and deleted again). Needs the same evidence as everything else here, checked against the
+     * editor's text: the word is still inside the tracking window, the words before the one being
+     * written are the words that were before C ([context]), and C no longer stands after them
+     * anywhere in the text around the cursor. Null when that can't be verified.
+     */
+    private fun deletedCorrection(
+        typed: String?,
+        context: List<String>? = null,
+    ): Tracked? {
+        if (!learn.open || typed != null && typed.isEmpty()) return null
+        if (!beforeKnown || !beforeAvailable || !afterKnown) return null
+        val now = learn.now()
+        if (memory.size == 0) return null
+        val ctx = context ?: SentenceContext.lastWords(before)
+        return memory.autocorrections(ctx, typed, now).firstOrNull { !standsInText(it) }
+    }
+
+    /** Whether the corrected word of [t] still stands after its context in the cached text. */
+    private fun standsInText(t: Tracked): Boolean {
+        val text = if (after.isEmpty()) before.toString() else "$before $after"
+        val word = t.committed
+        var from = 0
+        while (true) {
+            val i = text.indexOf(word, from, ignoreCase = true)
+            if (i < 0) return false
+            val end = i + word.length
+            val bounded =
+                (i == 0 || !isWordChar(text[i - 1])) &&
+                    (end == text.length || !isWordChar(text[end]))
+            if (bounded && SentenceContext.lastWords(text.substring(0, i)) == t.context) return true
+            from = i + 1
+        }
+    }
+
+    private fun isWordChar(c: Char) = c.isLetterOrDigit() || isApostrophe(c)
+
+    /**
+     * The session that explains how [pre]'s word came to be: the one being edited, or, for a word
+     * written where a deleted corrected word stood, one made from the memory of that correction.
+     */
+    private fun sessionFor(pre: Pre): EditSession? {
+        val current = edit
+        if (current?.tracked != null) return current
+        val t = pre.replacedCorrection ?: return current
+        return EditSession(t.committed, t).also { it.deleted = true }
     }
 
     private fun offered(): List<String> {
@@ -1417,7 +1476,7 @@ internal class PredictiveInput(
             endEdit()
             return null
         }
-        val session = edit
+        val session = sessionFor(pre)
         edit = null
         val isPick = method == Learned.SuggestionPicked || method == Learned.PredictionPicked
         val resolution = resolveEdit(session, committed, isPick)
@@ -1535,7 +1594,7 @@ internal class PredictiveInput(
             endEdit()
             return
         }
-        val session = edit
+        val session = sessionFor(pre)
         edit = null
         resolveEdit(session, words.first(), viaPick = true)
         advancePhrase(words.first(), pre, startWatch = false)
