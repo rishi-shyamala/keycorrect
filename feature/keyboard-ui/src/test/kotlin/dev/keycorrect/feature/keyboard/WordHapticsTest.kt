@@ -145,8 +145,7 @@ class WordHapticsTest {
         type("teh")
         space()
         played.clear()
-        backspace() // undo
-        backspace() // composed again
+        backspace() // undo: composing again
         space() // kept as typed: no buzz about it
         assertThat(played).isEmpty()
     }

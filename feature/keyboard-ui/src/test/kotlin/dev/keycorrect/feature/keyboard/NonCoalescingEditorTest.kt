@@ -69,7 +69,7 @@ class NonCoalescingEditorTest {
         space()
         assertThat(text()).isEqualTo("the ")
         backspace() // the undo is a batch of delete + commit
-        assertThat(text()).isEqualTo("teh ")
+        assertThat(text()).isEqualTo("teh")
         assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
     }
 
@@ -154,7 +154,6 @@ class NonCoalescingRevertTest {
         type("teh")
         space()
         backspace()
-        backspace()
         space()
         assertThat(editor.text.toString()).isEqualTo("teh ")
         assertThat(reverts()).isEmpty()
@@ -166,7 +165,6 @@ class NonCoalescingRevertTest {
     fun undoThenEditingIntoAnotherWordIsEditedLater() {
         type("teh")
         space()
-        backspace()
         backspace()
         backspace()
         type("a")
@@ -182,7 +180,7 @@ class NonCoalescingRevertTest {
         type("teh")
         space()
         backspace()
-        repeat(4) { backspace() }
+        repeat(3) { backspace() }
         assertThat(editor.text.toString()).isEmpty()
         space()
         type("w")

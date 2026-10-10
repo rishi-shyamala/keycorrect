@@ -293,20 +293,95 @@ class PredictiveControllerTest {
     }
 
     @Test
-    fun oneBackspaceUndoesAutocorrectKeepingTheSeparator() {
+    fun oneBackspaceUndoesAutocorrectAndRestoresTheWordAsComposingWithoutTheSeparator() {
         predictor.word("teh", listOf("the"), autocorrect = "the")
         start()
         type("teh")
         space()
         assertThat(text()).isEqualTo("the ")
         backspace()
-        assertThat(text()).isEqualTo("teh ")
-        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
-        // The word is not corrected again: backspace over the space re-composes it, then space.
-        backspace()
+        assertThat(text()).isEqualTo("teh")
         assertThat(editor.composing).isEqualTo("teh")
+        assertThat(editor.cursor).isEqualTo(3)
+        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
+        // The word is not corrected again, and the user's space does not double up.
         space()
         assertThat(text()).isEqualTo("teh ")
+        assertThat(editor.composing).isEmpty()
+    }
+
+    @Test
+    fun theRestoredWordCanBeKeptWithPunctuation() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        controller.onKey(KeyAction.Text("."))
+        assertThat(text()).isEqualTo("teh.")
+    }
+
+    @Test
+    fun theRestoredWordCanBeEditedFurther() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        backspace()
+        backspace()
+        assertThat(editor.composing).isEqualTo("te")
+        type("n")
+        assertThat(text()).isEqualTo("ten")
+        space()
+        assertThat(text()).isEqualTo("ten ")
+    }
+
+    @Test
+    fun theAutocorrectAppliedIsTheTieDecisionTheStripShowed() {
+        // An engine that breaks the tie differently on every decode.
+        var calls = 0
+        val flipping =
+            object : dev.keycorrect.feature.keyboard.prediction.Predictor {
+                override fun predict(
+                    request: dev.keycorrect.core.engineapi.PredictRequest,
+                    stale: () -> Boolean,
+                ): PredictResult {
+                    val pick = if (calls++ % 2 == 0) "test" else "set"
+                    val typed = request.composing.text
+                    return PredictResult(
+                        candidates = listOf(Candidate(pick, -1f, CandidateSource.Dictionary)),
+                        literal = lit(typed),
+                        autocorrect =
+                            if (typed.isEmpty()) null
+                            else Candidate(pick, -1f, CandidateSource.Dictionary),
+                        sequence = request.sequence,
+                    )
+                }
+            }
+        backend.predictor = flipping
+        start()
+        type("tset")
+        val shown = controller.strip.centre?.text
+        val decodesBefore = calls
+        space()
+        assertThat(text()).isEqualTo("$shown ")
+        assertThat(calls - decodesBefore).isAtMost(1) // only the next-word decode, no re-decode
+    }
+
+    @Test
+    fun touchLogIsClearedWhenTheFieldChangesOrInputFinishes() {
+        start()
+        type("hello")
+        space()
+        assertThat(controller.touchLog.size).isGreaterThan(0)
+        controller.onFinishInput()
+        assertThat(controller.touchLog.size).isEqualTo(0)
+        start()
+        type("world")
+        space()
+        assertThat(controller.touchLog.size).isGreaterThan(0)
+        start() // a new field
+        assertThat(controller.touchLog.size).isEqualTo(0)
     }
 
     @Test
@@ -656,6 +731,9 @@ class PredictiveControllerTest {
         space()
         assertThat(text()).isEqualTo("on my way ")
         backspace()
+        assertThat(text()).isEqualTo("omw")
+        assertThat(editor.composing).isEqualTo("omw")
+        space() // kept as typed: not expanded again
         assertThat(text()).isEqualTo("omw ")
     }
 
@@ -901,7 +979,8 @@ class PredictiveControllerTest {
         space()
         assertThat(text()).isEqualTo("😀 the ")
         backspace()
-        assertThat(text()).isEqualTo("😀 teh ")
+        assertThat(text()).isEqualTo("😀 teh")
+        assertThat(editor.composing).isEqualTo("teh")
     }
 
     @Test
@@ -912,7 +991,8 @@ class PredictiveControllerTest {
         space()
         assertThat(text()).isEqualTo("cafe\u0301 ")
         backspace()
-        assertThat(text()).isEqualTo("cafe ")
+        assertThat(text()).isEqualTo("cafe")
+        assertThat(editor.composing).isEqualTo("cafe")
     }
 
     @Test

@@ -198,4 +198,55 @@ class TieRuleTest {
         assertThat(policy.choose(input(true, cand("a", -5f), literalScore = -11f, delta = 1f)))
             .isNull()
     }
+
+    @Test
+    fun defaultTieBreakIsSeededPerWordAndContext() {
+        // Without an injected Random, re-decoding the same literal + context always agrees,
+        // across engine instances, so the separator's autocorrect matches the strip.
+        fun pick(before: String) =
+            ClassicEngine(tied)
+                .predictNow(
+                    PredictRequest(
+                        TypingContext(before = before),
+                        TestKeyboard.typed("tset"),
+                        TestKeyboard.layout,
+                    )
+                )
+                .autocorrect!!
+                .text
+        for (ctx in listOf("", "a ", "so the ", "hello there ")) {
+            val first = pick(ctx)
+            repeat(10) { assertThat(pick(ctx)).isEqualTo(first) }
+        }
+    }
+
+    @Test
+    fun tryFeaturesForReturnsNullWhileTheLockIsHeld() {
+        val engine = ClassicEngine(tied)
+        val request =
+            PredictRequest(TypingContext(), TestKeyboard.typed("tset"), TestKeyboard.layout)
+        assertThat(engine.tryFeaturesFor(request, "tset")).isNotNull()
+        assertThat(engine.tryFeaturesFor(request, "tset"))
+            .isEqualTo(engine.featuresFor(request, "tset"))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val holder = Thread {
+            engine.predictRanked(request) {
+                entered.countDown()
+                release.await()
+                false
+            }
+        }
+        holder.start()
+        try {
+            assertThat(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+            val start = System.nanoTime()
+            assertThat(engine.tryFeaturesFor(request, "tset")).isNull()
+            assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(500)
+        } finally {
+            release.countDown()
+            holder.join(5_000)
+        }
+        assertThat(engine.tryFeaturesFor(request, "tset")).isNotNull()
+    }
 }

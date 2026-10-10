@@ -23,6 +23,12 @@ class AutocorrectInput(
      * (learning may make non-word corrections bolder but never real-word ones).
      */
     val thresholdDelta: Float = 0f,
+    /**
+     * True for a candidate text whose (literal -> candidate) pair the user has repeatedly declined.
+     * A suppressed top candidate vetoes autocorrect for the word (no silent promotion of the next
+     * best); a suppressed runner-up is never picked in a tie.
+     */
+    val isSuppressed: (String) -> Boolean = { false },
 )
 
 /** [chosen] is the correction to apply (or null); [runnerUp] the near-tied alternative, if any. */
@@ -89,6 +95,8 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
             if (top == null) top = c else if (runnerUp == null) runnerUp = c
         }
         if (top == null || !eligible(input, top)) return AutocorrectDecision.None
+        // A declined pair vetoes the word: abstain rather than promote the next-best candidate.
+        if (input.isSuppressed(top.text)) return AutocorrectDecision.None
         var required =
             if (input.literalIsDictionaryWord) {
                 config.realWordMargin + maxOf(input.thresholdDelta, 0f)
@@ -112,6 +120,7 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
                 !known &&
                 gap <= config.tieEpsilon &&
                 eligible(input, runnerUp) &&
+                !input.isSuppressed(runnerUp.text) &&
                 runnerUp.score - input.literalScore >= required &&
                 random.nextBoolean()
         ) {

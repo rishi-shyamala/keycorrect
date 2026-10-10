@@ -142,6 +142,47 @@ class LearningEventsTest {
         assertThat(sink.isSilent).isTrue()
     }
 
+    private fun fieldOf(variation: Int) =
+        FieldProfile.from(InputType.TYPE_CLASS_TEXT or variation, 0)
+
+    @Test
+    fun emailUrlAndPostalAddressFieldsEmitNothing() {
+        for (variation in
+            listOf(
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_URI,
+                InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,
+            )) {
+            sink.events.clear()
+            sink.sentence.clear()
+            start(fieldOf(variation))
+            typeSomeWords()
+            assertThat(sink.isSilent).isTrue()
+            controller.onFinishInput()
+        }
+    }
+
+    @Test
+    fun aPersonNameFieldEmitsEventsButNoSentenceWords() {
+        start(fieldOf(InputType.TYPE_TEXT_VARIATION_PERSON_NAME))
+        typeSomeWords()
+        assertThat(committed()).isNotEmpty()
+        assertThat(sink.sentence).isEmpty()
+    }
+
+    @Test
+    fun aPlainTextFieldStillEmitsSentenceWordsAfterANameField() {
+        start(fieldOf(InputType.TYPE_TEXT_VARIATION_PERSON_NAME))
+        typeSomeWords()
+        controller.onFinishInput()
+        sink.events.clear()
+        start()
+        typeSomeWords()
+        assertThat(committed()).isNotEmpty()
+        assertThat(sink.sentence).isNotEmpty()
+    }
+
     @Test
     fun aNoLearningFieldEmitsNothing() {
         start(textField.copy(learningEnabled = false))
@@ -518,6 +559,48 @@ class LearningEventsTest {
     }
 
     @Test
+    fun theTouchCapIsSevenTenthsOfAKey() {
+        start()
+        controller.onGeometry(KeyboardGeometry(controller.layer, GEO_W, GEO_H))
+        tapKey('t', dxKeys = 0.65f)
+        tapKey('h', dxKeys = -0.75f)
+        tapKey('e', dyKeys = 0.69f)
+        space()
+        val e = committed().single()
+        assertThat(e.touches[0]).isNotNull()
+        assertThat(e.touches[1]).isNull()
+        assertThat(e.touches[2]).isNotNull()
+    }
+
+    @Test
+    fun aWordWithTwoMismatchedPositionsEmitsNoTouchSamples() {
+        start()
+        controller.onGeometry(KeyboardGeometry(controller.layer, GEO_W, GEO_H))
+        predictor.word("tset", listOf("test"), autocorrect = "test")
+        for (c in "tset") tapKey(c)
+        space()
+        type("x") // closes the undo window
+        val e = committed().single()
+        assertThat(e.committed).isEqualTo("test")
+        assertThat(e.touches).hasSize(4)
+        assertThat(e.touches.all { it == null }).isTrue()
+    }
+
+    @Test
+    fun aWordWithOneMismatchedPositionStillEmitsItsTouchSamples() {
+        start()
+        controller.onGeometry(KeyboardGeometry(controller.layer, GEO_W, GEO_H))
+        predictor.word("thr", listOf("the"), autocorrect = "the")
+        tapKey('t')
+        tapKey('h')
+        tapKey('r', onChar = 'e', dxKeys = 0.4f) // meant 'e', registered 'r'
+        space()
+        type("x")
+        val e = committed().single()
+        assertThat(e.touches.all { it != null }).isTrue()
+    }
+
+    @Test
     fun nonTapCharsHaveNoSampleAndCompletionsAlignByPrefix() {
         start()
         controller.onGeometry(KeyboardGeometry(controller.layer, GEO_W, GEO_H))
@@ -543,9 +626,13 @@ class LearningEventsTest {
         type("teh")
         space()
         backspace()
-        assertThat(text()).isEqualTo("teh ")
+        assertThat(text()).isEqualTo("teh")
+        assertThat(editor.composing).isEqualTo("teh")
         assertThat(reverts()).isEmpty() // not yet: the user may be about to edit it
         assertThat(committed()).isEmpty() // and there is no "kept" event for the correction
+        space() // finished unchanged: still held, they could go back to it
+        assertThat(text()).isEqualTo("teh ")
+        assertThat(reverts()).isEmpty()
         type("w") // moves on without touching it: the word is kept as typed
         val r = reverts().single()
         assertThat(r.kind).isEqualTo(RevertKind.ImmediateBackspace)
@@ -561,8 +648,7 @@ class LearningEventsTest {
         start()
         type("teh")
         space()
-        backspace() // undo
-        backspace() // the space: composed again
+        backspace() // undo: the word is composing again, without the space
         assertThat(editor.composing).isEqualTo("teh")
         space() // finished unchanged, but they could still go back to it
         assertThat(text()).isEqualTo("teh ")
@@ -591,8 +677,7 @@ class LearningEventsTest {
         start()
         type("teh")
         space()
-        backspace() // undo: "teh "
-        backspace() // "teh" composed again
+        backspace() // undo: "teh" composing
         backspace() // "te"
         type("a") // "tea": what they meant
         assertThat(reverts()).isEmpty()
@@ -612,7 +697,6 @@ class LearningEventsTest {
         type("teh")
         space()
         backspace()
-        backspace()
         space() // finished unchanged: held
         backspace() // they come back to it
         backspace()
@@ -630,8 +714,7 @@ class LearningEventsTest {
         start()
         type("tset")
         space()
-        backspace()
-        backspace() // "tset" composed again
+        backspace() // "tset" composing again
         predictor.word("tset", listOf("test", "set"))
         type("")
         assertThat(reverts()).isEmpty()
@@ -653,7 +736,6 @@ class LearningEventsTest {
         start()
         type("teh")
         space()
-        backspace()
         backspace()
         backspace()
         backspace()
@@ -699,8 +781,7 @@ class LearningEventsTest {
         start()
         type("teh")
         space()
-        backspace() // "teh "
-        backspace()
+        backspace() // "teh" composing
         space() // not corrected again while they put it back
         assertThat(text()).isEqualTo("teh ")
         type("teh")
@@ -714,7 +795,6 @@ class LearningEventsTest {
         start(settings = KeyboardSettings(incognito = true))
         type("teh")
         space()
-        backspace()
         backspace()
         space()
         assertThat(text()).isEqualTo("teh ")
@@ -838,6 +918,7 @@ class LearningEventsTest {
         type("tset")
         space()
         backspace()
+        space() // kept as typed
         type("x") // moves on: the held-back revert is reported now
         val r = reverts().single()
         assertThat(r.kind).isEqualTo(RevertKind.ImmediateBackspace)
@@ -1099,7 +1180,7 @@ class LearningEventsTest {
         controller.updateDevice(tablet = true, landscape = true)
         start(
             FieldProfile.from(
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME,
                 0,
             )
         )
@@ -1109,7 +1190,7 @@ class LearningEventsTest {
         assertThat(p.device).isEqualTo(DeviceClass.Tablet)
         assertThat(p.landscape).isTrue()
         assertThat(p.layoutKey).isEqualTo("letters@54dp")
-        assertThat(p.field).isEqualTo(FieldClass.Email)
+        assertThat(p.field).isEqualTo(FieldClass.PersonName)
     }
 
     @Test

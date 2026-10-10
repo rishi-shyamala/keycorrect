@@ -137,3 +137,12 @@ internal object Casing {
         return letters >= 2 && literal.all { !it.isLetter() || it.isUpperCase() }
     }
 }
+
+/**
+ * Public view of the decoder's sentence-context extraction, so a module that can see both this and
+ * `core/input` `SentenceContext.lastWords` can pin the two to identical output (core/decoder may
+ * not depend on core/input, so the logic exists twice).
+ */
+object DecoderSentenceContext {
+    fun lastWords(before: String, n: Int): List<String> = Text.lastSentenceWords(before, n)
+}

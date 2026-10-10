@@ -107,6 +107,9 @@ internal class PredictiveInput(
     private var selectionIsRange = false
 
     private var latest: PredictResult? = null
+
+    /** The composing text [latest] was decoded for. */
+    private var latestTyped: String? = null
     private var undo: Undo? = null
 
     /** Words kept as typed by tapping the literal chip; not auto-corrected again this session. */
@@ -210,6 +213,7 @@ internal class PredictiveInput(
             revertedWords.clear()
             locallyBlocked.clear()
             memory.clear()
+            touchLog.clear()
             learn.newSession()
         }
         learn.setField(fieldClass())
@@ -252,6 +256,9 @@ internal class PredictiveInput(
     fun onFinishInput() {
         settleAll()
         resetWordState()
+        // No typed text outlives the field it was typed in.
+        touchLog.clear()
+        memory.clear()
     }
 
     // ------------------------------------------------------------------ keys
@@ -308,6 +315,7 @@ internal class PredictiveInput(
             touches.removeAt(touches.size - 1)
             if (composing.isEmpty()) {
                 edit?.deleted = true
+                if (pendingRevertTracked == null) retypeGuard = null
                 shown.clear()
                 editor.commitText("")
                 loop.advance()
@@ -607,6 +615,7 @@ internal class PredictiveInput(
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
         record(typed, committed, touchList, method)
         wordFeedback(decision, typed, separator, keptAsTyped)
+        if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
 
     /**
@@ -673,7 +682,7 @@ internal class PredictiveInput(
 
     private fun freshResult(typed: String): PredictResult? {
         latest
-            ?.takeIf { it.sequence == loop.sequence }
+            ?.takeIf { it.sequence == loop.sequence && latestTyped == typed }
             ?.let {
                 return it
             }
@@ -692,6 +701,7 @@ internal class PredictiveInput(
             first != null &&
                 first.source == CandidateSource.Shortcut &&
                 first.text != typed &&
+                retypeGuard?.let { sameWord(it, typed) } != true &&
                 backend.shortcutFor(typed)?.autoExpand == true
         ) {
             return first
@@ -715,29 +725,35 @@ internal class PredictiveInput(
     }
 
     /**
-     * Backspace right after a correction: puts the typed word back, keeping the separator. Only
-     * done if the text before the cursor is still exactly what we wrote (UTF-16 units, so emoji and
-     * combining marks count like the editor counts them); returns false, changing nothing, if not
-     * (the cursor moved or the text was edited without us hearing of it yet).
+     * Backspace right after a correction: puts the typed word back as the composing word, with the
+     * cursor at its end and WITHOUT the separator that followed the correction, so the user can
+     * keep it with the next space or punctuation (no double space) or edit it. Only done if the
+     * text before the cursor is still exactly what we wrote (UTF-16 units, so emoji and combining
+     * marks count like the editor counts them); returns false, changing nothing, if not (the cursor
+     * moved or the text was edited without us hearing of it yet).
+     *
+     * The word is then an edit session on the remembered correction, so keep / edit / switch is
+     * classified when it is finished (see [resolveEdit]).
      */
     private fun undoCorrection(u: Undo): Boolean {
         val expected = u.applied + u.separator
         if (editor.textBeforeCursor(expected.length)?.toString() != expected) return false
         editor.batchEdit {
             editor.deleteSurroundingText(expected.length, 0)
-            editor.commitText(u.typed + u.separator)
+            editor.setComposingText(u.typed)
         }
-        if (beforeKnown) {
-            before.setLength(maxOf(0, before.length - expected.length))
-            appendBefore(u.typed + u.separator)
-        }
+        if (beforeKnown) before.setLength(maxOf(0, before.length - expected.length))
+        composing.append(u.typed)
+        repeat(u.typed.length) { touches.add(null) }
         touchLog.markLastReverted(u.applied)
+        edit = null
         u.correction?.let { reportImmediateRevert(it) }
+        val held = u.correction?.tracked
+        if (learn.open && held != null && pendingRevertTracked === held) {
+            edit = EditSession(u.typed, held)
+        }
         retypeGuard = u.typed.lowercase() // after the hold: holding another revert clears it
-        loop.advance()
-        latest = null
-        publish(StripModel.Empty)
-        requestNextWord()
+        requestWord()
         return true
     }
 
@@ -943,6 +959,7 @@ internal class PredictiveInput(
         val visible = result.unblocked()
         latest = visible
         val typed = composing.toString()
+        latestTyped = typed
         publish(
             StripBuilder.build(
                 visible,
@@ -1032,6 +1049,7 @@ internal class PredictiveInput(
         touches.clear()
         record(typed, typed, touchList, CommitMethod.Typed)
         completeWord(typed, typed, Learned.Typed, null, pre, touchList, null, null, false)
+        if (pendingRevertTracked == null) retypeGuard = null
         loop.advance()
         latest = null
         publish(StripModel.Empty)
@@ -1138,6 +1156,7 @@ internal class PredictiveInput(
             canPredict() &&
                 p != null &&
                 p.learningEnabled &&
+                learn.fieldAllowsLearning &&
                 settings.learningEnabled &&
                 !settings.incognito
         val wasOpen = learn.open
@@ -1530,7 +1549,8 @@ internal class PredictiveInput(
      * char the user *meant*: the same position of [committed] (case-insensitively). Same-length
      * words align position by position (autocorrections, substitutions); otherwise only the common
      * prefix and suffix do (completions, insertions, deletions). A touch farther than
-     * [MAX_TOUCH_OFFSET] key sizes from that key isn't plausibly aimed at it and is dropped.
+     * [MAX_TOUCH_OFFSET] key sizes from that key isn't plausibly aimed at it and is dropped. A word
+     * with more than [MAX_MISMATCHED_POSITIONS] mismatched positions yields no samples.
      */
     private fun touchSamples(
         typed: String,
@@ -1557,15 +1577,24 @@ internal class PredictiveInput(
                 suffix++
             }
         }
+        fun aligned(i: Int): Int =
+            when {
+                n == m -> i
+                i < prefix -> i
+                i >= n - suffix -> m - (n - i)
+                else -> -1
+            }
+        // A word with more than one mismatched position (intended != registered) is too unclear
+        // to say which touch was aimed where: no samples at all.
+        var mismatches = 0
+        for (i in 0 until n) {
+            val j = aligned(i)
+            if (j < 0 || typed[i].lowercaseChar() != committed[j].lowercaseChar()) mismatches++
+        }
+        if (mismatches > MAX_MISMATCHED_POSITIONS) return List(n) { null }
         return List(n) { i ->
             val touch = touchList.getOrNull(i) ?: return@List null
-            val j =
-                when {
-                    n == m -> i
-                    i < prefix -> i
-                    i >= n - suffix -> m - (n - i)
-                    else -> -1
-                }
+            val j = aligned(i)
             if (j < 0) return@List null
             val intended = committed[j].lowercaseChar()
             val key = keyByChar[intended] ?: return@List null
@@ -1712,7 +1741,10 @@ internal class PredictiveInput(
         const val ADD_WORD_PROMPT_MS = 3_000L
         const val NEVER_PROMPT_MS = 10_000L
         const val MAX_BLOCKED = 32
-        const val MAX_TOUCH_OFFSET = 1.2f
+        const val MAX_TOUCH_OFFSET = 0.7f
+
+        /** Most positions of a word where the intended char differs from the one registered. */
+        const val MAX_MISMATCHED_POSITIONS = 1
 
         /** A truncated cache shorter than this is re-read before it is trusted. */
         const val MIN_TRUSTED_BEFORE = 32

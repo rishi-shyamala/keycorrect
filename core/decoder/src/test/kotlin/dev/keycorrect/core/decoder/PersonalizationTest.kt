@@ -184,12 +184,16 @@ class PersonalizationTest {
     }
 
     @Test
-    fun suppressedPairIsNeverAutocorrectedButStaysInTheStrip() {
+    fun suppressedTopPairVetoesAutocorrectButStaysInTheStrip() {
         val dict = tieDict(12_000)
+        // "test" is the top candidate; its pair is suppressed -> abstain, "set" is NOT promoted.
         val p = Fake(suppressed = { t, c -> t == "tset" && c == "test" })
         val r = engine(p, dict).predictNow(typed("tset"))
-        assertThat(r.texts()).contains("test")
-        assertThat(r.autocorrect?.text).isEqualTo("set")
+        assertThat(r.texts()).containsAtLeast("test", "set")
+        assertThat(r.autocorrect).isNull()
+        // Suppressing only the runner-up leaves the top correction intact.
+        val q = Fake(suppressed = { t, c -> t == "tset" && c == "set" })
+        assertThat(engine(q, dict).predictNow(typed("tset")).autocorrect?.text).isEqualTo("test")
         val both = Fake(suppressed = { t, _ -> t == "tset" })
         val none = engine(both, dict).predictNow(typed("tset"))
         assertThat(none.texts()).containsAtLeast("test", "set")

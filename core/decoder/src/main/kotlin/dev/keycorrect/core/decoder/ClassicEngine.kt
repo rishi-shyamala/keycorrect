@@ -12,6 +12,8 @@ import dev.keycorrect.core.engineapi.PredictiveEngine
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.RankingFeatures
 import dev.keycorrect.core.learning.contextBucket
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.math.ln
 import kotlin.random.Random
 
@@ -69,7 +71,7 @@ class ClassicEngine(
     private val isStale: () -> Boolean = { false },
     private val personalization: () -> Personalization = { Personalization.None },
     private val touchKey: () -> String? = { null },
-    private val random: Random = Random(System.nanoTime()),
+    private val random: Random? = null,
 ) : PredictiveEngine {
     /** The autocorrect policy; adjust [AutocorrectPolicy.threshold] to tune aggressiveness. */
     val autocorrectPolicy = AutocorrectPolicy(config.autocorrect)
@@ -106,6 +108,8 @@ class ClassicEngine(
     private val nextLogProbs = FloatArray(MAX_NEXT_WORDS)
     private val phraseIds = IntArray(1)
     private val phraseLogProbs = FloatArray(1)
+
+    private val lock = ReentrantLock()
 
     // Per-decode personalization state (set under the predictRanked lock).
     private var pers: Personalization = Personalization.None
@@ -150,8 +154,22 @@ class ClassicEngine(
      * the learning layer's `Preference` updates. `rank` is the candidate's position before the
      * learned ranker score was added.
      */
-    @Synchronized
-    fun featuresFor(request: PredictRequest, candidateText: String): RankingFeatures? {
+    fun featuresFor(request: PredictRequest, candidateText: String): RankingFeatures? =
+        lock.withLock {
+            featuresLocked(request, candidateText)
+        }
+
+    /** Like [featuresFor] but returns null immediately if a decode currently holds the lock. */
+    fun tryFeaturesFor(request: PredictRequest, text: String): RankingFeatures? {
+        if (!lock.tryLock()) return null
+        try {
+            return featuresLocked(request, text)
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun featuresLocked(request: PredictRequest, candidateText: String): RankingFeatures? {
         val wide =
             if (request.maxCandidates < FEATURE_POOL) request.copy(maxCandidates = FEATURE_POOL)
             else request
@@ -179,6 +197,17 @@ class ClassicEngine(
             rank = c.rank,
         )
 
+    /**
+     * A per-word seeded tie-breaker: re-decoding the same literal in the same context always
+     * resolves a tie the same way, so the autocorrect applied at the separator matches the strip.
+     */
+    private fun wordRandom(literal: String, before: CharSequence): Random {
+        var h = literal.hashCode()
+        val from = maxOf(0, before.length - TIE_CONTEXT_CHARS)
+        for (i in from until before.length) h = h * 31 + before[i].code
+        return Random(h)
+    }
+
     private fun rankerScore(c: RankedCandidate, isUserWord: Boolean): Float {
         val v = pers.rankerScore(featuresOf(c, isUserWord))
         return if (v.isFinite()) v else 0f
@@ -197,8 +226,15 @@ class ClassicEngine(
     }
 
     /** Like [predictNow] but keeps each candidate's [ScoreBreakdown] for the learning layer. */
-    @Synchronized
-    fun predictRanked(request: PredictRequest, stale: () -> Boolean = isStale): RankedPrediction {
+    fun predictRanked(request: PredictRequest, stale: () -> Boolean = isStale): RankedPrediction =
+        lock.withLock {
+            predictRankedLocked(request, stale)
+        }
+
+    private fun predictRankedLocked(
+        request: PredictRequest,
+        stale: () -> Boolean,
+    ): RankedPrediction {
         if (stale()) return RankedPrediction.Empty
         pers = personalization()
         active = pers !== Personalization.None
@@ -321,23 +357,21 @@ class ClassicEngine(
             ) {
                 AutocorrectDecision(pronoun, null)
             } else {
-                // Suppressed pairs stay in the strip but are not eligible for autocorrect.
+                // Suppressed pairs stay in the strip but veto autocorrect for this word.
                 autocorrectPolicy.decide(
                     AutocorrectInput(
                         literal = text,
                         literalScore = literal.score,
                         literalIsDictionaryWord = literalNode >= 0,
                         literalIsUserWord = literalIsUser,
-                        candidates =
-                            ranked.filter {
-                                it.text != text && !(active && pers.isSuppressed(text, it.text))
-                            },
+                        candidates = ranked.filter { it.text != text },
                         field = field,
                         allowed = request.autocorrectAllowed,
                         sentenceInitial = sentenceInitial,
                         thresholdDelta = if (active) pers.autocorrectThresholdDelta else 0f,
+                        isSuppressed = { active && pers.isSuppressed(text, it) },
                     ),
-                    random,
+                    random ?: wordRandom(text, request.context.before),
                 )
             }
         val autocorrect = decision.chosen
@@ -613,6 +647,7 @@ class ClassicEngine(
         const val ID = "classic"
         private const val MAX_NEXT_WORDS = 16
         private const val FEATURE_POOL = 16
+        private const val TIE_CONTEXT_CHARS = 64
         private const val EXCLUDED_FLAGS = WordFlags.POSSIBLY_OFFENSIVE or WordFlags.NOT_A_WORD
 
         /** Best score first; ties by source, then word id, then text: fully deterministic. */

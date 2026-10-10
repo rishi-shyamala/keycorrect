@@ -92,15 +92,24 @@ internal class LearningRecorder(
     /** Wall-clock time, for event stamps. */
     fun stamp(): Long = wallClock()
 
+    /** False in e-mail, URL and postal-address fields: nothing is learned there. */
+    val fieldAllowsLearning: Boolean
+        get() = fieldClass !in NO_EVENT_FIELDS
+
     fun emit(event: LearningEvent) {
-        if (open) sink.onEvent(event)
+        if (open && fieldAllowsLearning) sink.onEvent(event)
     }
 
     fun sentenceWord(word: String, sentenceEnd: Boolean) {
-        if (sentenceOpen) sink.onSentenceWord(sessionId, word, sentenceEnd, wallClock())
+        if (sentenceOpen && fieldAllowsLearning && fieldClass != FieldClass.PersonName) {
+            sink.onSentenceWord(sessionId, word, sentenceEnd, wallClock())
+        }
     }
 
     companion object {
+        private val NO_EVENT_FIELDS =
+            setOf(FieldClass.Email, FieldClass.Url, FieldClass.PostalAddress)
+
         const val DEFAULT_LAYOUT_KEY = "qwerty@54dp"
     }
 }
