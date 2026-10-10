@@ -40,8 +40,9 @@ data class StripSlot(
 /**
  * The suggestion strip's content: three equal slots, the centre one being the candidate that would
  * be applied. [addWord] is the transient "Add “word” to dictionary" prompt, which takes the strip
- * over while it is non-null. Data-class equality is what keeps the strip from recomposing unless
- * something visible changed.
+ * over while it is non-null; so does [neverSuggest], the inline confirmation shown after a long
+ * press on a suggestion ("Never suggest “word”? Yes / Cancel"), which wins over [addWord].
+ * Data-class equality is what keeps the strip from recomposing unless something visible changed.
  */
 @Immutable
 data class StripModel(
@@ -49,11 +50,20 @@ data class StripModel(
     val centre: StripSlot? = null,
     val right: StripSlot? = null,
     val addWord: String? = null,
+    val neverSuggest: String? = null,
 ) {
     val isEmpty: Boolean
-        get() = left == null && centre == null && right == null && addWord == null
+        get() =
+            left == null &&
+                centre == null &&
+                right == null &&
+                addWord == null &&
+                neverSuggest == null
 
     fun withAddWord(word: String?): StripModel = if (word == addWord) this else copy(addWord = word)
+
+    fun withNeverSuggest(word: String?): StripModel =
+        if (word == neverSuggest) this else copy(neverSuggest = word)
 
     companion object {
         val Empty = StripModel()
@@ -73,6 +83,15 @@ internal object StripLabels {
     fun shortcut(text: String) = "Shortcut expansion: $text"
 
     fun addWord(word: String) = "Add $word to dictionary"
+
+    fun neverSuggestPrompt(word: String) = "Never suggest $word? Yes or cancel"
+
+    fun neverSuggestYes(word: String) = "Yes, never suggest $word"
+
+    fun neverSuggestCancel() = "Cancel, keep suggesting"
+
+    /** The long-click action label of a suggestion slot. */
+    fun neverSuggestAction(word: String) = "Never suggest $word"
 }
 
 /** Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested. */

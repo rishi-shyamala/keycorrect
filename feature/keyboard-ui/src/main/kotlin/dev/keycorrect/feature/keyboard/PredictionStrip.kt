@@ -1,6 +1,8 @@
 package dev.keycorrect.feature.keyboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -14,11 +16,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,39 +50,129 @@ internal fun PredictionStrip(
     onSlot: (StripSlot) -> Unit,
     onAddWord: () -> Unit,
     modifier: Modifier = Modifier,
+    onSlotLongPress: (StripSlot) -> Unit = {},
+    onNeverYes: () -> Unit = {},
+    onNeverCancel: () -> Unit = {},
+    canBlock: () -> Boolean = { false },
 ) {
     val model = strip()
     if (model.isEmpty) return
+    val never = model.neverSuggest
+    if (never != null) {
+        NeverSuggestPrompt(never, onNeverYes, onNeverCancel, modifier)
+        return
+    }
     val word = model.addWord
     if (word != null) {
         AddWordChip(word, onAddWord, modifier)
         return
     }
+    val blockable = canBlock()
     Row(modifier = modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        Slot(model.left, onSlot)
-        Slot(model.centre, onSlot)
-        Slot(model.right, onSlot)
+        Slot(model.left, onSlot, onSlotLongPress, blockable)
+        Slot(model.centre, onSlot, onSlotLongPress, blockable)
+        Slot(model.right, onSlot, onSlotLongPress, blockable)
+    }
+}
+
+/**
+ * The inline "Never suggest “x”? Yes / Cancel" confirmation that takes over the strip after a long
+ * press. No dialog or window: it is announced as a polite live region and both answers are plain
+ * buttons, so TalkBack reads the question and offers the two answers.
+ */
+@Composable
+private fun NeverSuggestPrompt(
+    word: String,
+    onYes: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier =
+            modifier.fillMaxSize().semantics {
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = StripLabels.neverSuggestPrompt(word)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Never suggest “$word”?",
+            modifier = Modifier.weight(1f).padding(horizontal = SlotPadding),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        PromptButton("Yes", StripLabels.neverSuggestYes(word), onYes)
+        PromptButton("Cancel", StripLabels.neverSuggestCancel(), onCancel)
     }
 }
 
 @Composable
-private fun RowScope.Slot(slot: StripSlot?, onSlot: (StripSlot) -> Unit) {
+private fun PromptButton(label: String, description: String, onClick: () -> Unit) {
+    Box(
+        modifier =
+            Modifier.fillMaxHeight()
+                .clip(RoundedCornerShape(SlotCorner))
+                .clickable(role = Role.Button, onClick = onClick)
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    role = Role.Button
+                    onClick {
+                        onClick()
+                        true
+                    }
+                }
+                .padding(horizontal = PromptButtonPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RowScope.Slot(
+    slot: StripSlot?,
+    onSlot: (StripSlot) -> Unit,
+    onLongPress: (StripSlot) -> Unit,
+    blockable: Boolean,
+) {
     val base = Modifier.weight(1f).fillMaxHeight()
     if (slot == null) {
         Box(base)
         return
     }
+    val canBlockSlot =
+        blockable && (slot.kind == SlotKind.Suggestion || slot.kind == SlotKind.Autocorrect)
     Box(
         modifier =
             base
                 .clip(RoundedCornerShape(SlotCorner))
-                .clickable(role = Role.Button) { onSlot(slot) }
+                .combinedClickable(
+                    role = Role.Button,
+                    onLongClick = if (canBlockSlot) ({ onLongPress(slot) }) else null,
+                    onClick = { onSlot(slot) },
+                )
                 .clearAndSetSemantics {
                     contentDescription = slot.description
                     role = Role.Button
                     onClick {
                         onSlot(slot)
                         true
+                    }
+                    if (canBlockSlot) {
+                        val label = StripLabels.neverSuggestAction(slot.insert)
+                        onLongClick(label) {
+                            onLongPress(slot)
+                            true
+                        }
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(label) {
+                                    onLongPress(slot)
+                                    true
+                                }
+                            )
                     }
                 }
                 .padding(horizontal = SlotPadding),
@@ -138,3 +236,4 @@ private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier)
 private const val PHRASE_HINT = " →"
 private val SlotCorner = 8.dp
 private val SlotPadding = 6.dp
+private val PromptButtonPadding = 14.dp

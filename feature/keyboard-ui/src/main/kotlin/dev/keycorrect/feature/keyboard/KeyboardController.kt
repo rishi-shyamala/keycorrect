@@ -19,6 +19,8 @@ import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardLayer
 import dev.keycorrect.core.layout.KeyboardSet
+import dev.keycorrect.core.learning.DeviceClass
+import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
@@ -45,6 +47,8 @@ class KeyboardController(
     private val composer: KeyboardComposer,
     prediction: PredictionEnvironment = PredictionEnvironment.Disabled,
     private val clock: () -> Long = SystemClock::uptimeMillis,
+    learning: LearningSink = LearningSink.None,
+    wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
@@ -66,7 +70,8 @@ class KeyboardController(
     var strip: StripModel by mutableStateOf(StripModel.Empty)
         private set
 
-    private val input = PredictiveInput(tracked, prediction) { strip = it }
+    private val input =
+        PredictiveInput(tracked, prediction, { strip = it }, learning, clock, wallClock)
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog
@@ -128,6 +133,7 @@ class KeyboardController(
         val newOptions = composeOptions(profile, settings)
         if (sameField) {
             applyOptions(newOptions)
+            updateLayoutKey()
             updateAutoCapitalize()
             return
         }
@@ -150,6 +156,7 @@ class KeyboardController(
         state = KeyboardState(layerId)
         layer = composer.compose(keyboardSet, layerId, variant, options)
         heightUnits = referenceHeightUnits()
+        updateLayoutKey()
         updateAutoCapitalize()
     }
 
@@ -158,6 +165,7 @@ class KeyboardController(
         this.settings = settings
         input.updateSettings(settings)
         applyOptions(composeOptions(profile, settings))
+        updateLayoutKey()
         if (!settings.autoCapitalize && state.shift == ShiftState.Auto) {
             state = state.withAutoShift(false)
         } else {
@@ -211,6 +219,7 @@ class KeyboardController(
                 shiftChorded = false
                 state = state.withLayer(action.layerId)
                 layer = next
+                updateLayoutKey()
                 updateAutoCapitalize()
             }
             KeyAction.None -> Unit
@@ -288,6 +297,43 @@ class KeyboardController(
 
     /** The "Add word to dictionary" prompt was tapped. */
     fun onAddWordTap() = input.onAddWordTap()
+
+    /**
+     * A suggestion was long-pressed: asks, inline in the strip, whether to never suggest it. Does
+     * nothing where learning is off (see [canBlockSuggestions]).
+     */
+    fun onSuggestionLongPress(slot: StripSlot) = input.onSuggestionLongPress(slot)
+
+    /** "Yes" on the never-suggest prompt. */
+    fun onNeverSuggestConfirm() = input.onNeverConfirm()
+
+    /** "Cancel" on the never-suggest prompt. */
+    fun onNeverSuggestCancel() = input.onNeverCancel()
+
+    /** Whether a long press on a suggestion can block it (false while learning is off). */
+    val canBlockSuggestions: Boolean
+        get() = input.canBlockSuggestions
+
+    /**
+     * Tells the learning events what device the keyboard runs on: [tablet] from the host's screen
+     * class, [hardwareKeyboard] when a physical keyboard is attached (it wins), [landscape] from
+     * the configuration. Call on start and whenever the configuration changes.
+     */
+    fun updateDevice(tablet: Boolean, landscape: Boolean, hardwareKeyboard: Boolean = false) {
+        val device =
+            when {
+                hardwareKeyboard -> DeviceClass.HardwareKeyboard
+                tablet -> DeviceClass.Tablet
+                else -> DeviceClass.Phone
+            }
+        input.setDevice(device, landscape)
+    }
+
+    /** Layer (and number row) plus key height: touch offsets are only comparable within one. */
+    private fun updateLayoutKey() {
+        val rows = if (options.numberRow) "+nr" else ""
+        input.setLayoutKey("${state.layerId}$rows@${settings.keyHeightDp}dp")
+    }
 
     /** A key is committed while shift is held: shift applies to it and is released as a chord. */
     private fun markChord() {
