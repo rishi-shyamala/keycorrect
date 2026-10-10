@@ -49,6 +49,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
             phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
             autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
+            learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
+            sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
+            incognito = this[INCOGNITO] ?: d.incognito,
         )
     }
 
@@ -69,6 +72,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
         this[PHRASE_COMPLETION] = s.phraseCompletion
         this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
+        this[LEARNING_ENABLED] = s.learningEnabled
+        this[SENTENCE_BUFFER_ENABLED] = s.sentenceBufferEnabled
+        this[INCOGNITO] = s.incognito
     }
 
     private companion object {
@@ -88,5 +94,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
         val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
         val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
+        val LEARNING_ENABLED = booleanPreferencesKey("learning_enabled")
+        val SENTENCE_BUFFER_ENABLED = booleanPreferencesKey("sentence_buffer_enabled")
+        val INCOGNITO = booleanPreferencesKey("incognito")
     }
 }

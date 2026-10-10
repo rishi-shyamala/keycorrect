@@ -29,6 +29,15 @@ data class KeyboardSettings(
     val phraseCompletion: Boolean = true,
     /** Insert a space after picking a suggestion. */
     val autoSpaceAfterPick: Boolean = true,
+    /** Learn from typing (docs/PLAN.md §6). Off = base models only, nothing recorded. */
+    val learningEnabled: Boolean = true,
+    /**
+     * Keep recent non-sensitive sentences (7 days, encrypted) for on-device model training
+     * (decision D10).
+     */
+    val sentenceBufferEnabled: Boolean = true,
+    /** Pause all learning and history until turned off. */
+    val incognito: Boolean = false,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
