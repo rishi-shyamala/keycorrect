@@ -68,6 +68,7 @@ internal fun KeyboardSurface(
     onGeometry: (KeyboardGeometry) -> Unit,
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") gestures: KeyGestures, // wired in PR A (spacebar, backspace)
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme

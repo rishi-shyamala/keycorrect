@@ -88,6 +88,7 @@ fun KeyboardScreen(
                         onGeometry = onGeometry,
                         onShiftDown = onShiftDown,
                         onShiftUp = onShiftUp,
+                        gestures = controller.gestures,
                     )
                     KeySemantics(
                         layer = layer,
