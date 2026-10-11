@@ -144,6 +144,17 @@ class EditorSession(
         }
     }
 
+    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? =
+        connection()
+            ?.takeIf { readsAllowed() }
+            ?.getSurroundingText(beforeLength, afterLength, 0)
+            ?.takeIf {
+                it.offset >= 0 &&
+                    it.selectionStart in 0..it.selectionEnd &&
+                    it.selectionEnd <= it.text.length
+            }
+            ?.let { Surrounding(it.text, it.selectionStart, it.selectionEnd, it.offset) }
+
     private fun sendKey(ic: InputConnection, keyCode: Int, metaState: Int = 0) {
         ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode, metaState))
         ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode, metaState))

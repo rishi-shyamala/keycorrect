@@ -7,6 +7,7 @@ import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.input.EditAction
 import dev.keycorrect.core.input.Graphemes
+import dev.keycorrect.core.input.Surrounding
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.feature.keyboard.prediction.DecoderLoop
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
@@ -260,6 +261,13 @@ internal class SimEditor : TextEditor {
             EditAction.SelectAll -> setSelection(0, text.length)
         }
         return true
+    }
+
+    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? {
+        readCalls++
+        val from = maxOf(0, selStart - beforeLength)
+        val to = minOf(text.length, selEnd + afterLength)
+        return Surrounding(text.substring(from, to), selStart - from, selEnd - from, from)
     }
 
     override fun selectedText(maxChars: Int): CharSequence? {

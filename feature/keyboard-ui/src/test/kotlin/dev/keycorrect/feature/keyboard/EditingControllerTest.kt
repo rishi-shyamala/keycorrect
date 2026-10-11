@@ -568,6 +568,18 @@ class EditingControllerTest {
         assertThat(controller.editing.sendSelectionToEngine()).isTrue()
         assertThat(sent).containsExactly("hello")
     }
+
+    @Test
+    fun backspaceSwipeStartsFromTheEditorsCursorEvenWhenTheLastReportIsBehind() {
+        // On a device the delete-on-press is reported after the swipe may already have begun.
+        start("foo bar baz")
+        editor.onOperation = null // the platform hasn't reported the delete yet
+        controller.onKey(KeyAction.Backspace)
+        assertThat(editor.text.toString()).isEqualTo("foo bar ba")
+        controller.gestures.onBackspaceSwipe(1)
+        assertThat(editor.selected).isEqualTo("ba")
+        assertThat(editor.selections.last()).isEqualTo(8 to 10)
+    }
 }
 
 class TextUnitsTest {

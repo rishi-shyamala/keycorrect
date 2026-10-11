@@ -1,5 +1,26 @@
 package dev.keycorrect.core.input
 
+/**
+ * Text around the selection ([TextEditor.surroundingText]): [text] starts at field offset [offset];
+ * the selection is [selectionStart] until [selectionEnd] within [text].
+ */
+data class Surrounding(
+    val text: CharSequence,
+    val selectionStart: Int,
+    val selectionEnd: Int,
+    val offset: Int,
+) {
+    /** The selection's start and end in the field. */
+    val fieldStart: Int
+        get() = offset + selectionStart
+
+    val fieldEnd: Int
+        get() = offset + selectionEnd
+
+    val collapsed: Boolean
+        get() = selectionStart == selectionEnd
+}
+
 /** The editor's context-menu actions the keyboard can trigger ([TextEditor.contextMenuAction]). */
 enum class EditAction {
     Cut,
@@ -74,6 +95,14 @@ interface TextEditor {
      * say, or the field is sensitive. A blocking IPC, like [textBeforeCursor].
      */
     fun selectedText(maxChars: Int): CharSequence?
+
+    /**
+     * Up to [beforeLength] chars before the selection, the selection, and up to [afterLength] after
+     * it, with where the selection is, read in one call (`getSurroundingText`). Unlike the last
+     * `onUpdateSelection`, this is never behind the editor. Null in sensitive fields, when the
+     * editor doesn't say, or when it doesn't know the text's position in the field.
+     */
+    fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding?
 
     /**
      * The auto-capitalisation mode at the cursor, as `InputConnection.getCursorCapsMode` returns:

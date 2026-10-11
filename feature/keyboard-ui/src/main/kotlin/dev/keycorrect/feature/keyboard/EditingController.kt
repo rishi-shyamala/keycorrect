@@ -202,13 +202,19 @@ internal class EditingController(
         }
     }
 
+    /**
+     * Read from the editor itself, not from the last selection callback: the delete-on-press just
+     * before the swipe may not have been reported yet.
+     */
     private fun readOrigin(): Swipe? {
-        val sel = selection()
-        if (sensitive() || !sel.known || !sel.collapsed) return null
+        if (sensitive()) return null
         endComposing()
-        val before = editor.textBeforeCursor(SWIPE_CONTEXT_CHARS)
-        return if (before == null || before.length > sel.selStart) null
-        else Swipe(sel.selStart, before)
+        return editor
+            .surroundingText(SWIPE_CONTEXT_CHARS, 0)
+            ?.takeIf { it.collapsed }
+            ?.let {
+                Swipe(it.fieldStart, it.text.subSequence(0, it.selectionStart))
+            }
     }
 
     // ------------------------------------------------------------------ editing panel
@@ -265,13 +271,13 @@ internal class EditingController(
      * selected. False where nothing was changed.
      */
     fun cycleCase(): Boolean {
-        val range = selectedRange()
-        val next = selectedTextOf(range)?.let { text -> CaseCycle.next(text).takeIf { it != text } }
-        if (range == null || next == null) return false
+        val selected = readSelected()
+        val next = selected?.let { CaseCycle.next(it.text).takeIf { n -> n != it.text } }
+        if (selected == null || next == null) return false
         endComposing()
         editor.batchEdit {
             editor.commitText(next, 1)
-            editor.setSelection(range.start, range.start + next.length)
+            editor.setSelection(selected.range.start, selected.range.start + next.length)
         }
         return true
     }
@@ -285,7 +291,7 @@ internal class EditingController(
     /** Hands the selected text to the engine hook. Does nothing until Phase 7 switches it on. */
     fun sendSelectionToEngine(): Boolean {
         val hook = engineHook?.takeIf { engineHookEnabled }
-        return hook?.let { send -> selectedTextOf(selectedRange())?.also(send) } != null
+        return hook?.let { send -> readSelected()?.text?.also(send) } != null
     }
 
     /** Forgets what belongs to one field: the select mode and any swipe under way. */
@@ -296,36 +302,29 @@ internal class EditingController(
         swipeActive = false
     }
 
-    private fun selectedRange(): TextSpan? {
-        val sel = selection()
-        return if (sensitive() || !sel.known || sel.collapsed) null
-        else TextSpan(sel.selStart, sel.selEnd)
-    }
+    /** The selected range and its text, read from the editor; null where nothing is selected. */
+    private class Selected(val range: TextSpan, val text: String)
 
-    /** The text of [range], or null where it can't be read in full. */
-    private fun selectedTextOf(range: TextSpan?): String? {
-        val text = range?.let { editor.selectedText(MAX_SELECTION_CHARS)?.toString() }
-        return text?.takeIf { it.length == range.end - range.start }
-    }
+    private fun readSelected(): Selected? =
+        editor
+            .takeIf { !sensitive() }
+            ?.surroundingText(0, 0)
+            ?.takeIf { !it.collapsed && it.selectionEnd - it.selectionStart <= MAX_SELECTION_CHARS }
+            ?.let {
+                Selected(
+                    TextSpan(it.fieldStart, it.fieldEnd),
+                    it.text.subSequence(it.selectionStart, it.selectionEnd).toString(),
+                )
+            }
 
     /** The text around the selection, and where the selection is in it; null where unreadable. */
     private class Window(val text: String, val base: Int, val start: Int, val end: Int)
 
-    private fun readWindow(): Window? {
-        val sel = selection()
-        if (sensitive() || !sel.known) return null
-        val before = editor.textBeforeCursor(CONTEXT_CHARS)?.toString()
-        val selected = if (sel.collapsed) "" else selectedTextOf(TextSpan(sel.selStart, sel.selEnd))
-        val after = editor.textAfterCursor(CONTEXT_CHARS)?.toString()
-        val parts =
-            if (before != null && selected != null && after != null) Triple(before, selected, after)
-            else null
-        return parts
-            ?.takeIf { it.first.length <= sel.selStart }
-            ?.let { (b, s, a) ->
-                Window(b + s + a, sel.selStart - b.length, b.length, b.length + s.length)
-            }
-    }
+    private fun readWindow(): Window? =
+        editor
+            .takeIf { !sensitive() }
+            ?.surroundingText(CONTEXT_CHARS, CONTEXT_CHARS)
+            ?.let { Window(it.text.toString(), it.offset, it.selectionStart, it.selectionEnd) }
 
     /**
      * Selects what [expand] makes of the selection (or the cursor) and the text around it (the text
@@ -348,6 +347,7 @@ internal class EditingController(
 
         /** How far around the selection words, sentences and lines are looked for. */
         const val CONTEXT_CHARS = 1000
+        /** Longer selections are left alone by the case change and the engine hook. */
         const val MAX_SELECTION_CHARS = 4000
     }
 }
