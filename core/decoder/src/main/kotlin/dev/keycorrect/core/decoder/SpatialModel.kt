@@ -23,9 +23,18 @@ fun interface TouchCorrection {
 }
 
 /**
+ * Learned per-key mean touch offset in key units (fractions of the key's width and height), e.g.
+ * from `Personalization.touchOffset`; null where nothing is learned for [key].
+ */
+fun interface KeyUnitOffsets {
+    fun offset(key: Char): Pair<Float, Float>?
+}
+
+/**
  * Per-key 2D Gaussian touch model for one layout (§4.4). Each key's mean is its centre plus the
- * learned offset; sigma is a fraction of its size. Likelihoods are relative: a touch at the centre
- * scores 0, so word scores are comparable regardless of word length.
+ * learned offset ([correction] in pixels, [unitOffsets] in key sizes); sigma is a fraction of its
+ * size. Likelihoods are relative: a touch at the centre scores 0, so word scores are comparable
+ * regardless of word length.
  *
  * Lookups are case-insensitive and accented letters use the key of their base letter with an accent
  * penalty. Immutable after construction, hence shareable between threads.
@@ -34,6 +43,7 @@ class SpatialModel(
     keys: List<KeySpec>,
     val config: SpatialConfig = SpatialConfig(),
     correction: TouchCorrection = TouchCorrection.Identity,
+    unitOffsets: KeyUnitOffsets? = null,
 ) {
     private val slotCount: Int
     private val meanX: FloatArray
@@ -56,8 +66,9 @@ class SpatialModel(
         var s = 0
         for ((c, key) in byChar) {
             val adj = correction.adjust(c)
-            meanX[s] = key.centerX + adj.dx
-            meanY[s] = key.centerY + adj.dy
+            val unit = unitOffsets?.offset(c)
+            meanX[s] = key.centerX + adj.dx + (unit?.first ?: 0f) * key.width
+            meanY[s] = key.centerY + adj.dy + (unit?.second ?: 0f) * key.height
             invSigmaX[s] =
                 1f / (config.sigmaXFactor * key.width * adj.sigmaScale).coerceAtLeast(EPS)
             invSigmaY[s] =
@@ -149,12 +160,32 @@ internal class SpatialModelCache(private val config: SpatialConfig, private val 
                 size > capacity
         }
     private var correction: TouchCorrection? = null
+    private var unitOwner: Any? = null
+    private var unitTag: String? = null
 
-    fun get(layout: KeyLayoutModel, correction: TouchCorrection): SpatialModel {
-        if (this.correction !== correction) {
+    /**
+     * [unitOwner] and [unitTag] identify where [unitOffsets] come from (the personalization
+     * snapshot and its touch profile): models are rebuilt when either changes.
+     */
+    fun get(
+        layout: KeyLayoutModel,
+        correction: TouchCorrection,
+        unitOffsets: KeyUnitOffsets? = null,
+        unitOwner: Any? = null,
+        unitTag: String? = null,
+    ): SpatialModel {
+        if (
+            this.correction !== correction ||
+                this.unitOwner !== unitOwner ||
+                this.unitTag != unitTag
+        ) {
             models.clear()
             this.correction = correction
+            this.unitOwner = unitOwner
+            this.unitTag = unitTag
         }
-        return models.getOrPut(layout.id) { SpatialModel(layout.keys, config, correction) }
+        return models.getOrPut(layout.id) {
+            SpatialModel(layout.keys, config, correction, unitOffsets)
+        }
     }
 }

@@ -6,8 +6,14 @@ import dev.keycorrect.core.data.ShortcutMode
 import dev.keycorrect.core.data.ShortcutSnapshot
 import dev.keycorrect.core.data.ShortcutStore
 import dev.keycorrect.core.data.UserDictionaryStore
+import dev.keycorrect.core.data.UserWordSnapshot
+import dev.keycorrect.core.decoder.AutocorrectConfig
+import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
+import dev.keycorrect.core.learning.Personalization
+import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
+import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.Predictor
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
@@ -18,6 +24,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Connects the keyboard to the app's prediction data: the memory-mapped base dictionary, the user's
@@ -28,6 +36,19 @@ import kotlinx.coroutines.launch
  * The dictionary is mapped straight from the uncompressed asset, so it costs address space, not
  * heap. User words and shortcuts are read from the stores' in-memory snapshots, which are replaced
  * (never mutated) when the data changes, as [ClassicEngine] expects.
+ *
+ * Learning (docs/PLAN.md §6): with a [learning] host the engine personalises every decode with
+ * `learning.personalization()` (a fresh immutable model snapshot per call: the engine caches its
+ * spatial models per snapshot instance, so a stable view would never pick up learned touch
+ * offsets), using [touchKey] to select the touch profile of the layout on screen. The host's model
+ * also gets its ranking feature provider, which asks the engine for a candidate's features.
+ *
+ * Thread-safety of that provider: it runs on the learning thread only, and `featuresFor` takes the
+ * same lock as typing decodes. So it is skipped (returns null; the model keeps the preference and
+ * retries after a pause, see [LearningHost.onRankingDeferred]) while a typing decode is running or
+ * ran within [DecodeActivity.QUIET_NANOS], and capped at [DecodeBudget.MAX_CALLS] decodes per
+ * second. A keystroke can therefore wait for at most one learning decode, started when typing was
+ * idle. Call [close] when the service goes away so the singleton model drops the engine.
  */
 class PredictionHost(
     private val assets: AssetManager,
@@ -36,6 +57,9 @@ class PredictionHost(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val assetPath: String = DICTIONARY_ASSET,
+    private val learning: LearningHost? = null,
+    /** `InputProfile.touchKey` of the layout on screen; read on the decoder thread per decode. */
+    private val touchKey: () -> String? = { null },
 ) : PredictionBackend {
     @Volatile
     override var predictor: Predictor? = null
@@ -44,6 +68,23 @@ class PredictionHost(
     @Volatile private var dictionary: Dictionary? = null
 
     @Volatile private var started = false
+
+    // Decoder settings (docs/PLAN.md §6.3 row 22). A change builds a new engine over the already
+    // loaded dictionary (cheap: the dictionary is memory-mapped, only the engine's own caches are
+    // rebuilt) and swaps it in; a decode in flight finishes on the old engine.
+    @Volatile private var nonWordTieRule = AutocorrectConfig().nonWordTieRule
+    @Volatile private var engineTieRule: Boolean? = null
+    private val engineLock = Mutex()
+
+    private val decodeActivity = DecodeActivity()
+    private val decodeBudget = DecodeBudget()
+    @Volatile private var installedProvider: FieldRankingFeatureProvider? = null
+
+    // User words folded for case/apostrophe-insensitive lookup, rebuilt when the store hands out a
+    // new snapshot (rarely), so isKnownWord is a few hash lookups.
+    private class FoldedWords(val source: UserWordSnapshot, val folded: Set<String>)
+
+    @Volatile private var foldedUserWords: FoldedWords? = null
 
     // The expansion map is rebuilt only when the store hands out a new snapshot.
     @Volatile private var cachedShortcutSource: ShortcutSnapshot? = null
@@ -68,18 +109,50 @@ class PredictionHost(
             }
             val dict = dictionaryLoad.await() ?: return@launch
             dictionary = dict
-            val engine =
-                ClassicEngine(
-                    dict,
-                    userWords = { userDictionary.snapshot.words.keys },
-                    shortcuts = ::shortcutExpansions,
-                )
-            engine.load()
-            predictor = Predictor { request, stale -> engine.predictNow(request, stale) }
-            // Build the contraction index here, off the main thread, rather than in the first
-            // decode (which may be a separator decode on main). Predictions need not wait for it.
-            runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }
+            engineLock.withLock { installEngine(dict) }
         }
+    }
+
+    /**
+     * Applies the decoder-affecting settings: today [KeyboardSettings.nonWordTieRule]. Safe to call
+     * at any time, from any thread; before the dictionary is loaded it only records the value.
+     */
+    fun applySettings(settings: KeyboardSettings) {
+        if (nonWordTieRule == settings.nonWordTieRule) return
+        nonWordTieRule = settings.nonWordTieRule
+        val dict = dictionary ?: return // start() builds the engine with the recorded value
+        scope.launch(io) {
+            engineLock.withLock {
+                if (engineTieRule != nonWordTieRule) installEngine(dict)
+            }
+        }
+    }
+
+    /** Builds the engine for the current settings over [dict] and publishes the [predictor]. */
+    private suspend fun installEngine(dict: Dictionary) {
+        val tieRule = nonWordTieRule
+        val engine =
+            ClassicEngine(
+                dict,
+                ClassicConfig(autocorrect = AutocorrectConfig(nonWordTieRule = tieRule)),
+                userWords = { userDictionary.snapshot.words.keys },
+                shortcuts = ::shortcutExpansions,
+                personalization =
+                    learning?.let { host -> { host.personalization() } }
+                        ?: {
+                            Personalization.None
+                        },
+                touchKey = touchKey,
+            )
+        engine.load()
+        installRankingProvider(engine)
+        engineTieRule = tieRule
+        predictor = Predictor { request, stale ->
+            decodeActivity.track { engine.predictNow(request, stale) }
+        }
+        // Build the contraction index here, off the main thread, rather than in the first
+        // decode (which may be a separator decode on main). Predictions need not wait for it.
+        runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }
     }
 
     override fun shortcutFor(trigger: String): ShortcutRule? =
@@ -95,9 +168,8 @@ class PredictionHost(
         val plain = normaliseApostrophes(word)
         val user = userDictionary.snapshot
         if (word in user || plain in user) return true
-        if (user.words.keys.any { normaliseApostrophes(it).equals(plain, ignoreCase = true) }) {
-            return true
-        }
+        if (foldedWords(user).contains(plain.lowercase(Locale.ROOT))) return true
+        if (learning?.model?.snapshot()?.isUserWord(plain) == true) return true
         val dict = dictionary ?: return true
         val key = plain.lowercase(Locale.ROOT)
         return dict.idsForKey(key).isNotEmpty() || dict.wordId(plain) >= 0
@@ -107,6 +179,41 @@ class PredictionHost(
         scope.launch(io) {
             runCatching { userDictionary.add(word) }.onFailure { logFailure("add word", it) }
         }
+    }
+
+    private fun foldedWords(snapshot: UserWordSnapshot): Set<String> {
+        val cached = foldedUserWords
+        if (cached != null && cached.source === snapshot) return cached.folded
+        val folded =
+            snapshot.words.keys.mapTo(HashSet()) { normaliseApostrophes(it).lowercase(Locale.ROOT) }
+        foldedUserWords = FoldedWords(snapshot, folded)
+        return folded
+    }
+
+    private fun installRankingProvider(engine: ClassicEngine) {
+        val host = learning ?: return
+        val bridge =
+            EngineRankingFeatures(
+                engine,
+                decodeActivity,
+                decodeBudget,
+                onDeferred = host::onRankingDeferred,
+                onFailure = { logFailure("ranking features", it) },
+            )
+        val provider: FieldRankingFeatureProvider = { typed, context, candidate, field ->
+            bridge.features(typed, context, candidate, field)
+        }
+        installedProvider = provider
+        host.model.fieldRankingFeatureProvider = provider
+    }
+
+    /** Detaches from the singleton learning model; call when the owning service is destroyed. */
+    fun close() {
+        val host = learning ?: return
+        if (host.model.fieldRankingFeatureProvider === installedProvider) {
+            host.model.fieldRankingFeatureProvider = null
+        }
+        installedProvider = null
     }
 
     private fun normaliseApostrophes(word: String): String =

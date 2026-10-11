@@ -180,12 +180,104 @@ in-dictionary FC rate is 0.08/1000. Typed errors that are themselves words
 
 ## Applied defaults
 
-`spatial.sigmaXFactor = sigmaYFactor = 1.0` and `autocorrect.contractions = true` (explicit
+`spatial.sigmaXFactor = sigmaYFactor = 1.0` (**superseded: now 0.6**, see "Cognitive
+misspellings") and `autocorrect.contractions = true` (explicit
 apostrophe-less contraction rule, independent of sigma) are now the defaults. Re-run, typist
 sigma 0.25, seed 7, 2000 sentences, **test split**: 93.80% word accuracy, 2.48 false corrections
 per 1000 words (was 93.68% / 3.88 at model sigma 0.45, same run settings). These 2000-sentence
 numbers are not comparable to the 5000-sentence, seed 1 tables above (e.g. config A's 93.66% /
 2.04 there, which predates the contraction rule); the dev split was only used for the sweeps.
+
+## Cognitive misspellings (`--mode misspell`)
+
+The spatial typist only injects omission/insertion/transposition at 1% each. Real users also
+misspell words they do not know how to spell ("thier", "wierd", "seperate"), with every key hit
+exactly. `--mode misspell` measures that directly.
+
+**Data.** Wikipedia "Lists of common misspellings/For machines" (CC BY-SA 4.0), pinned to
+revision 1199637275, fetched by `tools/data/fetch-sources.sh` into git-ignored `data/raw/`, SHA-256
+in `sources.sha256`, evaluation only (never shipped; docs/DATA_SOURCES.md section 4). 4310 lines:
+5 dropped (non-letter / under 2 chars), 123 dropped (no single-word dictionary correction), 4182
+kept; of those 57 are real-word misspellings (typed word is in the dictionary; reported apart) and
+174 list several corrections (any of them counts). The split is 50/50 by hash of the typed word:
+2060 entries in test (`--split test`), the rest are dev (sweeps only).
+
+**Conditions and metrics.** Each non-word entry is typed at key centres with no context and with
+three neutral prefixes ("I really ", "It was ", "We need "); a noisy condition (`--sigma`, default
+0.25) uses the same prefixes. Reported: *accuracy* (autocorrect applied equals a listed
+correction), *top-3* (a listed correction in the strip), *abstain* (no autocorrect), *wrong*
+(autocorrect applied to something else). Per-slip-category breakdown too (ie/ei, doubled letter,
+vowel for vowel, 2 edits, ...). Files: `misspell/report.txt`, `results.json`, `failures.csv`.
+
+```
+tools/eval/build/install/eval/bin/eval --mode misspell --split test --sentences 2000 --seed 7
+tools/eval/build/install/eval/bin/eval --mode misspell --probe thier,wierd,seperate   # candidate dump
+tools/eval/build/install/eval/bin/eval --mode misspell --sweep --sweep-grid "spatial.sigma=0.6,0.8,1.0;edits.multiEditPenalty=-1,-2,-3"
+```
+
+The misspell sweep is **joint**: objective is the mean accuracy of the non-word entries in the
+key-centre no-context and neutral-context conditions (dev split), subject to the spatial
+typist accuracy at sigma 0.25/0.35 not regressing and false corrections/1000 at most
+max(`--target-fc`, baseline FC). The run also prints the spatial test result at sigma 0.25 and
+0.35, so every misspell run shows both sides.
+
+**Root causes found** (via `--probe`): (a) far-key vowel substitutions were never explored (the
+Gaussian puts them below `substitutionCutoff`), so "seperate" never reached "separate"; (b) two
+cheap spatial substitutions plus a high unigram frequency beat one natural transposition
+("thier" -> "this"/"the", "wierd" -> "where" at sigma 1.0); (c) the OOV literal skipped the context
+back-off that every candidate pays, which withheld corrections in context.
+
+**New knobs** (all `ClassicConfig`, off-switchable):
+
+| knob | default | effect |
+|---|---|---|
+| `edits.vowelTranspositionPenalty` | -1.5 (was -3 generic) | adjacent vowel pair swapped (ie/ei) |
+| `edits.phoneticSubstitutions` / `phoneticSubstitutionPenalty` | true / -3 | vowel for vowel (a,e,i,o,u; y-i) scored against the typed key's own touch, so key distance does not matter |
+| `edits.multiEditPenalty` | -3 | extra cost for each edit after the first |
+| `scoring.oovBackoff` | true | the OOV literal pays the same context back-off as candidates |
+| `spatial.sigma` | 0.6 (was 1.0) | tighter touch model, re-tuned jointly |
+
+`edits.doubleLetterPenalty` (-2) already existed and was kept; doubled letters were already good.
+
+**Sweep.** 108 dev points: sigma {0.6, 0.8, 1.0} x multiEdit {-1,-2,-3} x phonetic penalty
+{-1,-2,-3} x oovBackoff {off,on} x threshold {2.5,3.5}. The winner (sigma 0.6, multiEdit -3,
+phonetic -3, oovBackoff on, threshold 2.5) is on the edge of the grid for sigma, multiEdit and
+phonetic penalty, so a wider grid may find a little more; not explored.
+
+**Results** (test split, 2000 sentences, seed 7, typist cognitive typos 1% each). Misspellings:
+non-word entries, key-centre taps.
+
+| | before (old defaults) | after |
+|---|---|---|
+| no context: accuracy / top-3 / abstain / wrong | 59.48 / 69.65 / 27.55 / 12.97 | **76.72 / 90.86 / 16.21 / 7.07** |
+| neutral context: accuracy / top-3 / abstain / wrong | 54.99 / 69.11 / 32.17 / 12.84 | **76.54 / 90.85 / 16.09 / 7.37** |
+| sigma 0.25 + context: accuracy / top-3 / abstain / wrong | 41.52 / 54.94 / 46.63 / 11.85 | **52.57 / 73.25 / 39.88 / 7.55** |
+| spatial sigma 0.25: accuracy / FC per 1000 | 93.92 / 4.62 | 94.04 / 4.48 |
+| spatial sigma 0.35: accuracy / FC per 1000 | 78.44 / 2.21 | 77.10 / 2.28 |
+
+"Before" = `spatial.sigma=1.0, edits.phoneticSubstitutions=false, edits.multiEditPenalty=0,
+edits.vowelTranspositionPenalty=-3, scoring.oovBackoff=false`. Per category (context-free, accuracy
+before -> after): ie/ei transposition 64.7 -> 97.1, vowel for vowel 37.2 -> 92.8, doubled letter
+missing 87.2 -> 93.1. The cost is **-1.3 points of spatial accuracy at sigma 0.35** (+0.1 at 0.25),
+the price of the tighter sigma; it stays within the sweep constraint on FC.
+
+**Baseline FC discrepancy.** The "Applied defaults" run above (93.80% / 2.48 FC) no longer
+reproduces: the current repo gives 93.92% / 4.62. Cause: `autocorrect.nonWordTieRule=true`
+(default) corrects unknown names (Sami -> Sam, Yanni -> Sunni); with it false the result is
+93.80 / 2.48 again. The tie rule was left alone (PLAN section 6.3 row 22), so the sweep's FC limit
+is max(3, baseline FC).
+
+**Regression tests.** `CognitiveSpellingTest` (synthetic dictionary: ie/ei beats frequent
+two-edit words, vowel-for-vowel at any key distance, doubled letters, legacy costs fail,
+extra edits cost more) and `realDictionaryCommonMisspellings` (skipped if the `en_US.kcd` asset
+is absent): thier -> their, wierd -> weird, seperate -> separate, recieve -> receive,
+beleive -> believe, freind -> friend, teh -> the.
+
+**Remaining failures** (key-centre, accuracy): "2 edits" 9% (top-3 61%) and "3+ edits" 0%, which
+the 2-edit cap and multi-edit penalty deliberately do not chase; "other substitution" 46%;
+"transposition, other" 89% and "letter missing" 84% (short or ambiguous words); real-word
+misspellings are almost never corrected (0-4%, abstain 92-96%) because the typed word is valid.
+At sigma 0.25 abstains rise to 40% because noise lowers the margin.
 
 ## Caveats
 
@@ -195,3 +287,184 @@ shorter and cleaner than chat text. Use the numbers to compare configs, not as
 absolute user-facing accuracy. Re-run the baseline after any decoder change;
 the harness reads `ClassicConfig` by field name so renamed knobs show up as
 `--config` errors rather than silently being ignored.
+
+## Learning (`--mode learn`)
+
+Measures whether the personal model (`core/learning`) improves a simulated user's experience over
+time, against the same decoder with no learning on the identical stream.
+
+```
+./gradlew :tools:eval:run --offline -q --args="--mode learn --words 20000 --seed 1"
+```
+
+Outputs go to `tools/eval/build/eval/learn/`: `learn_report.txt`, `learn.json`, `learn_curve.csv`,
+`personal_words.csv` (`--trace-words N` adds per-word `trace_learning.csv` / `trace_baseline.csv`).
+Extra flags: `--personal-rate`, `--bias-x`, `--bias-y`, `--tap-prob`. 20k words take about 45 s
+(the two arms run in parallel threads).
+
+### Method
+
+* **Stream.** The dev split (never the test split), sentence by sentence until N typeable words.
+  Each evaluated, apostrophe-free word is replaced by a personal word with probability 4%
+  (`personalRate`; Zipf, exponent 1.0, over 50 words). With probability 3% a sentence starts with a
+  habitual phrase ("Thanks X, ...", "Love you X", "See you at X", "Lol <slang>").
+* **Personal vocabulary (50).** 30 capitalised out-of-vocabulary names that occur in the dev split
+  (e.g. Jugurtha, Damiano, Cephas), 10 invented names (Kovari, Zephyra, ...), 10 invented
+  lowercase slang words (snerkle, blorp, ...). All are unknown to the dictionary.
+* **Typist.** The usual Gaussian typist (sigma 0.35) plus a personal bias of +0.2 key heights down
+  and -0.1 key widths, applied to every tap (`TypistConfig.biasX/biasY`).
+* **Closed loop, per word.** Decode each prefix for the strip (autocorrect off), decode the full
+  word with autocorrect on, then draw the user's reaction (`Reaction.kt`): a correct autocorrection
+  is accepted; a changed correct literal is noticed with p=0.95 and reverted (ImmediateBackspace
+  70%, DeletedAndRetyped 30%; both finish the restored literal unchanged, i.e. are "keeps"); a wrong autocorrection of a typo is noticed with p=0.95 and
+  switched to the target if it is in the strip or the tie runner-up (SwitchedToSuggestion), else
+  retyped (EditedLater); with no autocorrection and the target in the strip the user taps it with
+  p=0.6, else retypes with p=0.5; with no help from the strip a typo is retyped with p=0.3.
+  Everything else is accepted. The reaction random stream is the same for both arms.
+* **Events.** `EventBuilder` builds the `WordCommitted` / `AutocorrectReverted` / `WordReplaced`
+  events as the keyboard would (touches in key units from the registered key's centre, `shown` with
+  slot, appearance char and visible time, tie runner-up, a 20-sentence session with 45 minute gaps),
+  then `OutcomeClassifier.classify` -> `PersonalModel.apply` -> `publishNow` after every word.
+  The engine is wired to the model with `personalization = { model.snapshot() }` (see weaknesses),
+  `userWords` from the model and `rankingFeatureProvider` -> `engine.featuresFor`.
+* **Windows.** 0-2k, 2-5k, 5-10k, 10-20k words (scaled by N), plus "all".
+* **Metrics.** Word accuracy of the final text after the user's reaction; keyboard accuracy before
+  the reaction; false corrections per 1000 (a correct literal changed, i.e. autocorrect not equal
+  to the target when the literal was right, and the correction applied); reverts per 1000 (undone
+  autocorrections of any kind); top-3 recall of the strip; touch-model error = L2 distance between
+  the learned per-key offset and the true bias, averaged over keys with an offset. "Attainable" is
+  the same for the mean of taps that registered on the intended key (what the classifier can see),
+  "oracle" for all taps relative to the intended key.
+* **Note-2 check.** After a personal word's first keep (a revert finished unchanged), and after its
+  N-th keep (N = `implicitAddKeeps`, the user-dictionary threshold), count each later occurrence
+  where the word was typed correctly and the keyboard changed it anyway.
+
+### Results (20 000 words, learning / baseline, sigma 0.35 plus bias)
+
+Seed 1 (windows 0-2k, 2-5k, 5-10k, 10-20k, all):
+
+| window | 0-2k | 2-5k | 5-10k | 10-20k | all |
+|---|---|---|---|---|---|
+| word accuracy % | 88.75 / 89.20 | 87.93 / 87.87 | 88.06 / 87.90 | 88.85 / 88.36 | 88.51 / 88.26 |
+| personal-word accuracy % | 46.5 / 46.5 | 52.0 / 42.3 | 52.5 / 40.8 | 57.4 / 43.8 | 54.3 / 43.1 |
+| false corrections /1000 | 2.0 / 3.5 | 0.33 / 2.0 | 0.40 / 2.8 | 0.40 / 2.6 | 0.55 / 2.65 |
+| reverts /1000 | 118 / 130 | 101 / 114 | 94 / 111 | 94 / 109 | 98 / 112 |
+| personal top-3 recall % | 14.0 / 9.3 | 34.2 / 16.3 | 38.6 / 13.0 | 44.7 / 14.6 | 38.5 / 13.9 |
+| touch offset error (learned / none 0.224) | 0.055 | 0.049 | 0.062 | 0.068 | |
+
+Seed 2, all windows: accuracy 88.64 / 88.88, personal-word accuracy 60.0 / 54.2, false corrections
+0.50 / 5.20, reverts 95.6 / 116.9, personal top-3 recall 40.4 / 24.1, touch error 0.056-0.060. Note-2:
+0 changes after a first revert (learning) against 34 (seed 1) and 87 (seed 2) in the baseline.
+
+Before the phase-3 fixes below (seed 1 / seed 2, all windows): accuracy 86.44 / 86.93 (baseline 88.26 /
+88.88), personal-word accuracy 56.0 / 64.3, reverts 74 / 73, touch error 0.128 / 0.123, user
+dictionary 104 / 84 words of which 77 / 64 were uncorrected typos.
+
+### Revert thresholds (2026-10-10, PLAN §6.3 rows 6/7)
+
+A revert whose restored literal is finished unchanged is a **keep**. `OutcomeClassifier` no longer
+adds the literal and suppresses the pair at the first one: it emits `RevertKept(typed, corrected)`
+(plus the strong negative `CorrectionEvidence`, the typed `WordUsed` and
+`AutocorrectOutcome(reverted = true)` as before). `PersonalModel` counts keeps per word and per
+(word, correction) pair (`PersistedLearning.keeps`, format 2) and adds the word to the user
+dictionary after N keeps of the word (`PersonalModelConfig.implicitAddKeeps`, setting `implicitAddReverts`,
+default 2, 1..5) and suppresses the pair after M >= N keeps of the pair (`suppressCorrectionReverts`,
+default 2). `PersonalModel.updateThresholds(n, m)` changes both at runtime and is applied
+retroactively on the next `apply`. In the eval: `--model implicitAddKeeps=N,suppressKeeps=M`
+(defaults 2/2).
+
+20 000 words, seed 1, all windows, learning / baseline. N=M=1 reproduces the previous
+(immediate add + suppress) run exactly.
+
+| thresholds N/M | word acc % | personal acc % | false corr /1000 | reverts /1000 | personal top-3 % | user words (personal / typos) | suppressed pairs | wrong corrections after N keeps (personal) |
+|---|---|---|---|---|---|---|---|---|
+| 1 / 1 (previous) | 88.51 | 54.3 | 0.55 | 97.7 | 38.5 | 22 (9 / 6) | 11 | 0 of 36 |
+| 2 / 2 (default) | 88.43 | 52.9 | 0.60 | 98.2 | 35.9 | 15 (6 / 6) | 0 | 0 of 4 |
+| 3 / 3 | 88.41 | 52.6 | 0.65 | 98.1 | 35.5 | 15 (6 / 6) | 0 | 0 of 1 |
+
+Baseline (no learning) is 88.26 / 43.1 / 2.65 / 112.3 / 13.9. Seed 2 at 2 / 2 (previous in
+brackets): accuracy 88.42 (88.64), personal-word accuracy 56.1 (60.0), false corrections 0.55
+(0.50), reverts 95.6 (95.6), personal top-3 40.4 -> 31.7, 15 user words of which 11 promoted typos
+(unchanged by this change: they come from the promotion path, not from reverts). Typo promotion
+through reverts is unaffected: no `RevertKept` can promote a string the user did not finish.
+
+Reading: a higher N costs personal-word accuracy (the word needs more keeps before it is a user word,
+so it is corrected, reverted and retyped N-1 more times; about 1.5 points at N=2) and buys nothing in
+this simulation, where the user always finishes the literal unchanged. The cost is the price of the
+safety against one-off accidental reverts the setting is meant for. The note-2 rule holds at N:
+after N keeps the word is a user word and is never corrected again (0 changes). Between the first and
+the N-th keep a correct literal is still changed (1 time at N=2, 2 at N=3 for seed 1). Suppressed
+pairs drop to 0 because the same pair rarely gets M keeps before the word itself is a user word
+(and a user word is never autocorrected, which makes the suppression moot).
+
+### Fixes (phase 3)
+
+* **Typo promotion.** `OutcomeClassifier` emits no `NewWordEvidence` (and a minimal `WordUsed`) for
+  an unknown committed word when a shown suggestion (the strip also carries the user's own words) is
+  a different word within edit distance 1 (length <= 4) or 2 (length >= 5), and none for unknown words
+  shorter than 3 letters (`ClassifierConfig.typoShortLength/typoMaxEditsShort/typoMaxEditsLong/
+  newWordMinLength`). The model promotes at weight >= 3.0 in >= 3 sessions (`PersonalModelConfig.
+  promoteMinCommits/promoteMinSessions`); a fast path (weight >= 4.0 in >= 2 sessions, i.e. two
+  literal taps) and the revert / explicit-add paths are unchanged. User dictionary pollution: 77 / 64
+  typos -> 6 / 11, total size 104 / 84 -> 22 / 23.
+* **Threshold over-tightening.** Two lines of evidence. (1) Controller state: the simulated revert
+  rate is about 18% of applied autocorrections (target 3%), so `thresholdDelta` sat at the +2 cap
+  and ~13% fewer autocorrections were applied. (2) Composition: in the baseline arm, of the undone
+  autocorrections only 50 per 20 000 words restored a correct literal (rows 6/23); 1860 were
+  `EditedLater` and 330 `SwitchedToSuggestion`, i.e. the correction was wanted but wrong. A stricter
+  threshold only turns those into uncorrected typos, and PLAN row 6 only says the literal restore
+  counts toward the revert rate. So `AutocorrectOutcome(reverted = true)` is now emitted only for
+  literal restores (`ClassifierConfig.rankingRevertsCount = false`); the pair is still demoted via
+  correction memory and preferences. Literal restores (`RevertKept`, see "Revert thresholds") always
+  count: they are the signal for false corrections of real dictionary words.
+  Effect: the revert rate falls under the target, the delta sits at the -0.5 floor, accuracy goes
+  from 86.4 to 88.5 (seed 1).
+  Sweep (seed 1 / seed 2 accuracy, baseline 88.26 / 88.88; all with the typo fix; reverts per 1000):
+  | variant | acc s1 / s2 | reverts s1 |
+  |---|---|---|
+  | all reverts count, target 3% (old) | 86.37 / 86.32 | 73 |
+  | target 10% | 87.35 / 87.41 | 84 |
+  | target 20% | 88.44 / - | 97 |
+  | max raise 1.0 | 87.02 / 86.96 | 80 |
+  | max raise 0.5 | 87.60 / 87.56 (max lower 0) | 87 |
+  | controller off | 88.15 / - | 93 |
+  | literal restores only, max lower 0.5 (chosen) | 88.51 / 88.64 | 98 |
+  | literal restores only, max lower 0.25 | 88.31 / 88.49 | 95 |
+  | literal restores only, max lower 0 | 88.15 / 88.25 | 93 |
+  With sigma 0.25 (seed 1) the old controller was already neutral to positive (94.96 vs 94.84, delta
+  settling at +0.9); lower thresholds were better still in every setting (95.65 for the chosen one).
+  The simulation rewards aggression because it assumes 95% of wrong corrections are noticed.
+* **Touch selection bias.** `TouchSample.dx/dy` are relative to the INTENDED key (the committed
+  word's char) and are emitted for substitution-aligned words only (same length, |dx| and |dy| <= 1.2).
+  The classifier uses all non-null samples of aligned Typed / Autocorrected / SuggestionPicked /
+  LiteralPicked words (max 2 mismatches, transposed pairs rejected). The eval's `EventBuilder.touches`
+  builds them from its geometry the same way. Learned offset error 0.12-0.13 -> 0.05-0.07 (mean
+  offset about (-0.075, +0.145) vs true (-0.10, +0.20)). The confirmed-taps-only bound (0.105) no
+  longer limits it.
+* **Wiring.** The app must pass `personalization = { model.snapshot() }` to the engine. The decoder
+  caches its spatial models per `Personalization` instance, so the stable `PersonalModel.personalization`
+  view never refreshes learned touch offsets (documented on that property).
+
+New options for sweeps: `--model k=v,...` (`PersonalModelConfig`) and `--classifier k=v,...`
+(`ClassifierConfig`); the report now includes autocorrections applied and the threshold delta.
+
+### Findings and remaining weaknesses
+
+* Personal words are learned (accuracy 43 -> 54 on seed 1, 54 -> 60 on seed 2; top-3 recall 14 -> 39),
+  but stricter promotion costs speed: 9 / 5 of 50 personal words reach the dictionary within 20k words
+  (was 14 / 11). Rare Zipf-tail words are never learned. Personal-word accuracy on seed 1 is below
+  the pre-fix 56.0.
+* Overall accuracy: +0.25 (seed 1) / -0.24 (seed 2) points against the baseline, i.e. level. The
+  remaining 6 / 11 promoted typos are garbage strings of 4+ letters that are 2+ edits from the intended
+  frequent word (e.g. "rheh" for "they"), so the strip check cannot see them; a candidate-vs-candidate
+  dominance check in the lexicon ("Zirj" next to a much more frequent "Ziri") is the obvious next step.
+* A reverted autocorrection also feeds the touch model before the revert is known (the correction's
+  chars label the taps); not measured separately.
+* The controller sits at its -0.5 floor in the simulation; whether real users revert literals as rarely
+  is unknown.
+
+### Caveats
+
+The reaction model, bias, and injection rate are assumptions, not data; absolute numbers depend on
+them. Seeds 1 and 2 were run. The word-accuracy metric does not count user effort (reverts, retypes,
+taps), so read it together with reverts and taps per 1000.

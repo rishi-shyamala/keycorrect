@@ -10,6 +10,8 @@ dependencies {
     implementation(project(":core:input"))
     api(project(":core:engine-api"))
     api(project(":core:layout"))
+    // Public API: KeyboardController takes a LearningSink and a DeviceClass.
+    api(project(":core:learning"))
     api(project(":core:settings"))
     implementation(libs.compose.foundation)
 

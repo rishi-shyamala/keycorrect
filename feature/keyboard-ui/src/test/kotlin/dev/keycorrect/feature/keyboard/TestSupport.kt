@@ -236,6 +236,7 @@ internal class ScriptedPredictor : Predictor {
         suggestions: List<String>,
         autocorrect: String? = null,
         phrase: String? = null,
+        runnerUp: String? = null,
     ) {
         words[typed] =
             PredictResult(
@@ -243,6 +244,7 @@ internal class ScriptedPredictor : Predictor {
                 literal = lit(typed),
                 autocorrect = autocorrect?.let { dict(it) },
                 phrase = phrase?.let { Candidate(it, -1f, CandidateSource.Dictionary, true) },
+                autocorrectRunnerUp = runnerUp?.let { dict(it) },
             )
     }
 

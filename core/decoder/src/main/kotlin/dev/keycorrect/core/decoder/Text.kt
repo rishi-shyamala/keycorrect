@@ -1,20 +1,17 @@
 package dev.keycorrect.core.decoder
 
+import dev.keycorrect.core.learning.SentenceContext
+
 /** Character classes and normalisation shared by the context parser and the casing rules. */
 internal object Text {
-    fun isWordChar(c: Char): Boolean =
-        Character.isLetterOrDigit(c) ||
-            Character.getType(c).let {
-                it == Character.NON_SPACING_MARK.toInt() ||
-                    it == Character.COMBINING_SPACING_MARK.toInt()
-            }
+    fun isWordChar(c: Char): Boolean = SentenceContext.isWordChar(c)
 
-    fun isApostrophe(c: Char): Boolean = c == '\'' || c == '’' || c == '‘' || c == 'ʼ'
+    fun isApostrophe(c: Char): Boolean = SentenceContext.isApostrophe(c)
 
-    fun isHyphen(c: Char): Boolean = c == '-' || c == '‐' || c == '‑'
+    fun isHyphen(c: Char): Boolean = SentenceContext.isHyphen(c)
 
     /** Sentence-final punctuation; it ends a sentence only when followed by whitespace. */
-    fun isSentenceEnd(c: Char): Boolean = c == '.' || c == '!' || c == '?' || c == '…'
+    fun isSentenceEnd(c: Char): Boolean = SentenceContext.isSentenceEnd(c)
 
     /** The trie key of [text]: lowercase, with typographic apostrophes straightened. */
     fun key(text: CharSequence): String {
@@ -48,6 +45,10 @@ internal object Text {
         if (i + 1 >= x.length || x[i] != y[i + 1] || x[i + 1] != y[i]) return false
         return x.substring(i + 2) == y.substring(i + 2)
     }
+
+    /** The learning context of the word after [before]; see [SentenceContext.lastWords]. */
+    fun lastSentenceWords(before: String, n: Int): List<String> =
+        SentenceContext.lastWords(before, n)
 
     fun hasLetter(text: CharSequence): Boolean = text.any { it.isLetter() }
 

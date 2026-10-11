@@ -12,13 +12,45 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import dev.keycorrect.core.settings.KeyboardSettings
 
-/** Which system click sound to play for a key. */
+/**
+ * What is being given feedback for. The first four are key presses (which system click sound to
+ * play); [Autocorrected] and [UnknownWord] are word events with a vibration of their own and no
+ * sound.
+ */
 enum class FeedbackKind {
     Standard,
     Delete,
     Space,
     Return,
+
+    /** A word was auto-corrected when a separator was typed. */
+    Autocorrected,
+
+    /** A finished word is in no dictionary and was not corrected. */
+    UnknownWord,
 }
+
+/** Receives the word events the keyboard gives feedback for (see [KeyboardController]). */
+fun interface WordFeedback {
+    fun onWordFeedback(kind: FeedbackKind)
+
+    companion object {
+        val None = WordFeedback {}
+    }
+}
+
+/**
+ * Whether the user wants a vibration for the word event [kind] under [settings]: haptics must be
+ * on, and for [FeedbackKind.Autocorrected] / [FeedbackKind.UnknownWord] so must their own switch.
+ * Key presses are always allowed (only [KeyboardSettings.hapticsEnabled] applies).
+ */
+fun hapticWanted(kind: FeedbackKind, settings: KeyboardSettings): Boolean =
+    settings.hapticsEnabled &&
+        when (kind) {
+            FeedbackKind.Autocorrected -> settings.hapticOnAutocorrect
+            FeedbackKind.UnknownWord -> settings.hapticOnUnknownWord
+            else -> true
+        }
 
 /** Key-press haptics and sounds, driven by [KeyboardSettings]. */
 class KeyFeedback(context: Context) {
@@ -47,6 +79,81 @@ class KeyFeedback(context: Context) {
     }
 
     /**
+     * The vibration for a word event ([FeedbackKind.Autocorrected] or [FeedbackKind.UnknownWord]),
+     * if the settings want it (see [hapticWanted]). Other kinds do nothing here.
+     */
+    fun onWordEvent(kind: FeedbackKind, settings: KeyboardSettings) {
+        if (!hapticWanted(kind, settings)) return
+        vibrateWordEvent(kind, settings)
+    }
+
+    /**
+     * Plays [kind] as a test from the settings screen. Word events ignore their own switch (so they
+     * can be tried before being turned on) but not [KeyboardSettings.hapticsEnabled]; key kinds
+     * play the key haptic and click.
+     */
+    fun preview(kind: FeedbackKind, settings: KeyboardSettings, view: View?) {
+        when (kind) {
+            FeedbackKind.Autocorrected,
+            FeedbackKind.UnknownWord ->
+                if (settings.hapticsEnabled) vibrateWordEvent(kind, settings)
+            else -> onKeyPress(view, kind, settings)
+        }
+    }
+
+    private fun vibrateWordEvent(kind: FeedbackKind, settings: KeyboardSettings) {
+        val effect =
+            when (kind) {
+                FeedbackKind.Autocorrected -> autocorrectEffect(settings)
+                FeedbackKind.UnknownWord -> unknownWordEffect(settings)
+                else -> return
+            }
+        vibrate(effect)
+    }
+
+    /** A crisp double tick: two ticks about [DOUBLE_TICK_GAP_MS] apart. */
+    private fun autocorrectEffect(settings: KeyboardSettings): VibrationEffect {
+        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
+            val scale = primitiveScale(settings, full = 1f)
+            return VibrationEffect.startComposition()
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale)
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale, DOUBLE_TICK_GAP_MS)
+                .compose()
+        }
+        val on = if (hasAmplitudeControl) amplitude(settings, full = 255) else FALLBACK_ON
+        return VibrationEffect.createWaveform(
+            longArrayOf(0, TICK_MS, DOUBLE_TICK_GAP_MS.toLong() - TICK_MS, TICK_MS),
+            intArrayOf(0, on, 0, on),
+            NO_REPEAT,
+        )
+    }
+
+    /** One longer, soft, low buzz. */
+    private fun unknownWordEffect(settings: KeyboardSettings): VibrationEffect {
+        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)) {
+            return VibrationEffect.startComposition()
+                .addPrimitive(
+                    VibrationEffect.Composition.PRIMITIVE_LOW_TICK,
+                    primitiveScale(settings, full = SOFT_SCALE),
+                )
+                .compose()
+        }
+        val soft =
+            if (hasAmplitudeControl) amplitude(settings, full = SOFT_AMPLITUDE) else FALLBACK_ON
+        return VibrationEffect.createOneShot(SOFT_BUZZ_MS, soft)
+    }
+
+    /** Composition scale: [full] by default, [full] times the strength setting when one is set. */
+    private fun primitiveScale(settings: KeyboardSettings, full: Float): Float =
+        if (settings.hapticStrength == 0) full
+        else (full * settings.hapticStrength / MAX_AMPLITUDE).coerceIn(MIN_SCALE, 1f)
+
+    /** Amplitude 1..255: [full] by default, [full] times the strength setting when one is set. */
+    private fun amplitude(settings: KeyboardSettings, full: Int): Int =
+        if (settings.hapticStrength == 0) full
+        else (full * settings.hapticStrength / MAX_AMPLITUDE).coerceIn(MIN_AMPLITUDE, MAX_AMPLITUDE)
+
+    /**
      * Duration 0 uses the system keyboard-tap haptic (honours the user's system setting); otherwise
      * a one-shot of the configured duration and strength with touch attributes (sonification audio
      * attributes on API 31-32), so the system touch-feedback intensity still applies.
@@ -65,7 +172,12 @@ class KeyFeedback(context: Context) {
             } else {
                 settings.hapticStrength
             }
-        val effect = VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude)
+        vibrate(VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude))
+    }
+
+    // VIBRATE is declared in the app manifest.
+    @SuppressLint("MissingPermission")
+    private fun vibrate(effect: VibrationEffect) {
         if (touchAttributes != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             vibrator.vibrate(effect, touchAttributes)
         } else {
@@ -92,7 +204,29 @@ class KeyFeedback(context: Context) {
                 FeedbackKind.Delete -> AudioManager.FX_KEYPRESS_DELETE
                 FeedbackKind.Space -> AudioManager.FX_KEYPRESS_SPACEBAR
                 FeedbackKind.Return -> AudioManager.FX_KEYPRESS_RETURN
+                FeedbackKind.Autocorrected,
+                FeedbackKind.UnknownWord -> return // vibration only
             }
         audio.playSoundEffect(effect, settings.soundVolume)
+    }
+
+    private companion object {
+        /** Gap between the two ticks of the autocorrect pattern, in ms. */
+        const val DOUBLE_TICK_GAP_MS = 55
+
+        /** Waveform fallback: length of one tick, ms. */
+        const val TICK_MS = 12L
+
+        /** One-shot fallback for the unknown-word buzz: long and soft. */
+        const val SOFT_BUZZ_MS = 40L
+        const val SOFT_AMPLITUDE = 80
+        const val SOFT_SCALE = 0.7f
+        const val MIN_SCALE = 0.2f
+        const val MIN_AMPLITUDE = 20
+        const val MAX_AMPLITUDE = 255
+        const val NO_REPEAT = -1
+
+        /** The "on" level when the motor has no amplitude control: any nonzero value is full. */
+        const val FALLBACK_ON = VibrationEffect.DEFAULT_AMPLITUDE
     }
 }

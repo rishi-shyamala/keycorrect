@@ -41,6 +41,8 @@ include(":core:input")
 
 include(":core:layout")
 
+include(":core:learning")
+
 include(":core:settings")
 
 include(":feature:keyboard-ui")

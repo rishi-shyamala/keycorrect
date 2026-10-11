@@ -74,6 +74,32 @@ fun FeedbackSettingsScreen(
         ) {
             Text(stringResource(R.string.feedback_test_vibration))
         }
+        SwitchRow(
+            title = stringResource(R.string.feedback_haptic_autocorrect),
+            checked = settings.hapticOnAutocorrect,
+            enabled = settings.hapticsEnabled,
+            onCheckedChange = { v -> onUpdate { it.copy(hapticOnAutocorrect = v) } },
+        )
+        OutlinedButton(
+            onClick = { feedback.preview(FeedbackKind.Autocorrected, settings, view) },
+            enabled = settings.hapticsEnabled && settings.hapticOnAutocorrect,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            Text(stringResource(R.string.feedback_test_button))
+        }
+        SwitchRow(
+            title = stringResource(R.string.feedback_haptic_unknown_word),
+            checked = settings.hapticOnUnknownWord,
+            enabled = settings.hapticsEnabled,
+            onCheckedChange = { v -> onUpdate { it.copy(hapticOnUnknownWord = v) } },
+        )
+        OutlinedButton(
+            onClick = { feedback.preview(FeedbackKind.UnknownWord, settings, view) },
+            enabled = settings.hapticsEnabled && settings.hapticOnUnknownWord,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            Text(stringResource(R.string.feedback_test_button))
+        }
 
         SectionHeader(stringResource(R.string.feedback_section_sound))
         SwitchRow(

@@ -28,6 +28,7 @@ About > Open-source licences & data.
 | AOSP LatinIME `en_US_wordlist.combined.gz` | vocabulary, word frequencies, offensive/abbreviation flags | commit `127336e9…`, header `version=54`, `date=1414726260` (2014-10-30) | Apache-2.0 |
 | Simple English Wikipedia `pages-articles` dump | formal-text n-gram counts | dump `20261001` | CC BY-SA 4.0 (also GFDL; we use CC BY-SA 4.0) |
 | Tatoeba `eng_sentences.tsv` | conversational n-gram counts, held-out eval set | rolling export of 2026-10-03, downloaded 2026-10-09 | CC BY 2.0 FR |
+| English Wikipedia "Lists of common misspellings/For machines" | **evaluation only** (`--mode misspell`); never shipped, not in the dictionary or language model | revision `1199637275` (2024-01-27) | CC BY-SA 4.0 |
 
 ## 1. AOSP LatinIME English wordlist
 
@@ -112,6 +113,24 @@ and "Mary", which would otherwise rank among the most frequent words and top the
 predictions. `count` therefore treats the exact-case tokens in `--tatoeba-ignore-names` (default
 `Tom,Mary`) as out-of-vocabulary in Tatoeba sentences only: they break the n-gram chain and add no
 counts. Wikipedia counts for these names are unchanged; pass `--tatoeba-ignore-names ""` to disable.
+
+## 4. Common-misspellings list (evaluation only)
+
+- **File:** `wikipedia-misspellings-1199637275.txt`, the raw wikitext of
+  <https://en.wikipedia.org/wiki/Wikipedia:Lists_of_common_misspellings/For_machines> at revision
+  `1199637275` (`index.php?title=...&oldid=1199637275&action=raw`; revision pinned so the content
+  cannot drift). 99,150 bytes, SHA-256
+  `3b6a9290e5aaad968da7ec769a5174adb45247688ef7ae097fd2dd80237a3050`, fetched by
+  `tools/data/fetch-sources.sh` into the git-ignored `data/raw/`.
+- **Licence:** CC BY-SA 4.0 (Wikipedia text). Because of the share-alike condition this list is
+  used **only as test input** to the offline evaluation harness (`:tools:eval`, `--mode
+  misspell`): it is not added to the dictionary, the language model, the app assets or any
+  training/tuning artefact that is distributed, and is not redistributed in the repository.
+  Decoder defaults tuned against it are numbers, not derived data.
+- **Format:** one ` misspelling->correction[, alternative ...]` entry per line (leading space).
+  The harness keeps entries whose misspelling is alphabetic (apostrophes allowed), is not itself a
+  word of the shipped dictionary, and has at least one correction that is a single word the
+  dictionary knows.
 
 ## Pipeline output (`data/processed/`)
 

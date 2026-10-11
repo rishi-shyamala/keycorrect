@@ -49,6 +49,15 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
             phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
             autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
+            learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
+            sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
+            incognito = this[INCOGNITO] ?: d.incognito,
+            implicitAddReverts = this[IMPLICIT_ADD_REVERTS] ?: d.implicitAddReverts,
+            suppressCorrectionReverts =
+                this[SUPPRESS_CORRECTION_REVERTS] ?: d.suppressCorrectionReverts,
+            nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
+            hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
+            hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
         )
     }
 
@@ -69,6 +78,14 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
         this[PHRASE_COMPLETION] = s.phraseCompletion
         this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
+        this[LEARNING_ENABLED] = s.learningEnabled
+        this[SENTENCE_BUFFER_ENABLED] = s.sentenceBufferEnabled
+        this[INCOGNITO] = s.incognito
+        this[IMPLICIT_ADD_REVERTS] = s.implicitAddReverts
+        this[SUPPRESS_CORRECTION_REVERTS] = s.suppressCorrectionReverts
+        this[NON_WORD_TIE_RULE] = s.nonWordTieRule
+        this[HAPTIC_ON_AUTOCORRECT] = s.hapticOnAutocorrect
+        this[HAPTIC_ON_UNKNOWN_WORD] = s.hapticOnUnknownWord
     }
 
     private companion object {
@@ -88,5 +105,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
         val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
         val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
+        val LEARNING_ENABLED = booleanPreferencesKey("learning_enabled")
+        val SENTENCE_BUFFER_ENABLED = booleanPreferencesKey("sentence_buffer_enabled")
+        val INCOGNITO = booleanPreferencesKey("incognito")
+        val IMPLICIT_ADD_REVERTS = intPreferencesKey("implicit_add_reverts")
+        val SUPPRESS_CORRECTION_REVERTS = intPreferencesKey("suppress_correction_reverts")
+        val NON_WORD_TIE_RULE = booleanPreferencesKey("non_word_tie_rule")
+        val HAPTIC_ON_AUTOCORRECT = booleanPreferencesKey("haptic_on_autocorrect")
+        val HAPTIC_ON_UNKNOWN_WORD = booleanPreferencesKey("haptic_on_unknown_word")
     }
 }

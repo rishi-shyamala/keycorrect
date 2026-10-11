@@ -125,6 +125,10 @@ private fun SuggestionArea(controller: KeyboardController, autofill: InlineAutof
                 strip = { controller.strip },
                 onSlot = controller::onSuggestionTap,
                 onAddWord = controller::onAddWordTap,
+                onSlotLongPress = controller::onSuggestionLongPress,
+                onNeverYes = controller::onNeverSuggestConfirm,
+                onNeverCancel = controller::onNeverSuggestCancel,
+                canBlock = { controller.canBlockSuggestions },
             )
         }
     }

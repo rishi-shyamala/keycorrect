@@ -23,7 +23,22 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Shortcuts : SettingsDestination("shortcuts", R.string.shortcuts_title)
 
+    data object Learning : SettingsDestination("learning", R.string.learning_title)
+
+    data object LearnedWords : SettingsDestination("learning_words", R.string.learning_words_title)
+
+    data object LearnedCorrections :
+        SettingsDestination("learning_corrections", R.string.learning_corrections_title)
+
+    data object NeverCorrected :
+        SettingsDestination("learning_never_corrected", R.string.learning_never_corrected_title)
+
+    data object NeverSuggested :
+        SettingsDestination("learning_never_suggested", R.string.learning_never_suggested_title)
+
     data object Feedback : SettingsDestination("feedback", R.string.feedback_title)
+
+    data object Advanced : SettingsDestination("advanced", R.string.advanced_title)
 
     data object About : SettingsDestination("about", R.string.about_title)
 
@@ -41,7 +56,13 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 TextCorrection,
                 PersonalDictionary,
                 Shortcuts,
+                Learning,
+                LearnedWords,
+                LearnedCorrections,
+                NeverCorrected,
+                NeverSuggested,
                 Feedback,
+                Advanced,
                 About,
                 Licenses,
             ) + if (BuildConfig.DEBUG) listOf(AutofillTest) else emptyList()

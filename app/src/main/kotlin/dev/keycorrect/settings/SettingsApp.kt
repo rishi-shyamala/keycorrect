@@ -100,7 +100,15 @@ fun SettingsApp(
                 SettingsDestination.PersonalDictionary ->
                     PersonalDictionaryScreen(padding, container)
                 SettingsDestination.Shortcuts -> ShortcutsScreen(padding, container)
+                SettingsDestination.Learning ->
+                    LearningScreen(padding, container, settings, onUpdate, onNavigate = navigate)
+                SettingsDestination.LearnedWords -> LearnedWordsScreen(padding, container)
+                SettingsDestination.LearnedCorrections ->
+                    LearnedCorrectionsScreen(padding, container)
+                SettingsDestination.NeverCorrected -> NeverCorrectedScreen(padding, container)
+                SettingsDestination.NeverSuggested -> NeverSuggestedScreen(padding, container)
                 SettingsDestination.Feedback -> FeedbackSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.Advanced -> AdvancedScreen(padding, settings, onUpdate)
                 SettingsDestination.About -> AboutScreen(padding, onNavigate = navigate)
                 SettingsDestination.Licenses -> LicensesScreen(padding)
                 SettingsDestination.AutofillTest -> AutofillTestScreen(padding)

@@ -127,13 +127,15 @@ internal class TrieSearch(
         val typed = scorer.typedChar(pos)
         val prev = if (node == dict.root) NO_CHAR else dict.nodeChar(node)
         val first = if (pos == 0) edits.firstCharPenalty else 0f
+        // Every edit after the first costs this much more (apostrophe edits are exempt).
+        val multi = if (used > 0) edits.multiEditPenalty else 0f
         if (canEdit) {
             // The typed char is spurious.
             val cost =
                 when {
                     typed == '\'' -> edits.apostrophePenalty
-                    typed == prev -> edits.doubleLetterPenalty
-                    else -> edits.insertionPenalty
+                    typed == prev -> edits.doubleLetterPenalty + multi
+                    else -> edits.insertionPenalty + multi
                 }
             push(node, pos + 1, used + 1, spatial, penalty + cost + first, extra)
         }
@@ -145,25 +147,49 @@ internal class TrieSearch(
             if (same) {
                 push(child, pos + 1, used, spatial + scorer.ll(c, pos), penalty, extra)
             } else if (canEdit) {
-                val ll = scorer.ll(c, pos)
-                if (ll >= edits.substitutionCutoff) {
-                    val cost = edits.substitutionPenalty + first
-                    push(child, pos + 1, used + 1, spatial + ll, penalty + cost, extra)
+                var ll = scorer.ll(c, pos)
+                var cost = edits.substitutionPenalty
+                var viable = ll >= edits.substitutionCutoff
+                if (edits.phoneticSubstitutions && Phonetic.confusable(typed, c)) {
+                    // The user hit the key they meant: score the touch against the typed key.
+                    val alt = scorer.exactLogLikelihood(pos)
+                    if (!viable || alt + edits.phoneticSubstitutionPenalty > ll + cost) {
+                        ll = alt
+                        cost = edits.phoneticSubstitutionPenalty
+                        viable = true
+                    }
                 }
+                if (viable)
+                    push(
+                        child,
+                        pos + 1,
+                        used + 1,
+                        spatial + ll,
+                        penalty + cost + first + multi,
+                        extra,
+                    )
             }
             if (!canEdit) continue
             // The word has a char the user didn't type.
             val cost =
                 when {
                     c == '\'' -> edits.apostrophePenalty
-                    c == prev -> edits.doubleLetterPenalty
-                    else -> edits.deletionPenalty
+                    c == prev -> edits.doubleLetterPenalty + multi
+                    else -> edits.deletionPenalty + multi
                 }
             push(child, pos, used + 1, spatial, penalty + cost + first, extra)
             if (canSwap && !same) {
                 val ll1 = scorer.ll(c, pos + 1)
                 if (ll1 >= edits.transpositionCutoff) {
-                    swap(child, pos, used, spatial + ll1, penalty + first, extra)
+                    val swapCost =
+                        if (
+                            Phonetic.isVowel(typed) && Phonetic.isVowel(scorer.typedChar(pos + 1))
+                        ) {
+                            edits.vowelTranspositionPenalty
+                        } else {
+                            edits.transpositionPenalty
+                        }
+                    swap(child, pos, used, spatial + ll1, penalty + first + swapCost + multi, extra)
                 }
             }
         }
@@ -184,7 +210,7 @@ internal class TrieSearch(
                     pos + 2,
                     used + 1,
                     spatial + ll2,
-                    penalty + edits.transpositionPenalty,
+                    penalty,
                     extra,
                 )
             }

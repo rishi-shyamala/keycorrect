@@ -88,7 +88,7 @@ class RealEngineControllerTest {
         controller.onKey(KeyAction.Space)
         assertThat(editor.text.toString()).isEqualTo("the ")
         controller.onKey(KeyAction.Backspace)
-        assertThat(editor.text.toString()).isEqualTo("teh ")
+        assertThat(editor.text.toString()).isEqualTo("teh")
     }
 
     @Test

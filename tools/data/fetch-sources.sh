@@ -14,6 +14,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RAW="$ROOT/data/raw"
 SUMS="$ROOT/tools/data/sources.sha256"
 RECORD=0
+UA="keycorrect-eval-fetch/1.0 (data pipeline; curl)"
 [[ "${1:-}" == "--record" ]] && RECORD=1
 
 # AOSP LatinIME, pinned to an exact commit (the branch tip moves).
@@ -23,12 +24,18 @@ AOSP_BASE="https://android.googlesource.com/platform/packages/inputmethods/Latin
 WIKI_DATE="20261001"
 WIKI_BASE="https://dumps.wikimedia.org/simplewiki/${WIKI_DATE}"
 
+# English Wikipedia "Lists of common misspellings/For machines" (CC BY-SA 4.0), pinned to a
+# revision id; EVAL ONLY (the misspell eval mode), never part of the shipped dictionary.
+MISSPELL_REV="1199637275"
+MISSPELL_URL="https://en.wikipedia.org/w/index.php?title=Wikipedia:Lists_of_common_misspellings/For_machines&oldid=${MISSPELL_REV}&action=raw"
+
 # name | url | upstream-sha1 (optional, "-" if none) | transport (raw|gitiles)
 SOURCES=(
   "en_US_wordlist.combined.gz|${AOSP_BASE}/dictionaries/en_US_wordlist.combined.gz?format=TEXT|-|gitiles"
   "simplewiki-${WIKI_DATE}-pages-articles.xml.bz2|${WIKI_BASE}/simplewiki-${WIKI_DATE}-pages-articles.xml.bz2|f55881650e447c39e8bdeba4b1bb8d5576342d4b|raw"
   # Tatoeba only offers a rolling weekly export; the checksum pins what we used.
   "eng_sentences.tsv.bz2|https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2|-|raw"
+  "wikipedia-misspellings-${MISSPELL_REV}.txt|${MISSPELL_URL}|-|raw"
 )
 
 sha256_of() {
@@ -69,9 +76,9 @@ for entry in "${SOURCES[@]}"; do
     part="$dest.part"
     if [[ "$transport" == "gitiles" ]]; then
       # gitiles serves raw file content base64-encoded.
-      curl -fL --retry 5 --retry-delay 5 --retry-all-errors -sS "$url" | base64 -d >"$part"
+      curl -fL -A "$UA" --retry 5 --retry-delay 5 --retry-all-errors -sS "$url" | base64 -d >"$part"
     else
-      curl -fL --retry 5 --retry-delay 5 --retry-all-errors -C - -sS --progress-bar "$url" -o "$part"
+      curl -fL -A "$UA" --retry 5 --retry-delay 5 --retry-all-errors -C - -sS --progress-bar "$url" -o "$part"
     fi
     mv "$part" "$dest"
   fi
@@ -97,6 +104,7 @@ if [[ "$RECORD" -eq 1 ]]; then
     echo "# SHA-256 of raw sources in data/raw/. Verified by tools/data/fetch-sources.sh."
     echo "# AOSP LatinIME commit ${AOSP_COMMIT}; Simple English Wikipedia dump ${WIKI_DATE};"
     echo "# Tatoeba eng_sentences.tsv.bz2 is a rolling export, recorded on $(date -u +%Y-%m-%d)."
+    echo "# Wikipedia common-misspellings list (eval only): revision ${MISSPELL_REV}."
     for l in "${record_lines[@]}"; do echo "$l"; done
   } >"$SUMS.new"
   mv "$SUMS.new" "$SUMS"

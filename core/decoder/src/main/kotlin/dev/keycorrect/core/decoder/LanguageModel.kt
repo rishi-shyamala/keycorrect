@@ -2,6 +2,10 @@ package dev.keycorrect.core.decoder
 
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.dictionary.WordFlags
+import dev.keycorrect.core.learning.Personalization
+import kotlin.math.exp
+import kotlin.math.ln
+import kotlin.math.max
 
 /**
  * Back-off n-gram scoring against the dictionary (§3.1, §4.4) for one left context at a time.
@@ -9,6 +13,11 @@ import dev.keycorrect.core.dictionary.WordFlags
  * The context is the last two dictionary words of the current sentence ([w2], [w1]); `w1 = BOS_ID`
  * means a sentence start, -1 means unknown. Unknown words and numbers break the context (the
  * following word is scored without it). Stateful and reused across requests: not thread-safe.
+ *
+ * With a [Personalization] bound ([bindPersonalization]) [logProb] interpolates the personal
+ * n-gram: `ln(w * P_user + (1 - w) * P_base)` where it has an estimate, the base value otherwise.
+ * The personal n-gram works on words as text (its context is the last two words of the sentence,
+ * dictionary or not), so it also knows the user's own words.
  */
 internal class LanguageModel(private val dict: Dictionary, private val config: ScoringConfig) {
     /** Second word to the left, -1 if unknown/none. */
@@ -31,8 +40,52 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     private var biList = -1
     private var lastBefore: String? = null
 
+    private var user: Personalization? = null
+    private var lnUser = 0f
+    private var lnBase = 0f
+    private var userContext: List<String> = emptyList()
+
+    /** Binds [p] (null for none) for the following requests; call before [setContext]. */
+    fun bindPersonalization(p: Personalization?, weight: Float) {
+        user = if (p === Personalization.None || weight <= 0f) null else p
+        lnUser = ln(weight.coerceIn(1e-6f, 1f - 1e-6f))
+        lnBase = ln(1f - weight.coerceIn(1e-6f, 1f - 1e-6f))
+        if (user == null) userContext = emptyList()
+        lastBefore = null
+    }
+
+    /** True if a personal n-gram is bound. */
+    val hasUser: Boolean
+        get() = user != null
+
+    /**
+     * Interpolates the personal estimate for [word] after the current context into [base]; [base]
+     * itself where the personal model has no estimate.
+     */
+    fun blend(base: Float, word: String): Float {
+        val p = user ?: return base
+        val u = p.userLogProb(userContext, word) ?: return base
+        if (u.isNaN()) return base
+        val a = u + lnUser
+        val b = base + lnBase
+        val m = max(a, b)
+        return m + ln(exp(a - m) + exp(b - m))
+    }
+
     /** Log-probability of the rarest word; typed gibberish is assumed barely less likely. */
     val oovLogProb: Float = dict.logProb(dict.wordCount - 1) + config.oovOffset
+
+    /**
+     * [oovLogProb] after the back-off an unseen word pays in the current context (what
+     * [baseLogProb] charges a dictionary word that has no trigram / bigram entry), so a typed
+     * out-of-vocabulary literal and a candidate unseen after the same words compare like for like.
+     */
+    fun oovLogProbInContext(): Float {
+        var p = oovLogProb
+        if (triList >= 0) p += config.trigramBackoffPenalty
+        if (biList >= 0) p += config.bigramBackoffPenalty
+        return p
+    }
 
     private val tmpIds = IntArray(POOL)
     private val tmpLp = FloatArray(POOL)
@@ -46,6 +99,7 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
         if (before != lastBefore) {
             lastBefore = before
             parse(before)
+            if (user != null) userContext = Text.lastSentenceWords(before, USER_CONTEXT_WORDS)
         }
         bind()
     }
@@ -56,6 +110,10 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
         this.w1 = w1
         lastBefore = null
         atDocumentStart = false
+        if (user != null) {
+            userContext =
+                listOf(w2, w1).filter { it >= Dictionary.FIRST_WORD_ID }.map { dict.word(it) }
+        }
         bind()
     }
 
@@ -174,6 +232,13 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
      * (both when both miss), matching the dictionary build's assumptions.
      */
     fun logProb(id: Int): Float {
+        val base = baseLogProb(id)
+        return if (user != null && id >= Dictionary.FIRST_WORD_ID) blend(base, dict.word(id))
+        else base
+    }
+
+    /** [logProb] without the personal n-gram. */
+    fun baseLogProb(id: Int): Float {
         var penalty = 0f
         if (triList >= 0) {
             val v = dict.logProbInTrigramList(triList, id)
@@ -240,7 +305,8 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
 
     private fun suggestable(id: Int): Boolean =
         dict.flags(id) and (WordFlags.POSSIBLY_OFFENSIVE or WordFlags.NOT_A_WORD) == 0 &&
-            Text.hasLetter(dict.word(id))
+            Text.hasLetter(dict.word(id)) &&
+            user?.isBlocked(dict.word(id)) != true
 
     private fun addToPool(n: Int, id: Int): Int {
         for (j in 0 until n) if (poolIds[j] == id) return n
@@ -268,5 +334,6 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     private companion object {
         const val POOL = 32
         const val MAX_CONTEXT_CHARS = 192
+        const val USER_CONTEXT_WORDS = 2
     }
 }

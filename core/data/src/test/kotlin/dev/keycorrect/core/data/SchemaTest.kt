@@ -41,4 +41,43 @@ class SchemaTest {
         val key = byteArrayOf(0x00, 0x0F, 0xFF.toByte(), 0x7A)
         assertThat(String(KeyCorrectDatabase.toRawKeySyntax(key))).isEqualTo("x'000fff7a'")
     }
+
+    @Test
+    fun v1ToV2MigrationCreatesEveryLearningTable() {
+        val statements = ArrayList<String>()
+        val db =
+            java.lang.reflect.Proxy.newProxyInstance(
+                javaClass.classLoader,
+                arrayOf(androidx.sqlite.db.SupportSQLiteDatabase::class.java),
+            ) { _, method, args ->
+                if (method.name == "execSQL") statements += args[0] as String
+                null
+            } as androidx.sqlite.db.SupportSQLiteDatabase
+
+        Schema.migrate(db, Schema.MIGRATIONS, 1, 2)
+
+        val created =
+            statements
+                .filter { it.startsWith("CREATE TABLE ") }
+                .map { it.removePrefix("CREATE TABLE ").substringBefore(' ') }
+        assertThat(created).containsExactlyElementsIn(Schema.LEARNING_V2_TABLES)
+        assertThat(statements.any { it.startsWith("CREATE INDEX") && "time_millis" in it }).isTrue()
+        assertThat(statements.none { it.contains("user_words (") && "learning_" !in it }).isTrue()
+    }
+
+    @Test
+    fun everyPersistedLearningListHasATable() {
+        val lists =
+            dev.keycorrect.core.learning.model.PersistedLearning::class.java.declaredFields.count {
+                List::class.java.isAssignableFrom(it.type)
+            }
+        // Row tables + journal + meta.
+        assertThat(Schema.LEARNING_TABLES).hasSize(lists + 2)
+    }
+
+    @Test
+    fun versionIsThree() {
+        assertThat(Schema.VERSION).isEqualTo(3)
+        assertThat(Schema.plan(Schema.MIGRATIONS, 1, 2)).hasSize(1)
+    }
 }

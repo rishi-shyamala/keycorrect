@@ -34,7 +34,6 @@ internal object Fmt {
 
     const val NODE_RECORD = 3
     const val SAMPLE_STRIDE = 16
-    const val BITMAP_BLOCK_NODES = 64
     const val BITMAP_BLOCK_BYTES = 12
     const val MULTI_FLAG = 0x800000
     const val NO_NODE = 0xFFFFFF

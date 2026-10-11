@@ -119,8 +119,9 @@ class ClassicEngineTest {
         val exact = engine.predictNow(request(TestKeyboard.pasted("hello")))
         assertThat(exact.autocorrect).isNull()
         val typo = engine.predictNow(request(TestKeyboard.pasted("helli")))
-        // Without touches nothing says "i" is near "o", so correcting is not justified.
-        assertThat(typo.autocorrect).isNull()
+        // Without touches nothing says "i" is near "o", but o/i is a vowel-for-vowel slip, which
+        // is cheap whatever the key distance, so "hello" is the clear pick.
+        assertThat(typo.autocorrect?.text).isEqualTo("hello")
     }
 
     @Test

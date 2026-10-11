@@ -17,4 +17,5 @@ dependencies {
     implementation(project(":core:decoder"))
     implementation(project(":core:dictionary"))
     implementation(project(":core:layout"))
+    implementation(project(":core:learning"))
 }

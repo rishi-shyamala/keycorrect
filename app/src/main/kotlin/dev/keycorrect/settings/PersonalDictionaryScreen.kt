@@ -90,7 +90,11 @@ fun PersonalDictionaryScreen(contentPadding: PaddingValues, container: AppContai
                     query = query,
                     onQueryChange = { query = it },
                     onDelete = { word ->
-                        container.write(::reportFailure) { store.remove(word.word) }
+                        container.write(::reportFailure) {
+                            store.remove(word.word)
+                            // Tell the learning system so it does not promote the word again.
+                            container.learningHost.onUserWordRemoved(word.word)
+                        }
                         scope.launch {
                             snackbar.currentSnackbarData?.dismiss()
                             val result =

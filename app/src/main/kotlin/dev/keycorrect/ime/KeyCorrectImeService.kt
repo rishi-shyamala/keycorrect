@@ -1,5 +1,7 @@
 package dev.keycorrect.ime
 
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
@@ -28,17 +30,26 @@ import kotlinx.coroutines.launch
 class KeyCorrectImeService : ComposeInputMethodService() {
     private val settingsFlow = MutableStateFlow(KeyboardSettings())
 
-    private val predictionHost by lazy {
+    /**
+     * The process-wide learning system; it gates itself on the settings as well as the keyboard.
+     */
+    private val learningHost
+        get() = appContainer.learningHost
+
+    private val predictionHostLazy = lazy {
         PredictionHost(
             assets,
             appContainer.userDictionary,
             appContainer.shortcuts,
             appContainer.applicationScope,
             Dispatchers.IO,
+            learning = learningHost,
+            touchKey = { controller.currentTouchKey },
         )
     }
+    private val predictionHost by predictionHostLazy
 
-    private val controller by lazy {
+    private val controller: KeyboardController by lazy {
         KeyboardController(
             EditorSession(
                 connection = { currentInputConnection },
@@ -46,6 +57,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             ),
             appContainer.keyboardComposer,
             PredictionEnvironment.create(this, predictionHost),
+            learning = learningHost,
+            wallClock = appContainer.wallClock,
+            wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
         )
     }
 
@@ -58,6 +72,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        updateDevice(resources.configuration)
         // Dictionary and user data load in the background; suggestions appear once they're ready.
         predictionHost.start()
         lifecycleScope.launch {
@@ -65,8 +80,33 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 settingsFlow.value = it
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
+                predictionHost.applySettings(it)
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateDevice(newConfig)
+    }
+
+    /** Tells the keyboard what we run on; its input profile feeds both events and the decoder. */
+    private fun updateDevice(config: Configuration) {
+        val profile = DeviceProfile.from(config)
+        controller.updateDevice(profile.tablet, profile.landscape, profile.hardwareKeyboard)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            learningHost.requestFlush(FlushReason.TrimMemory)
+        }
+    }
+
+    override fun onDestroy() {
+        learningHost.requestFlush(FlushReason.TrimMemory)
+        if (predictionHostLazy.isInitialized()) predictionHost.close()
+        super.onDestroy()
     }
 
     @Composable
@@ -97,6 +137,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         controller.onFinishInput()
+        learningHost.requestFlush(FlushReason.KeyboardHidden)
         super.onFinishInputView(finishingInput)
     }
 

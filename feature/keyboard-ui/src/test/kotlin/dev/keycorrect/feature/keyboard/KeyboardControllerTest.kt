@@ -75,6 +75,26 @@ class KeyboardControllerTest {
     }
 
     @Test
+    fun currentTouchKeyTracksDeviceLayerNumberRowAndKeyHeight() {
+        start()
+        assertThat(controller.currentTouchKey).isEqualTo("Phone/port/letters@54dp")
+
+        controller.updateDevice(tablet = true, landscape = true)
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters@54dp")
+
+        controller.updateSettings(KeyboardSettings(numberRow = true, keyHeightDp = 60))
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters+nr@60dp")
+
+        controller.onKey(KeyAction.SwitchLayer("symbols"))
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/symbols+nr@60dp")
+
+        // A sensitive field forces the number row on, as the layout (and so the key) shows.
+        controller.updateDevice(tablet = false, landscape = false, hardwareKeyboard = true)
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp")
+    }
+
+    @Test
     fun emailFieldGetsAtSignInBottomRow() {
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
         assertThat(labels()).contains("@")
