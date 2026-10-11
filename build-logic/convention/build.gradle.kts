@@ -8,6 +8,7 @@ dependencies {
     implementation(libs.compose.compiler.gradle.plugin)
     implementation(libs.kotlin.serialization.gradle.plugin)
     implementation(libs.detekt.gradle.plugin)
+    implementation(libs.androidx.benchmark.gradle.plugin)
 }
 
 gradlePlugin {
@@ -27,6 +28,10 @@ gradlePlugin {
         register("kotlinSerialization") {
             id = "keycorrect.kotlin.serialization"
             implementationClass = "KotlinSerializationConventionPlugin"
+        }
+        register("androidBenchmark") {
+            id = "keycorrect.android.benchmark"
+            implementationClass = "AndroidBenchmarkConventionPlugin"
         }
         register("detekt") {
             id = "keycorrect.detekt"

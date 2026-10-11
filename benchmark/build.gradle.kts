@@ -1,4 +1,4 @@
-plugins { id("keycorrect.android.library") }
+plugins { id("keycorrect.android.benchmark") }
 
 // Device microbenchmarks (androidx.benchmark): the hot paths measured under ART on the target
 // hardware, which the desktop HotSpot profiling in tools/profile cannot represent. Everything lives

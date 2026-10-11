@@ -40,7 +40,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Check, test, lint, build
-        run: ./gradlew --console=plain spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug
+        run: ./gradlew --console=plain spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug :benchmark:assembleReleaseAndroidTest
 
       - name: Upload reports
         if: failure()

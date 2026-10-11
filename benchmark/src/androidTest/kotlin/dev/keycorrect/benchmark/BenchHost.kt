@@ -2,14 +2,10 @@ package dev.keycorrect.benchmark
 
 import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.TextEditor
-import dev.keycorrect.feature.keyboard.prediction.DecoderLoop
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.Predictor
-import dev.keycorrect.feature.keyboard.prediction.ShortcutExpander
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
-import java.lang.reflect.Proxy
-import java.util.concurrent.Executor
 
 /** An in-memory text field keeping text, cursor and composing region, like a real one would. */
 class BenchEditor : TextEditor {
@@ -95,32 +91,6 @@ class BenchBackend(override val predictor: Predictor?) : PredictionBackend {
     override fun addWord(word: String) = Unit
 }
 
-/**
- * A [PredictionEnvironment] whose decoder runs inline on the calling thread and whose timers never
- * fire. Its constructor and the scheduler types are `internal` to :feature:keyboard-ui, and the
- * public factory ([PredictionEnvironment.create]) is asynchronous, so the internal constructor is
- * reached by reflection (it is public in bytecode) with proxies for the scheduler interfaces.
- */
-fun benchEnvironment(backend: PredictionBackend): PredictionEnvironment {
-    val loop = DecoderLoop(Executor { it.run() }, { it.run() }) { backend.predictor }
-    val pkg = "dev.keycorrect.feature.keyboard"
-    val loader = PredictionEnvironment::class.java.classLoader
-    val handle =
-        Proxy.newProxyInstance(loader, arrayOf(Class.forName("$pkg.TimeoutHandle"))) { _, m, _ ->
-            if (m.returnType == Boolean::class.javaPrimitiveType) false else null
-        }
-    val scheduler =
-        Proxy.newProxyInstance(loader, arrayOf(Class.forName("$pkg.TimeoutScheduler"))) { _, m, _ ->
-            when (m.name) {
-                "schedule" -> handle
-                "hashCode" -> 0
-                "equals" -> false
-                "toString" -> "BenchScheduler"
-                else -> null
-            }
-        }
-    val constructor = PredictionEnvironment::class.java.declaredConstructors.single()
-    constructor.isAccessible = true
-    return constructor.newInstance(backend, loop, scheduler, ShortcutExpander())
-        as PredictionEnvironment
-}
+/** A [PredictionEnvironment] whose decoder runs inline on the calling thread. */
+fun benchEnvironment(backend: PredictionBackend): PredictionEnvironment =
+    PredictionEnvironment.inline(backend)

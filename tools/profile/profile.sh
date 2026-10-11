@@ -74,27 +74,13 @@ summarise "$OUT/keys.jfr" "keystroke"
 if [ "$DEVICE" = 1 ]; then
     : "${ANDROID_SERIAL:?set ANDROID_SERIAL to the test device}"
     echo "== device ($ANDROID_SERIAL): microbenchmarks" >&2
+    touch "$OUT/device.start"
     ./gradlew --console=plain :benchmark:connectedReleaseAndroidTest > "$OUT/device.log" 2>&1 \
         || { tail -30 "$OUT/device.log" >&2; exit 1; }
     {
         echo "## Device microbenchmarks ($ANDROID_SERIAL)"
-        find benchmark/build -name '*benchmarkData.json' -newer "$OUT/summary.txt" -print0 \
-            | xargs -0 cat | python3 -I -c '
-import json, sys
-text = sys.stdin.read()
-dec = json.JSONDecoder(); i = 0
-while i < len(text):
-    while i < len(text) and text[i].isspace(): i += 1
-    if i >= len(text): break
-    doc, i = dec.raw_decode(text, i)
-    for b in doc.get("benchmarks", []):
-        m = b.get("metrics", {})
-        t = m.get("timeNs", {})
-        a = m.get("allocationCount", {})
-        print(f"{b[\"className\"].split(\".\")[-1]}.{b[\"name\"]:<32} "
-              f"median {t.get(\"median\", 0)/1e6:9.3f} ms  min {t.get(\"minimum\", 0)/1e6:9.3f} ms  "
-              f"allocs {a.get(\"median\", 0):>10.0f}")
-'
+        find benchmark/build -name '*benchmarkData.json' -newer "$OUT/device.start" -print0 \
+            | xargs -0 python3 -I tools/profile/bench_summary.py
         echo
     } >> "$OUT/summary.txt"
 fi
