@@ -23,7 +23,7 @@ Read this first when resuming. Other docs:
 | 5–10 | see PLAN §17 |
 
 - **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. Merged phase branches are deleted locally and on `origin`; GitHub deletes a PR's branch when it merges.
-- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
+- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
 - **Tests:** 1067 unit tests pass (Android + JVM modules, incl. tools), and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, Detekt (against baselines), lint, debug and release builds are clean.
 - **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
 
@@ -126,7 +126,7 @@ feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), c
                      PhraseLearning, TouchStateMachine, OwnEditTracker, strip, KeyFeedback
 tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
 tools/eval           Offline harness: spatial typist, learn mode (simulated user), misspell mode
-build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization)
+build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization, detekt)
 ```
 
 - **Data flow for a keystroke:**
