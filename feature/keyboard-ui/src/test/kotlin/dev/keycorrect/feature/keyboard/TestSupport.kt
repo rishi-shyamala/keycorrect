@@ -139,12 +139,12 @@ internal class SimEditor : TextEditor {
 
     override fun textBeforeCursor(maxChars: Int): CharSequence? {
         readCalls++
-        return text.substring(maxOf(0, cursor - maxChars), cursor)
+        return text.substring(maxOf(0, selStart - maxChars), selStart)
     }
 
     override fun textAfterCursor(maxChars: Int): CharSequence? {
         readCalls++
-        return text.substring(cursor, minOf(text.length, cursor + maxChars))
+        return text.substring(selEnd, minOf(text.length, selEnd + maxChars))
     }
 
     override fun <T> batchEdit(block: () -> T): T {

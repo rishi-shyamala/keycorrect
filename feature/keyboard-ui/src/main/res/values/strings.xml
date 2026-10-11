@@ -20,4 +20,60 @@
     <string name="strip_never_cancel_description">Cancel, keep suggesting</string>
     <!-- The long-press accessibility action on a suggestion. -->
     <string name="strip_never_action">Never suggest %1$s</string>
+
+    <!-- Editing panel: button labels and their accessibility descriptions (EditingPanel). -->
+    <string name="edit_left">←</string>
+    <string name="edit_left_description">Move cursor left</string>
+    <string name="edit_right">→</string>
+    <string name="edit_right_description">Move cursor right</string>
+    <string name="edit_up">↑</string>
+    <string name="edit_up_description">Move cursor up</string>
+    <string name="edit_down">↓</string>
+    <string name="edit_down_description">Move cursor down</string>
+    <string name="edit_word_left">Word ←</string>
+    <string name="edit_word_left_description">Move cursor one word left</string>
+    <string name="edit_word_right">Word →</string>
+    <string name="edit_word_right_description">Move cursor one word right</string>
+    <string name="edit_home">Home</string>
+    <string name="edit_home_description">Move cursor to start of line</string>
+    <string name="edit_end">End</string>
+    <string name="edit_end_description">Move cursor to end of line</string>
+    <string name="edit_select_toggle">Select</string>
+    <string name="edit_select_toggle_description">Select mode: moves extend the selection</string>
+    <string name="edit_select_word">Word</string>
+    <string name="edit_select_word_description">Select word</string>
+    <string name="edit_select_sentence">Sentence</string>
+    <string name="edit_select_sentence_description">Select sentence</string>
+    <string name="edit_select_line">Line</string>
+    <string name="edit_select_line_description">Select line</string>
+    <string name="edit_select_all">All</string>
+    <string name="edit_select_all_description">Select all</string>
+    <string name="edit_cut">Cut</string>
+    <string name="edit_cut_description">Cut</string>
+    <string name="edit_copy">Copy</string>
+    <string name="edit_copy_description">Copy</string>
+    <string name="edit_paste">Paste</string>
+    <string name="edit_paste_description">Paste</string>
+    <string name="edit_undo">Undo</string>
+    <string name="edit_undo_description">Undo</string>
+    <string name="edit_redo">Redo</string>
+    <string name="edit_redo_description">Redo</string>
+    <string name="edit_backspace">⌫</string>
+    <string name="edit_backspace_description">Backspace</string>
+    <string name="edit_delete">⌦</string>
+    <string name="edit_delete_description">Delete forward</string>
+    <string name="edit_close">ABC</string>
+    <string name="edit_close_description">Back to keyboard</string>
+    <string name="edit_select_on">on</string>
+    <string name="edit_select_off">off</string>
+
+    <!-- Selection strip: shown in place of the suggestions while a range is selected. -->
+    <string name="selection_word">Word</string>
+    <string name="selection_word_description">Expand selection to word</string>
+    <string name="selection_sentence">Sentence</string>
+    <string name="selection_sentence_description">Expand selection to sentence</string>
+    <string name="selection_case">Aa</string>
+    <string name="selection_case_description">Change case</string>
+    <string name="selection_copy">Copy</string>
+    <string name="selection_copy_description">Copy selection</string>
 </resources>

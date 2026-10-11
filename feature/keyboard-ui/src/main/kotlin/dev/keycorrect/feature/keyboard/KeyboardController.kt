@@ -3,6 +3,7 @@ package dev.keycorrect.feature.keyboard
 import android.os.SystemClock
 import android.text.InputType
 import android.view.KeyEvent
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,7 +92,27 @@ class KeyboardController(
     /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */
     internal val terminalModifiers = TerminalModifiers(clock)
 
-    private val editing = EditingController(tracked, input::endComposingForMove, ::showPanel)
+    /** The latest selection the platform reported, as the editing UI needs it. */
+    internal var selection: EditorSelection by mutableStateOf(EditorSelection())
+        private set
+
+    internal val editing =
+        EditingController(
+            tracked,
+            input::endComposingForMove,
+            ::showPanel,
+            { selection },
+            { profile.sensitive },
+        )
+
+    /**
+     * Whether the selection strip replaces the predictions: a range is selected, the field is not
+     * sensitive, and no backspace swipe is previewing one. Derived, so a cursor move recomposes
+     * nothing.
+     */
+    val selectionStripVisible: Boolean by derivedStateOf {
+        !profile.sensitive && selection.known && !selection.collapsed && !editing.swipeActive
+    }
 
     /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
     val gestures: KeyGestures
@@ -155,6 +176,7 @@ class KeyboardController(
         this.identity = identity
         this.profile = profile
         this.settings = settings
+        if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
         input.onStartInput(profile, settings, newField = !sameField)
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
@@ -165,6 +187,8 @@ class KeyboardController(
             updateAutoCapitalize()
             return
         }
+        panel = KeyboardPanel.Keys
+        editing.reset()
         shiftHeld = false
         shiftChorded = false
         terminalModifiers.reset()
@@ -305,6 +329,7 @@ class KeyboardController(
         composingEnd: Int = -1,
     ) {
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
+        selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
         when (val verdict = ownEdits.onUpdate(update)) {
             is UpdateVerdict.Own -> {
@@ -324,6 +349,8 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        selection = EditorSelection()
+        editing.reset()
         input.onFinishInput()
         ownEdits.reset()
     }
