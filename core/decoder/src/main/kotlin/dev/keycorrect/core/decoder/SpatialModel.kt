@@ -153,7 +153,7 @@ class SpatialModel(
  * Small cache of [SpatialModel]s keyed by [KeyLayoutModel.id] (portrait/landscape, layers), so the
  * Gaussians are rebuilt only when geometry or the touch correction changes.
  */
-internal class SpatialModelCache(private val config: SpatialConfig, private val capacity: Int = 8) {
+internal class SpatialModelCache(private val config: SpatialConfig, capacity: Int = 8) {
     private val models =
         object : LinkedHashMap<Long, SpatialModel>(16, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, SpatialModel>?) =

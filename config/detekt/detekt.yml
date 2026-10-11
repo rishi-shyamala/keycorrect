@@ -1,0 +1,6 @@
+# Overrides on top of detekt's default config (buildUponDefaultConfig).
+
+naming:
+  FunctionNaming:
+    # Composable functions are PascalCase by convention.
+    ignoreAnnotated: ['Composable']

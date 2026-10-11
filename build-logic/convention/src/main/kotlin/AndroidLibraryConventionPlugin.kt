@@ -7,6 +7,7 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) =
         with(target) {
             pluginManager.apply("com.android.library")
+            pluginManager.apply("keycorrect.detekt")
             extensions.configure<LibraryExtension> {
                 compileSdk = KeyCorrectBuild.COMPILE_SDK
                 ndkVersion = KeyCorrectBuild.NDK_VERSION

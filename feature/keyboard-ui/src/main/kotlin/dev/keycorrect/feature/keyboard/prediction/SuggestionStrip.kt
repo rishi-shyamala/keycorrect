@@ -1,9 +1,11 @@
 package dev.keycorrect.feature.keyboard.prediction
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictResult
+import dev.keycorrect.feature.keyboard.R
 
 /** What a strip slot does when tapped, and how it is drawn. */
 enum class SlotKind {
@@ -25,13 +27,12 @@ enum class SlotKind {
 
 /**
  * One slot of the strip. [text] is what is displayed, [insert] what a tap inserts (the raw
- * candidate text; shortcuts still carry their variables), [description] the accessibility label.
+ * candidate text; shortcuts still carry their variables); [labelRes] gives the accessibility label.
  */
 @Immutable
 data class StripSlot(
     val text: String,
     val kind: SlotKind,
-    val description: String,
     val insert: String = text,
     /** Drawn bold: the slot holds what will be applied automatically. */
     val bold: Boolean = false,
@@ -70,29 +71,19 @@ data class StripModel(
     }
 }
 
-/** Accessibility labels. TODO: move to string resources when strings.xml is open to this module. */
-internal object StripLabels {
-    fun suggestion(text: String) = "Suggestion: $text"
-
-    fun autocorrect(text: String) = "Autocorrect to $text"
-
-    fun literal(text: String) = "Keep $text as typed"
-
-    fun phrase(text: String) = "Phrase suggestion: $text"
-
-    fun shortcut(text: String) = "Shortcut expansion: $text"
-
-    fun addWord(word: String) = "Add $word to dictionary"
-
-    fun neverSuggestPrompt(word: String) = "Never suggest $word? Yes or cancel"
-
-    fun neverSuggestYes(word: String) = "Yes, never suggest $word"
-
-    fun neverSuggestCancel() = "Cancel, keep suggesting"
-
-    /** The long-click action label of a suggestion slot. */
-    fun neverSuggestAction(word: String) = "Never suggest $word"
-}
+/**
+ * The accessibility label of this slot, a string resource taking [StripSlot.text]. A shortcut that
+ * would be applied on space reads as an autocorrection.
+ */
+@StringRes
+internal fun StripSlot.labelRes(): Int =
+    when (kind) {
+        SlotKind.Suggestion -> R.string.strip_suggestion
+        SlotKind.Autocorrect -> R.string.strip_autocorrect
+        SlotKind.Literal -> R.string.strip_literal
+        SlotKind.Phrase -> R.string.strip_phrase
+        SlotKind.Shortcut -> if (bold) R.string.strip_autocorrect else R.string.strip_shortcut
+    }
 
 /** Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested. */
 internal object StripBuilder {
@@ -137,18 +128,16 @@ internal object StripBuilder {
         return StripModel(left, centre, right)
     }
 
-    private fun literal(text: String) = StripSlot(text, SlotKind.Literal, StripLabels.literal(text))
+    private fun literal(text: String) = StripSlot(text, SlotKind.Literal)
 
     private fun slot(c: Candidate, autocorrect: Boolean, preview: (String) -> String): StripSlot {
         val shown = if (c.source == CandidateSource.Shortcut) preview(c.text) else c.text
         return when {
-            c.isPhrase -> StripSlot(shown, SlotKind.Phrase, StripLabels.phrase(shown), c.text)
+            c.isPhrase -> StripSlot(shown, SlotKind.Phrase, c.text)
             c.source == CandidateSource.Shortcut ->
                 StripSlot(
                     shown,
                     SlotKind.Shortcut,
-                    if (autocorrect) StripLabels.autocorrect(shown)
-                    else StripLabels.shortcut(shown),
                     c.text,
                     bold = autocorrect,
                 )
@@ -156,11 +145,10 @@ internal object StripBuilder {
                 StripSlot(
                     shown,
                     SlotKind.Autocorrect,
-                    StripLabels.autocorrect(shown),
                     c.text,
                     bold = true,
                 )
-            else -> StripSlot(shown, SlotKind.Suggestion, StripLabels.suggestion(shown), c.text)
+            else -> StripSlot(shown, SlotKind.Suggestion, c.text)
         }
     }
 }

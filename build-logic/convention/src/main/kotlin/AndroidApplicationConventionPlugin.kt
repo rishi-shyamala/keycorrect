@@ -8,6 +8,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) =
         with(target) {
             pluginManager.apply("com.android.application")
+            pluginManager.apply("keycorrect.detekt")
             extensions.configure<ApplicationExtension> {
                 compileSdk = KeyCorrectBuild.COMPILE_SDK
                 ndkVersion = KeyCorrectBuild.NDK_VERSION

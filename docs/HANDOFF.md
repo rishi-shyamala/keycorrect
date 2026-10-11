@@ -17,13 +17,14 @@ Read this first when resuming. Other docs:
 | 0 Foundations | merged to `main`, pushed |
 | 1 Core keyboard | merged to `main`, pushed |
 | 2 Prediction core | merged to `main`, pushed |
-| **3 Learning** | **complete on `phase-3-learning`, pushed, PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1) OPEN** (not merged; merging is the user's call) |
+| 3 Learning | merged to `main` (PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1), 2026-10-11) |
+| Pre-Phase-4 cleanup | branch `pre-phase-4-cleanup` (see `docs/CODEBASE_REVIEW.md` §0) |
 | 4 Editing, clipboard, emoji | next |
 | 5–10 | see PLAN §17 |
 
-- **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. `main` and `phase-3-learning` are pushed. The old local branches `phase-1-core-keyboard` and `phase-2-prediction-core` are merged and can be deleted.
-- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
-- **Tests:** 1066 unit tests pass (Android + JVM modules, incl. tools), and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, lint, debug and release builds are clean.
+- **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. Merged phase branches are deleted locally and on `origin`; GitHub deletes a PR's branch when it merges.
+- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
+- **Tests:** 1067 unit tests pass (Android + JVM modules, incl. tools), and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, Detekt (against baselines), lint, debug and release builds are clean.
 - **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
 
 ## 2. Workflow rules the user set (follow these)
@@ -121,10 +122,11 @@ core/decoder         ClassicEngine: spatial model, A* trie search, back-off LM, 
 core/learning        Events/updates contract, SentenceContext (context buckets, shared with the decoder),
                      OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
 feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), controller, PredictiveInput
-                     (composing/autocorrect/undo/learning events), TouchStateMachine, OwnEditTracker, strip, KeyFeedback
+                     (composing/autocorrect/undo/learning events) with TextContextCache, StripPrompts and
+                     PhraseLearning, TouchStateMachine, OwnEditTracker, strip, KeyFeedback
 tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
 tools/eval           Offline harness: spatial typist, learn mode (simulated user), misspell mode
-build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization)
+build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization, detekt)
 ```
 
 - **Data flow for a keystroke:**
@@ -187,7 +189,6 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
   - A suppressed runner-up makes real-word near-ties abstain (on the safe side).
 - `forgetSince` can only subtract n-gram, correction and touch evidence from the last 24 h, because that is the journal's retention.
 - The delete-and-retype device failure was fixed by a session-independent check. The exact device repro was never reproduced in unit tests, but it passed on the device afterwards.
-- Accessibility strings in `PredictionStrip` are hard-coded English (TODO: move them to strings.xml).
 - Settings icons are text glyphs, because material-icons isn't a dependency.
 - On a landscape tablet the keys are very wide. Split/floating layouts are planned for Phase 8.
 - The Tab S9 reports `mIsHapticSupported=false` (coin motor) but still plays the effects. Strength isn't adjustable there.
@@ -212,12 +213,17 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
 - **Dictionary asset:** stored uncompressed (`androidResources.noCompress += "kcd"`) so it can be memory-mapped from the APK through `AssetManager.openFd`.
 - **Device tests:** `uiautomator dump` sometimes brings the Google app to the foreground. Check `topResumedActivity` before tapping.
 - **Spotless:** it's a root-level task only. Parallel agents running it reformat each other's files; that's harmless.
+- **Detekt:**
+  - Run `./gradlew detektMain` (type-resolved). The plain `detekt` task skips rules that need types, e.g. UnusedPrivateFunction.
+  - The plugin is on build-logic's classpath (it needs KGP), applied by the module conventions; config in `config/detekt/detekt.yml`, baselines per module (`detekt-baseline-main.xml` / `-debug.xml`).
+  - Its analysis can't see compiler-plugin or generated code (kotlinx.serialization `serializer()`, `BuildConfig`), so it prints "compiler errors found during analysis" for core:layout and app. Harmless; the resulting false positives (LayoutParser UnreachableCode) are baselined.
+  - Its Gradle plugin triggers a `Configuration.setVisible` deprecation warning (removed in Gradle 11).
 - **Subagent turn limits:** state "be economical with turns, batch edits" in briefs, and give a priority order so a partial result is still useful.
 
 ## 10. Next steps
 
-1. **The user reviews and merges PR #1** (`phase-3-learning` → `main`). After the merge, pull `main` locally and delete the merged local branches.
-2. **Deferred review items:** `docs/CODEBASE_REVIEW.md` §0 lists what was done and what is left (Detekt, test fixtures, settings-list consolidation, tools CLI parser, splitting `PredictiveInput`, `AutocorrectPolicy` predicates). Do them on their own branch, not mixed with Phase 4 features.
+1. **Merge the `pre-phase-4-cleanup` PR** (the user's call), then pull `main` and delete the branch.
+2. **Deferred review items:** `docs/CODEBASE_REVIEW.md` §0 lists what was done and what is left (test fixtures, settings-list consolidation, tools CLI parser, the rest of the `PredictiveInput` split, `AutocorrectPolicy` predicates). Do them on their own branch, not mixed with Phase 4 features.
 3. **Optional:** run the Phase 3 device checks on the S23 Ultra when the user frees the phone (it's unchecked in the PR test plan).
 4. **Phase 4: editing, clipboard, emoji** (PLAN §9, §10, §11, §8 terminal row). Suggested breakdown, following the usual flow (branch `phase-4-editing`):
    - **Spacebar gestures:** horizontal drag moves the cursor with acceleration; vertical drag moves between lines; long-press then drag selects.

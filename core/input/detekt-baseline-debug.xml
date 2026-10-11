@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:AutoCaps.kt:AutoCaps$fun shouldCapitalize: Boolean?</ID>
+    <ID>CyclomaticComplexMethod:FieldProfile.kt:FieldProfile.Companion$fun from: FieldProfile</ID>
+    <ID>LongMethod:FieldProfile.kt:FieldProfile.Companion$fun from: FieldProfile</ID>
+    <ID>ReturnCount:AutoCaps.kt:AutoCaps$fun shouldCapitalize: Boolean?</ID>
+    <ID>ReturnCount:EditorSession.kt:EditorSession$override fun cursorCapsMode: Int</ID>
+    <ID>ReturnCount:EditorSession.kt:EditorSession$override fun deleteBackward</ID>
+    <ID>TooManyFunctions:EditorSession.kt:EditorSession : TextEditor</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -13,6 +13,7 @@ import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.feature.keyboard.ManualExecutor
+import dev.keycorrect.feature.keyboard.R
 import org.junit.Test
 
 class ShortcutExpanderTest {
@@ -61,13 +62,20 @@ class StripBuilderTest {
     }
 
     @Test
+    fun slotLabelsFollowTheSlotKindAndAnAutoExpandingShortcutReadsAsAutocorrect() {
+        assertThat(StripSlot("a", SlotKind.Suggestion).labelRes())
+            .isEqualTo(R.string.strip_suggestion)
+        assertThat(StripSlot("a", SlotKind.Literal).labelRes()).isEqualTo(R.string.strip_literal)
+        assertThat(StripSlot("a", SlotKind.Shortcut).labelRes()).isEqualTo(R.string.strip_shortcut)
+        assertThat(StripSlot("a", SlotKind.Shortcut, bold = true).labelRes())
+            .isEqualTo(R.string.strip_autocorrect)
+    }
+
+    @Test
     fun aPendingAutocorrectIsBoldInTheCentreWithTheLiteralOnTheLeft() {
         val fix = d("the")
         val m = build(PredictResult(listOf(fix, d("tea")), d("teh"), fix), "teh", fix)
-        assertThat(m.centre)
-            .isEqualTo(
-                StripSlot("the", SlotKind.Autocorrect, "Autocorrect to the", "the", bold = true)
-            )
+        assertThat(m.centre).isEqualTo(StripSlot("the", SlotKind.Autocorrect, "the", bold = true))
         assertThat(m.left?.kind).isEqualTo(SlotKind.Literal)
         assertThat(m.left?.text).isEqualTo("teh")
         assertThat(m.right?.text).isEqualTo("tea")
@@ -82,7 +90,7 @@ class StripBuilderTest {
                 "how",
             )
         assertThat(m.right?.kind).isEqualTo(SlotKind.Phrase)
-        assertThat(m.right?.description).isEqualTo("Phrase suggestion: how are you")
+        assertThat(m.right?.labelRes()).isEqualTo(R.string.strip_phrase)
     }
 
     @Test

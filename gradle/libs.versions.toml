@@ -1,6 +1,8 @@
 [versions]
 agp = "9.4.1"
 kotlin = "2.4.21"
+# Alpha, but the first line built for Kotlin 2.4; 1.23.x targets Kotlin 2.0.
+detekt = "2.0.0-alpha.6"
 composeBom = "2026.09.00"
 activityCompose = "1.13.0"
 coreKtx = "1.19.1"
@@ -15,7 +17,7 @@ autofill = "1.3.0"
 spotless = "8.10.4"
 ktfmt = "0.64"
 sqlcipher = "4.19.1"
-commonsCompress = "1.27.1"
+commonsCompress = "1.28.0"
 androidxSqlite = "2.7.1"
 androidxTestExt = "1.3.0"
 androidxTestRunner = "1.7.0"
@@ -53,6 +55,7 @@ android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlin-serialization-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+detekt-gradle-plugin = { module = "dev.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 
 [plugins]
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

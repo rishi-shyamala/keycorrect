@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:LayoutParser.kt:LayoutParser$fun parse: Layout</ID>
+    <ID>CyclomaticComplexMethod:LayoutParser.kt:LayoutParser$private fun resolveKey: ResolvedKey</ID>
+    <ID>LongMethod:LayoutParser.kt:LayoutParser$private fun resolveKey: ResolvedKey</ID>
+    <ID>LongParameterList:LayoutParser.kt:LayoutParser$private fun resolveKey: ResolvedKey</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.Backspace$1.5f</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.Enter$1.5f</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.Layer$1.5f</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.ModeSwitch$1.5f</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.Shift$1.5f</ID>
+    <ID>MagicNumber:LayoutParser.kt:LayoutParser.Type.Space$5f</ID>
+    <ID>ThrowsCount:LayoutParser.kt:LayoutParser$fun parse: Layout</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$!idPattern.matches(file.id)</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$expectedId != null</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fail("bottomRow", "a bottom layout cannot use bottomRow 'auto'")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fail("id", "'${file.id}' does not match requested id '$expectedId'")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fail("id", "'${file.id}' must match [a-z0-9_]+")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fail("name", "must not be blank")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fail("rows", "must not be empty")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$file.id != expectedId</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$file.name.isBlank()</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$file.rows.isEmpty()</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fun resolveAll</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$kind == LayoutKind.Bottom</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$mode == BottomRowMode.Auto</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$return Layout(file.id, file.name, kind, mode, onLetters, otherwise)</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val file = try { json.decodeFromJsonElement(LayoutFile.serializer(), tree) } catch (e: SerializationException) { throw LayoutParseException("Layout '$id': ${e.message}", e) }</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val kind = LayoutKind.entries.firstOrNull { it.json == file.kind } ?: fail("kind", "unknown kind '${file.kind}'")</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val mode = if (file.bottomRow == null) { if (kind == LayoutKind.Letters || kind == LayoutKind.Symbols) { BottomRowMode.Auto } else { BottomRowMode.Included } } else { BottomRowMode.entries.firstOrNull { it.json == file.bottomRow } ?: fail("bottomRow", "unknown bottomRow '${file.bottomRow}'") }</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val onLetters = resolveAll(onLetters = true)</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val otherwise = if (kind == LayoutKind.Bottom) resolveAll(onLetters = false) else onLetters</ID>
+    <ID>UseOrEmpty:LayoutParser.kt:LayoutParser$key.label ?: ""</ID>
+  </CurrentIssues>
+</SmellBaseline>

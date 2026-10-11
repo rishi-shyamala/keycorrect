@@ -9,7 +9,7 @@ internal class WordAligner(
     private val edits: EditConfig,
     private val completionPenalty: Float,
     private val maxCompletionChars: Int,
-    private val maxInputChars: Int,
+    maxInputChars: Int,
 ) {
     private val stride = MAX_WORD + 1
     private val spatial = FloatArray((maxInputChars + 1) * stride)

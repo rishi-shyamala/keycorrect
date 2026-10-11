@@ -13,7 +13,7 @@ class EvalResult(val metrics: Metrics, val failures: List<FailureRow>)
  */
 class Evaluator(
     private val keyboard: EvalKeyboard,
-    private val typistConfig: TypistConfig,
+    typistConfig: TypistConfig,
     private val seed: Long,
     private val threads: Int,
 ) {

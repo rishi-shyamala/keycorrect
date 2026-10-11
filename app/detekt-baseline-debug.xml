@@ -1,0 +1,45 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:SettingsApp.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsApp</ID>
+    <ID>CyclomaticComplexMethod:ShortcutsScreen.kt:@Composable private fun ShortcutDialog</ID>
+    <ID>InjectDispatcher:KeyCorrectApp.kt:AppContainer$Default</ID>
+    <ID>InjectDispatcher:KeyCorrectImeService.kt:KeyCorrectImeService$IO</ID>
+    <ID>LongMethod:FeedbackSettingsScreen.kt:@Composable fun FeedbackSettingsScreen</ID>
+    <ID>LongMethod:LearningScreen.kt:@Composable private fun ForgetSection</ID>
+    <ID>LongMethod:LearningScreen.kt:@Composable private fun LearningBody</ID>
+    <ID>LongMethod:PersonalDictionaryScreen.kt:@Composable fun PersonalDictionaryScreen</ID>
+    <ID>LongMethod:SettingsApp.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsApp</ID>
+    <ID>LongMethod:ShortcutsScreen.kt:@Composable fun ShortcutsScreen</ID>
+    <ID>LongMethod:ShortcutsScreen.kt:@Composable private fun ShortcutDialog</ID>
+    <ID>LongParameterList:LearningHost.kt:LearningHost</ID>
+    <ID>LongParameterList:LearningListScreens.kt:@Composable private fun &lt;T : Any&gt; ItemList</ID>
+    <ID>LongParameterList:LearningListScreens.kt:@Composable private fun &lt;T : Any&gt; LearningListScreen</ID>
+    <ID>LongParameterList:PersonalDictionaryScreen.kt:@Composable private fun WordList</ID>
+    <ID>LongParameterList:PredictionHost.kt:PredictionHost</ID>
+    <ID>LongParameterList:SettingsRows.kt:@Composable fun IntSliderRow</ID>
+    <ID>LongParameterList:SettingsRows.kt:@Composable fun SliderRow</ID>
+    <ID>LongParameterList:SettingsRows.kt:@Composable fun SwitchRow</ID>
+    <ID>LongParameterList:SetupScreen.kt:@Composable private fun SetupStep</ID>
+    <ID>MagicNumber:FeedbackSettingsScreen.kt:100</ID>
+    <ID>MagicNumber:LearningHost.kt:LearningHostConfig$10</ID>
+    <ID>MagicNumber:LearningHost.kt:LearningHostConfig$5</ID>
+    <ID>MagicNumber:LearningHost.kt:LearningHostConfig$60_000L</ID>
+    <ID>MatchingDeclarationName:PersonalDataSupport.kt:LoadState&lt;out T&gt;</ID>
+    <ID>ReturnCount:LearningHost.kt:LearningHost$override fun onSentenceWord</ID>
+    <ID>ReturnCount:LearningHost.kt:LearningHost$private suspend fun addIfAbsent: Boolean</ID>
+    <ID>ReturnCount:PredictionHost.kt:PredictionHost$override fun isKnownWord: Boolean</ID>
+    <ID>SwallowedException:LearningHost.kt:LearningHost$e: InvalidEntryException</ID>
+    <ID>SwallowedException:PredictionHost.kt:PredictionHost$e: java.io.FileNotFoundException</ID>
+    <ID>TooGenericExceptionCaught:EngineRankingFeatures.kt:EngineRankingFeatures$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LearningHost.kt:LearningHost$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LearningSupport.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PredictionHost.kt:PredictionHost$e: Exception</ID>
+    <ID>TooManyFunctions:KeyCorrectImeService.kt:KeyCorrectImeService : ComposeInputMethodService</ID>
+    <ID>TooManyFunctions:LearningHost.kt:LearningHost : LearningSink</ID>
+    <ID>TooManyFunctions:PredictionHost.kt:PredictionHost : PredictionBackend</ID>
+    <ID>UnnecessaryNotNullOperator:ShortcutsScreen.kt:validation!!</ID>
+    <ID>UnsafeCallOnNullableType:ShortcutsScreen.kt:validation!!</ID>
+  </CurrentIssues>
+</SmellBaseline>

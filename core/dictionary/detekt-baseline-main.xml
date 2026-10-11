@@ -1,0 +1,92 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$!uniMin.isFinite() || !uniStep.isFinite() || !bgMin.isFinite() || !bgStep.isFinite() || !tgMin.isFinite() || !tgStep.isFinite()</ID>
+    <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$buf.get(0) != 'K'.code.toByte() || buf.get(1) != 'C'.code.toByte() || buf.get(2) != 'D'.code.toByte() || buf.get(3) != '1'.code.toByte()</ID>
+    <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$wordCount &lt; Dictionary.FIRST_WORD_ID || wordCount &gt; Fmt.MAX_ID || nodeCount &lt; 1 || keyCount &lt; 0 || keyCount &gt; nodeCount || caseCount &lt; 0 || bgLists &lt; 0 || tgLists &lt; 0 || bgCount &lt; 0 || tgCount &lt; 0</ID>
+    <ID>ComplexCondition:DictionaryWriter.kt:Compiler$i1 == null || i2 == null || i1 == Dictionary.EOS_ID || i2 == Dictionary.BOS_ID</ID>
+    <ID>ComplexCondition:DictionaryWriter.kt:Compiler$i1 == null || i2 == null || i3 == null || i1 == Dictionary.EOS_ID || i2 == Dictionary.EOS_ID || i2 == Dictionary.BOS_ID || i3 == Dictionary.BOS_ID</ID>
+    <ID>CyclomaticComplexMethod:Dictionary.kt:Dictionary.Companion$private fun parse: Dictionary</ID>
+    <ID>CyclomaticComplexMethod:DictionaryWriter.kt:Compiler$fun compile: ByteArray</ID>
+    <ID>CyclomaticComplexMethod:DictionaryWriter.kt:Compiler$private fun addList</ID>
+    <ID>CyclomaticComplexMethod:DictionaryWriter.kt:Compiler$private fun buildNgrams: Ngrams</ID>
+    <ID>CyclomaticComplexMethod:NgramTable.kt:NgramTable$fun locate: Long</ID>
+    <ID>LongMethod:Dictionary.kt:Dictionary.Companion$private fun parse: Dictionary</ID>
+    <ID>LongMethod:DictionaryWriter.kt:Compiler$fun compile: ByteArray</ID>
+    <ID>LongMethod:DictionaryWriter.kt:Compiler$private fun buildNgrams: Ngrams</ID>
+    <ID>LongParameterList:Dictionary.kt:Dictionary</ID>
+    <ID>LongParameterList:DictionaryWriter.kt:Compiler$private fun addList</ID>
+    <ID>LongParameterList:DictionaryWriter.kt:Compiler.Ngrams</ID>
+    <ID>LongParameterList:NgramTable.kt:NgramTable</ID>
+    <ID>LongParameterList:NgramTable.kt:NgramTable$private fun collect: Int</ID>
+    <ID>LoopWithTooManyJumpStatements:NgramTable.kt:NgramTable$for</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$0x7FFFFF</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$0x80L</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$256</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$3</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$4</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$6</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary$63</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$255</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$3</ID>
+    <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$4</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$0x7F</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$0x80</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$16</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$24</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$32</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$7</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:ByteSink$8</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$0x7F</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$0x80</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$0xFFFFFF</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$0xFFFFFFFFL</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$126.0</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$127</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$24</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$255</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$255.0</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$32</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$4</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$40</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$6</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$64</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$65536</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$7</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$8</ID>
+    <ID>MagicNumber:DictionaryWriter.kt:Compiler$9</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0x10000000</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0x200000</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0x4000</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0x7F</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0x80</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0xFF</ID>
+    <ID>MagicNumber:Format.kt:Fmt$0xFFFF</ID>
+    <ID>MagicNumber:Format.kt:Fmt$16</ID>
+    <ID>MagicNumber:Format.kt:Fmt$28</ID>
+    <ID>MagicNumber:Format.kt:Fmt$3</ID>
+    <ID>MagicNumber:Format.kt:Fmt$4</ID>
+    <ID>MagicNumber:Format.kt:Fmt$5</ID>
+    <ID>MagicNumber:Format.kt:Fmt$7</ID>
+    <ID>MagicNumber:Format.kt:Fmt$8</ID>
+    <ID>MagicNumber:NgramTable.kt:NgramTable$0x80</ID>
+    <ID>MagicNumber:NgramTable.kt:NgramTable$32</ID>
+    <ID>MagicNumber:NgramTable.kt:NgramTable$8</ID>
+    <ID>NestedBlockDepth:DictionaryWriter.kt:Compiler$fun compile: ByteArray</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun child: Int</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun logProbInBigramList: Float</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun logProbInTrigramList: Float</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun trigramList: Int</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun word: String</ID>
+    <ID>ReturnCount:Dictionary.kt:Dictionary$fun wordId: Int</ID>
+    <ID>ReturnCount:NgramTable.kt:NgramTable$private fun scan: Long</ID>
+    <ID>ThrowsCount:Dictionary.kt:Dictionary$private fun customSurface: String</ID>
+    <ID>ThrowsCount:Dictionary.kt:Dictionary.Companion$@JvmStatic fun open: Dictionary</ID>
+    <ID>ThrowsCount:Format.kt:Fmt$fun readVarint: Int</ID>
+    <ID>TooGenericExceptionCaught:Dictionary.kt:Dictionary.Companion$e: IndexOutOfBoundsException</ID>
+    <ID>TooGenericExceptionCaught:NgramTable.kt:NgramTable$e: IndexOutOfBoundsException</ID>
+    <ID>TooManyFunctions:Dictionary.kt:Dictionary</ID>
+    <ID>TooManyFunctions:NgramTable.kt:NgramTable</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,132 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:Misspell.kt:MisspellCategory$diff.size == 2 &amp;&amp; diff[1] == diff[0] + 1 &amp;&amp; t[diff[0]] == c[diff[1]] &amp;&amp; t[diff[1]] == c[diff[0]]</ID>
+    <ID>ComplexCondition:Misspell.kt:MisspellCategory$i &gt; 1 &amp;&amp; j &gt; 1 &amp;&amp; a[i - 1] == b[j - 2] &amp;&amp; a[i - 2] == b[j - 1]</ID>
+    <ID>ComplexCondition:PersonalUser.kt:PersonalStream$t.evaluated &amp;&amp; t.text.none { it == '\'' || it == '’' || it == '-' } &amp;&amp; !user.isPersonal(t.text) &amp;&amp; t.text !in Corpus.PLACEHOLDER_NAMES &amp;&amp; rng.nextFloat() &lt; user.config.personalRate</ID>
+    <ID>ComplexCondition:PersonalUser.kt:PersonalUser.Companion$t.evaluated &amp;&amp; !t.inDictionary &amp;&amp; w.length in 3..9 &amp;&amp; w.all { it in 'a'..'z' || it in 'A'..'Z' } &amp;&amp; w[0].isUpperCase() &amp;&amp; w.drop(1).all { it.isLowerCase() } &amp;&amp; w !in Corpus.PLACEHOLDER_NAMES &amp;&amp; w != "Tatoeba"</ID>
+    <ID>CyclomaticComplexMethod:Corpus.kt:Corpus$fun parse: ParsedSentence</ID>
+    <ID>CyclomaticComplexMethod:Episode.kt:EpisodeRunner$fun run</ID>
+    <ID>CyclomaticComplexMethod:Json.kt:Json$private fun append</ID>
+    <ID>CyclomaticComplexMethod:LearnReport.kt:LearnReport$fun text: String</ID>
+    <ID>CyclomaticComplexMethod:LearnSim.kt:LearnArm$fun run: ArmResult</ID>
+    <ID>CyclomaticComplexMethod:Metrics.kt:Stats$fun add</ID>
+    <ID>CyclomaticComplexMethod:Misspell.kt:MisspellCategory$private fun classify: String</ID>
+    <ID>CyclomaticComplexMethod:Misspell.kt:MisspellList$fun parse: Parsed</ID>
+    <ID>CyclomaticComplexMethod:MisspellMain.kt:MisspellMain$private fun runSweep: SweepOutcome</ID>
+    <ID>CyclomaticComplexMethod:Options.kt:Options.Companion$fun parse: Options</ID>
+    <ID>CyclomaticComplexMethod:PersonalUser.kt:PersonalStream$fun build: List&lt;ParsedSentence&gt;</ID>
+    <ID>CyclomaticComplexMethod:PersonalUser.kt:PersonalUser.Companion$fun build: PersonalUser</ID>
+    <ID>CyclomaticComplexMethod:Reaction.kt:ReactionModel$fun react: Reaction</ID>
+    <ID>CyclomaticComplexMethod:Report.kt:Report$fun text: String</ID>
+    <ID>CyclomaticComplexMethod:Typist.kt:Typist$fun type: TypedWord</ID>
+    <ID>ImplicitDefaultLocale:Json.kt:Json$String.format("\\u%04x", c.code)</ID>
+    <ID>ImplicitDefaultLocale:LearnMain.kt:LearnMain$String.format( "done in %.1f s; wrote %s", (System.nanoTime() - started) / 1e9, out.toAbsolutePath().normalize(), )</ID>
+    <ID>ImplicitDefaultLocale:LearnMain.kt:LearnMain$String.format("%+.2f/%+.2f key sizes\n", o.biasX, o.biasY)</ID>
+    <ID>ImplicitDefaultLocale:Main.kt:EvalMain$String.format("done in %.1f s; wrote %s", seconds, o.out.toAbsolutePath().normalize())</ID>
+    <ID>LongMethod:Episode.kt:EpisodeRunner$fun run</ID>
+    <ID>LongMethod:LearnMain.kt:LearnMain$fun run</ID>
+    <ID>LongMethod:LearnReport.kt:LearnReport$fun text: String</ID>
+    <ID>LongMethod:LearnSim.kt:LearnArm$fun run: ArmResult</ID>
+    <ID>LongMethod:Main.kt:EvalMain$private fun runSweep: SweepOutcome</ID>
+    <ID>LongMethod:MisspellMain.kt:MisspellMain$fun run</ID>
+    <ID>LongMethod:MisspellMain.kt:MisspellMain$private fun runSweep: SweepOutcome</ID>
+    <ID>LongMethod:MisspellMain.kt:MisspellMain$private fun text: String</ID>
+    <ID>LongMethod:Options.kt:Options.Companion$fun parse: Options</ID>
+    <ID>LongMethod:Report.kt:Report$fun text: String</ID>
+    <ID>LongMethod:Typist.kt:Typist$fun type: TypedWord</ID>
+    <ID>LongParameterList:Latency.kt:fun measureLatency: LatencyResult</ID>
+    <ID>LongParameterList:LearnEvents.kt:WordRecord</ID>
+    <ID>LongParameterList:LearnSim.kt:ArmResult</ID>
+    <ID>LongParameterList:LearnSim.kt:LearnArm</ID>
+    <ID>LongParameterList:Metrics.kt:FailureRow</ID>
+    <ID>LongParameterList:Metrics.kt:WordOutcome</ID>
+    <ID>LoopWithTooManyJumpStatements:LearnSim.kt:LearnArm$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Misspell.kt:MisspellList$for</ID>
+    <ID>MagicNumber:Corpus.kt:Corpus$100L</ID>
+    <ID>MagicNumber:Corpus.kt:Corpus$27</ID>
+    <ID>MagicNumber:Corpus.kt:Corpus$30</ID>
+    <ID>MagicNumber:Corpus.kt:Corpus$31</ID>
+    <ID>MagicNumber:Episode.kt:EpisodeRunner.Companion$27</ID>
+    <ID>MagicNumber:Episode.kt:EpisodeRunner.Companion$30</ID>
+    <ID>MagicNumber:Episode.kt:EpisodeRunner.Companion$31</ID>
+    <ID>MagicNumber:Latency.kt:LatencyStats.Companion$0.50</ID>
+    <ID>MagicNumber:Latency.kt:LatencyStats.Companion$0.95</ID>
+    <ID>MagicNumber:Latency.kt:LatencyStats.Companion$0.99</ID>
+    <ID>MagicNumber:Latency.kt:LatencyStats.Companion$1e6</ID>
+    <ID>MagicNumber:LearnEvents.kt:EventBuilder$2_500L</ID>
+    <ID>MagicNumber:LearnEvents.kt:EventBuilder$3</ID>
+    <ID>MagicNumber:LearnEvents.kt:EventBuilder$400L</ID>
+    <ID>MagicNumber:LearnEvents.kt:EventBuilder$800L</ID>
+    <ID>MagicNumber:LearnMain.kt:LearnMain$100</ID>
+    <ID>MagicNumber:LearnMain.kt:LearnMain$1e9</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$100</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$100.0</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$1000.0</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$12</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$15</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$3</ID>
+    <ID>MagicNumber:LearnReport.kt:LearnReport$4</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnArm$1e9</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnArm$4</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnArm.Companion$0.10</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnArm.Companion$0.25</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnArm.Companion$0.50</ID>
+    <ID>MagicNumber:LearnSim.kt:LearnWindow$1000</ID>
+    <ID>MagicNumber:Main.kt:EvalMain$1e9</ID>
+    <ID>MagicNumber:Metrics.kt:Metrics.Companion$4</ID>
+    <ID>MagicNumber:Metrics.kt:Metrics.Companion$6</ID>
+    <ID>MagicNumber:Metrics.kt:Metrics.Companion$8</ID>
+    <ID>MagicNumber:Misspell.kt:MisspellCategory$3</ID>
+    <ID>MagicNumber:Misspell.kt:MisspellList$100L</ID>
+    <ID>MagicNumber:Misspell.kt:MisspellList$27</ID>
+    <ID>MagicNumber:Misspell.kt:MisspellList$30</ID>
+    <ID>MagicNumber:Misspell.kt:MisspellList$31</ID>
+    <ID>MagicNumber:MisspellMain.kt:MisspellMain$100</ID>
+    <ID>MagicNumber:MisspellMain.kt:MisspellMain$100.0</ID>
+    <ID>MagicNumber:MisspellMain.kt:MisspellMain$1e-9</ID>
+    <ID>MagicNumber:MisspellMain.kt:MisspellMain$1e9</ID>
+    <ID>MagicNumber:Options.kt:Options$0.10f</ID>
+    <ID>MagicNumber:Options.kt:Options$0.25f</ID>
+    <ID>MagicNumber:Options.kt:Options$0.35f</ID>
+    <ID>MagicNumber:Options.kt:Options$8</ID>
+    <ID>MagicNumber:PersonalUser.kt:PersonalUser.Companion$3</ID>
+    <ID>MagicNumber:PersonalUser.kt:PersonalUser.Companion$9</ID>
+    <ID>MagicNumber:PersonalUser.kt:PersonalUserConfig$0.10f</ID>
+    <ID>MagicNumber:Report.kt:Report$100</ID>
+    <ID>MagicNumber:Report.kt:Report$100.0</ID>
+    <ID>MagicNumber:Sweep.kt:Sweep$100</ID>
+    <ID>MaxLineLength:LearnReport.kt:LearnReport$"${it.total} words: ${it.personal} of ${user.words.size} personal, ${it.otherTargets} other words the user typed, ${it.pollution.size} never-intended strings (promoted typos)\n"</ID>
+    <ID>MaxLineLength:LearnReport.kt:LearnReport$"arm,window,words,personal_words,accuracy,personal_accuracy,fc_per_1000,personal_fc_per_1000,reverts_per_1000,top3,personal_top3,touch_keys,touch_error\n"</ID>
+    <ID>MaxLineLength:LearnReport.kt:LearnReport$"the keyboard changed it anyway %d times (learning, %d personal) / %d times (baseline, %d personal)\n"</ID>
+    <ID>MaxLineLength:Main.kt:EvalMain$"KeyCorrect eval: $sentenceCount sentences (${o.split.name.lowercase()} split, offset ${o.offset}, seed ${o.seed}), "</ID>
+    <ID>MaxLineLength:Main.kt:EvalMain$"keyboard ${keyboard.widthPx.toInt()}x${keyboard.heightPx.toInt()} px, ${keyboard.layout.keys.size} keys; "</ID>
+    <ID>MaxLineLength:Main.kt:EvalMain.Companion$"$what not found: ${path.toAbsolutePath()} (run from the repository root; held-out data is git-ignored, see docs/DATA_SOURCES.md)"</ID>
+    <ID>MaxLineLength:Report.kt:Report$" ${n.phrasesOffered} of ${n.phraseOpportunities}, avg ${"%.2f".format(Locale.ROOT, n.phraseAvgWords)} words"</ID>
+    <ID>MaxLineLength:Report.kt:Report$"sentences ${m.sentences}, words evaluated ${s.words}, tokens skipped ${m.skippedTokens} (digits / placeholder names)\n\n"</ID>
+    <ID>NestedBlockDepth:Episode.kt:EpisodeRunner$fun run</ID>
+    <ID>NestedBlockDepth:LearnSim.kt:LearnArm$fun run: ArmResult</ID>
+    <ID>ReturnCount:Misspell.kt:MisspellCategory$private fun classify: String</ID>
+    <ID>ReturnCount:Reaction.kt:ReactionModel$fun react: Reaction</ID>
+    <ID>ReturnCount:WhatIf.kt:WhatIfPredictor$override fun predict: PredictResult</ID>
+    <ID>SpreadOperator:ConfigOverrides.kt:ConfigOverrides$(*props.map { if (it.name == name) value else it.value }.toTypedArray())</ID>
+    <ID>ThrowsCount:Options.kt:Options.Companion$fun parse: Options</ID>
+    <ID>TooManyFunctions:MisspellMain.kt:MisspellMain</ID>
+    <ID>UnnecessaryNotNullOperator:ConfigOverrides.kt:ConfigOverrides$current.value!!</ID>
+    <ID>UnnecessaryNotNullOperator:ConfigOverrides.kt:ConfigOverrides$section.value!!</ID>
+    <ID>UnsafeCallOnNullableType:ConfigOverrides.kt:ConfigOverrides$section.value!!</ID>
+    <ID>UnsafeCallOnNullableType:Episode.kt:EpisodeRunner$result.autocorrect!!</ID>
+    <ID>UnsafeCallOnNullableType:LearnEvents.kt:EventBuilder$corrected!!</ID>
+    <ID>UnsafeCallOnNullableType:LearnSim.kt:LearnArm$autocorrect!!</ID>
+    <ID>UnsafeCallOnNullableType:Main.kt:EvalMain$recommended!!</ID>
+    <ID>UnsafeCallOnNullableType:Misspell.kt:MisspellCategory$corrections.map { classify(typed, it) to osa(typed, it) }.minByOrNull { it.second }!!</ID>
+    <ID>UnsafeCallOnNullableType:Reaction.kt:ReactionModel$s.autocorrect!!</ID>
+    <ID>UseOrEmpty:Main.kt:EvalMain$recommended?.overrides ?: emptyMap&lt;String, String&gt;()</ID>
+    <ID>UseOrEmpty:MisspellMain.kt:MisspellMain$best?.overrides ?: emptyMap&lt;String, String&gt;()</ID>
+    <ID>UseOrEmpty:MisspellMain.kt:MisspellMain$primary?.let { pct(r.spatialAcc(it)) } ?: ""</ID>
+    <ID>UseOrEmpty:MisspellMain.kt:MisspellMain$r.applied ?: ""</ID>
+    <ID>UseOrEmpty:MisspellMain.kt:MisspellMain$r.overrides[it] ?: ""</ID>
+    <ID>UseOrEmpty:Sweep.kt:Sweep$p.overrides[it] ?: ""</ID>
+  </CurrentIssues>
+</SmellBaseline>

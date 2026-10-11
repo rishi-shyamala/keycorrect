@@ -1,0 +1,147 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:Tokenizer.kt:Tokenizer$(isApostrophe(c) || isHyphen(c)) &amp;&amp; i + 1 &lt; n &amp;&amp; isWordChar(text[i + 1]) &amp;&amp; sb.isNotEmpty()</ID>
+    <ID>ComplexCondition:WikiText.kt:WikiText$!leadingColon &amp;&amp; (prefix in INTERWIKI || LANG_PREFIX.matches(prefix) &amp;&amp; colon &lt;= 6)</ID>
+    <ID>ComplexCondition:WikiText.kt:WikiText$c == '&lt;' &amp;&amp; i + 1 &lt; n &amp;&amp; (s[i + 1].isLetter() || s[i + 1] == '/' || s[i + 1] == '!')</ID>
+    <ID>ComplexCondition:WikiText.kt:WikiText$c == '[' &amp;&amp; (s.startsWith("http://", i + 1, ignoreCase = true) || s.startsWith("https://", i + 1, ignoreCase = true) || s.startsWith("ftp://", i + 1, ignoreCase = true) || s.startsWith("//", i + 1))</ID>
+    <ID>ComplexCondition:WikiText.kt:WikiText$first == '*' || first == '#' || first == ':' || first == ';'</ID>
+    <ID>ComplexCondition:WikiText.kt:WikiText$first == '|' || first == '!' || first == '{' || first == '}'</ID>
+    <ID>CyclomaticComplexMethod:Compile.kt:CompileOptions.Companion$fun parse: CompileOptions</ID>
+    <ID>CyclomaticComplexMethod:Compile.kt:LmPruner$fun select: SelectedModel</ID>
+    <ID>CyclomaticComplexMethod:Count.kt:CountCommand$private fun countWikipedia: Map&lt;String, Any?&gt;</ID>
+    <ID>CyclomaticComplexMethod:Count.kt:CountCommand$private fun writeNgrams: Map&lt;String, Any?&gt;</ID>
+    <ID>CyclomaticComplexMethod:CountOptions.kt:CountOptions.Companion$fun parse: CountOptions</ID>
+    <ID>CyclomaticComplexMethod:EvalLm.kt:EvalLmCommand$fun nextWord: NextWord</ID>
+    <ID>CyclomaticComplexMethod:EvalLm.kt:EvalLmCommand$fun sample: EvalSample</ID>
+    <ID>CyclomaticComplexMethod:EvalLm.kt:EvalOptions.Companion$fun parse: EvalOptions</ID>
+    <ID>CyclomaticComplexMethod:Json.kt:Json$private fun append</ID>
+    <ID>CyclomaticComplexMethod:WikiDump.kt:WikiDumpReader$fun read</ID>
+    <ID>CyclomaticComplexMethod:WikiText.kt:WikiText$fun sentences</ID>
+    <ID>CyclomaticComplexMethod:WikiText.kt:WikiText$fun splitSentences</ID>
+    <ID>CyclomaticComplexMethod:WikiText.kt:WikiText$internal fun removeBlockTags: String</ID>
+    <ID>CyclomaticComplexMethod:WikiText.kt:WikiText$internal fun stripTags: String</ID>
+    <ID>CyclomaticComplexMethod:WikiText.kt:WikiText$private fun renderLink: String</ID>
+    <ID>ImplicitDefaultLocale:Compile.kt:CompileCommand$"discounts D2=%.3f D3=%.3f, unseen words: %d, unseen mass %.3g" .format(lm.d2, lm.d3, lm.unseen.count { it }, lm.unseenMass)</ID>
+    <ID>ImplicitDefaultLocale:Compile.kt:CompileCommand$"wrote ${opts.out}: ${bytes.size} bytes (%.2f MiB), $dict, %.1fs" .format(bytes.size / 1048576.0, (System.nanoTime() - start) / 1e9)</ID>
+    <ID>ImplicitDefaultLocale:Count.kt:CountCommand$"[%7.1fs] %s".format((System.nanoTime() - startNanos) / 1e9, msg)</ID>
+    <ID>ImplicitDefaultLocale:Count.kt:CountCommand$"done in %.1fs; stats written to %s".format(total, opts.out.resolve("stats.json"))</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$" single penalty %.2f -&gt; perplexity %.2f" .format(single, exp(-s.meanLogProb(single, single)))</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"%s (%.2f)".format(dict.word(ids[it]), lp[it])</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"back-off penalties b3=%.2f b2=%.2f -&gt; normalised perplexity %.2f" .format(best.b3, best.b2, exp(-best.meanLp))</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"dictionary: ${opts.dict} ($sizeBytes bytes, %.2f MiB)".format(sizeBytes / 1048576.0)</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"in-vocabulary; OOV rate %.2f%%".format(100.0 * s.oov / s.tokens)</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"next word (b3=%.2f): positions=%d top1=%.2f%% top3=%.2f%% candidates available %.1f%%" .format( best.b3, nw.positions, 100.0 * nw.top1 / nw.positions, 100.0 * nw.top3 / nw.positions, 100.0 * nw.covered / nw.positions, )</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$"unigram-only perplexity: %.1f".format(exp(-s.unigramOnly()))</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalLmCommand$("RESULT size=$sizeBytes ppl=%.3f top1=%.3f top3=%.3f b3=%.2f b2=%.2f oov=%.4f").format( exp(-best.meanLp), 100.0 * nw.top1 / nw.positions, 100.0 * nw.top3 / nw.positions, best.b3, best.b2, s.oov.toDouble() / s.tokens, )</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalSample$" %-30s %6.2f%% of tokens, mean stored ln p %.2f (mean unigram ln p %.2f)" .format( names[it], 100.0 * n[it] / size, sum[it] / maxOf(1, n[it]), sumUni[it] / maxOf(1, n[it]), )</ID>
+    <ID>ImplicitDefaultLocale:EvalLm.kt:EvalSample$" %s -&gt; %s uni %.2f".format(dict.word(ctx1[i]), dict.word(ids[i]), uniL[i])</ID>
+    <ID>ImplicitDefaultLocale:Json.kt:Json$"\\u%04x".format(c.code)</ID>
+    <ID>LongMethod:Compile.kt:LmPruner$fun select: SelectedModel</ID>
+    <ID>LongMethod:Count.kt:CountCommand$fun execute: Map&lt;String, Any?&gt;</ID>
+    <ID>LongMethod:Count.kt:CountCommand$private fun writeNgrams: Map&lt;String, Any?&gt;</ID>
+    <ID>LongParameterList:Count.kt:CountCommand$private fun writeNgramLine</ID>
+    <ID>LongParameterList:Count.kt:CountCommand$private fun writeNgrams: Map&lt;String, Any?&gt;</ID>
+    <ID>LongParameterList:LmTables.kt:LmTables</ID>
+    <ID>LongParameterList:LmTables.kt:PairContextStats$fun add</ID>
+    <ID>LoopWithTooManyJumpStatements:Compile.kt:LmPruner$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Count.kt:CountCommand$for</ID>
+    <ID>LoopWithTooManyJumpStatements:Count.kt:CountCommand$while</ID>
+    <ID>LoopWithTooManyJumpStatements:EvalLm.kt:EvalLmCommand$while</ID>
+    <ID>LoopWithTooManyJumpStatements:EvalLm.kt:EvalSample$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LmEstimator.kt:LmEstimator$for</ID>
+    <ID>LoopWithTooManyJumpStatements:WikiText.kt:WikiText$for</ID>
+    <ID>LoopWithTooManyJumpStatements:WikiText.kt:WikiText$while</ID>
+    <ID>MagicNumber:Compile.kt:CompileCommand$1048576.0</ID>
+    <ID>MagicNumber:Compile.kt:CompileCommand$1e9</ID>
+    <ID>MagicNumber:Compile.kt:CompileCommand$3</ID>
+    <ID>MagicNumber:Compile.kt:CompileOptions$1024</ID>
+    <ID>MagicNumber:Compile.kt:CompileOptions$10L</ID>
+    <ID>MagicNumber:Compile.kt:PruneParams$0.8</ID>
+    <ID>MagicNumber:Compile.kt:PruneParams$1.3</ID>
+    <ID>MagicNumber:CorpusCounts.kt:CorpusCounts$127</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$10</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$10.0</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$1024</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$1e9</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$25_000</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$3</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$32</ID>
+    <ID>MagicNumber:Count.kt:CountCommand$4</ID>
+    <ID>MagicNumber:CountOptions.kt:CountOptions.Companion$100</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$0.1</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$0.25</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$0.5</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$1.5</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$100.0</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$1048576.0</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$1e-9</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$2.0</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$3</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalLmCommand$4.0</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalSample$100.0</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalSample$1e-9</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalSample$32</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalSample$4</ID>
+    <ID>MagicNumber:EvalLm.kt:EvalSample$997</ID>
+    <ID>MagicNumber:Json.kt:Json$1e15</ID>
+    <ID>MagicNumber:LmEstimator.kt:LmEstimator$0.5</ID>
+    <ID>MagicNumber:LmEstimator.kt:LmEstimator$21</ID>
+    <ID>MagicNumber:LmEstimator.kt:LmEstimator$255</ID>
+    <ID>MagicNumber:LmEstimator.kt:LmEstimator$42</ID>
+    <ID>MagicNumber:LmTables.kt:LmTables.Companion$0xFFFFFFFFL</ID>
+    <ID>MagicNumber:LmTables.kt:LmTables.Companion$3</ID>
+    <ID>MagicNumber:LmTables.kt:LmTables.Companion$32</ID>
+    <ID>MagicNumber:LmTables.kt:LmTables.Companion$4</ID>
+    <ID>MagicNumber:LmTables.kt:LmTables.Companion$5</ID>
+    <ID>MagicNumber:LmTables.kt:LongIntMap$10</ID>
+    <ID>MagicNumber:LmTables.kt:LongIntMap$32</ID>
+    <ID>MagicNumber:LmTables.kt:LongIntMap$7</ID>
+    <ID>MagicNumber:LmTables.kt:NgramRows.Companion$3</ID>
+    <ID>MagicNumber:LmTables.kt:NgramRows.Companion$4</ID>
+    <ID>MagicNumber:LmTables.kt:NgramRows.Companion$5</ID>
+    <ID>MagicNumber:LongCountMap.kt:LongCountMap$64</ID>
+    <ID>MagicNumber:Sources.kt:Sources$16</ID>
+    <ID>MagicNumber:Sources.kt:Sources$20</ID>
+    <ID>MagicNumber:Tatoeba.kt:Tatoeba$0x100000001b3L</ID>
+    <ID>MagicNumber:Tatoeba.kt:Tatoeba$100L</ID>
+    <ID>MagicNumber:Tatoeba.kt:Tatoeba$27</ID>
+    <ID>MagicNumber:Tatoeba.kt:Tatoeba$30</ID>
+    <ID>MagicNumber:Tatoeba.kt:Tatoeba$31</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$0x10FFFF</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$0xD800</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$0xDFFF</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$16</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$2000</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$3</ID>
+    <ID>MagicNumber:WikiText.kt:WikiText$6</ID>
+    <ID>MatchingDeclarationName:Count.kt:CountCommand</ID>
+    <ID>NestedBlockDepth:Compile.kt:LmPruner$fun select: SelectedModel</ID>
+    <ID>NestedBlockDepth:Count.kt:CountCommand$private fun writeNgrams: Map&lt;String, Any?&gt;</ID>
+    <ID>NestedBlockDepth:WikiDump.kt:WikiDumpReader$fun read</ID>
+    <ID>ReturnCount:Compile.kt:CompileCommand$fun run: Int</ID>
+    <ID>ReturnCount:Count.kt:CountCommand$fun run: Int</ID>
+    <ID>ReturnCount:EvalLm.kt:EvalLmCommand$fun run: Int</ID>
+    <ID>ReturnCount:ExtractWikiCommand.kt:ExtractWikiCommand$fun run: Int</ID>
+    <ID>ReturnCount:LmEstimator.kt:LmEstimator$fun p3: Double</ID>
+    <ID>ReturnCount:Tatoeba.kt:Tatoeba$fun parseLine: TatoebaSentence?</ID>
+    <ID>ReturnCount:Vocabulary.kt:Vocabulary$fun lookup: Int</ID>
+    <ID>ReturnCount:Vocabulary.kt:Vocabulary$fun resolve: Boolean</ID>
+    <ID>ReturnCount:Vocabulary.kt:Vocabulary$private fun better: Boolean</ID>
+    <ID>ReturnCount:WikiText.kt:WikiText$private fun isAbbreviation: Boolean</ID>
+    <ID>ReturnCount:WikiText.kt:WikiText$private fun renderLink: String</ID>
+    <ID>TooGenericExceptionCaught:Count.kt:CountCommand$t: Throwable</ID>
+    <ID>TooManyFunctions:Count.kt:CountCommand</ID>
+    <ID>TooManyFunctions:WikiText.kt:WikiText</ID>
+    <ID>UnsafeCallOnNullableType:Compile.kt:LmPruner$boxed[it]!!</ID>
+    <ID>UnsafeCallOnNullableType:Compile.kt:LmPruner$x!!</ID>
+    <ID>UnsafeCallOnNullableType:Compile.kt:LmPruner$y!!</ID>
+    <ID>UseCheckOrError:Count.kt:CountCommand$throw IllegalStateException( "no Wikipedia dump found; run tools/data/fetch-sources.sh" )</ID>
+    <ID>UseCheckOrError:LmTables.kt:LmTables.Companion$throw IllegalStateException("unknown word '$w'")</ID>
+    <ID>UseOrEmpty:Compile.kt:CompileCommand$aospDay?.let { ", $it" } ?: ""</ID>
+    <ID>UseRequire:Compile.kt:CompileOptions.Companion$throw IllegalArgumentException("$flag needs a value")</ID>
+    <ID>UseRequire:CountOptions.kt:CountOptions.Companion$throw IllegalArgumentException("$flag needs a value")</ID>
+    <ID>UseRequire:EvalLm.kt:EvalOptions.Companion$throw IllegalArgumentException("$flag needs a value")</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -408,8 +409,16 @@ private fun ProfileRow(profile: ProfileTouchStatistics) {
         Text(
             stringResource(
                 R.string.learning_accuracy_samples,
-                profile.wordCount,
-                profile.sampleCount,
+                pluralStringResource(
+                    R.plurals.learning_accuracy_words,
+                    profile.wordCount,
+                    profile.wordCount,
+                ),
+                pluralStringResource(
+                    R.plurals.learning_accuracy_touches,
+                    profile.sampleCount,
+                    profile.sampleCount,
+                ),
             ),
             style = MaterialTheme.typography.bodyMedium,
         )

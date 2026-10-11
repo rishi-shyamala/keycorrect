@@ -65,8 +65,8 @@ import kotlin.random.Random
 class ClassicEngine(
     private val dictionary: Dictionary,
     val config: ClassicConfig = ClassicConfig(),
-    private val userWords: () -> Collection<String> = { emptyList() },
-    private val shortcuts: () -> Map<String, String> = { emptyMap() },
+    userWords: () -> Collection<String> = { emptyList() },
+    shortcuts: () -> Map<String, String> = { emptyMap() },
     private val touchCorrection: () -> TouchCorrection = { TouchCorrection.Identity },
     private val isStale: () -> Boolean = { false },
     private val personalization: () -> Personalization = { Personalization.None },
