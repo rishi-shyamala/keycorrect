@@ -74,9 +74,24 @@ ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device # + on-device micro
 All eval outputs were identical before and after (accuracy 94.09%, false corrections 4.19/1000;
 every learn-mode output file).
 
-### Device (ARM, ART, release)
+### Device (ARM, ART, release, speed-compiled), Galaxy Tab S9, 2026-10-11
 
-To be filled from the first `--device` run.
+Medians of `:benchmark`. Each measured iteration is a batch, so divide by the batch size for a
+per-item cost. "Before" is this branch with the three perf commits reverted.
+
+| Benchmark (batch) | Before | After | Per item, after |
+|---|---|---|---|
+| `DecoderBenchmark.composing` (200 predictions) | 73.9 ms, 116k allocs | 57.5 ms, 42k allocs | 0.29 ms |
+| `DecoderBenchmark.composingPersonalized` (200) | 96.4 ms, 395k allocs | 69.1 ms, 185k allocs | 0.35 ms |
+| `KeystrokeBenchmark.cannedPredictor` (~480 keys) | 10.6 ms, 139k allocs | 3.3 ms, 48k allocs | ~7 µs |
+| `LearningBenchmark.applyWordEvents` (200 events) | 33.2 ms, 30k allocs | 33.2 ms, 28k allocs | 0.17 ms |
+
+The keystroke path gained more on the device (−68%) than on the desktop: ART doesn't remove the
+allocations HotSpot's escape analysis did. Decode stays far inside the §14 budget (≤8 ms p95).
+
+To see where device time goes, add a stack-sampling profile to a run:
+`-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling`.
+The `.trace` files land next to the JSON results; open them in Android Studio or Perfetto.
 
 ## Findings log
 
@@ -91,3 +106,6 @@ To be filled from the first `--device` run.
   - The A* heap now keeps bounds inline.
   - Remaining decoder CPU is the beam search itself (`TrieSearch.expand`, heap): inherent to the
     algorithm.
+  - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
+    personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
+    Candidates for a later pass, measured on the device.
