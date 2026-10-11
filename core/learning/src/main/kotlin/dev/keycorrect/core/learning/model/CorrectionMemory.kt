@@ -46,7 +46,8 @@ internal class CorrectionMemory(private val cfg: PersonalModelConfig, private va
         val target = (cfg.maxCorrectionEntries * 0.9).toInt()
         val items = ArrayList<Pair<String, Double>>(cells.size)
         cells.forEach { k, c -> items += k to kotlin.math.abs(decay.value(c, now)) }
-        items.sortBy { it.second }
+        // Ties by key, so which tied entries go never depends on hash-map iteration order.
+        items.sortWith(compareBy({ it.second }, { it.first }))
         for (i in 0 until cells.size - target) cells.remove(items[i].first)
     }
 

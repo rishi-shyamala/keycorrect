@@ -19,7 +19,7 @@ DEVICE=0
 for arg in "$@"; do
     case $arg in
         --device) DEVICE=1 ;;
-        -h | --help) sed -n '2,11p' "$0"; exit 0 ;;
+        -h | --help) sed -n '2,10p' "$0"; exit 0 ;;
         *) echo "unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
@@ -50,14 +50,14 @@ if [ -f data/processed/heldout.txt ]; then
     JAVA_OPTS="-XX:StartFlightRecording=filename=$OUT/spatial.jfr,settings=profile" \
         "$EVAL" --sentences "$SENTENCES" --sigma 0.25 --seed 7 --threads 1 --out "$OUT/spatial" \
         > "$OUT/spatial.log" 2>&1
-    { echo "## Decoder (desktop JVM)"; grep -A5 "Latency of predict" "$OUT/spatial/report.txt"
-      grep -E "word accuracy|FALSE CORRECTIONS" "$OUT/spatial/report.txt"; echo; } >> "$OUT/summary.txt"
+    { echo "## Decoder (desktop JVM)"; grep -A5 "Latency of predict" "$OUT/spatial/report.txt" || echo "(no latency table: see $OUT/spatial.log)"
+      grep -E "word accuracy|FALSE CORRECTIONS" "$OUT/spatial/report.txt" || true; echo; } >> "$OUT/summary.txt"
     summarise "$OUT/spatial.jfr" "decoder"
 
     echo "== learning: learn eval, $LEARN_WORDS words" >&2
     JAVA_OPTS="-XX:StartFlightRecording=filename=$OUT/learn.jfr,settings=profile" \
         "$EVAL" --mode learn --words "$LEARN_WORDS" --seed 1 --out "$OUT/learn" > "$OUT/learn.log" 2>&1
-    { echo "## Learning (desktop JVM)"; grep "runtime:" "$OUT/learn.log"; echo; } >> "$OUT/summary.txt"
+    { echo "## Learning (desktop JVM)"; grep "runtime:" "$OUT/learn.log" || echo "(no runtime line: see $OUT/learn.log)"; echo; } >> "$OUT/summary.txt"
     summarise "$OUT/learn.jfr" "learning"
 else
     echo "data/processed is missing: skipping the eval profiles (tools/data/fetch-sources.sh, then" \
@@ -67,7 +67,8 @@ fi
 echo "== keyboard: keystroke benchmark" >&2
 ./gradlew --console=plain :feature:keyboard-ui:testDebugUnitTest --tests '*KeystrokeBenchmarkTest' \
     -Pkeycorrect.bench=true -Pkeycorrect.jfr="$OUT/keys.jfr" --rerun -i 2>&1 \
-    | grep "KEYSTROKE" | sed 's/^ *//' > "$OUT/keys.txt"
+    | { grep "KEYSTROKE" || echo "(no KEYSTROKE lines: benchmark skipped or failed)"; } \
+    | sed 's/^ *//' > "$OUT/keys.txt"
 { echo "## Keystroke path (desktop JVM)"; cat "$OUT/keys.txt"; echo; } >> "$OUT/summary.txt"
 summarise "$OUT/keys.jfr" "keystroke"
 

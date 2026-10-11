@@ -57,7 +57,8 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
         val target = (cap * 0.9).toInt()
         val items = ArrayList<Pair<String, Double>>(map.size)
         map.forEach { k, c -> items += k to decay.value(c, now) }
-        items.sortBy { it.second }
+        // Ties by key, so which tied entries go never depends on hash-map iteration order.
+        items.sortWith(compareBy({ it.second }, { it.first }))
         for (i in 0 until map.size - target) {
             val (k, v) = items[i]
             map.remove(k)
