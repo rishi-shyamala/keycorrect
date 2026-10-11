@@ -79,16 +79,21 @@ internal class WordMemory(
      * The autocorrections still inside the window that said [context] before them and whose
      * restored word is not (yet) in the text, newest first. [typed], if given, narrows them to the
      * ones whose typed word is that word. This is the candidate list for a corrected word that was
-     * deleted without a word being re-composed (see `PredictiveInput.deletedCorrection`).
+     * deleted without a word being re-composed (see `PredictiveInput.deletedCorrection`). [context]
+     * is only computed when some autocorrection is otherwise a match: this is asked on every
+     * keystroke, and usually none is.
      */
-    fun autocorrections(context: List<String>, typed: String?, now: Long): List<Tracked> {
+    fun autocorrections(context: () -> List<String>, typed: String?, now: Long): List<Tracked> {
         prune(now)
-        return words.asReversed().filter {
-            it.autocorrected &&
-                it.undone == null &&
-                it.context == context &&
-                (typed == null || sameWord(typed, it.typed))
-        }
+        val matching =
+            words.asReversed().filter {
+                it.autocorrected &&
+                    it.undone == null &&
+                    (typed == null || sameWord(typed, it.typed))
+            }
+        if (matching.isEmpty()) return matching
+        val ctx = context()
+        return matching.filter { it.context == ctx }
     }
 
     /** True while [t] is still inside the tracking window. */

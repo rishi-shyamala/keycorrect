@@ -28,6 +28,7 @@ import dev.keycorrect.core.learning.WordReplaced
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.FeedbackKind
 import dev.keycorrect.feature.keyboard.hapticWanted
+import java.nio.CharBuffer
 
 /**
  * The typing side of prediction: owns the composing word, talks to the editor, feeds the decoder
@@ -1335,8 +1336,9 @@ internal class PredictiveInput(
         if (!cache.beforeReadable || !cache.afterKnown) return null
         val now = learn.now()
         if (memory.size == 0) return null
-        val ctx = context ?: SentenceContext.lastWords(cache.before)
-        return memory.autocorrections(ctx, typed, now).firstOrNull { !standsInText(it) }
+        return memory
+            .autocorrections({ context ?: SentenceContext.lastWords(cache.before) }, typed, now)
+            .firstOrNull { !standsInText(it) }
     }
 
     /** Whether the corrected word of [t] still stands after its context in the cached text. */
@@ -1352,7 +1354,10 @@ internal class PredictiveInput(
             val bounded =
                 (i == 0 || !isWordChar(text[i - 1])) &&
                     (end == text.length || !isWordChar(text[end]))
-            if (bounded && SentenceContext.lastWords(text.substring(0, i)) == t.context) return true
+            // A view, not a copy: this runs for every match of a common word like "the".
+            if (bounded && SentenceContext.lastWords(CharBuffer.wrap(text, 0, i)) == t.context) {
+                return true
+            }
             from = i + 1
         }
     }
