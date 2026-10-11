@@ -1289,4 +1289,24 @@ class LearningEventsTest {
         const val GEO_W = 1080f
         const val GEO_H = 600f
     }
+
+    @Test
+    fun anUndoneCorrectionSwipedAwayIsNeitherKeptNorReverted() {
+        // Backspace undoes "teh" -> "the"; a backspace swipe then deletes the restored word. That
+        // says nothing about "teh": no revert, and the word is not learned as typed.
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start()
+        type("teh")
+        space()
+        assertThat(text()).isEqualTo("the ")
+        backspace() // the undo: "teh" restored
+        assertThat(text()).isEqualTo("teh")
+        controller.gestures.onBackspaceSwipe(1)
+        controller.gestures.onBackspaceSwipeEnd(commit = true)
+        assertThat(text()).isEqualTo("")
+        type("ok")
+        space()
+        assertThat(reverts()).isEmpty()
+        assertThat(committed().map { it.typed }).doesNotContain("teh")
+    }
 }

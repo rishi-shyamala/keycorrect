@@ -192,6 +192,18 @@ internal class EditingController(
         }
     }
 
+    /**
+     * Another key arrived mid-swipe: put the cursor back now. Until the swipe's own finger lifts
+     * ([onBackspaceSwipeEnd]) no new swipe starts, however that finger moves.
+     */
+    fun cancelSwipe() {
+        val active = swipe
+        swipe = null
+        swipeTried = true
+        swipeActive = false
+        if (active != null && active.length > 0) editor.setSelection(active.origin, active.origin)
+    }
+
     /** Remembers where the swipe began; null (and nothing more tried) where it cannot work. */
     private fun startSwipe(): Swipe? {
         if (swipeTried) return null
@@ -231,8 +243,9 @@ internal class EditingController(
             EditingAction.SelectWord,
             EditingAction.SelectSentence,
             EditingAction.SelectLine -> !sensitive()
+            // Never a password onto the clipboard (where PR C's history would see it).
             EditingAction.Cut,
-            EditingAction.Copy -> selection().let { !it.known || !it.collapsed }
+            EditingAction.Copy -> !sensitive() && selection().let { !it.known || !it.collapsed }
             else -> true
         }
 

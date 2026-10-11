@@ -231,6 +231,7 @@ class KeyboardController(
      * key, null for repeats, popup entries and accessibility actions.
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
+        cancelSwipeFor(action)
         when (action) {
             is KeyAction.Text -> onTextKey(action, touch)
             KeyAction.Space -> {
@@ -340,6 +341,14 @@ class KeyboardController(
         }
         input.onExternalChange(collapsed = update.known && update.collapsed)
         updateAutoCapitalize()
+    }
+
+    /**
+     * Another finger's key during a backspace swipe would type over the previewed words: the swipe
+     * is cancelled first (its own release then changes nothing).
+     */
+    private fun cancelSwipeFor(action: KeyAction) {
+        if (editing.swipeActive && action != KeyAction.Backspace) editing.cancelSwipe()
     }
 
     /** Shows [panel] in the key area ([KeyboardPanel.Keys] returns to the keys). */

@@ -47,12 +47,13 @@ internal object TextUnits {
         return if (from < to) TextSpan(from, to) else null
     }
 
-    /** The line(s) (up to the line breaks) enclosing [start] until [end]. */
+    /** The line(s) (up to the line breaks, `\n` or `\r\n`) enclosing [start] until [end]. */
     fun expandLine(text: CharSequence, start: Int, end: Int): TextSpan? {
         var from = start
         var to = end
         while (from > 0 && text[from - 1] != '\n') from--
         while (to < text.length && text[to] != '\n') to++
+        if (to > from && text[to - 1] == '\r') to--
         return if (from < to) TextSpan(from, to) else null
     }
 

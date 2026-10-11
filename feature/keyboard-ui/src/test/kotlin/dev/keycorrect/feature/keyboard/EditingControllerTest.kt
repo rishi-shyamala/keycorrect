@@ -580,6 +580,38 @@ class EditingControllerTest {
         assertThat(editor.selected).isEqualTo("ba")
         assertThat(editor.selections.last()).isEqualTo(8 to 10)
     }
+
+    @Test
+    fun aMoveThatLeavesTheCursorInPlaceStillEndsTheComposingWord() {
+        // The finish-composing update is the keyboard's own, so no external change follows it.
+        start("")
+        "hel".forEach { controller.onKey(KeyAction.Text("$it")) }
+        assertThat(editor.composing).isEqualTo("hel")
+        perform(EditingAction.Right) // already at the end: the cursor doesn't move
+        controller.onKey(KeyAction.Text("l"))
+        assertThat(editor.text.toString()).isEqualTo("hell")
+    }
+
+    @Test
+    fun cutAndCopyAreUnavailableInAPasswordField() {
+        password()
+        editor.setSelection(0, 6)
+        assertThat(controller.editing.isAvailable(EditingAction.Cut)).isFalse()
+        assertThat(controller.editing.isAvailable(EditingAction.Copy)).isFalse()
+        assertThat(controller.editing.isAvailable(EditingAction.Paste)).isTrue()
+    }
+
+    @Test
+    fun aKeyFromAnotherFingerCancelsTheBackspaceSwipe() {
+        start("foo bar baz")
+        gestures.onBackspaceSwipe(2)
+        assertThat(editor.selected).isEqualTo("bar baz")
+        controller.onKey(KeyAction.Text("x")) // a second finger
+        assertThat(editor.text.toString()).isEqualTo("foo bar bazx")
+        gestures.onBackspaceSwipe(3) // the swipe finger keeps moving: no new swipe
+        gestures.onBackspaceSwipeEnd(commit = true)
+        assertThat(editor.text.toString()).isEqualTo("foo bar bazx")
+    }
 }
 
 class TextUnitsTest {
@@ -677,5 +709,12 @@ class TextUnitsTest {
         assertThat(CaseCycle.next("don't STOP")).isEqualTo("don't stop")
         assertThat(CaseCycle.next("don't stop")).isEqualTo("Don't Stop")
         assertThat(CaseCycle.next("3rd place")).isEqualTo("3rd Place")
+    }
+
+    @Test
+    fun aCrlfLineIsSelectedWithoutItsCarriageReturn() {
+        val text = "one\r\ntwo\r\n"
+        assertThat(TextUnits.expandLine(text, 1, 1)).isEqualTo(TextSpan(0, 3))
+        assertThat(TextUnits.expandLine(text, 6, 6)).isEqualTo(TextSpan(5, 8))
     }
 }
