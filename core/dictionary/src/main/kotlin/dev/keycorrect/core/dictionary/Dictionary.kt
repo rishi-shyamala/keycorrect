@@ -11,8 +11,8 @@ data class Successor(val id: Int, val logProb: Float)
  * Read-only view over a compiled KCD1 dictionary (see FORMAT.md).
  *
  * [open] validates the small header structures only; bulk data is read lazily from the buffer with
- * absolute little-endian gets, so a memory-mapped buffer is never copied. Instances hold no mutable
- * state and are safe for concurrent readers.
+ * absolute little-endian gets, so a memory-mapped buffer is never copied. Instances are safe for
+ * concurrent readers; the only mutable state is the [word] cache, whose entries are immutable.
  *
  * Word ids: 0 = `<s>` ([BOS_ID]), 1 = `</s>` ([EOS_ID]), real words from [FIRST_WORD_ID], ordered
  * by descending unigram probability (so a smaller id is a more frequent word).
@@ -53,6 +53,11 @@ private constructor(
     private val trigrams: NgramTable,
 ) {
     private val labelTable = IntArray(256) { -1 }
+
+    /** Recently built [word] results; see there. */
+    private val wordCache = arrayOfNulls<CachedWord>(WORD_CACHE_SIZE)
+
+    private class CachedWord(val id: Int, val word: String)
 
     init {
         for (i in alphabet.indices) if (alphabet[i].code < 256) labelTable[alphabet[i].code] = i
@@ -292,14 +297,26 @@ private constructor(
         return if (node < 0) IntArray(0) else wordIdsAt(node)
     }
 
-    /** Surface string of [id] (`<s>`/`</s>` for the reserved ids). */
+    /**
+     * Surface string of [id] (`<s>`/`</s>` for the reserved ids). Rebuilding a word walks the trie
+     * up to the root, and the decoder asks for the same frequent words on every keystroke, so
+     * recent answers are kept in a small direct-mapped cache.
+     */
     fun word(id: Int): String {
         checkId(id)
         if (id == BOS_ID) return BOS_TOKEN
         if (id == EOS_ID) return EOS_TOKEN
+        val slot = id and (WORD_CACHE_SIZE - 1)
+        val hit = wordCache[slot]
+        if (hit != null && hit.id == id) return hit.word
         val pattern = patternOf(id)
-        if (pattern == Fmt.CASE_CUSTOM) return customSurface(id)
-        return CaseUtil.apply(keyOfNode(nodeOfId(id)), pattern)
+        val word =
+            if (pattern == Fmt.CASE_CUSTOM) customSurface(id)
+            else CaseUtil.apply(keyOfNode(nodeOfId(id)), pattern)
+        // Racy but safe: an entry is immutable (final fields), so a reader sees a whole one or
+        // null.
+        wordCache[slot] = CachedWord(id, word)
+        return word
     }
 
     /** Lowercase key under which [id] is stored in the trie (null for reserved ids). */
@@ -481,6 +498,9 @@ private constructor(
 
         /** Longest trie key (in chars) the reader will reconstruct; the writer enforces it too. */
         const val MAX_KEY_LENGTH = 256
+
+        /** Entries in the [word] cache (a power of two; ids map to `id and (size - 1)`). */
+        private const val WORD_CACHE_SIZE = 4096
 
         /** Normalizes a surface string to the trie key: Unicode lowercase, accents kept. */
         @JvmStatic fun normalizeKey(surface: String): String = surface.lowercase()

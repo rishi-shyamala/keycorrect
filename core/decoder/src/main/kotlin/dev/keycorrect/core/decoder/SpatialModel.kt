@@ -62,7 +62,10 @@ class SpatialModel(
         meanY = FloatArray(slotCount)
         invSigmaX = FloatArray(slotCount)
         invSigmaY = FloatArray(slotCount)
-        val slotOfChar = HashMap<Char, Int>(slotCount * 2)
+        // Slot s is the key for slotChars[s]; looked up by scanning (a few dozen keys) rather than
+        // a
+        // HashMap<Char, Int>, which boxed most chars of the table below on every rebuild.
+        val slotChars = CharArray(slotCount)
         var s = 0
         for ((c, key) in byChar) {
             val adj = correction.adjust(c)
@@ -73,18 +76,18 @@ class SpatialModel(
                 1f / (config.sigmaXFactor * key.width * adj.sigmaScale).coerceAtLeast(EPS)
             invSigmaY[s] =
                 1f / (config.sigmaYFactor * key.height * adj.sigmaScale).coerceAtLeast(EPS)
-            slotOfChar[c] = s++
+            slotChars[s++] = c
         }
         for (code in 0 until TABLE_SIZE) {
             val lower = Character.toLowerCase(code.toChar())
-            val base = stripAccent(lower)
+            val base = BASES[code]
             bases[code] = base
-            val own = slotOfChar[lower]
-            if (own != null) {
+            val own = slotChars.indexOf(lower)
+            if (own >= 0) {
                 slots[code] = own
             } else {
-                val baseSlot = slotOfChar[base]
-                if (baseSlot != null) {
+                val baseSlot = slotChars.indexOf(base)
+                if (baseSlot >= 0) {
                     slots[code] = baseSlot
                     if (base != lower) accentPenalties[code] = config.accentPenalty
                 }
@@ -131,6 +134,13 @@ class SpatialModel(
         /** Chars below this (Latin through Latin Extended-B) are pre-resolved. */
         private const val TABLE_SIZE = 0x250
         private const val EPS = 1e-3f
+
+        /**
+         * Lowercase, accent-stripped base letter of every char below [TABLE_SIZE]. Independent of
+         * the layout, so it is computed once rather than on every rebuild (Normalizer allocates).
+         */
+        private val BASES =
+            CharArray(TABLE_SIZE) { stripAccent(Character.toLowerCase(it.toChar())) }
 
         /** Lowercases and maps typographic apostrophes to `'`. */
         internal fun fold(c: Char): Char =

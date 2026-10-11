@@ -25,6 +25,8 @@ rootProject.name = "keycorrect"
 
 include(":app")
 
+include(":benchmark")
+
 include(":core:data")
 
 include(":core:decoder")

@@ -21,20 +21,56 @@ internal object Text {
         }
 
     /** Folds apostrophe variants to `'` but keeps case. */
-    fun fold(s: String): String = String(CharArray(s.length) { foldChar(s[it]) }).trim()
+    fun fold(s: String): String =
+        // Fast path, no allocation: nothing to fold or trim (the common case).
+        if (isFolded(s)) s else String(CharArray(s.length) { foldChar(s[it]) }).trim()
 
     /** Normalised lookup key: folded, lower-cased, whitespace replaced so keys stay joinable. */
     fun key(s: String): String {
+        // Fast path, no allocation: keys are looked up for every candidate of every keystroke.
+        if (isPlainKey(s)) return s
         val f = fold(s).lowercase(Locale.ROOT)
-        if (f.none { it.isWhitespace() || it == SEP }) return f
-        return f.map { if (it.isWhitespace() || it == SEP) '_' else it }.joinToString("")
+        return if (f.none(::isKeyBreak)) f
+        else f.map { if (isKeyBreak(it)) '_' else it }.joinToString("")
     }
+
+    /** Nothing to fold, and nothing for `trim` to remove. */
+    private fun isFolded(s: String): Boolean =
+        s.all { foldChar(it) == it } &&
+            s.firstOrNull()?.isWhitespace() != true &&
+            s.lastOrNull()?.isWhitespace() != true
+
+    /**
+     * Already its own [key]: ASCII, no capitals, no fold char (`` ` ``), no whitespace or [SEP].
+     */
+    private fun isPlainKey(s: String): Boolean = s.all {
+        it.code < ASCII_END && it !in 'A'..'Z' && it != '`' && !isKeyBreak(it)
+    }
+
+    /** Chars a key may not contain (they would break [join]). */
+    private fun isKeyBreak(c: Char): Boolean = c.isWhitespace() || c == SEP
+
+    private const val ASCII_END = 0x80
 
     /** At most the last two non-blank context keys, oldest first. */
     fun contextKeys(context: List<String>): List<String> =
         context.takeLast(2).map(::key).filter { it.isNotEmpty() }
 
     fun join(vararg parts: String): String = parts.joinToString(SEP.toString())
+
+    // The two- and three-part keys are built per candidate on every keystroke: no vararg array or
+    // growing builder. Same result as the vararg form.
+    fun join(a: String, b: String): String =
+        StringBuilder(a.length + b.length + 1).append(a).append(SEP).append(b).toString()
+
+    fun join(a: String, b: String, c: String): String =
+        StringBuilder(a.length + b.length + c.length + 2)
+            .append(a)
+            .append(SEP)
+            .append(b)
+            .append(SEP)
+            .append(c)
+            .toString()
 }
 
 /**
@@ -83,10 +119,7 @@ internal class ShardedMap<V : Any>(private val shardCount: Int = 128) {
     var size = 0
         private set
 
-    private fun idx(k: String): Int {
-        val h = k.hashCode()
-        return ((h xor (h ushr 16)) and Int.MAX_VALUE) % shardCount
-    }
+    private fun idx(k: String): Int = shardOf(k, shardCount)
 
     operator fun get(k: String): V? = live[idx(k)][k]
 
@@ -145,8 +178,18 @@ internal class ShardedMap<V : Any>(private val shardCount: Int = 128) {
 
 /** Immutable view produced by [ShardedMap.freeze]. */
 internal class FrozenMap<V : Any>(private val shards: Array<Map<String, V>>) {
-    operator fun get(k: String): V? {
-        val h = k.hashCode()
-        return shards[((h xor (h ushr 16)) and Int.MAX_VALUE) % shards.size][k]
-    }
+    operator fun get(k: String): V? = shards[shardOf(k, shards.size)][k]
 }
+
+/**
+ * The shard of [k]. Taken from the high bits of a multiplicative mix, not from the low bits of
+ * `hash xor (hash ushr 16)`: each shard's HashMap picks buckets from those low bits, so sharding on
+ * them left every key of a shard in a tiny fraction of its buckets (long, treeified chains).
+ */
+internal fun shardOf(k: String, count: Int): Int =
+    ((k.hashCode() * GOLDEN_GAMMA) ushr SHARD_SHIFT) % count
+
+private const val GOLDEN_GAMMA = -0x61c88647
+
+/** Keeps the mixed high bits, which HashMap's own bucket choice does not use. */
+private const val SHARD_SHIFT = 16

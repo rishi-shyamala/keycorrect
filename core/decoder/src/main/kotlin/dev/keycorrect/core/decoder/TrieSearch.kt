@@ -34,6 +34,9 @@ internal class TrieSearch(
     private val stPenalty = FloatArray(search.maxStates)
     private val stBound = FloatArray(search.maxStates)
     private val heap = IntArray(search.maxStates)
+
+    /** `stBound` of each [heap] entry, kept alongside so comparisons don't chase indices. */
+    private val heapBound = FloatArray(search.maxStates)
     private var stCount = 0
     private var heapSize = 0
 
@@ -317,33 +320,48 @@ internal class TrieSearch(
         return true
     }
 
-    private fun before(a: Int, b: Int): Boolean =
-        stBound[a] > stBound[b] || (stBound[a] == stBound[b] && a < b)
+    /** Max-heap order on the bound; ties go to the older state (smaller index). */
+    private fun before(boundA: Float, a: Int, boundB: Float, b: Int): Boolean =
+        boundA > boundB || (boundA == boundB && a < b)
 
     private fun siftUp(start: Int, s: Int) {
+        val bound = stBound[s]
         var i = start
         while (i > 0) {
             val parent = (i - 1) ushr 1
-            if (!before(s, heap[parent])) break
+            if (!before(bound, s, heapBound[parent], heap[parent])) break
             heap[i] = heap[parent]
+            heapBound[i] = heapBound[parent]
             i = parent
         }
         heap[i] = s
+        heapBound[i] = bound
     }
 
     private fun pop(): Int {
         val top = heap[0]
-        val last = heap[--heapSize]
+        val size = --heapSize
+        val last = heap[size]
+        val lastBound = heapBound[size]
         var i = 0
         while (true) {
             var child = 2 * i + 1
-            if (child >= heapSize) break
-            if (child + 1 < heapSize && before(heap[child + 1], heap[child])) child++
-            if (!before(heap[child], last)) break
+            if (child >= size) break
+            if (
+                child + 1 < size &&
+                    before(heapBound[child + 1], heap[child + 1], heapBound[child], heap[child])
+            ) {
+                child++
+            }
+            if (!before(heapBound[child], heap[child], lastBound, last)) break
             heap[i] = heap[child]
+            heapBound[i] = heapBound[child]
             i = child
         }
-        if (heapSize > 0) heap[i] = last
+        if (size > 0) {
+            heap[i] = last
+            heapBound[i] = lastBound
+        }
         return top
     }
 

@@ -3,7 +3,18 @@ plugins {
     id("keycorrect.android.compose")
 }
 
-android { namespace = "dev.keycorrect.feature.keyboard" }
+android {
+    namespace = "dev.keycorrect.feature.keyboard"
+    // KeystrokeBenchmarkTest runs only when profiling (tools/profile/profile.sh):
+    // -Pkeycorrect.bench=true, plus -Pkeycorrect.jfr=<file> to record it with Flight Recorder.
+    testOptions.unitTests.all { test ->
+        val bench = providers.gradleProperty("keycorrect.bench").orNull
+        if (bench != null) test.systemProperty("keycorrect.bench", bench)
+        providers.gradleProperty("keycorrect.jfr").orNull?.let {
+            test.jvmArgs("-XX:StartFlightRecording=filename=$it,settings=profile")
+        }
+    }
+}
 
 dependencies {
     implementation(project(":core:designsystem"))

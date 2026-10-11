@@ -35,6 +35,18 @@ internal constructor(
                 )
 
         /**
+         * Decodes inline on the calling thread, and timers never fire. For benchmarks and tools
+         * that drive the keyboard synchronously (`:benchmark`), never for the running keyboard.
+         */
+        fun inline(backend: PredictionBackend): PredictionEnvironment =
+            PredictionEnvironment(
+                backend,
+                DecoderLoop({ it.run() }, { it.run() }) { backend.predictor },
+                { _, _ -> TimeoutHandle {} },
+                ShortcutExpander(),
+            )
+
+        /**
          * The production setup: a dedicated decoder thread (a daemon, at slightly raised priority
          * since it sits on the typing path), results and timers on the main looper, and
          * `{date}`/`{time}` formatted by the device's date and time settings.
