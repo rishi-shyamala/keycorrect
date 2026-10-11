@@ -98,9 +98,9 @@ internal class SimEditor : TextEditor {
         if (was) changed()
     }
 
-    override fun deleteSurroundingText(beforeLength: Int, afterLength: Int) {
-        val from = maxOf(0, cursor - beforeLength)
-        val to = minOf(text.length, cursor + afterLength)
+    override fun deleteSurroundingText(before: Int, after: Int) {
+        val from = maxOf(0, cursor - before)
+        val to = minOf(text.length, cursor + after)
         text.delete(from, to)
         cursor = from
         compStart = -1
