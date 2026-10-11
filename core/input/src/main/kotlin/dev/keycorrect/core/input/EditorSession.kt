@@ -1,5 +1,6 @@
 package dev.keycorrect.core.input
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -14,7 +15,11 @@ import android.view.inputmethod.InputConnection
 class EditorSession(
     private val connection: () -> InputConnection?,
     private val editorInfo: () -> EditorInfo?,
-    private val newKeyEvent: (action: Int, keyCode: Int) -> KeyEvent = ::KeyEvent,
+    private val newKeyEvent: (action: Int, keyCode: Int, metaState: Int) -> KeyEvent =
+        { action, code, meta ->
+            val now = SystemClock.uptimeMillis()
+            KeyEvent(now, now, action, code, 0, meta)
+        },
 ) : TextEditor {
     override fun commitText(text: CharSequence, newCursorPosition: Int) {
         connection()?.commitText(text, newCursorPosition)
@@ -111,9 +116,37 @@ class EditorSession(
         return ic.getCursorCapsMode(info.inputType)
     }
 
-    private fun sendKey(ic: InputConnection, keyCode: Int) {
-        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode))
+    override fun setSelection(start: Int, end: Int) {
+        connection()?.setSelection(start, end)
+    }
+
+    override fun sendKey(keyCode: Int, metaState: Int) {
+        val ic = connection() ?: return
+        sendKey(ic, keyCode, metaState)
+    }
+
+    override fun contextMenuAction(action: EditAction): Boolean {
+        val ic = connection() ?: return false
+        val id =
+            when (action) {
+                EditAction.Cut -> android.R.id.cut
+                EditAction.Copy -> android.R.id.copy
+                EditAction.Paste -> android.R.id.paste
+                EditAction.SelectAll -> android.R.id.selectAll
+            }
+        return ic.performContextMenuAction(id)
+    }
+
+    override fun selectedText(maxChars: Int): CharSequence? {
+        if (!readsAllowed()) return null
+        return connection()?.getSelectedText(0)?.let {
+            if (it.length > maxChars) it.subSequence(0, maxChars) else it
+        }
+    }
+
+    private fun sendKey(ic: InputConnection, keyCode: Int, metaState: Int = 0) {
+        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode, metaState))
+        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode, metaState))
     }
 
     private companion object {

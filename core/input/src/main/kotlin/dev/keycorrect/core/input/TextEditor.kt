@@ -1,6 +1,18 @@
 package dev.keycorrect.core.input
 
-/** The editing operations the keyboard performs on the focused field. */
+/** The editor's context-menu actions the keyboard can trigger ([TextEditor.contextMenuAction]). */
+enum class EditAction {
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+/**
+ * The editing operations the keyboard performs on the focused field. It mirrors the parts of
+ * `InputConnection` the keyboard uses, so its size follows the platform's.
+ */
+@Suppress("TooManyFunctions")
 interface TextEditor {
     /**
      * Inserts [text] at the cursor, replacing the selection or the composing text, and ends
@@ -40,6 +52,28 @@ interface TextEditor {
     fun deleteBackward(sensitive: Boolean)
 
     fun performEnter()
+
+    /**
+     * Selects [start] until [end] in the editor's char offsets; a cursor when they are equal. The
+     * keyboard's own cursor moves and selections (editing, Phase 4) go through here or [sendKey].
+     */
+    fun setSelection(start: Int, end: Int)
+
+    /**
+     * Sends one key press (down and up) with [metaState] (`KeyEvent.META_*`): arrows, Home/End,
+     * Ctrl+Z and the like, and every key in a terminal. The editor handles graphemes, bidi and
+     * selection itself.
+     */
+    fun sendKey(keyCode: Int, metaState: Int = 0)
+
+    /** Cut, copy, paste or select all, as the editor's context menu does. False if refused. */
+    fun contextMenuAction(action: EditAction): Boolean
+
+    /**
+     * The selected text (at most [maxChars]), or null when nothing is selected, the editor doesn't
+     * say, or the field is sensitive. A blocking IPC, like [textBeforeCursor].
+     */
+    fun selectedText(maxChars: Int): CharSequence?
 
     /**
      * The auto-capitalisation mode at the cursor, as `InputConnection.getCursorCapsMode` returns:

@@ -87,6 +87,12 @@ class KeyboardController(
             wordFeedback::onWordFeedback,
         )
 
+    private val editing = EditingController(tracked, input::endComposingForMove, ::showPanel)
+
+    /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
+    val gestures: KeyGestures
+        get() = editing
+
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog
         get() = input.touchLog
@@ -106,6 +112,10 @@ class KeyboardController(
         get() = state.effectiveShift(shiftHeld)
 
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
+        private set
+
+    /** What fills the key area: the keys or a panel (Phase 4). */
+    var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
         private set
 
     var profile: FieldProfile by mutableStateOf(DEFAULT_PROFILE)
@@ -236,6 +246,12 @@ class KeyboardController(
                 updateLayoutKey()
                 updateAutoCapitalize()
             }
+            is KeyAction.KeyCode -> {
+                markChord()
+                editing.sendRawKey(action.code)
+            }
+            is KeyAction.Modifier -> Unit // PR A: terminal row modifiers
+            KeyAction.Emoji -> Unit // PR B: emoji panel
             KeyAction.None -> Unit
         }
     }
@@ -286,6 +302,11 @@ class KeyboardController(
         }
         input.onExternalChange(collapsed = update.known && update.collapsed)
         updateAutoCapitalize()
+    }
+
+    /** Shows [panel] in the key area ([KeyboardPanel.Keys] returns to the keys). */
+    fun showPanel(panel: KeyboardPanel) {
+        this.panel = panel
     }
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */

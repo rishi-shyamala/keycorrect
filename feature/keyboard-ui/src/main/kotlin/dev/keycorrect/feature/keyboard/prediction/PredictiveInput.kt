@@ -405,6 +405,16 @@ internal class PredictiveInput(
      * The cursor or text changed behind our back: the word in progress ends as it is and nothing
      * decoded so far applies any more. The text before the cursor is read afresh when [collapsed].
      */
+    /**
+     * The keyboard is about to move the cursor or selection itself (a raw key, the spacebar cursor,
+     * the editing panel). Only the editor's composing region ends here; the selection update that
+     * follows reaches [onExternalChange], so everything else settles exactly as for a tap elsewhere
+     * in the text.
+     */
+    fun endComposingForMove() {
+        if (composing.isNotEmpty()) editor.finishComposingText()
+    }
+
     fun onExternalChange(collapsed: Boolean) {
         settleAll()
         resetWordState()

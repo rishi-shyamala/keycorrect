@@ -28,8 +28,8 @@ class EditorSessionTest {
         val keys = mutableListOf<Pair<Int, Int>>()
         private val keyOfEvent = IdentityHashMap<KeyEvent, Pair<Int, Int>>()
 
-        fun newKeyEvent(action: Int, keyCode: Int): KeyEvent {
-            val event = KeyEvent(action, keyCode)
+        fun newKeyEvent(action: Int, keyCode: Int, metaState: Int): KeyEvent {
+            val event = KeyEvent(0L, 0L, action, keyCode, 0, metaState)
             keyOfEvent[event] = action to keyCode
             return event
         }
