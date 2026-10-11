@@ -28,7 +28,6 @@ import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.FeedbackKind
-import dev.keycorrect.feature.keyboard.TimeoutHandle
 import dev.keycorrect.feature.keyboard.hapticWanted
 
 /**
@@ -123,11 +122,7 @@ internal class PredictiveInput(
      */
     private var restoredWord: String? = null
 
-    private var stripBase = StripModel.Empty
-    private var addWord: String? = null
-    private var addWordTimer: TimeoutHandle? = null
-    private var neverWord: String? = null
-    private var neverTimer: TimeoutHandle? = null
+    private val prompts = StripPrompts(env.scheduler, onStrip)
 
     // Learning (docs/PLAN.md §6.2-6.3). All of it lives behind the single gate in [learn]; none of
     // it is kept while the gate is closed.
@@ -235,8 +230,8 @@ internal class PredictiveInput(
         syncGate()
         if (was && !predictionOn) {
             finishAsTyped()
-            cancelAddWord()
-            cancelNever()
+            prompts.cancelAddWord()
+            prompts.cancelNever()
         }
         val relevant =
             old.suggestionsEnabled != settings.suggestionsEnabled ||
@@ -271,7 +266,7 @@ internal class PredictiveInput(
             editor.commitText(text)
             return
         }
-        dismissPrompts()
+        prompts.dismiss()
         closeUndo()
         flushSentence(text)
         settleHeldRevert()
@@ -292,7 +287,7 @@ internal class PredictiveInput(
             editor.commitText(text)
             return
         }
-        dismissPrompts()
+        prompts.dismiss()
         closeUndo()
         flushSentence(text)
         settleHeldRevert()
@@ -309,7 +304,7 @@ internal class PredictiveInput(
             editor.deleteBackward(sensitive)
             return
         }
-        dismissPrompts()
+        prompts.dismiss()
         flushSentence(null)
         if (composing.isNotEmpty()) {
             closeUndo()
@@ -361,7 +356,7 @@ internal class PredictiveInput(
      */
     fun beforeEnter(commitsLineBreak: Boolean) {
         if (!canPredict()) return
-        dismissPrompts()
+        prompts.dismiss()
         closeUndo()
         flushSentence("\n")
         if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
@@ -376,7 +371,7 @@ internal class PredictiveInput(
     /** The layer changed: a word in progress ends as typed. */
     fun onLayerSwitch() {
         closeUndo()
-        dismissPrompts()
+        prompts.dismiss()
         finishAsTyped()
         endEdit()
     }
@@ -422,7 +417,7 @@ internal class PredictiveInput(
     /** A strip slot was tapped. */
     fun onStripTap(slot: StripSlot) {
         if (!canPredict()) return
-        dismissPrompts()
+        prompts.dismiss()
         closeUndo()
         flushSentence(null)
         settleHeldRevert()
@@ -439,26 +434,13 @@ internal class PredictiveInput(
         if (!canPredict() || !learn.open) return
         if (slot.kind != SlotKind.Suggestion && slot.kind != SlotKind.Autocorrect) return
         if (slot.insert.isBlank()) return
-        addWordTimer?.cancel()
-        addWordTimer = null
-        addWord = null
-        neverTimer?.cancel()
-        neverWord = slot.insert
-        neverTimer =
-            env.scheduler.schedule(NEVER_PROMPT_MS) {
-                neverTimer = null
-                if (neverWord != null) {
-                    neverWord = null
-                    onStrip(overlaid())
-                }
-            }
-        onStrip(overlaid())
+        prompts.askNever(slot.insert)
     }
 
     /** "Yes" on the never-suggest prompt: hides the word now and tells the learning layer. */
     fun onNeverConfirm() {
-        val word = neverWord ?: return
-        cancelNever()
+        val word = prompts.neverWord ?: return
+        prompts.cancelNever()
         if (canPredict() && learn.open) {
             locallyBlocked.addLast(word)
             while (locallyBlocked.size > MAX_BLOCKED) locallyBlocked.removeFirst()
@@ -466,14 +448,12 @@ internal class PredictiveInput(
             latest = latest?.unblocked()
             if (composing.isNotEmpty()) requestWord() else requestNextWord()
         }
-        publish(stripBase)
+        publish(prompts.base)
     }
 
     /** "Cancel" on the never-suggest prompt. */
     fun onNeverCancel() {
-        if (neverWord == null) return
-        cancelNever()
-        onStrip(overlaid())
+        prompts.declineNever()
     }
 
     /**
@@ -481,9 +461,9 @@ internal class PredictiveInput(
      * allows suggestions and learning; a prompt that outlived either is dropped.
      */
     fun onAddWordTap() {
-        val word = addWord ?: return
+        val word = prompts.addWord ?: return
         val allowed = canPredict() && profile?.learningEnabled == true
-        dismissPrompts()
+        prompts.dismiss()
         if (allowed) {
             backend.addWord(word)
             learn.emit(
@@ -514,7 +494,7 @@ internal class PredictiveInput(
         cache.appendBefore(text)
         loop.advance()
         latest = null
-        if (stripBase != StripModel.Empty) publish(StripModel.Empty)
+        if (prompts.base != StripModel.Empty) publish(StripModel.Empty)
     }
 
     private fun append(c: Char, touch: TouchPoint?) {
@@ -912,7 +892,7 @@ internal class PredictiveInput(
                 typed.any { it.isLetter() } &&
                 !backend.isKnownWord(typed)
         ) {
-            showAddWord(typed)
+            prompts.showAddWord(typed)
         }
         requestNextWord()
     }
@@ -1039,9 +1019,9 @@ internal class PredictiveInput(
         endEdit()
         shown.clear()
         loop.advance()
-        cancelAddWord()
-        cancelNever()
-        stripBase = StripModel.Empty
+        prompts.cancelAddWord()
+        prompts.cancelNever()
+        prompts.base = StripModel.Empty
         onStrip(StripModel.Empty)
     }
 
@@ -1061,45 +1041,9 @@ internal class PredictiveInput(
     }
 
     private fun publish(base: StripModel) {
-        stripBase = base
+        prompts.base = base
         if (learn.open) shown.onStrip(base, composing.length, learn.now())
-        onStrip(overlaid())
-    }
-
-    /** The strip with the prompts that take it over, if any. */
-    private fun overlaid(): StripModel = stripBase.withAddWord(addWord).withNeverSuggest(neverWord)
-
-    private fun showAddWord(word: String) {
-        addWordTimer?.cancel()
-        addWord = word
-        addWordTimer =
-            env.scheduler.schedule(ADD_WORD_PROMPT_MS) {
-                addWordTimer = null
-                if (addWord != null) {
-                    addWord = null
-                    onStrip(overlaid())
-                }
-            }
-    }
-
-    private fun cancelAddWord() {
-        addWordTimer?.cancel()
-        addWordTimer = null
-        addWord = null
-    }
-
-    private fun cancelNever() {
-        neverTimer?.cancel()
-        neverTimer = null
-        neverWord = null
-    }
-
-    /** Any key or tap other than the prompts' own dismisses them. */
-    private fun dismissPrompts() {
-        if (addWord == null && neverWord == null) return
-        cancelAddWord()
-        cancelNever()
-        onStrip(stripBase)
+        onStrip(prompts.overlaid())
     }
 
     // ------------------------------------------------------------------ learning
@@ -1435,7 +1379,7 @@ internal class PredictiveInput(
 
     private fun offered(): List<String> {
         val slot =
-            listOf(stripBase.left, stripBase.centre, stripBase.right).firstOrNull {
+            listOf(prompts.base.left, prompts.base.centre, prompts.base.right).firstOrNull {
                 it?.kind == SlotKind.Phrase
             }
         return if (slot == null) emptyList() else phraseWords(slot.insert)
@@ -1443,9 +1387,9 @@ internal class PredictiveInput(
 
     private fun slotRank(slot: StripSlot): Int =
         when (slot) {
-            stripBase.centre -> 0
-            stripBase.left -> 1
-            stripBase.right -> 2
+            prompts.base.centre -> 0
+            prompts.base.left -> 1
+            prompts.base.right -> 2
             else -> 0
         }
 
@@ -1716,8 +1660,6 @@ internal class PredictiveInput(
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
-        const val ADD_WORD_PROMPT_MS = 3_000L
-        const val NEVER_PROMPT_MS = 10_000L
         const val MAX_BLOCKED = 32
         const val MAX_TOUCH_OFFSET = 0.7f
 
