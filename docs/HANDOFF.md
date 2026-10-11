@@ -4,6 +4,7 @@ Read this first when resuming. Other docs:
 - `docs/PLAN.md`: the design and roadmap. §16 has the decisions and §17 the phases.
 - `docs/EVAL.md`: the evaluation harness and its results.
 - `docs/PERF.md`: the pre-PR performance check and reference numbers.
+- `docs/PHASE4.md`: the Phase 4 plan and its decisions.
 - `docs/DATA_SOURCES.md` and `LICENSE-DATA.md`: data licences.
 - `docs/LAYOUT_FORMAT.md`: the layout JSON format.
 - `docs/SETUP.md`: the toolchain.
@@ -226,7 +227,7 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
 
 ## 10. Next steps
 
-1. **Merge the `pre-phase-4-cleanup` PR** (the user's call), then pull `main` and delete the branch.
+1. Done: the pre-Phase-4 cleanup (#2) and perf pass (#3) are merged.
 2. **Deferred review items:** `docs/CODEBASE_REVIEW.md` §0 lists what was done and what is left (test fixtures, settings-list consolidation, tools CLI parser, the rest of the `PredictiveInput` split, `AutocorrectPolicy` predicates). Do them on their own branch, not mixed with Phase 4 features.
 3. **Optional:** run the Phase 3 device checks on the S23 Ultra when the user frees the phone (it's unchecked in the PR test plan).
 4. **Phase 4: editing, clipboard, emoji** (PLAN §9, §10, §11, §8 terminal row). Suggested breakdown, following the usual flow (branch `phase-4-editing`):
