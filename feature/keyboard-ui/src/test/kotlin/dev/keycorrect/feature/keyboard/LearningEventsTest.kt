@@ -722,7 +722,6 @@ class LearningEventsTest {
             dev.keycorrect.feature.keyboard.prediction.StripSlot(
                 "set",
                 SlotKind.Suggestion,
-                "Suggestion: set",
             )
         )
         val r = reverts().single()
@@ -900,7 +899,6 @@ class LearningEventsTest {
             dev.keycorrect.feature.keyboard.prediction.StripSlot(
                 "set",
                 SlotKind.Suggestion,
-                "Suggestion: set",
             )
         )
         val r = reverts().single()

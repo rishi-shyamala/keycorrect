@@ -16,6 +16,7 @@ import dev.keycorrect.feature.keyboard.prediction.CommitMethod
 import dev.keycorrect.feature.keyboard.prediction.ShortcutExpander
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
+import dev.keycorrect.feature.keyboard.prediction.labelRes
 import org.junit.Test
 
 /**
@@ -71,7 +72,7 @@ class PredictiveControllerTest {
         assertThat(strip.centre?.text).isEqualTo("help")
         assertThat(strip.left?.text).isEqualTo("hello")
         assertThat(strip.right?.text).isEqualTo("held")
-        assertThat(strip.centre?.description).isEqualTo("Suggestion: help")
+        assertThat(strip.centre?.labelRes()).isEqualTo(R.string.strip_suggestion)
     }
 
     @Test
@@ -270,7 +271,7 @@ class PredictiveControllerTest {
         type("teh")
         assertThat(controller.strip.centre?.text).isEqualTo("the")
         assertThat(controller.strip.centre?.bold).isTrue()
-        assertThat(controller.strip.centre?.description).isEqualTo("Autocorrect to the")
+        assertThat(controller.strip.centre?.labelRes()).isEqualTo(R.string.strip_autocorrect)
         assertThat(controller.strip.left?.text).isEqualTo("teh")
         space()
         assertThat(text()).isEqualTo("the ")

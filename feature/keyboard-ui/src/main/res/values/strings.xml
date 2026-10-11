@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Suggestion strip: accessibility labels of the slots (see StripSlot.labelRes). -->
+    <string name="strip_suggestion">Suggestion: %1$s</string>
+    <string name="strip_autocorrect">Autocorrect to %1$s</string>
+    <string name="strip_literal">Keep %1$s as typed</string>
+    <string name="strip_phrase">Phrase suggestion: %1$s</string>
+    <string name="strip_shortcut">Shortcut expansion: %1$s</string>
+
+    <!-- Suggestion strip: the "add word" prompt after a word is kept as typed. -->
+    <string name="strip_add_word">Add “%1$s” to dictionary</string>
+    <string name="strip_add_word_description">Add %1$s to dictionary</string>
+
+    <!-- Suggestion strip: the "never suggest" prompt after a long press on a suggestion. -->
+    <string name="strip_never_question">Never suggest “%1$s”?</string>
+    <string name="strip_never_description">Never suggest %1$s? Yes or cancel</string>
+    <string name="strip_never_yes">Yes</string>
+    <string name="strip_never_yes_description">Yes, never suggest %1$s</string>
+    <string name="strip_never_cancel">Cancel</string>
+    <string name="strip_never_cancel_description">Cancel, keep suggesting</string>
+    <!-- The long-press accessibility action on a suggestion. -->
+    <string name="strip_never_action">Never suggest %1$s</string>
+</resources>

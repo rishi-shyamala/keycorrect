@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -32,9 +33,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
-import dev.keycorrect.feature.keyboard.prediction.StripLabels
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
+import dev.keycorrect.feature.keyboard.prediction.labelRes
 
 /**
  * The prediction strip: three equal slots in the fixed-height strip area. [strip] is a lambda so
@@ -87,23 +88,32 @@ private fun NeverSuggestPrompt(
     onCancel: () -> Unit,
     modifier: Modifier,
 ) {
+    val description = stringResource(R.string.strip_never_description, word)
     Row(
         modifier =
             modifier.fillMaxSize().semantics {
                 liveRegion = LiveRegionMode.Polite
-                contentDescription = StripLabels.neverSuggestPrompt(word)
+                contentDescription = description
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Never suggest “$word”?",
+            stringResource(R.string.strip_never_question, word),
             modifier = Modifier.weight(1f).padding(horizontal = SlotPadding),
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        PromptButton("Yes", StripLabels.neverSuggestYes(word), onYes)
-        PromptButton("Cancel", StripLabels.neverSuggestCancel(), onCancel)
+        PromptButton(
+            stringResource(R.string.strip_never_yes),
+            stringResource(R.string.strip_never_yes_description, word),
+            onYes,
+        )
+        PromptButton(
+            stringResource(R.string.strip_never_cancel),
+            stringResource(R.string.strip_never_cancel_description),
+            onCancel,
+        )
     }
 }
 
@@ -144,6 +154,8 @@ private fun RowScope.Slot(
     }
     val canBlockSlot =
         blockable && (slot.kind == SlotKind.Suggestion || slot.kind == SlotKind.Autocorrect)
+    val description = stringResource(slot.labelRes(), slot.text)
+    val neverLabel = stringResource(R.string.strip_never_action, slot.insert)
     Box(
         modifier =
             base
@@ -154,21 +166,20 @@ private fun RowScope.Slot(
                     onClick = { onSlot(slot) },
                 )
                 .clearAndSetSemantics {
-                    contentDescription = slot.description
+                    contentDescription = description
                     role = Role.Button
                     onClick {
                         onSlot(slot)
                         true
                     }
                     if (canBlockSlot) {
-                        val label = StripLabels.neverSuggestAction(slot.insert)
-                        onLongClick(label) {
+                        onLongClick(neverLabel) {
                             onLongPress(slot)
                             true
                         }
                         customActions =
                             listOf(
-                                CustomAccessibilityAction(label) {
+                                CustomAccessibilityAction(neverLabel) {
                                     onLongPress(slot)
                                     true
                                 }
@@ -207,6 +218,7 @@ private fun RowScope.Slot(
 
 @Composable
 private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier) {
+    val description = stringResource(R.string.strip_add_word_description, word)
     Box(
         modifier =
             modifier
@@ -214,7 +226,7 @@ private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier)
                 .clip(RoundedCornerShape(SlotCorner))
                 .clickable(role = Role.Button, onClick = onAddWord)
                 .clearAndSetSemantics {
-                    contentDescription = StripLabels.addWord(word)
+                    contentDescription = description
                     role = Role.Button
                     onClick {
                         onAddWord()
@@ -225,7 +237,7 @@ private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier)
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "Add “$word” to dictionary",
+            stringResource(R.string.strip_add_word, word),
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
