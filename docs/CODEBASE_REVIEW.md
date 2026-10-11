@@ -26,10 +26,22 @@ into `phase-3-learning` (PR #1):
 | F1 + D4 | Done differently from §5.2: no new module. `SentenceContext` moved to `core:learning` (JVM), which both the keyboard and the decoder already depend on; the decoder's `Text` delegates to it. Shim and parity test deleted. |
 | F2 | Done: `RecentWords` uses `core:learning`'s `editDistance`/`fold`. |
 | G2 | Done: `.github/workflows/ci.yml`. |
-| G1 (Detekt) | Deferred: the 1.23.x Gradle plugin targets Kotlin 2.0 and may clash with the forced KGP 2.4.21; its own PR. |
-| G3, F3, F4, F5, §5.3 splits | Deferred to a later refactor branch. |
+| G1 (Detekt) | Done on `pre-phase-4-cleanup` (below). |
+| G3, F3, F4, F5, rest of §5.3 | Deferred (user decision, 2026-10-11): see below. |
 
 Tests after the changes: 1066 pass (1067 minus the deleted one-test parity file).
+
+**Second pass before Phase 4 (branch `pre-phase-4-cleanup`, 2026-10-11):**
+
+| Item | Outcome |
+|---|---|
+| §5.3 `PredictiveInput` split | Partly done, by user choice: `TextContextCache`, `StripPrompts` and `PhraseLearning` extracted (1814 → 1604 lines). The undo / held-revert / `completeWord` core stays in place; it is the subtlest part. |
+| G1 Detekt | `dev.detekt` 2.0.0-alpha.6 (the first line built for Kotlin 2.4) via a `keycorrect.detekt` convention plugin; `detektMain` with type resolution, per-module `detekt-baseline-*.xml`, run in CI. It found nine initializer-only `private val` constructor parameters, now plain parameters. |
+| Strip strings | Accessibility labels and prompt text moved to `feature/keyboard-ui` strings.xml (`StripSlot.labelRes()`). |
+| §3.4 lint | Plurals, ©, commons-compress 1.28.0; lint is now clean. |
+| Still deferred | G3 (R8 strips the fakes from release, and AGP 9.4 testFixtures-with-Kotlin is still experimental), F3 (needs a device smoke test), F4/F5 (tools only), `AutocorrectPolicy` and parser splits (not touched by Phase 4). |
+
+Tests: 1067 pass (1066 + one strip-label mapping test).
 
 ## 0.1 How to reproduce the analysis
 
