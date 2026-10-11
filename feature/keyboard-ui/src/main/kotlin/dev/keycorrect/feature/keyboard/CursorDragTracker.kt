@@ -54,10 +54,10 @@ internal class CursorDragTracker(
         const val MS_PER_SECOND = 1000f
 
         /** Steps a second (before gain) up to which a drag is not accelerated. */
-        const val ACCEL_FREE_RATE = 10f
+        const val ACCEL_FREE_RATE = 20f
 
         /** Each further [ACCEL_RAMP] steps a second adds 1 to the gain. */
-        const val ACCEL_RAMP = 20f
-        const val ACCEL_MAX = 4f
+        const val ACCEL_RAMP = 40f
+        const val ACCEL_MAX = 2.5f
     }
 }

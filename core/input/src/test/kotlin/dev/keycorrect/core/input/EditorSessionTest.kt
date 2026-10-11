@@ -159,6 +159,28 @@ class EditorSessionTest {
     }
 
     @Test
+    fun aShiftedKeyIsSentWithShiftHeld() {
+        // EditText selects with arrows only while it has seen Shift go down.
+        session.sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_SHIFT_ON)
+        assertThat(fake.keys)
+            .containsExactly(
+                down to KeyEvent.KEYCODE_SHIFT_LEFT,
+                down to KeyEvent.KEYCODE_DPAD_LEFT,
+                up to KeyEvent.KEYCODE_DPAD_LEFT,
+                up to KeyEvent.KEYCODE_SHIFT_LEFT,
+            )
+            .inOrder()
+    }
+
+    @Test
+    fun anUnshiftedKeyIsSentAlone() {
+        session.sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_CTRL_ON)
+        assertThat(fake.keys)
+            .containsExactly(down to KeyEvent.KEYCODE_DPAD_LEFT, up to KeyEvent.KEYCODE_DPAD_LEFT)
+            .inOrder()
+    }
+
+    @Test
     fun noConnectionIsANoOp() {
         connected = false
         session.commitText("x")

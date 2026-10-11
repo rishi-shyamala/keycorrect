@@ -155,12 +155,25 @@ class EditorSession(
             }
             ?.let { Surrounding(it.text, it.selectionStart, it.selectionEnd, it.offset) }
 
+    /**
+     * With shift in [metaState] a real Shift key is held around the key: EditText's arrow-key
+     * handling selects only while it has seen Shift go down (it tracks the press in the text), not
+     * from the event's meta flag alone, which Chrome and terminals do honour.
+     */
     private fun sendKey(ic: InputConnection, keyCode: Int, metaState: Int = 0) {
+        val shift = metaState and KeyEvent.META_SHIFT_ON != 0
+        if (shift)
+            ic.sendKeyEvent(
+                newKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT, SHIFT_META)
+            )
         ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode, metaState))
         ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode, metaState))
+        if (shift) ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SHIFT_LEFT, 0))
     }
 
     private companion object {
+        const val SHIFT_META = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+
         /** Longest grapheme cluster we expect (long ZWJ emoji sequences are ~11 code units+). */
         const val MAX_GRAPHEME_LOOKBEHIND = 32
     }

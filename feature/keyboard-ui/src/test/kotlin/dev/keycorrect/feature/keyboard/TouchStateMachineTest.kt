@@ -592,11 +592,11 @@ class TouchStateMachineTest {
         host.longPressDelayMs = 100_000L
         down(1, space)
         now += 100
-        move(1, space, 40f) // 40 steps/s: gain 2.5
-        assertThat(host.drags).containsExactly(Triple(10, 0, false))
+        move(1, space, 40f) // 40 steps/s: gain 1 + (40 - 20) / 40 = 1.5
+        assertThat(host.drags).containsExactly(Triple(6, 0, false))
         now += 10
-        move(1, space, 400f) // beyond the cap of 4x: 36 steps * 4
-        assertThat(host.drags.last()).isEqualTo(Triple(144, 0, false))
+        move(1, space, 400f) // beyond the cap of 2.5x: 36 steps * 2.5
+        assertThat(host.drags.last()).isEqualTo(Triple(90, 0, false))
     }
 
     @Test
