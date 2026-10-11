@@ -18,7 +18,6 @@ import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
-import dev.keycorrect.core.learning.PhraseOutcome
 import dev.keycorrect.core.learning.RevertKind
 import dev.keycorrect.core.learning.SentenceContext
 import dev.keycorrect.core.learning.ShownSuggestion
@@ -130,7 +129,7 @@ internal class PredictiveInput(
     private val shown = ShownTracker()
     private val memory = WordMemory()
     private var edit: EditSession? = null
-    private var phraseWatch: PhraseWatch? = null
+    private val phrases = PhraseLearning(learn, cache)
     private var pendingSentence: String? = null
     private var pendingRevertTracked: Tracked? = null
 
@@ -1087,7 +1086,7 @@ internal class PredictiveInput(
         memory.clear()
         shown.clear()
         edit = null
-        phraseWatch = null
+        phrases.clear()
         pendingSentence = null
         pendingRevertTracked = null
         undo?.correction?.pendingKept = null
@@ -1104,8 +1103,8 @@ internal class PredictiveInput(
         closeUndo()
         endEdit()
         dropPendingRevert() // the field changed before the restored word was finished
-        judgeTakenPhrase()
-        phraseWatch = null
+        phrases.judgeTaken()
+        phrases.clear()
         flushSentence(null)
     }
 
@@ -1306,13 +1305,7 @@ internal class PredictiveInput(
         if (!learn.open) return null
         val known = cache.beforeReadable
         val context = if (known) SentenceContext.lastWords(cache.before) else emptyList()
-        val watch = phraseWatch
-        val kept =
-            when {
-                watch == null || !watch.taken -> -1
-                known -> keptWords(watch.words)
-                else -> watch.words.size
-            }
+        val kept = phrases.keptNow(known)
         return Pre(
             context,
             known && context.isEmpty(),
@@ -1418,7 +1411,7 @@ internal class PredictiveInput(
         edit = null
         val isPick = method == Learned.SuggestionPicked || method == Learned.PredictionPicked
         val resolution = resolveEdit(session, committed, isPick)
-        advancePhrase(committed, pre, startWatch = true)
+        phrases.advance(committed, pre.phraseKept, pre.offered, pre.context, startWatch = true)
         if (resolution == Resolution.Unchanged) return null
         val settled = resolution == Resolution.Reported || resolution == Resolution.Deferred
         // A restored word stays the one remembered word; it must not be remembered twice.
@@ -1551,77 +1544,13 @@ internal class PredictiveInput(
         val session = sessionFor(pre)
         edit = null
         resolveEdit(session, words.first(), viaPick = true)
-        advancePhrase(words.first(), pre, startWatch = false)
-        phraseWatch = PhraseWatch(words, pre.context, taken = true, index = words.size)
+        phrases.advance(words.first(), pre.phraseKept, pre.offered, pre.context, startWatch = false)
+        phrases.take(words, pre.context)
         words.forEachIndexed { i, w ->
             if (i < words.lastIndex || trailingSpace) learn.sentenceWord(w, false)
             else pendingSentence = w
         }
     }
-
-    /**
-     * [x], the next word after a phrase chip was offered or tapped, is compared with the phrase. A
-     * phrase that ran to its end, or stopped matching, is reported; one still matching goes on.
-     */
-    private fun advancePhrase(x: String, pre: Pre, startWatch: Boolean) {
-        val w = phraseWatch
-        if (w != null) {
-            phraseWatch = null
-            val matched = if (w.taken) pre.phraseKept else w.index
-            if (matched < 0 || matched >= w.words.size) {
-                emitPhrase(w, w.words.size, null)
-            } else if (sameWord(x, w.words[matched])) {
-                if (matched + 1 >= w.words.size) {
-                    emitPhrase(w, w.words.size, null)
-                } else {
-                    phraseWatch = PhraseWatch(w.words, w.context, false, matched + 1)
-                }
-                return
-            } else {
-                emitPhrase(w, matched, x)
-            }
-        }
-        if (startWatch && pre.offered.size >= 2 && sameWord(x, pre.offered[0])) {
-            phraseWatch = PhraseWatch(pre.offered, pre.context, false, 1)
-        }
-    }
-
-    /**
-     * A tapped phrase and the field is left, or the cursor moved, before another word: judge it
-     * now.
-     */
-    private fun judgeTakenPhrase() {
-        val w = phraseWatch ?: return
-        phraseWatch = null
-        if (!w.taken || !learn.open) return
-        val kept = if (cache.beforeReadable) keptWords(w.words) else w.words.size
-        emitPhrase(w, kept, null)
-    }
-
-    private fun emitPhrase(w: PhraseWatch, accepted: Int, divergedWith: String?) {
-        learn.emit(
-            PhraseOutcome(
-                learn.stamp(),
-                learn.profile,
-                w.context,
-                w.words,
-                accepted,
-                divergedWith,
-            )
-        )
-    }
-
-    /** How many leading words of [words] the text before the cursor still ends with. */
-    private fun keptWords(words: List<String>): Int {
-        val tail = alnum(cache.before.takeLast(words.sumOf { it.length + 1 } + 16))
-        for (k in words.size downTo 1) {
-            if (tail.endsWith(alnum(words.take(k).joinToString("")))) return k
-        }
-        return 0
-    }
-
-    private fun alnum(s: CharSequence): String =
-        buildString(s.length) { s.forEach { if (it.isLetterOrDigit()) append(it.lowercaseChar()) } }
 
     // ---- sentence buffer
 
