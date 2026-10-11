@@ -3,6 +3,7 @@
 Read this first when resuming. Other docs:
 - `docs/PLAN.md`: the design and roadmap. §16 has the decisions and §17 the phases.
 - `docs/EVAL.md`: the evaluation harness and its results.
+- `docs/PERF.md`: the pre-PR performance check and reference numbers.
 - `docs/DATA_SOURCES.md` and `LICENSE-DATA.md`: data licences.
 - `docs/LAYOUT_FORMAT.md`: the layout JSON format.
 - `docs/SETUP.md`: the toolchain.
@@ -38,8 +39,11 @@ Read this first when resuming. Other docs:
 3. **Review before push.**
    - Run a separate reviewer agent on every branch or PR before pushing to the remote.
    - Fix verified findings, then run a short follow-up review of the fix commits.
-   - The flow is: phase branch → implementation → device test → review → fixes → follow-up review → push branch → `gh pr create` → bind with `mcp__ccd_pr__get_status`/`bind_pr`.
-4. **Device testing rules.**
+   - The flow is: phase branch → implementation → device test → **performance check** → review → fixes → follow-up review → push branch → `gh pr create` → bind with `mcp__ccd_pr__get_status`/`bind_pr`.
+4. **Performance check before every PR** (user rule, 2026-10-11; `docs/PERF.md`).
+   - Run `tools/profile/profile.sh` (add `--device` with the Tab S9 attached), compare with the reference numbers in `docs/PERF.md`, and fix obvious overhead on hot paths.
+   - The devices are ARM/ART and this machine is x86/HotSpot: desktop numbers are relative only, and absolute latency is judged on the device. Don't tune for this CPU.
+5. **Device testing rules.**
    - The user stopped using the S23; test on the **Tab S9**.
    - **Never use Gmail or any app or site with live data.** Use only our app, plus Chrome/Firefox on the **local test page** (below).
    - Never unlock the device or enter a PIN. If `isKeyguardShowing=true`, stop and ask the user to unlock.
