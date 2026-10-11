@@ -71,7 +71,7 @@ internal class PredictiveInput(
     private val env: PredictionEnvironment,
     private val onStrip: (StripModel) -> Unit,
     learning: LearningSink = LearningSink.None,
-    private val clock: () -> Long = { 0L },
+    clock: () -> Long = { 0L },
     wallClock: () -> Long = System::currentTimeMillis,
     /** Told of word events that deserve a vibration, already filtered by the settings. */
     private val onWordFeedback: (FeedbackKind) -> Unit = {},
