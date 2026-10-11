@@ -1,0 +1,80 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:EditDistance.kt:i &gt; 1 &amp;&amp; j &gt; 1 &amp;&amp; a[i - 1] == b[j - 2] &amp;&amp; a[i - 2] == b[j - 1]</ID>
+    <ID>ComplexCondition:Lexicon.kt:Lexicon$(c.commitWeight &gt;= cfg.promoteMinCommits &amp;&amp; sessions &gt;= cfg.promoteMinSessions) || (c.commitWeight &gt;= cfg.promoteFastWeight &amp;&amp; sessions &gt;= cfg.promoteFastSessions)</ID>
+    <ID>ComplexCondition:Lexicon.kt:Lexicon$key.isEmpty() || weight &lt;= 0.0 || isBlocked(key) || userWords.containsKey(key)</ID>
+    <ID>ComplexCondition:SentenceContext.kt:SentenceContext$(isApostrophe(d) || isHyphen(d)) &amp;&amp; i + 1 &lt; before.length &amp;&amp; isWordChar(before[i + 1])</ID>
+    <ID>ComplexCondition:SentenceContext.kt:SentenceContext$i &gt; 0 &amp;&amp; i &lt; before.length &amp;&amp; isWordChar(before[i - 1]) &amp;&amp; isWordChar(before[i])</ID>
+    <ID>ComplexCondition:TouchModel.kt:TouchModel$dx.isNaN() || dy.isNaN() || dx.isInfinite() || dy.isInfinite()</ID>
+    <ID>CyclomaticComplexMethod:Persistence.kt:JournalCodec$private fun decodeFields: LearningUpdate?</ID>
+    <ID>CyclomaticComplexMethod:PersonalModel.kt:PersonalModel$private fun handle: Boolean</ID>
+    <ID>CyclomaticComplexMethod:SentenceContext.kt:SentenceContext$fun lastWords: List&lt;String&gt;</ID>
+    <ID>LongMethod:Persistence.kt:JournalCodec$fun encode: String</ID>
+    <ID>LongMethod:PersonalModel.kt:PersonalModel$private fun handle: Boolean</ID>
+    <ID>LongParameterList:KeepCounts.kt:KeepCounts$private fun bump</ID>
+    <ID>LongParameterList:NgramModel.kt:FrozenNgrams</ID>
+    <ID>LongParameterList:PersonalSnapshot.kt:PersonalSnapshot</ID>
+    <ID>LoopWithTooManyJumpStatements:Lexicon.kt:Lexicon$for</ID>
+    <ID>LoopWithTooManyJumpStatements:OutcomeClassifier.kt:OutcomeClassifier$for</ID>
+    <ID>LoopWithTooManyJumpStatements:TouchModel.kt:TouchModel$for</ID>
+    <ID>MagicNumber:ClassifierConfig.kt:ClassifierConfig$3f</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$0.1</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$0.2</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$0.25</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$0.5</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$1e-12</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$20</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$6.0</ID>
+    <ID>MagicNumber:FusionRanker.kt:FusionRanker.Companion$8</ID>
+    <ID>MagicNumber:Internals.kt:FrozenMap$16</ID>
+    <ID>MagicNumber:Internals.kt:ShardedMap$16</ID>
+    <ID>MagicNumber:Lexicon.kt:Lexicon$100.0</ID>
+    <ID>MagicNumber:Lexicon.kt:Lexicon$16</ID>
+    <ID>MagicNumber:Lexicon.kt:Lexicon$1e-9</ID>
+    <ID>MagicNumber:NgramModel.kt:FrozenNgrams$1e-9</ID>
+    <ID>MagicNumber:NgramModel.kt:NgramModel$3</ID>
+    <ID>MagicNumber:Persistence.kt:JournalCodec$3</ID>
+    <ID>MagicNumber:Persistence.kt:JournalCodec$4</ID>
+    <ID>MagicNumber:Persistence.kt:JournalCodec$5</ID>
+    <ID>MagicNumber:Persistence.kt:JournalCodec$6</ID>
+    <ID>MagicNumber:Persistence.kt:JournalCodec$7</ID>
+    <ID>MagicNumber:PersonalModel.kt:PersonalModel$60_000L</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:PersonalModelConfig$10</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:PersonalModelConfig$180</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:PersonalModelConfig$60</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:PersonalModelConfig$60_000L</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:PersonalModelConfig$90</ID>
+    <ID>MagicNumber:PersonalModelConfig.kt:SentenceBufferConfig$7</ID>
+    <ID>MagicNumber:SentenceBuffer.kt:SentenceBuffer$8</ID>
+    <ID>MagicNumber:TouchModel.kt:TouchModel$1e-6</ID>
+    <ID>ReturnCount:CorrectionMemory.kt:FrozenCorrections$fun bias: Float</ID>
+    <ID>ReturnCount:EditDistance.kt:fun editDistance: Int</ID>
+    <ID>ReturnCount:Lexicon.kt:Lexicon$fun addUserWord: Boolean</ID>
+    <ID>ReturnCount:Lexicon.kt:Lexicon$fun forgetUserWord: Boolean</ID>
+    <ID>ReturnCount:Lexicon.kt:Lexicon$fun markPreExisting: Boolean</ID>
+    <ID>ReturnCount:Lexicon.kt:Lexicon$fun noteCandidate: String?</ID>
+    <ID>ReturnCount:Lexicon.kt:Lexicon$fun removeUserWord: Boolean</ID>
+    <ID>ReturnCount:NgramModel.kt:FrozenNgrams$fun logProb: Float?</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun alignedTouches: List&lt;TouchSample&gt;</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun autocorrectReverted: List&lt;LearningUpdate&gt;</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun casing: List&lt;LearningUpdate&gt;</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun isCorrectionLike: Boolean</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun isLikelyTypo: Boolean</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun touchEvidence: List&lt;LearningUpdate&gt;</ID>
+    <ID>ReturnCount:OutcomeClassifier.kt:OutcomeClassifier$private fun wordReplaced: List&lt;LearningUpdate&gt;</ID>
+    <ID>ReturnCount:PersonalModel.kt:PersonalModel$private fun handle: Boolean</ID>
+    <ID>ReturnCount:PersonalModel.kt:PersonalModel$private fun tryTrain: Training</ID>
+    <ID>ReturnCount:TouchModel.kt:FrozenTouch$fun offset: Pair&lt;Float, Float&gt;?</ID>
+    <ID>ReturnCount:TouchModel.kt:TouchModel$private fun clean: Pair&lt;Double, Double&gt;?</ID>
+    <ID>TooGenericExceptionCaught:PersonalModel.kt:LearningPersistence$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PersonalModel.kt:LearningPersistence$e: Throwable</ID>
+    <ID>TooManyFunctions:KeepCounts.kt:KeepCounts</ID>
+    <ID>TooManyFunctions:Lexicon.kt:Lexicon</ID>
+    <ID>TooManyFunctions:OutcomeClassifier.kt:OutcomeClassifier</ID>
+    <ID>TooManyFunctions:PersonalModel.kt:PersonalModel</ID>
+    <ID>TooManyFunctions:SentenceBuffer.kt:SentenceBuffer</ID>
+    <ID>UnsafeCallOnNullableType:Lexicon.kt:Lexicon$userWords.remove(k)!!</ID>
+  </CurrentIssues>
+</SmellBaseline>

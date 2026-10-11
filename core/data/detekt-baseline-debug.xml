@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LongMethod:SqlLearningStore.kt:SqlLearningStore$private fun readState: PersistedLearning?</ID>
+    <ID>LongMethod:SqlLearningStore.kt:SqlLearningStore$private fun writeState</ID>
+    <ID>MagicNumber:KeyCorrectDatabase.kt:KeyCorrectDatabase.Companion$3</ID>
+    <ID>MagicNumber:KeyCorrectDatabase.kt:KeyCorrectDatabase.Companion$4</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$3</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$4</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$5</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$6</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$7</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$8</ID>
+    <ID>MagicNumber:SqlLearningStore.kt:SqlLearningStore$9</ID>
+    <ID>MagicNumber:SqlShortcutStore.kt:SqlShortcutStore$3</ID>
+    <ID>MagicNumber:SqlShortcutStore.kt:SqlShortcutStore$4</ID>
+    <ID>MagicNumber:SqlUserDictionaryStore.kt:SqlUserDictionaryStore$3</ID>
+    <ID>MagicNumber:SqlUserDictionaryStore.kt:SqlUserDictionaryStore$4</ID>
+    <ID>ThrowsCount:DatabaseKeyProvider.kt:KeystoreDatabaseKeyProvider$@Synchronized override fun getOrCreatePassphrase: ByteArray</ID>
+    <ID>ThrowsCount:DatabaseKeyProvider.kt:KeystoreDatabaseKeyProvider$private fun recover: ByteArray</ID>
+    <ID>TooGenericExceptionCaught:DatabaseKeyProvider.kt:KeystoreDatabaseKeyProvider$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:KeyCorrectDatabase.kt:KeyCorrectDatabase$e: Throwable</ID>
+    <ID>TooManyFunctions:SqlLearningStore.kt:SqlLearningStore : LearningStore</ID>
+    <ID>UnsafeCallOnNullableType:InMemoryStores.kt:InMemoryShortcutStore$result!!</ID>
+    <ID>UnsafeCallOnNullableType:InMemoryStores.kt:InMemoryUserDictionaryStore$result!!</ID>
+    <ID>UnsafeCallOnNullableType:SqlShortcutStore.kt:SqlShortcutStore$queryOne(db, key)!!</ID>
+    <ID>UnsafeCallOnNullableType:SqlUserDictionaryStore.kt:SqlUserDictionaryStore$queryOne(db, key)!!</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,4 +1,5 @@
-# Format, unit tests (Android + JVM modules), lint and a debug build on every push and PR.
+# Format, static analysis (detekt with type resolution, per-module baselines), unit tests (Android + JVM
+# modules), lint and a debug build on every push and PR.
 # The eval harness's misspell mode needs downloaded data (tools/data/fetch-sources.sh) and is not
 # run here; its unit tests are.
 name: CI
@@ -39,7 +40,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Check, test, lint, build
-        run: ./gradlew --console=plain spotlessCheck testDebugUnitTest test lintDebug assembleDebug
+        run: ./gradlew --console=plain spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug
 
       - name: Upload reports
         if: failure()

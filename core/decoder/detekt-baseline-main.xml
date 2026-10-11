@@ -1,0 +1,74 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AutocorrectPolicy.kt:AutocorrectPolicy$random != null &amp;&amp; runnerUp != null &amp;&amp; !known &amp;&amp; gap &lt;= config.tieEpsilon &amp;&amp; eligible(input, runnerUp) &amp;&amp; !input.isSuppressed(runnerUp.text) &amp;&amp; runnerUp.score - input.literalScore &gt;= required &amp;&amp; random.nextBoolean()</ID>
+    <ID>ComplexCondition:LanguageModel.kt:LanguageModel$(Text.isApostrophe(d) || Text.isHyphen(d)) &amp;&amp; i + 1 &lt; after.length &amp;&amp; Text.isWordChar(after[i + 1])</ID>
+    <ID>ComplexCondition:LanguageModel.kt:LanguageModel$(Text.isApostrophe(d) || Text.isHyphen(d)) &amp;&amp; i + 1 &lt; before.length &amp;&amp; Text.isWordChar(before[i + 1])</ID>
+    <ID>ComplexCondition:LanguageModel.kt:LanguageModel$b &gt;= 0 &amp;&amp; (poolLp[b] &lt; lp || (poolLp[b] == lp &amp;&amp; poolIds[b] &gt; id))</ID>
+    <ID>ComplexCondition:LanguageModel.kt:LanguageModel$i &gt; 0 &amp;&amp; i &lt; before.length &amp;&amp; Text.isWordChar(before[i - 1]) &amp;&amp; Text.isWordChar(before[i])</ID>
+    <ID>ComplexCondition:WordAligner.kt:WordAligner$m &gt; MAX_WORD || m == 0 || m &lt; n - budget || m &gt; n + budget + maxCompletionChars</ID>
+    <ID>CyclomaticComplexMethod:AutocorrectPolicy.kt:AutocorrectPolicy$fun decide: AutocorrectDecision</ID>
+    <ID>CyclomaticComplexMethod:ClassicEngine.kt:ClassicEngine$private fun predictNextWord: RankedPrediction</ID>
+    <ID>CyclomaticComplexMethod:ClassicEngine.kt:ClassicEngine$private fun predictWord: RankedPrediction</ID>
+    <ID>CyclomaticComplexMethod:LanguageModel.kt:LanguageModel$fun parseRightContext: Int</ID>
+    <ID>CyclomaticComplexMethod:LanguageModel.kt:LanguageModel$private fun parse</ID>
+    <ID>CyclomaticComplexMethod:TrieSearch.kt:TrieSearch$private fun expand</ID>
+    <ID>CyclomaticComplexMethod:WordAligner.kt:WordAligner$fun align: Boolean</ID>
+    <ID>LongMethod:ClassicEngine.kt:ClassicEngine$private fun predictWord: RankedPrediction</ID>
+    <ID>LongMethod:TrieSearch.kt:TrieSearch$private fun expand</ID>
+    <ID>LongParameterList:AutocorrectPolicy.kt:AutocorrectInput</ID>
+    <ID>LongParameterList:ClassicEngine.kt:ClassicEngine</ID>
+    <ID>LongParameterList:TrieSearch.kt:TrieSearch$private fun push</ID>
+    <ID>LongParameterList:TrieSearch.kt:TrieSearch$private fun store</ID>
+    <ID>LongParameterList:TrieSearch.kt:TrieSearch$private fun swap</ID>
+    <ID>LongParameterList:WordAligner.kt:WordAligner$private fun diagonal</ID>
+    <ID>LongParameterList:WordAligner.kt:WordAligner$private fun insertion</ID>
+    <ID>LongParameterList:WordAligner.kt:WordAligner$private fun transposition</ID>
+    <ID>LoopWithTooManyJumpStatements:ClassicEngine.kt:ClassicEngine$for</ID>
+    <ID>LoopWithTooManyJumpStatements:ContractionIndex.kt:ContractionIndex.Companion$for</ID>
+    <ID>LoopWithTooManyJumpStatements:TrieSearch.kt:TrieSearch$while</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$0.8f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$1.5f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$2f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$3.5f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$3f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$4f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:EditConfig$8f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:ScoringConfig$0.4f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:ScoringConfig$0.8f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:ScoringConfig$1.3f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:SpatialConfig$12f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:SpatialConfig$4.5f</ID>
+    <ID>MagicNumber:ClassicConfig.kt:UserDataConfig$7f</ID>
+    <ID>MagicNumber:ClassicEngine.kt:ClassicEngine$31</ID>
+    <ID>MagicNumber:ContractionIndex.kt:ContractionIndex.Companion$3</ID>
+    <ID>MagicNumber:LanguageModel.kt:LanguageModel$1e-6f</ID>
+    <ID>MagicNumber:SpatialModel.kt:SpatialModel$0.5f</ID>
+    <ID>MagicNumber:SpatialModel.kt:SpatialModel.Companion$0x80</ID>
+    <ID>MagicNumber:TrieSearch.kt:TrieSearch$31</ID>
+    <ID>ReturnCount:AutocorrectPolicy.kt:AutocorrectPolicy$fun decide: AutocorrectDecision</ID>
+    <ID>ReturnCount:AutocorrectPolicy.kt:AutocorrectPolicy$private fun eligible: Boolean</ID>
+    <ID>ReturnCount:ClassicEngine.kt:ClassicEngine$private fun addContraction</ID>
+    <ID>ReturnCount:ClassicEngine.kt:ClassicEngine$private fun capitalizedPronoun: RankedCandidate?</ID>
+    <ID>ReturnCount:ClassicEngine.kt:ClassicEngine$private fun predictWord: RankedPrediction</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$fun baseLogProb: Float</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$fun blend: Float</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$fun parseRightContext: Int</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$fun rightLogProb: Float</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$private fun addToPool: Int</ID>
+    <ID>ReturnCount:LanguageModel.kt:LanguageModel$private fun resolve: Int</ID>
+    <ID>ReturnCount:Phonetic.kt:Phonetic$fun confusable: Boolean</ID>
+    <ID>ReturnCount:SpatialModel.kt:SpatialModel$fun logLikelihood: Float</ID>
+    <ID>ReturnCount:Text.kt:Text$fun isSingleTransposition: Boolean</ID>
+    <ID>ReturnCount:TouchScorer.kt:TouchScorer$fun ll: Float</ID>
+    <ID>ReturnCount:TrieSearch.kt:TrieSearch$private fun emit</ID>
+    <ID>ReturnCount:TrieSearch.kt:TrieSearch$private fun markVisited: Boolean</ID>
+    <ID>ReturnCount:TrieSearch.kt:TrieSearch$private fun push</ID>
+    <ID>ReturnCount:WordAligner.kt:WordAligner$private fun transposition</ID>
+    <ID>TooGenericExceptionCaught:ContractionIndex.kt:ContractionIndex$e: Exception</ID>
+    <ID>TooManyFunctions:ClassicEngine.kt:ClassicEngine : PredictiveEngine</ID>
+    <ID>TooManyFunctions:LanguageModel.kt:LanguageModel</ID>
+    <ID>TooManyFunctions:TrieSearch.kt:TrieSearch</ID>
+  </CurrentIssues>
+</SmellBaseline>

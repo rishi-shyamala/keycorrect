@@ -10,6 +10,7 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) =
         with(target) {
             pluginManager.apply("org.jetbrains.kotlin.jvm")
+            pluginManager.apply("keycorrect.detekt")
             extensions.configure<JavaPluginExtension> {
                 sourceCompatibility = KeyCorrectBuild.JAVA_VERSION
                 targetCompatibility = KeyCorrectBuild.JAVA_VERSION
