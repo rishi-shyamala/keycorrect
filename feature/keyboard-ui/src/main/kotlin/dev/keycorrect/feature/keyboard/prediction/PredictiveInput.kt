@@ -11,10 +11,8 @@ import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
 import dev.keycorrect.core.input.AutoCapitalize
-import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
-import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
@@ -41,12 +39,12 @@ import dev.keycorrect.feature.keyboard.hapticWanted
  * Composing state machine (per field that allows suggestions; anywhere else every key is a plain
  * commit and nothing is read from the editor or sent to an engine, see [canPredict]):
  * - *Idle* (no composing word). A letter starts a word only at a word boundary: the cursor is at
- *   the start of the field, after whitespace or after opening punctuation (see [atWordBoundary]).
- *   After a digit, `@`, `#`, `/`, `:`, `.`, `_` or a letter that isn't part of a composing word of
- *   ours (an address, hashtag, number, abbreviation, or the middle of an existing word) a letter is
- *   committed directly: no decode, no autocorrect. Backspace deletes in the editor and, when the
- *   cursor lands right after a word, turns that word back into the composing word. Separators
- *   commit directly.
+ *   the start of the field, after whitespace or after opening punctuation (see
+ *   [TextContextCache.atWordBoundary]). After a digit, `@`, `#`, `/`, `:`, `.`, `_` or a letter
+ *   that isn't part of a composing word of ours (an address, hashtag, number, abbreviation, or the
+ *   middle of an existing word) a letter is committed directly: no decode, no autocorrect.
+ *   Backspace deletes in the editor and, when the cursor lands right after a word, turns that word
+ *   back into the composing word. Separators commit directly.
  * - *Composing*. Letters, digits and apostrophes extend the word, shown with `setComposingText`.
  *   Backspace shortens it. A separator (space, punctuation, Enter) finishes it: the autocorrect or
  *   auto-expanding shortcut of the freshest result is applied if allowed, otherwise the word stays.
@@ -100,12 +98,7 @@ internal class PredictiveInput(
     private val composing = StringBuilder()
     private val touches = ArrayList<TouchPoint?>()
 
-    private val before = StringBuilder()
-    private var beforeKnown = false
-    private var beforeAvailable = false
-    private var beforeTruncated = false
-    private var after = ""
-    private var afterKnown = false
+    private val cache = TextContextCache(editor)
     private var selectionIsRange = false
 
     private var latest: PredictResult? = null
@@ -342,17 +335,15 @@ internal class PredictiveInput(
         if (pendingUndo != null) {
             if (!selectionIsRange && undoCorrection(pendingUndo)) return
             keep(pendingUndo.correction) // the correction stands as far as we can tell
-            invalidateContext() // the text isn't what we thought: fall back to a plain backspace
+            cache.invalidate() // the text isn't what we thought: fall back to a plain backspace
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
         val hadRange = selectionIsRange
         editor.deleteBackward(false)
         if (hadRange) {
-            invalidateContext()
-        } else if (beforeKnown) {
-            val n = Graphemes.lastClusterLength(before)
-            before.setLength(maxOf(0, before.length - n))
-            if (beforeTruncated && before.length < MIN_TRUSTED_BEFORE) beforeKnown = false
+            cache.invalidate()
+        } else if (cache.beforeKnown) {
+            cache.dropLastCluster()
         }
         loop.advance()
         latest = null
@@ -376,7 +367,7 @@ internal class PredictiveInput(
         if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
         endEdit()
         flushPendingRevert() // Enter finishes a restored word as it is
-        if (commitsLineBreak) appendBefore("\n")
+        if (commitsLineBreak) cache.appendBefore("\n")
         loop.advance()
         latest = null
         publish(StripModel.Empty)
@@ -513,20 +504,14 @@ internal class PredictiveInput(
     private fun startsWord(): Boolean {
         if (backend.predictor == null) return false
         ensureContext()
-        return beforeAvailable && atWordBoundary() && !cursorInsideWord()
-    }
-
-    /** True at the start of the field, after whitespace, or after opening punctuation. */
-    private fun atWordBoundary(): Boolean {
-        val c = before.lastOrNull() ?: return !beforeTruncated
-        return c.isWhitespace() || c in OPENING_PUNCTUATION
+        return cache.beforeAvailable && cache.atWordBoundary() && !cache.cursorInsideWord()
     }
 
     /** Commits [text] as it is, without decoding anything for it. */
     private fun commitPlain(text: String) {
         endEdit()
         editor.commitText(text)
-        appendBefore(text)
+        cache.appendBefore(text)
         loop.advance()
         latest = null
         if (stripBase != StripModel.Empty) publish(StripModel.Empty)
@@ -546,7 +531,7 @@ internal class PredictiveInput(
         } else {
             endEdit()
             editor.commitText(text)
-            appendBefore(text)
+            cache.appendBefore(text)
             loop.advance()
             latest = null
         }
@@ -598,11 +583,11 @@ internal class PredictiveInput(
             }
             if (separator != null && !cursorInside) editor.commitText(separator)
         }
-        appendBefore(committed)
+        cache.appendBefore(committed)
         if (cursorInside) {
-            after = (tail + after).take(TypingContext.MAX_AFTER_CHARS)
+            cache.prependAfter(tail)
         } else if (separator != null) {
-            appendBefore(separator)
+            cache.appendBefore(separator)
         }
         val canUndo = allowUndo && decision != null && separator != null && !cursorInside
         val correction =
@@ -761,13 +746,13 @@ internal class PredictiveInput(
             if (keepsSeparator) editor.commitText(u.typed + u.separator)
             else editor.setComposingText(u.typed)
         }
-        if (beforeKnown) before.setLength(maxOf(0, before.length - expected.length))
+        if (cache.beforeKnown) cache.dropBefore(expected.length)
         touchLog.markLastReverted(u.applied)
         edit = null
         u.correction?.pendingWord = null // the corrected word is not recorded; see below
         u.correction?.let { reportImmediateRevert(it) }
         if (keepsSeparator) {
-            appendBefore(u.typed + u.separator)
+            cache.appendBefore(u.typed + u.separator)
             flushPendingRevert() // finished as typed, punctuation already there: a keep
             if (u.typed.any { it.isLetter() }) {
                 learn.sentenceWord(u.typed, SentenceContext.endsSentence(u.separator))
@@ -806,48 +791,24 @@ internal class PredictiveInput(
     private fun recomposePreviousWord(): Boolean {
         if (backend.predictor == null) return false
         ensureContext()
-        if (cursorInsideWord()) return false
-        val start = trailingWordStart()
-        if (start < 0 || (start == 0 && beforeTruncated)) return false
-        val word = before.substring(start)
+        if (cache.cursorInsideWord()) return false
+        val start = cache.trailingWordStart()
+        if (start < 0 || (start == 0 && cache.beforeTruncated)) return false
+        val word = cache.before.substring(start)
         if (editor.textBeforeCursor(word.length)?.toString() != word) {
-            invalidateContext()
+            cache.invalidate()
             return false
         }
         editor.batchEdit {
             editor.deleteSurroundingText(word.length, 0)
             editor.setComposingText(word)
         }
-        before.setLength(start)
+        cache.truncateBefore(start)
         composing.append(word)
         repeat(word.length) { touches.add(null) }
         beginEdit(word)
         requestWord()
         return true
-    }
-
-    /**
-     * Start of the word ending at the cursor in [before], or -1 if there isn't a usable one. Only a
-     * word that [startsWord] would have composed qualifies: it begins with a letter at a word
-     * boundary (the start of the field, if the cached text isn't truncated; whitespace; opening
-     * punctuation), so "foo.bar", "user@exa", "#tag" and "42x" are left alone.
-     */
-    private fun trailingWordStart(): Int {
-        var i = before.length
-        if (i == 0 || !before[i - 1].isLetterOrDigit()) return -1
-        while (i > 0 && (before[i - 1].isLetterOrDigit() || isApostrophe(before[i - 1]))) i--
-        val boundary = i
-        if (boundary == 0) {
-            if (beforeTruncated) return -1
-        } else {
-            val c = before[boundary - 1]
-            if (!c.isWhitespace() && c !in OPENING_PUNCTUATION) return -1
-        }
-        while (i < before.length && isApostrophe(before[i])) i++
-        val length = before.length - i
-        if (length == 0 || length > MAX_RECOMPOSE_CHARS) return -1
-        if (!before[i].isLetter()) return -1
-        return i
     }
 
     // ------------------------------------------------------------------ suggestion taps
@@ -880,10 +841,10 @@ internal class PredictiveInput(
             }
             if (trailingSpace) editor.commitText(" ")
         }
-        if (leadingSpace) appendBefore(" ")
-        appendBefore(if (cursorInside) expansion.head else expansion.text)
-        if (cursorInside) after = (expansion.tail + after).take(TypingContext.MAX_AFTER_CHARS)
-        if (trailingSpace) appendBefore(" ")
+        if (leadingSpace) cache.appendBefore(" ")
+        cache.appendBefore(if (cursorInside) expansion.head else expansion.text)
+        if (cursorInside) cache.prependAfter(expansion.tail)
+        if (trailingSpace) cache.appendBefore(" ")
         if (!nextWord) {
             val method =
                 when (slot.kind) {
@@ -928,8 +889,8 @@ internal class PredictiveInput(
             editor.finishComposingText()
             if (space) editor.commitText(" ")
         }
-        appendBefore(typed)
-        if (space) appendBefore(" ")
+        cache.appendBefore(typed)
+        if (space) cache.appendBefore(" ")
         revertedWords.addLast(typed.lowercase())
         while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
         record(typed, typed, touchList, CommitMethod.LiteralTap)
@@ -957,8 +918,8 @@ internal class PredictiveInput(
     }
 
     private fun needsLeadingSpace(): Boolean {
-        if (!beforeKnown) return false
-        val c = before.lastOrNull() ?: return false
+        if (!cache.beforeKnown) return false
+        val c = cache.before.lastOrNull() ?: return false
         return !c.isWhitespace() && c !in NO_SPACE_AFTER
     }
 
@@ -979,7 +940,7 @@ internal class PredictiveInput(
 
     private fun request(seq: Long, typed: String, touchList: List<TouchPoint?>): PredictRequest =
         PredictRequest(
-            context = TypingContext(before.toString(), after, fieldClass()),
+            context = TypingContext(cache.before.toString(), cache.after, fieldClass()),
             composing = ComposingInput(typed, touchList),
             layout = layout,
             maxCandidates = MAX_CANDIDATES,
@@ -1020,21 +981,8 @@ internal class PredictiveInput(
      */
     private fun ensureContext() {
         if (!canPredict()) return
-        ensureBefore()
-        if (!afterKnown) {
-            after = editor.textAfterCursor(TypingContext.MAX_AFTER_CHARS)?.toString().orEmpty()
-            afterKnown = true
-        }
-    }
-
-    private fun ensureBefore() {
-        if (beforeKnown) return
-        val text = editor.textBeforeCursor(TypingContext.MAX_BEFORE_CHARS)
-        before.setLength(0)
-        if (text != null) before.append(text)
-        beforeAvailable = text != null
-        beforeTruncated = text != null && text.length >= TypingContext.MAX_BEFORE_CHARS
-        beforeKnown = true
+        cache.ensureBefore()
+        cache.ensureAfter()
     }
 
     /**
@@ -1043,8 +991,8 @@ internal class PredictiveInput(
      * the cache. Skipped when no engine could use it (the editor is then never read at all).
      */
     private fun refreshContext() {
-        invalidateContext()
-        if (canPredict() && backend.predictor != null) ensureBefore()
+        cache.invalidate()
+        if (canPredict() && backend.predictor != null) cache.ensureBefore()
     }
 
     /**
@@ -1054,28 +1002,10 @@ internal class PredictiveInput(
      */
     fun capsFromCache(mode: AutoCapitalize): Boolean? {
         if (mode == AutoCapitalize.Characters) return true
-        if (!canPredict() || !beforeKnown || !beforeAvailable) return null
+        if (!canPredict() || !cache.beforeReadable) return null
         // A composing word starts with a letter, so no capital is wanted inside or after it.
         if (composing.isNotEmpty()) return false
-        return AutoCaps.shouldCapitalize(before, mode, startKnown = !beforeTruncated)
-    }
-
-    private fun appendBefore(text: String) {
-        if (!beforeKnown) return
-        before.append(text)
-        val excess = before.length - TypingContext.MAX_BEFORE_CHARS
-        if (excess > 0) {
-            before.delete(0, excess)
-            beforeTruncated = true
-        }
-    }
-
-    private fun cursorInsideWord(): Boolean =
-        afterKnown && after.isNotEmpty() && after[0].isLetterOrDigit()
-
-    private fun invalidateContext() {
-        beforeKnown = false
-        afterKnown = false
+        return cache.capitalizeAtCursor(mode)
     }
 
     // ------------------------------------------------------------------ misc
@@ -1087,7 +1017,7 @@ internal class PredictiveInput(
         val touchList = ArrayList(touches)
         val pre = capturePre()
         editor.finishComposingText()
-        appendBefore(typed)
+        cache.appendBefore(typed)
         composing.setLength(0)
         touches.clear()
         record(typed, typed, touchList, CommitMethod.Typed)
@@ -1103,10 +1033,7 @@ internal class PredictiveInput(
         restoredWord = null
         composing.setLength(0)
         touches.clear()
-        invalidateContext()
-        before.setLength(0)
-        beforeTruncated = false
-        after = ""
+        cache.reset()
         latest = null
         closeUndo()
         endEdit()
@@ -1323,7 +1250,7 @@ internal class PredictiveInput(
     private fun beginEdit(word: String) {
         edit = null
         if (!learn.open) return
-        val found = memory.find(word, SentenceContext.lastWords(before), learn.now())
+        val found = memory.find(word, SentenceContext.lastWords(cache.before), learn.now())
         if (pendingRevertTracked != null && pendingRevertTracked !== found) dropPendingRevert()
         edit = EditSession(word, found)
     }
@@ -1433,8 +1360,8 @@ internal class PredictiveInput(
     /** What is true just before a word is finished, read while the text is still as it was. */
     private fun capturePre(): Pre? {
         if (!learn.open) return null
-        val known = beforeKnown && beforeAvailable
-        val context = if (known) SentenceContext.lastWords(before) else emptyList()
+        val known = cache.beforeReadable
+        val context = if (known) SentenceContext.lastWords(cache.before) else emptyList()
         val watch = phraseWatch
         val kept =
             when {
@@ -1468,16 +1395,17 @@ internal class PredictiveInput(
         context: List<String>? = null,
     ): Tracked? {
         if (!learn.open || typed != null && typed.isEmpty()) return null
-        if (!beforeKnown || !beforeAvailable || !afterKnown) return null
+        if (!cache.beforeReadable || !cache.afterKnown) return null
         val now = learn.now()
         if (memory.size == 0) return null
-        val ctx = context ?: SentenceContext.lastWords(before)
+        val ctx = context ?: SentenceContext.lastWords(cache.before)
         return memory.autocorrections(ctx, typed, now).firstOrNull { !standsInText(it) }
     }
 
     /** Whether the corrected word of [t] still stands after its context in the cached text. */
     private fun standsInText(t: Tracked): Boolean {
-        val text = if (after.isEmpty()) before.toString() else "$before $after"
+        val text =
+            if (cache.after.isEmpty()) cache.before.toString() else "${cache.before} ${cache.after}"
         val word = t.committed
         var from = 0
         while (true) {
@@ -1722,7 +1650,7 @@ internal class PredictiveInput(
         val w = phraseWatch ?: return
         phraseWatch = null
         if (!w.taken || !learn.open) return
-        val kept = if (beforeKnown && beforeAvailable) keptWords(w.words) else w.words.size
+        val kept = if (cache.beforeReadable) keptWords(w.words) else w.words.size
         emitPhrase(w, kept, null)
     }
 
@@ -1741,7 +1669,7 @@ internal class PredictiveInput(
 
     /** How many leading words of [words] the text before the cursor still ends with. */
     private fun keptWords(words: List<String>): Int {
-        val tail = alnum(before.takeLast(words.sumOf { it.length + 1 } + 16))
+        val tail = alnum(cache.before.takeLast(words.sumOf { it.length + 1 } + 16))
         for (k in words.size downTo 1) {
             if (tail.endsWith(alnum(words.take(k).joinToString("")))) return k
         }
@@ -1784,12 +1712,9 @@ internal class PredictiveInput(
         )
     }
 
-    private fun isApostrophe(c: Char) = c == '\'' || c == '’' || c == 'ʼ'
-
     private companion object {
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
-        const val MAX_RECOMPOSE_CHARS = 32
         const val MAX_REVERTED = 16
         const val ADD_WORD_PROMPT_MS = 3_000L
         const val NEVER_PROMPT_MS = 10_000L
@@ -1799,16 +1724,10 @@ internal class PredictiveInput(
         /** Most positions of a word where the intended char differs from the one registered. */
         const val MAX_MISMATCHED_POSITIONS = 1
 
-        /** A truncated cache shorter than this is re-read before it is trusted. */
-        const val MIN_TRUSTED_BEFORE = 32
-
         /** Text ending in one of these needs no space before an inserted next word. */
         /** Separators that make the word before them part of an address or path. */
         const val ADDRESS_SEPARATORS = "@/\\_"
 
         const val NO_SPACE_AFTER = "([{<\"'“‘/@#-"
-
-        /** A word may start right after one of these. */
-        const val OPENING_PUNCTUATION = "([{\"'“‘¿¡"
     }
 }
