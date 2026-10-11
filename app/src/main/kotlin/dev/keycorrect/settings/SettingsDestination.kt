@@ -15,6 +15,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Keyboard : SettingsDestination("keyboard", R.string.keyboard_title)
 
+    data object Editing : SettingsDestination("editing", R.string.editing_title)
+
     data object TextCorrection :
         SettingsDestination("text_correction", R.string.text_correction_title)
 
@@ -53,6 +55,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 Home,
                 Setup,
                 Keyboard,
+                Editing,
                 TextCorrection,
                 PersonalDictionary,
                 Shortcuts,

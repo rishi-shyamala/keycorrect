@@ -304,4 +304,16 @@
     <string name="value_percent">%1$d%%</string>
     <string name="value_system_default">System default</string>
     <string name="value_device_default">Device default</string>
+    <string name="editing_title">Editing</string>
+    <string name="editing_summary">Spacebar cursor and backspace swipe</string>
+    <string name="editing_section_space">Spacebar</string>
+    <string name="editing_spacebar_cursor">Move the cursor with the spacebar</string>
+    <string name="editing_spacebar_cursor_summary">Drag on the spacebar to move the cursor; hold, then drag to select. Hold and let go to open the editing panel.</string>
+    <string name="editing_cursor_speed">Cursor speed</string>
+    <string name="editing_speed_slow">Slow</string>
+    <string name="editing_speed_normal">Normal</string>
+    <string name="editing_speed_fast">Fast</string>
+    <string name="editing_section_backspace">Backspace</string>
+    <string name="editing_backspace_swipe">Swipe backspace to delete words</string>
+    <string name="editing_backspace_swipe_summary">Swipe left on backspace to select words; let go to delete them.</string>
 </resources>

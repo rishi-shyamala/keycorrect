@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -68,6 +69,9 @@ class SettingsRepositoryTest {
         assertThat(d.nextWordPredictions).isTrue()
         assertThat(d.phraseCompletion).isTrue()
         assertThat(d.autoSpaceAfterPick).isTrue()
+        assertThat(d.spacebarCursor).isTrue()
+        assertThat(d.cursorSpeed).isEqualTo(CursorSpeed.Normal)
+        assertThat(d.backspaceSwipe).isTrue()
     }
 
     @Test
@@ -90,6 +94,9 @@ class SettingsRepositoryTest {
                 nextWordPredictions = false,
                 phraseCompletion = false,
                 autoSpaceAfterPick = false,
+                spacebarCursor = false,
+                cursorSpeed = CursorSpeed.Fast,
+                backspaceSwipe = false,
             )
         repo.update { custom }
         assertThat(repo.settings.first()).isEqualTo(custom)
@@ -102,6 +109,14 @@ class SettingsRepositoryTest {
         assertThat(store.data.first()[booleanPreferencesKey("inline_autofill")]).isFalse()
         repo.update { it.copy(inlineAutofill = true) }
         assertThat(repo.settings.first().inlineAutofill).isTrue()
+    }
+
+    @Test
+    fun cursorSpeedIsPersistedByNameAndUnknownNamesFallBack() = runTest {
+        repo.update { it.copy(cursorSpeed = CursorSpeed.Slow) }
+        assertThat(store.data.first()[stringPreferencesKey("cursor_speed")]).isEqualTo("Slow")
+        store.edit { it[stringPreferencesKey("cursor_speed")] = "Warp" }
+        assertThat(repo.settings.first().cursorSpeed).isEqualTo(CursorSpeed.Normal)
     }
 
     @Test

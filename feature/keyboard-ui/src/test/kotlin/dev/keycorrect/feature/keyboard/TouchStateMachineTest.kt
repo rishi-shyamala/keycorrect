@@ -14,6 +14,41 @@ class TouchStateMachineTest {
     private class FakeHost : TouchHost {
         override var showPreviews = true
         override var longPressDelayMs = 300L
+        override var spacebarCursor = true
+        override var backspaceSwipe = true
+        override var slopPx = 8f
+        override var cursorStepPx = 10f
+        override var lineStepPx = 50f
+        override var wordStepPx = 40f
+        val drags = mutableListOf<Triple<Int, Int, Boolean>>()
+        var holds = 0
+        val swipes = mutableListOf<Int>()
+        val swipeEnds = mutableListOf<Boolean>()
+        var ticks = 0
+
+        override val gestures =
+            object : KeyGestures {
+                override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) {
+                    drags += Triple(dx, dy, select)
+                }
+
+                override fun onSpaceHold() {
+                    holds++
+                }
+
+                override fun onBackspaceSwipe(words: Int) {
+                    swipes += words
+                }
+
+                override fun onBackspaceSwipeEnd(commit: Boolean) {
+                    swipeEnds += commit
+                }
+            }
+
+        override fun onGestureTick() {
+            ticks++
+        }
+
         val events = mutableListOf<String>()
 
         /** Actions passed to [onKey] only, in order. */
@@ -502,5 +537,245 @@ class TouchStateMachineTest {
         assertThat(host.events.filter { it != "press" })
             .containsExactly("shiftDown", "shiftUp")
             .inOrder()
+    }
+
+    // --- Spacebar cursor and backspace swipe ---
+
+    private val space
+        get() = slot(KeyAction.Space)
+
+    private fun move(id: Long, slot: KeySlot, dx: Float, dy: Float = 0f) =
+        machine.onMove(id, slot.centerX + dx, slot.centerY + dy)
+
+    /** A drag that is slow enough for no acceleration and never reaches the hold. */
+    private fun slowSpace() {
+        host.longPressDelayMs = 100_000L
+        down(1, space)
+        now += 1_000
+    }
+
+    @Test
+    fun spaceTapStillTypesASpace() {
+        down(1, space)
+        move(1, space, 3f, 2f) // within the slop
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Space)
+        assertThat(host.drags).isEmpty()
+        assertThat(host.holds).isEqualTo(0)
+    }
+
+    @Test
+    fun spaceDragMovesTheCursorAndTypesNoSpace() {
+        slowSpace()
+        move(1, space, 40f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(4, 0, false))
+        assertThat(host.ticks).isEqualTo(1)
+        assertThat(host.keys).isEmpty()
+        assertThat(host.holds).isEqualTo(0)
+    }
+
+    @Test
+    fun spaceDragEmitsOnlyWhenTheStepCountChanges() {
+        slowSpace()
+        move(1, space, 15f)
+        now += 1_000
+        move(1, space, 18f) // 1.8 steps: still 1
+        now += 1_000
+        move(1, space, -25f) // back past the start: from +1 to -2
+        assertThat(host.drags).containsExactly(Triple(1, 0, false), Triple(-3, 0, false))
+        assertThat(host.ticks).isEqualTo(2)
+    }
+
+    @Test
+    fun aFasterSpaceDragMovesMoreStepsPerPixel() {
+        host.longPressDelayMs = 100_000L
+        down(1, space)
+        now += 100
+        move(1, space, 40f) // 40 steps/s: gain 2.5
+        assertThat(host.drags).containsExactly(Triple(10, 0, false))
+        now += 10
+        move(1, space, 400f) // beyond the cap of 4x: 36 steps * 4
+        assertThat(host.drags.last()).isEqualTo(Triple(144, 0, false))
+    }
+
+    @Test
+    fun spaceDragVerticallyMovesOneLinePerLineStep() {
+        slowSpace()
+        move(1, space, 0f, -120f)
+        assertThat(host.drags).containsExactly(Triple(0, -2, false))
+        now += 1_000
+        move(1, space, 0f, -20f)
+        assertThat(host.drags).containsExactly(Triple(0, -2, false), Triple(0, 2, false))
+    }
+
+    @Test
+    fun spaceHeldThenReleasedOpensTheHoldAction() {
+        down(1, space)
+        advance(299)
+        assertThat(host.ticks).isEqualTo(0)
+        advance(1)
+        assertThat(host.ticks).isEqualTo(1)
+        move(1, space, 4f) // within the slop
+        machine.onUp(1)
+        assertThat(host.holds).isEqualTo(1)
+        assertThat(host.keys).isEmpty()
+        assertThat(host.drags).isEmpty()
+    }
+
+    @Test
+    fun spaceHeldThenDraggedSelects() {
+        down(1, space)
+        advance(300)
+        now += 1_000
+        move(1, space, 30f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.holds).isEqualTo(0)
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun draggingBeforeTheHoldNeverArmsIt() {
+        down(1, space)
+        now += 10
+        move(1, space, 30f)
+        advance(1_000)
+        machine.onUp(1)
+        assertThat(host.holds).isEqualTo(0)
+        assertThat(host.drags.all { !it.third }).isTrue()
+        assertThat(machine.nextDeadline()).isNull()
+    }
+
+    @Test
+    fun withTheSpacebarCursorOffSpaceBehavesAsBefore() {
+        host.spacebarCursor = false
+        down(1, space)
+        assertThat(machine.nextDeadline()).isNull()
+        advance(1_000)
+        move(1, space, 200f, 100f)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Space)
+        assertThat(host.drags).isEmpty()
+        assertThat(host.holds).isEqualTo(0)
+        assertThat(host.ticks).isEqualTo(0)
+    }
+
+    @Test
+    fun cancellingASpaceDragOrHoldCommitsNothing() {
+        slowSpace()
+        move(1, space, 30f)
+        machine.cancel(1)
+        down(2, space)
+        advance(300)
+        machine.cancel(2)
+        assertThat(host.keys).isEmpty()
+        assertThat(host.holds).isEqualTo(0)
+        assertThat(host.swipeEnds).isEmpty()
+    }
+
+    @Test
+    fun anotherFingerTypingDuringASpaceDragLeavesTheDragAlone() {
+        slowSpace()
+        move(1, space, 20f)
+        down(2, a)
+        machine.onUp(2)
+        now += 1_000
+        move(1, space, 40f)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+        assertThat(host.drags).containsExactly(Triple(2, 0, false), Triple(2, 0, false))
+    }
+
+    @Test
+    fun backspaceStillDeletesOnPress() {
+        down(1, backspace)
+        assertThat(host.keys).containsExactly(KeyAction.Backspace)
+        machine.onUp(1)
+        assertThat(host.swipeEnds).isEmpty()
+    }
+
+    @Test
+    fun backspaceSwipeCountsWordsUpAndDown() {
+        down(1, backspace)
+        move(1, backspace, -5f) // within the slop
+        assertThat(host.swipes).isEmpty()
+        move(1, backspace, -20f) // 12 past the slop
+        move(1, backspace, -53f) // 45 past: 1 + 45 / 40
+        move(1, backspace, -100f) // 92 past: 1 + 2
+        move(1, backspace, -10f) // 2 past: back to 1
+        move(1, backspace, -4f) // back within the slop: 0
+        assertThat(host.swipes).containsExactly(1, 2, 3, 1, 0).inOrder()
+        assertThat(host.ticks).isEqualTo(5)
+        machine.onUp(1)
+        assertThat(host.swipeEnds).containsExactly(false)
+        assertThat(host.keys).containsExactly(KeyAction.Backspace)
+    }
+
+    @Test
+    fun backspaceSwipeCommitsOnReleaseWithWordsSelected() {
+        down(1, backspace)
+        move(1, backspace, -60f)
+        machine.onUp(1)
+        assertThat(host.swipeEnds).containsExactly(true)
+    }
+
+    @Test
+    fun aBackspaceSwipeStopsTheRepeat() {
+        down(1, backspace)
+        move(1, backspace, -30f)
+        assertThat(machine.nextDeadline()).isNull()
+        advance(2_000)
+        assertThat(host.keys).hasSize(1)
+        machine.onUp(1)
+        assertThat(host.keys).hasSize(1)
+    }
+
+    @Test
+    fun backspaceCannotSwipeOnceItIsRepeating() {
+        down(1, backspace)
+        advance(REPEAT_START_DELAY_MS)
+        move(1, backspace, -60f)
+        advance(REPEAT_INTERVAL_MS)
+        machine.onUp(1)
+        assertThat(host.swipes).isEmpty()
+        assertThat(host.swipeEnds).isEmpty()
+        assertThat(host.keys).hasSize(3)
+    }
+
+    @Test
+    fun cancellingABackspaceSwipeEndsItWithoutCommitting() {
+        down(1, backspace)
+        move(1, backspace, -60f)
+        machine.cancel(1)
+        down(2, backspace)
+        move(2, backspace, -60f)
+        machine.retainOnly { false }
+        assertThat(host.swipeEnds).containsExactly(false, false)
+    }
+
+    @Test
+    fun withTheBackspaceSwipeOffBackspaceBehavesAsBefore() {
+        host.backspaceSwipe = false
+        down(1, backspace)
+        move(1, backspace, -100f)
+        advance(REPEAT_START_DELAY_MS)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Backspace, KeyAction.Backspace)
+        assertThat(host.swipes).isEmpty()
+        assertThat(host.swipeEnds).isEmpty()
+    }
+
+    @Test
+    fun anotherFingerTypingDuringABackspaceSwipeLeavesTheSwipeAlone() {
+        down(1, backspace)
+        move(1, backspace, -30f)
+        down(2, a)
+        machine.onUp(2)
+        move(1, backspace, -60f)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Backspace, a.key.action).inOrder()
+        assertThat(host.swipes).containsExactly(1, 2).inOrder()
+        assertThat(host.swipeEnds).containsExactly(true)
     }
 }

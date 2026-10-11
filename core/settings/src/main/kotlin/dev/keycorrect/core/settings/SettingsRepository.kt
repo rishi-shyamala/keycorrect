@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -58,6 +59,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
             hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
             hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
+            spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
+            cursorSpeed =
+                CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
+            backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
         )
     }
 
@@ -86,6 +91,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NON_WORD_TIE_RULE] = s.nonWordTieRule
         this[HAPTIC_ON_AUTOCORRECT] = s.hapticOnAutocorrect
         this[HAPTIC_ON_UNKNOWN_WORD] = s.hapticOnUnknownWord
+        this[SPACEBAR_CURSOR] = s.spacebarCursor
+        this[CURSOR_SPEED] = s.cursorSpeed.name
+        this[BACKSPACE_SWIPE] = s.backspaceSwipe
     }
 
     private companion object {
@@ -113,5 +121,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NON_WORD_TIE_RULE = booleanPreferencesKey("non_word_tie_rule")
         val HAPTIC_ON_AUTOCORRECT = booleanPreferencesKey("haptic_on_autocorrect")
         val HAPTIC_ON_UNKNOWN_WORD = booleanPreferencesKey("haptic_on_unknown_word")
+        val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
+        val CURSOR_SPEED = stringPreferencesKey("cursor_speed")
+        val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
     }
 }
