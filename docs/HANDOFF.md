@@ -107,6 +107,7 @@ Read this first when resuming. Other docs:
 - **Haptics:** `dumpsys vibrator_manager`. Word events show as `effect` entries with usage TOUCH:
   - autocorrect: a double 12 ms pulse
   - unknown word: a single 40 ms pulse
+- **Field lab (debug builds only):** `adb shell am start -n dev.keycorrect.debug/dev.keycorrect.fieldlab.FieldLabActivity`. It has every field type, plus a `TYPE_NULL` terminal view that logs the key events it receives (`adb logcat -s FieldLab`). Use it instead of third-party apps.
 - **Instrumented tests:** `ANDROID_SERIAL=R52X204HLZV ./gradlew :core:data:connectedDebugAndroidTest` works even while the device is locked.
 - **Test data on the tablet:** our app has "thier" learned (it's in Learned words and Never corrected) from test 2. The user was told to remove it.
 
@@ -128,7 +129,9 @@ core/learning        Events/updates contract, SentenceContext (context buckets, 
                      OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
 feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), controller, PredictiveInput
                      (composing/autocorrect/undo/learning events) with TextContextCache, StripPrompts and
-                     PhraseLearning, TouchStateMachine, OwnEditTracker, strip, KeyFeedback
+                     PhraseLearning, TouchStateMachine (+ CursorDragTracker), OwnEditTracker, strip,
+                     KeyFeedback; Phase 4: EditingController (spacebar cursor, backspace swipe, panel and
+                     selection-strip actions), EditingPanel, SelectionStrip, TextUnits, TerminalModifiers
 tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
 tools/eval           Offline harness: spatial typist, learn mode (simulated user), misspell mode
 build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization, detekt)

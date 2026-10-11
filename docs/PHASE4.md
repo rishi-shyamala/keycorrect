@@ -145,14 +145,27 @@ Technical defaults (no objection raised):
      sensitive flag respected; nothing in incognito; masked previews.
    - Device test, the performance check, then review.
 
+## PR A device-test notes (Tab S9, 2026-10-11)
+
+- **EditText needs a real Shift.** Selecting with arrows works only while Shift has really gone
+  down (it is tracked in the text); the meta flag alone works in Chrome and terminals but not in
+  EditText. `EditorSession.sendKey` therefore holds SHIFT_LEFT around shifted keys.
+- **Acceleration was too strong.** It now starts at 20 steps/s, ramps over 40 and caps at 2.5×;
+  the user may still want to tune it.
+- **Backspace swipe.** Backspace still deletes on press, so a swipe starts one character later. A
+  cancelled swipe keeps that one deletion, as a tap would.
+- **No axis lock.** Vertical moves need a whole key height of travel, so ordinary wobble doesn't
+  move lines.
+
 ## Feature checklist (exit)
 
-- [ ] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
-      opens the editing panel
-- [ ] Backspace swipe deletes words, and can be cancelled
-- [ ] Editing panel: every action works in an EditText and in Chrome (textarea, contenteditable)
-- [ ] Selection strip: expand and case cycle
-- [ ] Terminal row: Esc, Tab, Ctrl/Alt (one-shot and lock), arrows, Home/End/PgUp/PgDn
+- [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
+      opens the editing panel (Tab S9: field lab EditText and Chrome textarea)
+- [x] Backspace swipe deletes words, and can be cancelled
+- [x] Editing panel: every action works in an EditText and in Chrome (textarea; contenteditable
+      checked by unit tests only)
+- [x] Selection strip: expand and case cycle
+- [x] Terminal row: Esc, Tab, Ctrl/Alt (one-shot and lock), arrows, Home/End/PgUp/PgDn
 - [ ] Emoji panel: categories, recents, skin tones, search, kaomoji; strip suggestion
 - [ ] Clipboard: capture, filters, pin/delete/clear, images, strip chip, TTL
 - [ ] Instrumented: no password-field leaks (clipboard capture, previews, reads)
