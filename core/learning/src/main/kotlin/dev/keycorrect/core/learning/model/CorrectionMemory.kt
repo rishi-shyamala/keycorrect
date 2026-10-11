@@ -126,8 +126,19 @@ internal class FrozenCorrections(
 ) {
     private fun score(key: String): Double = cells[key]?.let { decay.value(it, now) } ?: 0.0
 
+    /** The key of the last typed word: one typed word is asked about with every candidate. */
+    private class TypedKey(val typed: String, val key: String)
+
+    // Racy but safe: entries are immutable, and a miss only recomputes.
+    private var lastTyped: TypedKey? = null
+
+    private fun typedKey(typed: String): String {
+        lastTyped?.let { if (it.typed == typed) return it.key }
+        return Text.key(typed).also { lastTyped = TypedKey(typed, it) }
+    }
+
     fun bias(typed: String, candidate: String, bucket: String): Float {
-        val t = Text.key(typed)
+        val t = typedKey(typed)
         val c = Text.key(candidate)
         if (t.isEmpty() || c.isEmpty() || t == c) return 0f
         val sg = score(Text.join(t, c, ""))

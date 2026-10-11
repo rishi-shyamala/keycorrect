@@ -130,6 +130,17 @@ internal class FrozenNgrams(
     private fun v(map: FrozenMap<Cell>, key: String): Double =
         map[key]?.let { decay.value(it, now) } ?: 0.0
 
+    /** The keys of the last context: one context is asked about with every candidate. */
+    private class ContextKeys(val context: List<String>, val keys: List<String>)
+
+    // Racy but safe: entries are immutable, and a miss only recomputes.
+    private var lastContext: ContextKeys? = null
+
+    private fun contextKeys(context: List<String>): List<String> {
+        lastContext?.let { if (it.context == context) return it.keys }
+        return Text.contextKeys(context).also { lastContext = ContextKeys(context.toList(), it) }
+    }
+
     fun logProb(context: List<String>, word: String): Float? {
         val w = Text.key(word)
         if (w.isEmpty()) return null
@@ -138,7 +149,7 @@ internal class FrozenNgrams(
         val n = decay.value(uniTotal, now)
         if (n < cfg.minTotalEvidence) return null
         var p = (c1 / n).coerceAtMost(1.0)
-        val ctx = Text.contextKeys(context)
+        val ctx = contextKeys(context)
         if (ctx.isNotEmpty()) {
             val a = ctx.last()
             val t1 = v(ctx1, a)
