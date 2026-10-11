@@ -4,6 +4,8 @@ import android.view.inputmethod.EditorInfo
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.layout.KeyAction
+import dev.keycorrect.core.layout.KeyCodes
+import dev.keycorrect.core.layout.KeyModifier
 import dev.keycorrect.core.layout.ResolvedKey
 import org.junit.Test
 
@@ -62,5 +64,36 @@ class KeyDrawingTest {
         assertThat(keyLabel(plain, held, "")).isEqualTo("1") // no shiftedLabel: unchanged
         assertThat(keyLabel(key, KeyboardState().effectiveShift(false), "")).isEqualTo("a")
         assertThat(keyDescription(shift, held)).isEqualTo("Shift, on")
+    }
+
+    @Test
+    fun modifierKeysAreDescribedByTheirLatch() {
+        val ctrl =
+            ResolvedKey("Ctrl", KeyAction.Modifier(KeyModifier.Ctrl), description = "Control")
+        assertThat(keyDescription(ctrl, null)).isEqualTo("Control")
+        assertThat(keyDescription(ctrl, null, latch = ModifierLatch.OneShot))
+            .isEqualTo("Control, on")
+        assertThat(keyDescription(ctrl, null, latch = ModifierLatch.Locked))
+            .isEqualTo("Control, locked")
+    }
+
+    @Test
+    fun keyCodeKeysUseTheLayoutDescription() {
+        val esc = ResolvedKey("Esc", KeyAction.KeyCode(KeyCodes.ESCAPE), description = "Escape")
+        assertThat(keyDescription(esc, null)).isEqualTo("Escape")
+    }
+
+    @Test
+    fun latchOfFollowsTheModifierKeyOnly() {
+        var now = 0L
+        val modifiers = TerminalModifiers { now }
+        val ctrl = ResolvedKey("Ctrl", KeyAction.Modifier(KeyModifier.Ctrl))
+        val alt = ResolvedKey("Alt", KeyAction.Modifier(KeyModifier.Alt))
+        modifiers.onTap(KeyModifier.Ctrl)
+        assertThat(latchOf(ctrl, modifiers)).isEqualTo(ModifierLatch.OneShot)
+        assertThat(latchOf(alt, modifiers)).isEqualTo(ModifierLatch.Off)
+        assertThat(latchOf(letter, modifiers)).isEqualTo(ModifierLatch.Off)
+        assertThat(latchOf(ctrl, null)).isEqualTo(ModifierLatch.Off)
+        now += 1
     }
 }

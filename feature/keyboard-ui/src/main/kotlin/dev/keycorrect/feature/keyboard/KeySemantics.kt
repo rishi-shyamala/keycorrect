@@ -20,8 +20,10 @@ import kotlin.math.roundToInt
  * positioned where the key is drawn. The nodes have no pointer input, so sighted touches pass
  * through to the key surface underneath. Recomposes only when [layer] or [enterDescription]
  * changes: [shift] is read inside the shift key's semantics node alone, so a shift change updates
- * that node without recomposing or re-laying out the rest.
+ * that node without recomposing or re-laying out the rest. The same goes for the Ctrl and Alt keys
+ * and [terminalModifiers].
  */
+@Suppress("LongParameterList") // one read-only input per drawn state
 @Composable
 internal fun KeySemantics(
     layer: KeyboardLayer,
@@ -29,6 +31,7 @@ internal fun KeySemantics(
     enterDescription: String,
     onKey: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
+    terminalModifiers: TerminalModifiers? = null,
 ) {
     Layout(
         content = {
@@ -43,6 +46,7 @@ internal fun KeySemantics(
                                     key,
                                     if (isShift) shift() else null,
                                     enterDescription,
+                                    latchOf(key, terminalModifiers),
                                 )
                             role = Role.Button
                             onClick {

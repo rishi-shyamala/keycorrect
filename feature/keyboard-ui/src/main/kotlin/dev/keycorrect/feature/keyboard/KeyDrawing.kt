@@ -35,9 +35,16 @@ internal fun keyDescription(
     key: ResolvedKey,
     shift: ShiftState?,
     enterDescription: String = key.description,
+    latch: ModifierLatch = ModifierLatch.Off,
 ): String =
     when {
         key.action == KeyAction.Enter -> enterDescription
+        key.action is KeyAction.Modifier ->
+            when (latch) {
+                ModifierLatch.Off -> key.description
+                ModifierLatch.OneShot -> "${key.description}, on"
+                ModifierLatch.Locked -> "${key.description}, locked"
+            }
         shift == null || shift == ShiftState.Off -> key.description
         shift == ShiftState.Locked -> "Caps lock on"
         else -> "${key.description}, on"
@@ -71,11 +78,29 @@ private fun editorActionName(actionId: Int): String? =
         else -> null
     }
 
-/** Fill colour of [key]; shift looks filled whenever it is on. */
-internal fun keyFill(key: ResolvedKey, pressed: Boolean, shift: ShiftState, colors: ColorScheme) =
+/**
+ * The latch state to draw and describe [key] in: that of its modifier in [modifiers], or Off for
+ * any other key (or without terminal modifiers).
+ */
+internal fun latchOf(key: ResolvedKey, modifiers: TerminalModifiers?): ModifierLatch =
+    (key.action as? KeyAction.Modifier)?.let { modifiers?.latch(it.modifier) } ?: ModifierLatch.Off
+
+/**
+ * Fill colour of [key]. Shift looks filled whenever it is on, and a Ctrl/Alt key whenever it is
+ * one-shot; a locked one (like caps lock) is solid.
+ */
+internal fun keyFill(
+    key: ResolvedKey,
+    pressed: Boolean,
+    shift: ShiftState,
+    colors: ColorScheme,
+    latch: ModifierLatch = ModifierLatch.Off,
+) =
     when {
         pressed -> colors.primaryContainer
         key.style == KeyStyle.Action -> colors.primary
+        latch == ModifierLatch.Locked -> colors.tertiary
+        latch == ModifierLatch.OneShot -> colors.tertiaryContainer
         key.style == KeyStyle.Modifier ->
             if (key.action == KeyAction.Shift && shift != ShiftState.Off) {
                 colors.tertiaryContainer
@@ -91,10 +116,13 @@ internal fun keyContent(
     pressed: Boolean,
     shift: ShiftState,
     colors: ColorScheme,
+    latch: ModifierLatch = ModifierLatch.Off,
 ): Color =
     when {
         pressed -> colors.onPrimaryContainer
         key.style == KeyStyle.Action -> colors.onPrimary
+        latch == ModifierLatch.Locked -> colors.onTertiary
+        latch == ModifierLatch.OneShot -> colors.onTertiaryContainer
         key.style == KeyStyle.Modifier ->
             if (key.action == KeyAction.Shift && shift != ShiftState.Off) {
                 colors.onTertiaryContainer

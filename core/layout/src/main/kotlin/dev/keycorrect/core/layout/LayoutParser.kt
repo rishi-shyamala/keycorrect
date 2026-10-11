@@ -30,7 +30,33 @@ internal object LayoutParser {
         Layer("layer", 1.5f, KeyStyle.Modifier),
         ModeSwitch("modeSwitch", 1.5f, KeyStyle.Modifier),
         Spacer("spacer", 1f, KeyStyle.Character),
+        KeyCode("keycode", 1f, KeyStyle.Modifier),
+        Modifier("modifier", 1f, KeyStyle.Modifier),
+        Emoji("emoji", 1f, KeyStyle.Modifier),
     }
+
+    /** A `keycode` key's `code` names: the action code, default label and spoken description. */
+    private enum class Code(
+        val json: String,
+        val code: Int,
+        val label: String,
+        val description: String,
+    ) {
+        Escape("escape", KeyCodes.ESCAPE, "Esc", "Escape"),
+        Tab("tab", KeyCodes.TAB, "Tab", "Tab"),
+        Left("left", KeyCodes.DPAD_LEFT, "←", "Left"),
+        Right("right", KeyCodes.DPAD_RIGHT, "→", "Right"),
+        Up("up", KeyCodes.DPAD_UP, "↑", "Up"),
+        Down("down", KeyCodes.DPAD_DOWN, "↓", "Down"),
+        Home("home", KeyCodes.MOVE_HOME, "Home", "Home"),
+        End("end", KeyCodes.MOVE_END, "End", "End"),
+        PageUp("pageUp", KeyCodes.PAGE_UP, "PgUp", "Page up"),
+        PageDown("pageDown", KeyCodes.PAGE_DOWN, "PgDn", "Page down"),
+        ForwardDelete("forwardDelete", KeyCodes.FORWARD_DEL, "Del", "Forward delete"),
+    }
+
+    private val modifierLabels =
+        mapOf(KeyModifier.Ctrl to ("Ctrl" to "Control"), KeyModifier.Alt to ("Alt" to "Alt"))
 
     private val styles =
         mapOf(
@@ -127,16 +153,17 @@ internal object LayoutParser {
             Type.entries.firstOrNull { it.json == key.type }
                 ?: fail("$path.type", "unknown type '${key.type}'")
         val isTyped = type == Type.Char || type == Type.Text
-        if (popup && !isTyped)
-            fail("$path.type", "popup keys must be char or text, got '${key.type}'")
+        val takesPopup = isTyped || type == Type.KeyCode
+        if (popup && !takesPopup)
+            fail("$path.type", "popup keys must be char, text or keycode, got '${key.type}'")
         if (popup) {
             // Popup entries are drawn as fixed-size cells in the popup panel, so these are no-ops.
             if (key.popup.isNotEmpty()) fail("$path.popup", "popups cannot be nested")
             if (key.hint != HINT_UNSET) fail("$path.hint", "not valid on popup entries")
             if (key.width != null) fail("$path.width", "not valid on popup entries")
             if (key.style != null) fail("$path.style", "not valid on popup entries")
-        } else if (!isTyped && key.popup.isNotEmpty()) {
-            fail("$path.popup", "only valid on char/text keys, got '${key.type}'")
+        } else if (!takesPopup && key.popup.isNotEmpty()) {
+            fail("$path.popup", "only valid on char/text/keycode keys, got '${key.type}'")
         }
         if (type == Type.ModeSwitch && kind != LayoutKind.Bottom) {
             fail(path, "modeSwitch is only allowed in bottom layouts")
@@ -146,6 +173,10 @@ internal object LayoutParser {
             fail("$path.shifted", "only valid on char keys")
         if (type != Type.Layer && key.target != null)
             fail("$path.target", "only valid on layer keys")
+        if (type != Type.KeyCode && key.code != null)
+            fail("$path.code", "only valid on keycode keys")
+        if (type != Type.Modifier && key.modifier != null)
+            fail("$path.modifier", "only valid on modifier keys")
 
         val width = key.width ?: type.width
         if (!(width > 0f)) fail("$path.width", "must be positive, got $width")
@@ -206,6 +237,27 @@ internal object LayoutParser {
                     build("ABC", KeyAction.SwitchLayer(KeyboardSet.LETTERS), "Switch to letters")
                 }
             Type.Spacer -> build("", KeyAction.None, "")
+            Type.KeyCode -> {
+                val name = key.code ?: fail("$path.code", "keycode key requires a code")
+                val code =
+                    Code.entries.firstOrNull { it.json == name }
+                        ?: fail(
+                            "$path.code",
+                            "unknown code '$name', expected one of " +
+                                Code.entries.joinToString { it.json },
+                        )
+                build(key.label ?: code.label, KeyAction.KeyCode(code.code), code.description)
+            }
+            Type.Modifier -> {
+                val name =
+                    key.modifier ?: fail("$path.modifier", "modifier key requires a modifier")
+                val modifier =
+                    KeyModifier.entries.firstOrNull { it.name.lowercase() == name }
+                        ?: fail("$path.modifier", "unknown modifier '$name', expected ctrl or alt")
+                val (label, description) = modifierLabels.getValue(modifier)
+                build(key.label ?: label, KeyAction.Modifier(modifier), description)
+            }
+            Type.Emoji -> build(key.label ?: "☺", KeyAction.Emoji, "Emoji")
         }
     }
 

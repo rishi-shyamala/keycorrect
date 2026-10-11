@@ -89,6 +89,7 @@ fun KeyboardScreen(
                         onShiftDown = onShiftDown,
                         onShiftUp = onShiftUp,
                         gestures = controller.gestures,
+                        terminalModifiers = controller.terminalModifiers,
                     )
                     KeySemantics(
                         layer = layer,
@@ -96,6 +97,7 @@ fun KeyboardScreen(
                         enterDescription = enterDescription,
                         onKey = onSemanticKey,
                         modifier = Modifier.matchParentSize(),
+                        terminalModifiers = controller.terminalModifiers,
                     )
                 }
             }

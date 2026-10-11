@@ -38,6 +38,8 @@ internal data class Key(
     val hint: String? = HINT_UNSET,
     val width: Float? = null,
     val target: String? = null,
+    val code: String? = null,
+    val modifier: String? = null,
     val style: String? = null,
     val description: String? = null,
 )

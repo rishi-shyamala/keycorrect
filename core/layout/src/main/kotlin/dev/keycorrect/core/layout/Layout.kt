@@ -8,6 +8,9 @@ enum class LayoutKind(val json: String) {
     Phone("phone"),
     Datetime("datetime"),
     Bottom("bottom"),
+
+    /** Extra keys composed above the rows of every layer (the terminal row). */
+    Extra("extra"),
 }
 
 /** Whether a bottom row is appended at runtime ([Auto]) or the rows are already complete. */
