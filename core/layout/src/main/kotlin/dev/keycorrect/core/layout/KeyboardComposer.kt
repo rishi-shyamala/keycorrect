@@ -38,6 +38,9 @@ enum class BottomRowVariant(val layoutId: String) {
 /**
  * [numberRow] prepends a row of digits to the letters layer.
  *
+ * [terminalRow] puts the terminal extra-keys row (`terminal_row`) above the rows of every layer, so
+ * it stays on screen when the layer changes.
+ *
  * [signedNumber] and [decimalNumber] mirror the `TYPE_NUMBER_FLAG_SIGNED` / `..._DECIMAL` flags of
  * a number field and only affect `numpad` layouts. When [signedNumber] is false the `-` key becomes
  * a spacer; when [decimalNumber] is false the `.` and `,` keys do. Both separators count as decimal
@@ -49,6 +52,7 @@ data class ComposeOptions(
     val numberRow: Boolean = false,
     val signedNumber: Boolean = true,
     val decimalNumber: Boolean = true,
+    val terminalRow: Boolean = false,
 )
 
 /** Builds ready-to-draw [KeyboardLayer]s from layouts, adding bottom and number rows. */
@@ -72,6 +76,7 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         cache.getOrPut(CacheKey(set, layerId, variant, options)) {
             val layout = repository.get(set.layoutId(layerId))
             val rows = buildList {
+                if (options.terminalRow) addAll(repository.get(TERMINAL_ROW).rows(layerId))
                 if (options.numberRow && layerId == KeyboardSet.LETTERS) add(NUMBER_ROW)
                 val own = layout.rows(layerId)
                 addAll(if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own)
@@ -105,6 +110,8 @@ class KeyboardComposer(private val repository: LayoutRepository) {
     }
 
     private companion object {
+        const val TERMINAL_ROW = "terminal_row"
+
         val NUMBER_ROW =
             ResolvedRow(
                 "1234567890".map { ResolvedKey(it.toString(), KeyAction.Text(it.toString())) }

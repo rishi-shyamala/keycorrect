@@ -8,7 +8,7 @@ Layouts are JSON files. The built-in ones live in `core/layout/src/main/resource
   "format": 1,                 // schema version (required)
   "id": "qwerty",              // unique id (required, [a-z0-9_]+)
   "name": "QWERTY",            // display name (required)
-  "kind": "letters",           // letters | symbols | numpad | phone | datetime | bottom
+  "kind": "letters",           // letters | symbols | numpad | phone | datetime | bottom | extra
   "bottomRow": "auto",         // auto (default for letters/symbols): a bottom row is appended at runtime
                                // included (default for numpad/phone/datetime/bottom): rows are complete
   "rows": [ /* Row */ ]
@@ -28,20 +28,22 @@ A plain string is shorthand for a character key: `"q"` means `{ "label": "q" }`.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` |
+| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` · `keycode` · `modifier` · `emoji` |
 | `label` | string | per type | Text drawn on the key. Required for `char`/`text` unless `text` is set, and for `layer`. Ignored for `modeSwitch` |
 | `text` | string | `label` | What gets typed (`char`/`text`) |
 | `shifted` | string | upper-cased `text` | What gets typed while shift is on (`char` only). Labels follow it |
-| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text` keys only; setting it on any other type is an error). See "Popup entries" |
+| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys only; setting it on any other type is an error). See "Popup entries" |
 | `hint` | string or `null` | first `popup` entry | Small corner label. `null` hides it |
 | `width` | number | `1.0` (`space` 5.0, `shift`/`backspace`/`enter`/`layer`/`modeSwitch` 1.5) | Width in standard-key units |
 | `target` | string | — | Layer id to switch to (`layer` only, required) |
+| `code` | string | — | Key to send (`keycode` only, required): `escape` · `tab` · `left` · `right` · `up` · `down` · `home` · `end` · `pageUp` · `pageDown` · `forwardDelete` |
+| `modifier` | string | — | `ctrl` or `alt` (`modifier` only, required) |
 | `style` | string | per type | `character` · `modifier` · `space` · `action` (visual class) |
 | `description` | string | per type | Accessibility label (TalkBack) |
 
-Setting `text`, `shifted` or `target` on a type that doesn't use it is an error. Default `description` is the label, `Shift`, `Delete`, `Space`, `Enter`, `Switch to <target>` (`layer`), or `Switch to symbols`/`Switch to letters` (`modeSwitch`). A single cased letter gets an upper-case `shifted` by default; anything else is unchanged.
+Setting `text`, `shifted`, `target`, `code` or `modifier` on a type that doesn't use it is an error. Default `description` is the label, `Shift`, the code's name (`keycode`: `Escape`, `Tab`, `Left`, ..., `Page up`), `Control`/`Alt` (`modifier`), `Emoji`, `Delete`, `Space`, `Enter`, `Switch to <target>` (`layer`), or `Switch to symbols`/`Switch to letters` (`modeSwitch`). A single cased letter gets an upper-case `shifted` by default; anything else is unchanged.
 
-Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `description` and `type` (`char`/`text` only), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
+Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `code`, `description` and `type` (`char`/`text`/`keycode` only), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
 
 Type semantics:
 - `char`: types `text` (or `shifted` while shift is on) and consumes a one-shot shift.
@@ -49,6 +51,9 @@ Type semantics:
 - `shift`, `backspace`, `space`, `enter`: the usual. Enter adapts to the field's IME action at runtime.
 - `layer`: switches to `target`, which is a layer id from the keyboard set (below).
 - `modeSwitch`: only used in bottom rows. It is resolved at runtime to `?123 → symbols` when on the letters layer, and `ABC → letters` otherwise.
+- `keycode`: sends a raw key event (down and up) with the named Android key code, not text. The default label is `Esc`, `Tab`, `←`, `→`, `↑`, `↓`, `Home`, `End`, `PgUp`, `PgDn` or `Del`. Style `modifier`, width 1.0.
+- `modifier`: Ctrl or Alt. A tap applies it to the next key (one-shot); a second tap within 400 ms locks it; the next tap unlocks. While it is on, a letter, digit, punctuation key, Space, Enter, Backspace or `keycode` key is sent as a key event with the Ctrl/Alt meta state (terminal fields only). The key is drawn highlighted when on, and differently when locked. Style `modifier`, width 1.0.
+- `emoji`: opens the emoji panel (a long-press opens the clipboard). Parsed now, acted on from PR B. Style `modifier`, width 1.0.
 - `spacer`: an empty, non-interactive gap of `width` units. Touches there go to the nearest real key.
 
 ## Number-field options (`numpad` layouts)
@@ -68,3 +73,6 @@ Layouts with `"bottomRow": "auto"` get a bottom row appended at runtime, chosen 
 | URL | `bottom_url` |
 
 An optional number row (setting) is prepended to the `letters` layer.
+
+## Terminal row
+The `extra` kind holds keys that are composed above the rows of every layer. The built-in `terminal_row` layout (Esc, Tab, Ctrl, Alt, ←, ↓, ↑, →, with Home, PgDn, PgUp and End on the long-press popups of the arrows) is added when `ComposeOptions.terminalRow` is set, which the keyboard does for terminal fields (`TYPE_NULL`). It goes above the number row and above every layer, so it stays when the layer changes, and its height counts in the keyboard's height units. `extra` layouts default to `"bottomRow": "included"` and are not layers of the keyboard set.

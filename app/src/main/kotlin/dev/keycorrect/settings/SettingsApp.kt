@@ -95,6 +95,7 @@ fun SettingsApp(
                 SettingsDestination.Setup ->
                     SetupScreen(padding, status, onOpenKeyboardSettings, onChooseKeyboard)
                 SettingsDestination.Keyboard -> KeyboardSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.Editing -> EditingSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.TextCorrection ->
                     TextCorrectionScreen(padding, settings, onUpdate)
                 SettingsDestination.PersonalDictionary ->

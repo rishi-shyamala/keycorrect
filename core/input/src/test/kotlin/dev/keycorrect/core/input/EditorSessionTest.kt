@@ -28,8 +28,8 @@ class EditorSessionTest {
         val keys = mutableListOf<Pair<Int, Int>>()
         private val keyOfEvent = IdentityHashMap<KeyEvent, Pair<Int, Int>>()
 
-        fun newKeyEvent(action: Int, keyCode: Int): KeyEvent {
-            val event = KeyEvent(action, keyCode)
+        fun newKeyEvent(action: Int, keyCode: Int, metaState: Int): KeyEvent {
+            val event = KeyEvent(0L, 0L, action, keyCode, 0, metaState)
             keyOfEvent[event] = action to keyCode
             return event
         }
@@ -156,6 +156,28 @@ class EditorSessionTest {
             .containsExactly(down to KeyEvent.KEYCODE_DEL, up to KeyEvent.KEYCODE_DEL)
             .inOrder()
         assertThat(fake.calls.filter { it.startsWith("commitText") }).isEmpty()
+    }
+
+    @Test
+    fun aShiftedKeyIsSentWithShiftHeld() {
+        // EditText selects with arrows only while it has seen Shift go down.
+        session.sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_SHIFT_ON)
+        assertThat(fake.keys)
+            .containsExactly(
+                down to KeyEvent.KEYCODE_SHIFT_LEFT,
+                down to KeyEvent.KEYCODE_DPAD_LEFT,
+                up to KeyEvent.KEYCODE_DPAD_LEFT,
+                up to KeyEvent.KEYCODE_SHIFT_LEFT,
+            )
+            .inOrder()
+    }
+
+    @Test
+    fun anUnshiftedKeyIsSentAlone() {
+        session.sendKey(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.META_CTRL_ON)
+        assertThat(fake.keys)
+            .containsExactly(down to KeyEvent.KEYCODE_DPAD_LEFT, up to KeyEvent.KEYCODE_DPAD_LEFT)
+            .inOrder()
     }
 
     @Test

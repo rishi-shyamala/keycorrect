@@ -23,7 +23,9 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -44,6 +46,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /** Enough for every label of a layer in each shift state, so drawing never re-measures text. */
 private const val TEXT_CACHE_SIZE = 256
+
+/** Backspace swipe travel per further word, in dp. */
+private const val WORD_STEP_DP = 40f
 
 /**
  * Draws every key of [layer] in a single Canvas and handles multi-touch input.
@@ -68,10 +73,14 @@ internal fun KeyboardSurface(
     onGeometry: (KeyboardGeometry) -> Unit,
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
+    gestures: KeyGestures,
     modifier: Modifier = Modifier,
+    terminalModifiers: TerminalModifiers? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val view = LocalView.current
+    val density = LocalDensity.current
+    val touchSlop by rememberUpdatedState(LocalViewConfiguration.current.touchSlop)
     val textMeasurer = rememberTextMeasurer(cacheSize = TEXT_CACHE_SIZE)
     val currentOnKey by rememberUpdatedState(onKey)
     val currentOnGeometry by rememberUpdatedState(onGeometry)
@@ -79,6 +88,8 @@ internal fun KeyboardSurface(
     val currentOnShiftUp by rememberUpdatedState(onShiftUp)
     val currentSettings by rememberUpdatedState(settings)
     val currentShowPreviews by rememberUpdatedState(showPreviews)
+    val currentGestures by rememberUpdatedState(gestures)
+    val currentDensity by rememberUpdatedState(density)
     val currentFeedback by rememberUpdatedState(feedback)
     var size by remember { mutableStateOf(IntSize.Zero) }
     val geometry =
@@ -117,6 +128,29 @@ internal fun KeyboardSurface(
                 override fun onShiftDown() = currentOnShiftDown()
 
                 override fun onShiftUp() = currentOnShiftUp()
+
+                override val gestures: KeyGestures
+                    get() = currentGestures
+
+                override val spacebarCursor: Boolean
+                    get() = currentSettings.spacebarCursor
+
+                override val backspaceSwipe: Boolean
+                    get() = currentSettings.backspaceSwipe
+
+                override val slopPx: Float
+                    get() = touchSlop
+
+                override val cursorStepPx: Float
+                    get() = currentDensity.density * currentSettings.cursorSpeed.stepDp
+
+                override val lineStepPx: Float
+                    get() = currentDensity.density * currentSettings.keyHeightDp
+
+                override val wordStepPx: Float
+                    get() = currentDensity.density * WORD_STEP_DP
+
+                override fun onGestureTick() = currentFeedback.haptic(view, currentSettings)
             }
         }
 
@@ -186,8 +220,9 @@ internal fun KeyboardSurface(
             val key = slot.key
             if (key.isSpacer) continue
             val isPressed = slot.index in pressed
+            val latch = latchOf(key, terminalModifiers)
             drawRoundRect(
-                color = keyFill(key, isPressed, shiftState, colors),
+                color = keyFill(key, isPressed, shiftState, colors, latch),
                 topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2),
                 size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
                 cornerRadius = radius,
@@ -195,7 +230,7 @@ internal fun KeyboardSurface(
             textCache.label(slot.index, key)?.let { layout ->
                 drawText(
                     layout,
-                    color = keyContent(key, isPressed, shiftState, colors),
+                    color = keyContent(key, isPressed, shiftState, colors, latch),
                     topLeft =
                         Offset(
                             slot.centerX - layout.size.width / 2f,

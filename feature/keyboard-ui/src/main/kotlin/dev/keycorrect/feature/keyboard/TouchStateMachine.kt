@@ -6,6 +6,7 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
+import kotlin.math.hypot
 
 /** Delay before a held repeatable key (backspace) starts repeating. */
 internal const val REPEAT_START_DELAY_MS = 400L
@@ -39,6 +40,37 @@ internal interface TouchHost {
 
     /** The shift key came up, or its touch was lost. */
     fun onShiftUp()
+
+    /** Receives the spacebar and backspace gestures. */
+    val gestures: KeyGestures
+        get() = KeyGestures.None
+
+    /** Spacebar drag/hold gestures are on; off, space is a plain key. */
+    val spacebarCursor: Boolean
+        get() = false
+
+    /** Backspace swipe is on; off, backspace only taps and repeats. */
+    val backspaceSwipe: Boolean
+        get() = false
+
+    /** Finger travel (px) before a press becomes a drag or swipe. */
+    val slopPx: Float
+        get() = 0f
+
+    /** Spacebar travel (px) per character at a slow drag. */
+    val cursorStepPx: Float
+        get() = 1f
+
+    /** Spacebar travel (px) per line. */
+    val lineStepPx: Float
+        get() = 1f
+
+    /** Backspace swipe travel (px) per further word. */
+    val wordStepPx: Float
+        get() = 1f
+
+    /** A light haptic tick: a drag step, a swipe word, or a hold armed. */
+    fun onGestureTick() = Unit
 }
 
 /**
@@ -51,7 +83,15 @@ internal interface TouchHost {
  * - A key with popup entries opens its popup after [TouchHost.longPressDelayMs]; releasing over a
  *   cell commits that entry, and moving far below the key cancels it.
  * - A second finger going down dismisses an open popup; the first finger's release then types
- *   nothing.
+ *   nothing. Other fingers never affect a drag or swipe in progress.
+ * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] before the long-press
+ *   delay is a cursor drag ([CursorDragTracker]) and no space is typed. Held still for the delay it
+ *   is armed (a tick): moving then is a select drag, and releasing without moving calls
+ *   `onSpaceHold`. A plain tap types a space.
+ * - Backspace (with [TouchHost.backspaceSwipe]): it still deletes on press. Moving left past the
+ *   slop before the first repeat starts a swipe: the repeat stops, words = 1 + the extra leftward
+ *   travel / [TouchHost.wordStepPx] (0 back within the slop), and release commits if words > 0. A
+ *   lost touch ends a drag or swipe without committing.
  *
  * A host callback that throws (e.g. an input connection that died mid-keystroke) is logged and
  * dropped: it must not escape into the pointer-input loop and end it, which would leave the
@@ -72,6 +112,7 @@ internal class TouchStateMachine(
     private class Press(
         val slot: KeySlot,
         var x: Float,
+        var y: Float,
         val downX: Float,
         val downY: Float,
         val downTime: Long,
@@ -88,8 +129,31 @@ internal class TouchStateMachine(
         /** Set when a popup was cancelled: releasing then types nothing. */
         var cancelled = false
 
+        /** Where a space or backspace press has got to; [Gesture.None] for a plain press. */
+        var gesture = Gesture.None
+
+        /** Space: [deadline] is the hold arming rather than a popup. */
+        var holdPending = false
+
+        /** A repeat has fired, so a backspace can no longer become a swipe. */
+        var repeatFired = false
+
+        /** Space: set while the finger is dragging. */
+        var drag: CursorDragTracker? = null
+
+        /** Backspace swipe: the word count last reported. */
+        var swipeWords = 0
+
         val isShift: Boolean
             get() = slot.key.action == KeyAction.Shift
+    }
+
+    private enum class Gesture {
+        None,
+        CursorDrag,
+        HoldArmed,
+        SelectDrag,
+        BackspaceSwipe,
     }
 
     private val presses = HashMap<Long, Press>()
@@ -106,7 +170,13 @@ internal class TouchStateMachine(
         for ((id, press) in presses.entries.toList()) {
             val deadline = press.deadline ?: continue
             if (deadline > now || presses[id] !== press) continue
-            if (press.repeating) {
+            if (press.holdPending) {
+                press.deadline = null
+                press.holdPending = false
+                press.gesture = Gesture.HoldArmed
+                hostCall { host.onGestureTick() }
+            } else if (press.repeating) {
+                press.repeatFired = true
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
                 // doesn't delete a burst of characters when it catches up.
                 press.deadline = now + REPEAT_INTERVAL_MS
@@ -123,7 +193,7 @@ internal class TouchStateMachine(
         if (presses.containsKey(id)) cancel(id)
         val slot = geometry.hitTest(x, y) ?: return
         val key = slot.key
-        val press = Press(slot, x, x, y, clock())
+        val press = Press(slot, x, y, x, y, clock())
         // A second finger dismisses an open popup; it then types normally.
         cancelPopup()
         presses[id] = press
@@ -137,6 +207,10 @@ internal class TouchStateMachine(
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
             }
+            key.action == KeyAction.Space && host.spacebarCursor -> {
+                press.holdPending = true
+                press.deadline = clock() + host.longPressDelayMs
+            }
             key.popup.isNotEmpty() -> press.deadline = clock() + host.longPressDelayMs
         }
     }
@@ -145,6 +219,12 @@ internal class TouchStateMachine(
         onTimer()
         val press = presses[id] ?: return
         press.x = x
+        press.y = y
+        when (press.slot.key.action) {
+            KeyAction.Space -> if (host.spacebarCursor) moveSpace(press)
+            KeyAction.Backspace -> if (host.backspaceSwipe) moveBackspace(press)
+            else -> Unit
+        }
         val popup = touch.popup?.takeIf { it.owner == id } ?: return
         if (isFarBelow(y, popup.slot)) {
             cancelPopup()
@@ -161,6 +241,10 @@ internal class TouchStateMachine(
         val popup = touch.popup?.takeIf { it.owner == id }
         when {
             press.isShift -> hostCall { host.onShiftUp() }
+            press.gesture == Gesture.BackspaceSwipe ->
+                hostCall { host.gestures.onBackspaceSwipeEnd(press.swipeWords > 0) }
+            press.gesture == Gesture.HoldArmed -> hostCall { host.gestures.onSpaceHold() }
+            press.gesture != Gesture.None -> Unit
             popup != null -> {
                 touch.popup = null
                 hostCall { host.onKey(popup.entries[popup.highlighted].action, null) }
@@ -176,6 +260,9 @@ internal class TouchStateMachine(
         release(press)
         if (touch.popup?.owner == id) touch.popup = null
         if (press.isShift) hostCall { host.onShiftUp() }
+        if (press.gesture == Gesture.BackspaceSwipe) {
+            hostCall { host.gestures.onBackspaceSwipeEnd(false) }
+        }
     }
 
     /**
@@ -199,6 +286,48 @@ internal class TouchStateMachine(
         } catch (e: Exception) {
             // Type only: exception messages from the editor connection could contain user text.
             Log.w(TAG, "Host callback failed: ${e.javaClass.name}")
+        }
+    }
+
+    private fun moveSpace(press: Press) {
+        val drag = press.drag
+        if (drag == null) {
+            if (hypot(press.x - press.downX, press.y - press.downY) <= host.slopPx) return
+            // Past the slop: before the hold this is a cursor drag, after it a select drag.
+            press.gesture =
+                if (press.gesture == Gesture.HoldArmed) Gesture.SelectDrag else Gesture.CursorDrag
+            press.deadline = null
+            press.holdPending = false
+            press.drag =
+                CursorDragTracker(
+                    host.cursorStepPx,
+                    host.lineStepPx,
+                    press.downX,
+                    press.downY,
+                    press.downTime,
+                )
+        }
+        val steps = press.drag?.move(press.x, press.y, clock()) ?: return
+        val select = press.gesture == Gesture.SelectDrag
+        hostCall { host.gestures.onCursorDrag(steps.dx, steps.dy, select) }
+        hostCall { host.onGestureTick() }
+    }
+
+    private fun moveBackspace(press: Press) {
+        val left = press.downX - press.x
+        if (press.gesture == Gesture.None && !press.repeatFired && left > host.slopPx) {
+            press.gesture = Gesture.BackspaceSwipe
+            press.deadline = null
+            press.repeating = false
+        }
+        if (press.gesture == Gesture.BackspaceSwipe) {
+            val extra = left - host.slopPx
+            val words = if (extra < 0f) 0 else 1 + (extra / host.wordStepPx).toInt()
+            if (words != press.swipeWords) {
+                press.swipeWords = words
+                hostCall { host.gestures.onBackspaceSwipe(words) }
+                hostCall { host.onGestureTick() }
+            }
         }
     }
 

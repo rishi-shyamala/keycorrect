@@ -19,6 +19,7 @@ class BuiltInLayoutsTest {
             "bottom_text",
             "bottom_email",
             "bottom_url",
+            "terminal_row",
         )
 
     private fun rowUnits(row: ResolvedRow) = row.keys.sumOf { it.width.toDouble() }
@@ -238,5 +239,73 @@ class BuiltInLayoutsTest {
             assertThat(composer.compose(KeyboardSet.Default, id, options = opts))
                 .isEqualTo(composer.compose(KeyboardSet.Default, id))
         }
+    }
+
+    // Terminal row
+
+    private fun units(layer: KeyboardLayer) = layer.rows.sumOf { it.height.toDouble() }
+
+    @Test
+    fun terminalRowContent() {
+        val row = repository.get("terminal_row").rows("letters").single()
+        assertThat(row.keys.map { it.label })
+            .containsExactly("Esc", "Tab", "Ctrl", "Alt", "←", "↓", "↑", "→")
+            .inOrder()
+        assertThat(rowUnits(row)).isEqualTo(10.0)
+        assertThat(row.keys.map { it.action })
+            .containsExactly(
+                KeyAction.KeyCode(KeyCodes.ESCAPE),
+                KeyAction.KeyCode(KeyCodes.TAB),
+                KeyAction.Modifier(KeyModifier.Ctrl),
+                KeyAction.Modifier(KeyModifier.Alt),
+                KeyAction.KeyCode(KeyCodes.DPAD_LEFT),
+                KeyAction.KeyCode(KeyCodes.DPAD_DOWN),
+                KeyAction.KeyCode(KeyCodes.DPAD_UP),
+                KeyAction.KeyCode(KeyCodes.DPAD_RIGHT),
+            )
+            .inOrder()
+        val popups = row.keys.drop(4).map { it.popup.single().action }
+        assertThat(popups)
+            .containsExactly(
+                KeyAction.KeyCode(KeyCodes.MOVE_HOME),
+                KeyAction.KeyCode(KeyCodes.PAGE_DOWN),
+                KeyAction.KeyCode(KeyCodes.PAGE_UP),
+                KeyAction.KeyCode(KeyCodes.MOVE_END),
+            )
+            .inOrder()
+        assertThat(row.keys.map { it.description }.take(4))
+            .containsExactly("Escape", "Tab", "Control", "Alt")
+            .inOrder()
+    }
+
+    @Test
+    fun terminalRowIsOnlyPresentWithTheOptionAndOnEveryLayer() {
+        val set = KeyboardSet.Default
+        for (layerId in listOf(KeyboardSet.LETTERS, KeyboardSet.SYMBOLS, KeyboardSet.SYMBOLS2)) {
+            val plain = composer.compose(set, layerId)
+            val terminal =
+                composer.compose(set, layerId, options = ComposeOptions(terminalRow = true))
+            assertThat(plain.rows.flatMap { it.keys }.map { it.label }).doesNotContain("Esc")
+            assertThat(terminal.rows.first().keys.map { it.label }).contains("Esc")
+            assertThat(terminal.rows.drop(1)).isEqualTo(plain.rows)
+            assertThat(units(terminal)).isGreaterThan(units(plain))
+        }
+    }
+
+    @Test
+    fun terminalRowSitsAboveTheNumberRowAndAddsToTheHeight() {
+        val set = KeyboardSet.Default
+        val both =
+            composer.compose(
+                set,
+                KeyboardSet.LETTERS,
+                options = ComposeOptions(numberRow = true, terminalRow = true),
+            )
+        assertThat(both.rows[0].keys.first().label).isEqualTo("Esc")
+        assertThat(both.rows[1].keys.first().label).isEqualTo("1")
+        val rowHeight = repository.get("terminal_row").rows("letters").single().height
+        val withoutRow =
+            composer.compose(set, KeyboardSet.LETTERS, options = ComposeOptions(numberRow = true))
+        assertThat(units(both)).isWithin(1e-6).of(units(withoutRow) + rowHeight)
     }
 }

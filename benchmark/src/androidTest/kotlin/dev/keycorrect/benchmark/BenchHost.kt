@@ -1,6 +1,8 @@
 package dev.keycorrect.benchmark
 
+import dev.keycorrect.core.input.EditAction
 import dev.keycorrect.core.input.Graphemes
+import dev.keycorrect.core.input.Surrounding
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
@@ -78,6 +80,20 @@ class BenchEditor : TextEditor {
     }
 
     override fun performEnter() = Unit
+
+    override fun setSelection(start: Int, end: Int) {
+        cursor = end
+        compStart = -1
+        compEnd = -1
+    }
+
+    override fun sendKey(keyCode: Int, metaState: Int) = Unit
+
+    override fun contextMenuAction(action: EditAction): Boolean = false
+
+    override fun selectedText(maxChars: Int): CharSequence? = null
+
+    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? = null
 
     override fun cursorCapsMode(): Int = 0
 }

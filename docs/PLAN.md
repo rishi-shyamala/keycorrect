@@ -327,9 +327,9 @@ SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pai
 - Storage encrypted; history disabled entirely during direct boot and in incognito.
 
 ## 10. Text selection & editing
-- **Spacebar**: horizontal drag moves cursor by character with acceleration; vertical drag moves lines (where `TYPE_NULL`/terminal → arrow key events); long-press-then-drag enters selection mode (anchor at start). Second finger while dragging extends selection.
+- **Spacebar**: horizontal drag moves cursor by character with acceleration; vertical drag moves lines (where `TYPE_NULL`/terminal → arrow key events); long-press-then-drag enters selection mode (anchor at start); long-press released without moving opens the editing panel (P4, `docs/PHASE4.md`). Second finger while dragging extends selection.
 - **Backspace**: swipe left selects whole words back (preview highlight), release deletes; swipe back to cancel.
-- **Editing panel** (toolbar button): D-pad, word-jump, Home/End, select toggle (shift-anchored), select word / sentence / line / all, cut/copy/paste, undo/redo (own undo stack for our commits + `Ctrl+Z` key events fallback).
+- **Editing panel** (long-press on space; no toolbar, P4): D-pad, word-jump, Home/End, select toggle (shift-anchored), select word / sentence / line / all, cut/copy/paste, undo/redo (own undo stack for our commits + `Ctrl+Z` key events fallback).
 - **Selection strip**: when text is selected, the suggestion strip shows the selection with "expand to word/sentence", case toggle (Aa/AA/aa), and "send to engine" actions (fix spelling / rewrite via GENERATE engine).
 - Uses `getSurroundingText` (API 31), `setSelection`, `performContextMenuAction`, `deleteSurroundingTextInCodePoints`; grapheme-aware cursor moves (emoji, ZWJ sequences).
 
@@ -413,6 +413,7 @@ Tooling: Macrobenchmark + baseline profiles; microbenchmarks for decoder; `:tool
 | D10 ✅ | Raw-text buffer for engine finetuning | — | **On by default with a toggle**, encrypted, 7-day retention, never from sensitive fields. |
 | D11 | App identity | name & package id | "KeyCorrect", `dev.keycorrect` (placeholder — your call). |
 | D12 ✅ | Build environment | — | You install JDK 21 + Android cmdline tools/SDK/NDK; I verify versions (see `docs/SETUP.md`). |
+| P4 ✅ | Phase 4 entry points, defaults, delivery | — | Decided 2026-10-11, see `docs/PHASE4.md`: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; three PRs. |
 
 ## 17. Phased roadmap
 

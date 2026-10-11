@@ -1,5 +1,16 @@
 package dev.keycorrect.core.settings
 
+/** Spacebar cursor speed: [stepDp] is the finger travel per character at a slow drag. */
+enum class CursorSpeed(val stepDp: Float) {
+    Slow(SLOW_STEP_DP),
+    Normal(NORMAL_STEP_DP),
+    Fast(FAST_STEP_DP),
+}
+
+private const val SLOW_STEP_DP = 18f
+private const val NORMAL_STEP_DP = 12f
+private const val FAST_STEP_DP = 7f
+
 /** User-tunable keyboard behaviour. Every field has a safe default; see [sanitized]. */
 data class KeyboardSettings(
     /** Key height in dp, [KEY_HEIGHT_DP_RANGE]. */
@@ -50,6 +61,12 @@ data class KeyboardSettings(
     val hapticOnAutocorrect: Boolean = true,
     /** Distinct vibration when a finished word is not in any dictionary and wasn't corrected. */
     val hapticOnUnknownWord: Boolean = true,
+    /** Dragging on the spacebar moves the cursor; hold then drag selects (docs/PHASE4.md). */
+    val spacebarCursor: Boolean = true,
+    /** How far a spacebar drag moves per character. */
+    val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
+    /** Swiping left on backspace selects whole words and release deletes them. */
+    val backspaceSwipe: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =

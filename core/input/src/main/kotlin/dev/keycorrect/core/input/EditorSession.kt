@@ -1,5 +1,6 @@
 package dev.keycorrect.core.input
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -14,7 +15,11 @@ import android.view.inputmethod.InputConnection
 class EditorSession(
     private val connection: () -> InputConnection?,
     private val editorInfo: () -> EditorInfo?,
-    private val newKeyEvent: (action: Int, keyCode: Int) -> KeyEvent = ::KeyEvent,
+    private val newKeyEvent: (action: Int, keyCode: Int, metaState: Int) -> KeyEvent =
+        { action, code, meta ->
+            val now = SystemClock.uptimeMillis()
+            KeyEvent(now, now, action, code, 0, meta)
+        },
 ) : TextEditor {
     override fun commitText(text: CharSequence, newCursorPosition: Int) {
         connection()?.commitText(text, newCursorPosition)
@@ -111,12 +116,64 @@ class EditorSession(
         return ic.getCursorCapsMode(info.inputType)
     }
 
-    private fun sendKey(ic: InputConnection, keyCode: Int) {
-        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode))
+    override fun setSelection(start: Int, end: Int) {
+        connection()?.setSelection(start, end)
+    }
+
+    override fun sendKey(keyCode: Int, metaState: Int) {
+        val ic = connection() ?: return
+        sendKey(ic, keyCode, metaState)
+    }
+
+    override fun contextMenuAction(action: EditAction): Boolean {
+        val ic = connection() ?: return false
+        val id =
+            when (action) {
+                EditAction.Cut -> android.R.id.cut
+                EditAction.Copy -> android.R.id.copy
+                EditAction.Paste -> android.R.id.paste
+                EditAction.SelectAll -> android.R.id.selectAll
+            }
+        return ic.performContextMenuAction(id)
+    }
+
+    override fun selectedText(maxChars: Int): CharSequence? {
+        if (!readsAllowed()) return null
+        return connection()?.getSelectedText(0)?.let {
+            if (it.length > maxChars) it.subSequence(0, maxChars) else it
+        }
+    }
+
+    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? =
+        connection()
+            ?.takeIf { readsAllowed() }
+            ?.getSurroundingText(beforeLength, afterLength, 0)
+            ?.takeIf {
+                it.offset >= 0 &&
+                    it.selectionStart in 0..it.selectionEnd &&
+                    it.selectionEnd <= it.text.length
+            }
+            ?.let { Surrounding(it.text, it.selectionStart, it.selectionEnd, it.offset) }
+
+    /**
+     * With shift in [metaState] a real Shift key is held around the key: EditText's arrow-key
+     * handling selects only while it has seen Shift go down (it tracks the press in the text), not
+     * from the event's meta flag alone, which Chrome and terminals do honour.
+     */
+    private fun sendKey(ic: InputConnection, keyCode: Int, metaState: Int = 0) {
+        val shift = metaState and KeyEvent.META_SHIFT_ON != 0
+        if (shift)
+            ic.sendKeyEvent(
+                newKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT, SHIFT_META)
+            )
+        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_DOWN, keyCode, metaState))
+        ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, keyCode, metaState))
+        if (shift) ic.sendKeyEvent(newKeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SHIFT_LEFT, 0))
     }
 
     private companion object {
+        const val SHIFT_META = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+
         /** Longest grapheme cluster we expect (long ZWJ emoji sequences are ~11 code units+). */
         const val MAX_GRAPHEME_LOOKBEHIND = 32
     }

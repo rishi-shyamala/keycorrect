@@ -2,6 +2,8 @@ package dev.keycorrect.feature.keyboard
 
 import android.os.SystemClock
 import android.text.InputType
+import android.view.KeyEvent
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -87,6 +89,35 @@ class KeyboardController(
             wordFeedback::onWordFeedback,
         )
 
+    /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */
+    internal val terminalModifiers = TerminalModifiers(clock)
+
+    /** The latest selection the platform reported, as the editing UI needs it. */
+    internal var selection: EditorSelection by mutableStateOf(EditorSelection())
+        private set
+
+    internal val editing =
+        EditingController(
+            tracked,
+            input::endComposingForMove,
+            ::showPanel,
+            { selection },
+            { profile.sensitive },
+        )
+
+    /**
+     * Whether the selection strip replaces the predictions: a range is selected, the field is not
+     * sensitive, and no backspace swipe is previewing one. Derived, so a cursor move recomposes
+     * nothing.
+     */
+    val selectionStripVisible: Boolean by derivedStateOf {
+        !profile.sensitive && selection.known && !selection.collapsed && !editing.swipeActive
+    }
+
+    /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
+    val gestures: KeyGestures
+        get() = editing
+
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog
         get() = input.touchLog
@@ -106,6 +137,10 @@ class KeyboardController(
         get() = state.effectiveShift(shiftHeld)
 
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
+        private set
+
+    /** What fills the key area: the keys or a panel (Phase 4). */
+    var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
         private set
 
     var profile: FieldProfile by mutableStateOf(DEFAULT_PROFILE)
@@ -141,6 +176,7 @@ class KeyboardController(
         this.identity = identity
         this.profile = profile
         this.settings = settings
+        if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
         input.onStartInput(profile, settings, newField = !sameField)
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
@@ -151,8 +187,11 @@ class KeyboardController(
             updateAutoCapitalize()
             return
         }
+        panel = KeyboardPanel.Keys
+        editing.reset()
         shiftHeld = false
         shiftChorded = false
+        terminalModifiers.reset()
         variant =
             when (profile.kind) {
                 FieldKind.Email -> BottomRowVariant.Email
@@ -192,52 +231,67 @@ class KeyboardController(
      * key, null for repeats, popup entries and accessibility actions.
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
+        cancelSwipeFor(action)
         when (action) {
-            is KeyAction.Text -> {
-                markChord()
-                input.onText(state.transform(action), touch)
-                state = state.afterCharacter(shiftHeld)
-                updateAutoCapitalize()
-            }
+            is KeyAction.Text -> onTextKey(action, touch)
             KeyAction.Space -> {
                 markChord()
-                input.onSeparator(" ")
+                if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
                 state = state.afterCharacter(shiftHeld)
                 updateAutoCapitalize()
             }
             KeyAction.Backspace -> {
                 markChord()
-                input.onBackspace()
+                if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_DEL))) input.onBackspace()
                 updateAutoCapitalize()
             }
-            KeyAction.Enter -> {
-                markChord()
-                // Only a committed line break moves the cursor with a callback of its own. In a
-                // single-line field Enter is a key event the editor usually swallows, and an IME
-                // action does not edit the text.
-                val lineBreak = enterAction == EnterAction.NewLine && profile.multiLine
-                input.beforeEnter(lineBreak)
-                editor.performEnter()
-                if (lineBreak) ownEdits.onCommit(1)
-                updateAutoCapitalize()
-            }
+            KeyAction.Enter -> onEnterKey()
             KeyAction.Shift -> state = state.onShift(clock())
-            is KeyAction.SwitchLayer -> {
-                // A user-edited layout may name a layer that doesn't exist; stay put rather than
-                // crash the keyboard.
-                val next =
-                    runCatching { composer.compose(keyboardSet, action.layerId, variant, options) }
-                        .getOrNull() ?: return
-                input.onLayerSwitch()
-                shiftHeld = false
-                shiftChorded = false
-                state = state.withLayer(action.layerId)
-                layer = next
-                updateLayoutKey()
-                updateAutoCapitalize()
+            is KeyAction.SwitchLayer -> switchLayer(action.layerId)
+            is KeyAction.KeyCode -> {
+                markChord()
+                if (!sendWithModifiers(TerminalKey(action.code))) editing.sendRawKey(action.code)
             }
+            is KeyAction.Modifier -> terminalModifiers.onTap(action.modifier)
+            KeyAction.Emoji -> Unit // PR B: emoji panel
             KeyAction.None -> Unit
         }
+    }
+
+    private fun onTextKey(action: KeyAction.Text, touch: TouchPoint?) {
+        markChord()
+        val typed = state.transform(action)
+        if (!sendWithModifiers(keyCodeForText(typed))) input.onText(typed, touch)
+        state = state.afterCharacter(shiftHeld)
+        updateAutoCapitalize()
+    }
+
+    private fun onEnterKey() {
+        markChord()
+        if (sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_ENTER))) return
+        // Only a committed line break moves the cursor with a callback of its own. In a
+        // single-line field Enter is a key event the editor usually swallows, and an IME
+        // action does not edit the text.
+        val lineBreak = enterAction == EnterAction.NewLine && profile.multiLine
+        input.beforeEnter(lineBreak)
+        editor.performEnter()
+        if (lineBreak) ownEdits.onCommit(1)
+        updateAutoCapitalize()
+    }
+
+    private fun switchLayer(layerId: String) {
+        // A user-edited layout may name a layer that doesn't exist; stay put rather than crash
+        // the keyboard.
+        val next =
+            runCatching { composer.compose(keyboardSet, layerId, variant, options) }.getOrNull()
+                ?: return
+        input.onLayerSwitch()
+        shiftHeld = false
+        shiftChorded = false
+        state = state.withLayer(layerId)
+        layer = next
+        updateLayoutKey()
+        updateAutoCapitalize()
     }
 
     /**
@@ -276,6 +330,7 @@ class KeyboardController(
         composingEnd: Int = -1,
     ) {
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
+        selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
         when (val verdict = ownEdits.onUpdate(update)) {
             is UpdateVerdict.Own -> {
@@ -288,8 +343,23 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
+    /**
+     * Another finger's key during a backspace swipe would type over the previewed words: the swipe
+     * is cancelled first (its own release then changes nothing).
+     */
+    private fun cancelSwipeFor(action: KeyAction) {
+        if (editing.swipeActive && action != KeyAction.Backspace) editing.cancelSwipe()
+    }
+
+    /** Shows [panel] in the key area ([KeyboardPanel.Keys] returns to the keys). */
+    fun showPanel(panel: KeyboardPanel) {
+        this.panel = panel
+    }
+
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        selection = EditorSelection()
+        editing.reset()
         input.onFinishInput()
         ownEdits.reset()
     }
@@ -353,8 +423,28 @@ class KeyboardController(
 
     /** Layer (and number row) plus key height: touch offsets are only comparable within one. */
     private fun updateLayoutKey() {
-        val rows = if (options.numberRow) "+nr" else ""
+        val rows = (if (options.numberRow) "+nr" else "") + (if (options.terminalRow) "+tr" else "")
         input.setLayoutKey("${state.layerId}$rows@${settings.keyHeightDp}dp")
+    }
+
+    /**
+     * Sends [key] as a key event with the active terminal modifiers (and shift, if it needs it),
+     * clearing the one-shot ones; false (nothing sent) when no modifier is on in a terminal field,
+     * so the caller takes the normal path. A character with no key code still ends a one-shot
+     * modifier and is typed normally.
+     */
+    private fun sendWithModifiers(key: TerminalKey?): Boolean {
+        val modified = profile.kind == FieldKind.Terminal && terminalModifiers.active
+        if (modified) {
+            val meta = terminalModifiers.metaState
+            terminalModifiers.consume()
+            if (key != null) {
+                val shift =
+                    if (key.shift) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
+                editing.sendRawKey(key.code, meta or shift)
+            }
+        }
+        return modified && key != null
     }
 
     /** A key is committed while shift is held: shift applies to it and is released as a chord. */
@@ -372,7 +462,10 @@ class KeyboardController(
                 decimalNumber = profile.decimalNumber,
             )
         } else {
-            ComposeOptions(numberRow = settings.numberRow || profile.sensitive)
+            ComposeOptions(
+                numberRow = settings.numberRow || profile.sensitive,
+                terminalRow = profile.kind == FieldKind.Terminal,
+            )
         }
 
     /** Adopts [newOptions]; recomposes the current layer and the height if they changed. */

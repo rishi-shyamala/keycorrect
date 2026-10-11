@@ -32,6 +32,11 @@ fun HomeScreen(
             onClick = { onNavigate(SettingsDestination.Keyboard) },
         )
         NavRow(
+            title = stringResource(R.string.editing_title),
+            supportingText = stringResource(R.string.editing_summary),
+            onClick = { onNavigate(SettingsDestination.Editing) },
+        )
+        NavRow(
             title = stringResource(R.string.text_correction_title),
             supportingText = stringResource(R.string.text_correction_summary),
             onClick = { onNavigate(SettingsDestination.TextCorrection) },

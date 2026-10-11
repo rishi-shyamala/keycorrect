@@ -26,6 +26,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.keycorrect.core.layout.KeyAction
@@ -48,16 +49,7 @@ fun KeyboardScreen(
     // shift key is held, as a chord would type them.
     val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
-    val enterDescription = enterDescription(controller.enterAction, fallback = "Enter")
-    val showPreviews = settings.keyPreview && !controller.profile.sensitive
-    val layer = controller.layer
     val touch = remember { KeyboardTouchState() }
-    val onKey = remember(controller) { controller::onKey }
-    // Accessibility actions have no touch position.
-    val onSemanticKey = remember(controller) { { action: KeyAction -> controller.onKey(action) } }
-    val onGeometry = remember(controller) { controller::onGeometry }
-    val onShiftDown = remember(controller) { controller::onShiftDown }
-    val onShiftUp = remember(controller) { controller::onShiftUp }
     Column(
         modifier =
             modifier
@@ -74,29 +66,7 @@ fun KeyboardScreen(
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 SuggestionArea(controller, autofill)
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    KeyboardSurface(
-                        layer = layer,
-                        heightUnits = controller.heightUnits,
-                        shift = shift,
-                        enterLabel = enterLabel,
-                        settings = settings,
-                        showPreviews = showPreviews,
-                        feedback = feedback,
-                        touch = touch,
-                        onKey = onKey,
-                        onGeometry = onGeometry,
-                        onShiftDown = onShiftDown,
-                        onShiftUp = onShiftUp,
-                    )
-                    KeySemantics(
-                        layer = layer,
-                        shift = shift,
-                        enterDescription = enterDescription,
-                        onKey = onSemanticKey,
-                        modifier = Modifier.matchParentSize(),
-                    )
-                }
+                KeyArea(controller, settings, feedback, touch)
             }
             KeyOverlay(
                 touch = touch,
@@ -109,10 +79,70 @@ fun KeyboardScreen(
 }
 
 /**
+ * What fills the key area: the editing panel while it is open, else the keys (the other panels
+ * don't exist yet) with their accessibility nodes. Either way it is
+ * [KeyboardController.heightUnits] key heights tall, so nothing jumps when the panel opens.
+ */
+@Composable
+private fun KeyArea(
+    controller: KeyboardController,
+    settings: KeyboardSettings,
+    feedback: KeyFeedback,
+    touch: KeyboardTouchState,
+) {
+    if (controller.panel == KeyboardPanel.Editing) {
+        val view = LocalView.current
+        EditingPanel(
+            editing = controller.editing,
+            onPress = { feedback.haptic(view, settings) },
+            modifier =
+                Modifier.fillMaxWidth().height(settings.keyHeightDp.dp * controller.heightUnits),
+        )
+        return
+    }
+    val layer = controller.layer
+    val shift = remember(controller) { { controller.effectiveShift } }
+    val enterLabel = enterLabel(controller.enterAction)
+    val enterDescription = enterDescription(controller.enterAction, fallback = "Enter")
+    val onKey = remember(controller) { controller::onKey }
+    // Accessibility actions have no touch position.
+    val onSemanticKey = remember(controller) { { action: KeyAction -> controller.onKey(action) } }
+    val onGeometry = remember(controller) { controller::onGeometry }
+    val onShiftDown = remember(controller) { controller::onShiftDown }
+    val onShiftUp = remember(controller) { controller::onShiftUp }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        KeyboardSurface(
+            layer = layer,
+            heightUnits = controller.heightUnits,
+            shift = shift,
+            enterLabel = enterLabel,
+            settings = settings,
+            showPreviews = settings.keyPreview && !controller.profile.sensitive,
+            feedback = feedback,
+            touch = touch,
+            onKey = onKey,
+            onGeometry = onGeometry,
+            onShiftDown = onShiftDown,
+            onShiftUp = onShiftUp,
+            gestures = controller.gestures,
+            terminalModifiers = controller.terminalModifiers,
+        )
+        KeySemantics(
+            layer = layer,
+            shift = shift,
+            enterDescription = enterDescription,
+            onKey = onSemanticKey,
+            modifier = Modifier.matchParentSize(),
+            terminalModifiers = controller.terminalModifiers,
+        )
+    }
+}
+
+/**
  * Fixed-height area above the keys: autofill chips when there are any (they take priority), else
- * the prediction strip, else nothing. The height never changes, so the keys below don't jump. The
- * controller's strip is read inside [PredictionStrip] only, so a new suggestion recomposes that and
- * nothing else.
+ * the selection strip while a range is selected, else the prediction strip, else nothing. The
+ * height never changes, so the keys below don't jump. The controller's strip is read inside
+ * [PredictionStrip] only, so a new suggestion recomposes that and nothing else.
  */
 @Composable
 private fun SuggestionArea(controller: KeyboardController, autofill: InlineAutofillController?) {
@@ -120,6 +150,8 @@ private fun SuggestionArea(controller: KeyboardController, autofill: InlineAutof
         val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
         if (items.isNotEmpty()) {
             InlineSuggestionRow(items)
+        } else if (controller.selectionStripVisible) {
+            SelectionStrip(controller.editing)
         } else {
             PredictionStrip(
                 strip = { controller.strip },

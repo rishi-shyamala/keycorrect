@@ -330,4 +330,108 @@ class LayoutParserTest {
         val pad = parse(layout("""[["1"]]""", kind = "numpad"))
         assertThat(pad.bottomRow).isEqualTo(BottomRowMode.Included)
     }
+
+    // keycode, modifier, emoji
+
+    @Test
+    fun keycodeKeysResolveCodeLabelAndDescription() {
+        val k = key("""{"type":"keycode","code":"pageUp"}""")
+        assertThat(k.action).isEqualTo(KeyAction.KeyCode(KeyCodes.PAGE_UP))
+        assertThat(k.label).isEqualTo("PgUp")
+        assertThat(k.description).isEqualTo("Page up")
+        assertThat(k.style).isEqualTo(KeyStyle.Modifier)
+        assertThat(k.width).isEqualTo(1f)
+        val custom =
+            key("""{"type":"keycode","code":"escape","label":"Esc","description":"Leave"}""")
+        assertThat(custom.action).isEqualTo(KeyAction.KeyCode(KeyCodes.ESCAPE))
+        assertThat(custom.description).isEqualTo("Leave")
+        val codes =
+            mapOf(
+                "escape" to KeyCodes.ESCAPE,
+                "tab" to KeyCodes.TAB,
+                "left" to KeyCodes.DPAD_LEFT,
+                "right" to KeyCodes.DPAD_RIGHT,
+                "up" to KeyCodes.DPAD_UP,
+                "down" to KeyCodes.DPAD_DOWN,
+                "home" to KeyCodes.MOVE_HOME,
+                "end" to KeyCodes.MOVE_END,
+                "pageUp" to KeyCodes.PAGE_UP,
+                "pageDown" to KeyCodes.PAGE_DOWN,
+                "forwardDelete" to KeyCodes.FORWARD_DEL,
+            )
+        for ((name, code) in codes) {
+            assertThat(key("""{"type":"keycode","code":"$name"}""").action)
+                .isEqualTo(KeyAction.KeyCode(code))
+        }
+    }
+
+    @Test
+    fun keycodeErrors() {
+        assertThat(errorOf(layout("""[[{"type":"keycode"}]]"""))).contains("keys[0].code")
+        val unknown = errorOf(layout("""[["a",{"type":"keycode","code":"f13"}]]"""))
+        assertThat(unknown).contains("rows[0].keys[1].code")
+        assertThat(unknown).contains("unknown code 'f13'")
+        assertThat(errorOf(layout("""[[{"type":"char","label":"a","code":"tab"}]]""")))
+            .contains("keys[0].code")
+        assertThat(errorOf(layout("""[[{"type":"keycode","code":"tab","text":"x"}]]""")))
+            .contains("keys[0].text")
+    }
+
+    @Test
+    fun modifierKeys() {
+        val ctrl = key("""{"type":"modifier","modifier":"ctrl"}""")
+        assertThat(ctrl.action).isEqualTo(KeyAction.Modifier(KeyModifier.Ctrl))
+        assertThat(ctrl.label).isEqualTo("Ctrl")
+        assertThat(ctrl.description).isEqualTo("Control")
+        assertThat(ctrl.style).isEqualTo(KeyStyle.Modifier)
+        val alt = key("""{"type":"modifier","modifier":"alt","label":"⌥"}""")
+        assertThat(alt.action).isEqualTo(KeyAction.Modifier(KeyModifier.Alt))
+        assertThat(alt.label).isEqualTo("⌥")
+        assertThat(alt.description).isEqualTo("Alt")
+    }
+
+    @Test
+    fun modifierErrors() {
+        assertThat(errorOf(layout("""[[{"type":"modifier"}]]"""))).contains("keys[0].modifier")
+        assertThat(errorOf(layout("""[[{"type":"modifier","modifier":"meta"}]]""")))
+            .contains("unknown modifier 'meta'")
+        assertThat(errorOf(layout("""[[{"type":"shift","modifier":"ctrl"}]]""")))
+            .contains("keys[0].modifier")
+    }
+
+    @Test
+    fun emojiKey() {
+        val k = key("""{"type":"emoji"}""")
+        assertThat(k.action).isEqualTo(KeyAction.Emoji)
+        assertThat(k.description).isEqualTo("Emoji")
+    }
+
+    @Test
+    fun keycodeKeysTakeKeycodePopups() {
+        val k =
+            key(
+                """{"type":"keycode","code":"left","label":"←",""" +
+                    """"popup":[{"type":"keycode","code":"home","label":"Home"}]}"""
+            )
+        assertThat(k.popup.single().action).isEqualTo(KeyAction.KeyCode(KeyCodes.MOVE_HOME))
+        assertThat(k.hint).isEqualTo("Home")
+        // Popup entries may not be other types, and modifier/emoji keys take no popups.
+        assertThat(
+                errorOf(
+                    layout("""[[{"type":"keycode","code":"left","popup":[{"type":"modifier"}]}]]""")
+                )
+            )
+            .contains("popup[0].type")
+        for (type in listOf("modifier", "emoji")) {
+            assertThat(errorOf(layout("""[[{"type":"$type","modifier":"ctrl","popup":["x"]}]]""")))
+                .contains("keys[0].popup")
+        }
+    }
+
+    @Test
+    fun extraKindParsesAndDefaultsToIncludedBottomRow() {
+        val parsed = parse(layout("""[[{"type":"emoji"}]]""", kind = "extra"))
+        assertThat(parsed.kind).isEqualTo(LayoutKind.Extra)
+        assertThat(parsed.bottomRow).isEqualTo(BottomRowMode.Included)
+    }
 }

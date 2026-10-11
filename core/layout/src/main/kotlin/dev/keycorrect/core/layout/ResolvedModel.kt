@@ -15,8 +15,44 @@ sealed interface KeyAction {
 
     data class SwitchLayer(val layerId: String) : KeyAction
 
+    /**
+     * Sends a raw key event: the terminal row's Esc, Tab, arrows, Home/End, PgUp/PgDn. [code] is an
+     * Android `KeyEvent` key code (see [KeyCodes]).
+     */
+    data class KeyCode(val code: Int) : KeyAction
+
+    /** Ctrl or Alt for the next key: one-shot on a tap, locked on a double tap. */
+    data class Modifier(val modifier: KeyModifier) : KeyAction
+
+    /** Opens the emoji panel; a long-press opens the clipboard (Phase 4). */
+    data object Emoji : KeyAction
+
     /** A non-interactive gap. */
     data object None : KeyAction
+}
+
+enum class KeyModifier {
+    Ctrl,
+    Alt,
+}
+
+/**
+ * Android `KeyEvent` key codes used by layouts. They are fixed platform API values; this module is
+ * plain JVM, so they are repeated here rather than read from `android.view.KeyEvent`.
+ */
+object KeyCodes {
+    const val DPAD_UP = 19
+    const val DPAD_DOWN = 20
+    const val DPAD_LEFT = 21
+    const val DPAD_RIGHT = 22
+    const val TAB = 61
+    const val DEL = 67
+    const val PAGE_UP = 92
+    const val PAGE_DOWN = 93
+    const val ESCAPE = 111
+    const val FORWARD_DEL = 112
+    const val MOVE_HOME = 122
+    const val MOVE_END = 123
 }
 
 /** Visual class of a key, used for styling. */

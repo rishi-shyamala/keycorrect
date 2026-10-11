@@ -402,6 +402,28 @@ internal class PredictiveInput(
     }
 
     /**
+     * The keyboard is about to move the cursor or selection itself (a raw key, the spacebar cursor,
+     * the editing panel, a backspace swipe). Everything settles here rather than on the selection
+     * update: the tracker expects the update that finishing the composing region causes, and a move
+     * that leaves the cursor where it was causes no other, so waiting would leave a stale composing
+     * word (the next letter would then retype it).
+     *
+     * Unlike [onExternalChange], the word in progress is abandoned rather than learned from, and a
+     * held revert is dropped: a cursor move or a swipe says nothing about either (a swipe may be
+     * deleting the very word an undo just restored).
+     */
+    fun endComposingForMove() {
+        if (composing.isNotEmpty()) editor.finishComposingText()
+        dropPendingRevert()
+        abandonWord()
+        phrases.judgeTaken()
+        phrases.clear()
+        flushSentence(null)
+        resetWordState()
+        publish(StripModel.Empty)
+    }
+
+    /**
      * The cursor or text changed behind our back: the word in progress ends as it is and nothing
      * decoded so far applies any more. The text before the cursor is read afresh when [collapsed].
      */

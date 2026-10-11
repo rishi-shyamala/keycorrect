@@ -106,6 +106,10 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
   - The A* heap now keeps bounds inline.
   - Remaining decoder CPU is the beam search itself (`TrieSearch.expand`, heap): inherent to the
     algorithm.
+  - **2026-10-11, PR A (editing).** Nothing new on the hot paths. On the device the keystroke
+    benchmark stays at ~3.4 ms per ~480 keys (+~1 allocation per key, within noise), and the
+    decoder is unchanged. The selection strip is driven by `derivedStateOf`, so typing doesn't
+    recompose it.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
