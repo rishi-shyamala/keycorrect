@@ -169,6 +169,8 @@ Technical defaults (no objection raised):
   - The tabs moved into the strip area while the panel is open; it was empty there and the grid
     was cramped.
   - Search never types into the app.
+- **Default skin tone (user decision).** It stays an ordinary setting in device-protected storage,
+  treated like a theme preference. Per-emoji choices and recents stay in the encrypted DB.
 - **Cost on the Tab S9.** A cold panel open takes ~3.2 ms (catalog read) plus ~2–3.6 ms (glyph
   filter) in the background. The search index is built in that background load.
 
