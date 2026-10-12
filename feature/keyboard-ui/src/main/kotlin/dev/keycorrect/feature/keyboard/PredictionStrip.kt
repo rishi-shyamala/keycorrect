@@ -31,7 +31,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
@@ -154,7 +156,7 @@ private fun RowScope.Slot(
     }
     val canBlockSlot =
         blockable && (slot.kind == SlotKind.Suggestion || slot.kind == SlotKind.Autocorrect)
-    val description = stringResource(slot.labelRes(), slot.text)
+    val description = stringResource(slot.labelRes(), slot.label)
     val neverLabel = stringResource(R.string.strip_never_action, slot.insert)
     Box(
         modifier =
@@ -208,6 +210,7 @@ private fun RowScope.Slot(
                 slot.text,
                 color = color,
                 fontWeight = weight,
+                fontSize = if (slot.kind == SlotKind.Emoji) EmojiSlotSize else TextUnit.Unspecified,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -248,4 +251,7 @@ private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier)
 private const val PHRASE_HINT = " →"
 private val SlotCorner = 8.dp
 private val SlotPadding = 6.dp
+
+/** The emoji in the strip is drawn larger than the words around it. */
+private val EmojiSlotSize = 22.sp
 private val PromptButtonPadding = 14.dp

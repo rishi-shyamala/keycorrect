@@ -90,6 +90,8 @@ class KeyboardController(
             clock,
             wallClock,
             wordFeedback::onWordFeedback,
+            { emoji.catalog },
+            emoji::onEmojiUsed,
         )
 
     /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */

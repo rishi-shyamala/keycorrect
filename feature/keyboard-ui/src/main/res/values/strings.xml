@@ -76,4 +76,7 @@
     <string name="selection_case_description">Change case</string>
     <string name="selection_copy">Copy</string>
     <string name="selection_copy_description">Copy selection</string>
+
+    <!-- Emoji suggestion in the strip: %1$s is the emoji's name, e.g. "pizza". -->
+    <string name="strip_emoji">Emoji: %1$s</string>
 </resources>
