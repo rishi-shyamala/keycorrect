@@ -164,7 +164,7 @@ private fun EmptyMessage(text: Int) {
 
 /** The tab shown: the one chosen last, else Recents, else (with no recents yet) the first group. */
 private fun selectedTab(tabs: List<EmojiTab>, chosen: String?, hasRecents: Boolean): String =
-    tabs.firstOrNull { it.key == chosen }?.key
+    tabs.firstOrNull { it.key == chosen && (hasRecents || chosen != EmojiPanelState.RECENTS) }?.key
         ?: tabs[if (hasRecents) 0 else 1.coerceAtMost(tabs.lastIndex)].key
 
 /**

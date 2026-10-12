@@ -35,7 +35,10 @@ class AppEmojiEnvironment(
     private var recentValues by mutableStateOf(emptyList<String>())
     private var variantsVersion by mutableIntStateOf(0)
     private val variants = ConcurrentHashMap<String, String>()
-    private var started = false
+    @Volatile private var started = false
+
+    /** Bumped by [reloadHistory]: a load that began before it must not merge stale history back. */
+    @Volatile private var generation = 0
 
     /**
      * Guards read-modify-writes of [recentValues] (picks on the main thread, loads in the
@@ -54,17 +57,21 @@ class AppEmojiEnvironment(
         if (started) return
         started = true
         scope.launch(dispatcher) {
+            val loadGeneration = generation
             val store = runCatching(history).getOrNull()
             val saved = store?.let { runCatching { it.recents() }.getOrNull() }.orEmpty()
             // Picks made before the history arrived stay in front.
             synchronized(recentsLock) {
-                recentValues = (recentValues + saved).distinct().take(EmojiHistoryStore.MAX_RECENTS)
+                if (generation == loadGeneration) {
+                    recentValues =
+                        (recentValues + saved).distinct().take(EmojiHistoryStore.MAX_RECENTS)
+                }
             }
             val filtered = runCatching { EmojiGlyphFilter.filter(loadCatalog(), hasGlyph) }
             // A failed load is tried again the next time the keyboard is shown.
             if (filtered.isFailure) started = false
             filtered.getOrNull()?.let { catalog ->
-                if (store != null) loadVariants(store, catalog)
+                if (store != null && generation == loadGeneration) loadVariants(store, catalog)
                 // Builds the search index here, off the main thread: otherwise the first
                 // keystroke's strip (strongMatch) or the first search would build it.
                 catalog.byValue("")
@@ -112,6 +119,7 @@ class AppEmojiEnvironment(
      * rather than when the process ends.
      */
     suspend fun reloadHistory() {
+        generation++
         val store = runCatching(history).getOrNull()
         val saved = store?.let { runCatching { it.recents() }.getOrNull() }.orEmpty()
         val choices = store?.let { runCatching { it.preferredVariants() }.getOrNull() }.orEmpty()

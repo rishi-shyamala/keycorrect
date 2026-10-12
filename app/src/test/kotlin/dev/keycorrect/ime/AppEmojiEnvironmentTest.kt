@@ -131,4 +131,41 @@ class AppEmojiEnvironmentTest {
         assertThat(env.recents).isEmpty()
         assertThat(env.preferredVariant(thumbs)).isNull()
     }
+
+    @Test
+    fun aResetDuringTheFirstLoadIsNotUndoneByIt() = runTest {
+        store.recordUse(pizza, pizza)
+        store.setPreferredVariant(thumbs, thumbsLight)
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        // A store whose first recents() read waits: the load is in flight when the reset happens.
+        val slow =
+            object : dev.keycorrect.core.data.EmojiHistoryStore by store {
+                var first = true
+
+                override suspend fun recents(limit: Int): List<String> {
+                    val saved = store.recents(limit)
+                    if (first) {
+                        first = false
+                        release.await()
+                    }
+                    return saved
+                }
+            }
+        val env =
+            AppEmojiEnvironment(
+                scope,
+                { slow },
+                { catalog },
+                { true },
+                { recording },
+                UnconfinedTestDispatcher(scope.testScheduler),
+            )
+        env.start() // suspended inside recents(), holding the old history
+        store.clear()
+        env.reloadHistory()
+        release.complete(Unit)
+        scope.testScheduler.advanceUntilIdle()
+        assertThat(env.recents).isEmpty()
+        assertThat(env.preferredVariant(thumbs)).isNull()
+    }
 }
