@@ -174,6 +174,13 @@ Technical defaults (no objection raised):
 - **Cost on the Tab S9.** A cold panel open takes ~3.2 ms (catalog read) plus ~2–3.6 ms (glyph
   filter) in the background. The search index is built in that background load.
 
+## PR C decisions (user, 2026-10-12)
+
+- **Image clips are encrypted.** AES-GCM with a Keystore-backed key, like the database key, and
+  decrypted only when pasted, streamed through our non-exported content provider.
+- **Clearing the system clipboard after pasting a sensitive clip is off by default.** It is a
+  setting.
+
 ## Feature checklist (exit)
 
 - [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
