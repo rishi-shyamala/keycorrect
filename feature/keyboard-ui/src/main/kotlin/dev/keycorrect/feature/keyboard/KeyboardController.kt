@@ -24,6 +24,7 @@ import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.emoji.EmojiEnvironment
 import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
@@ -57,6 +58,8 @@ class KeyboardController(
      * [KeyFeedback.onWordEvent]).
      */
     wordFeedback: WordFeedback = WordFeedback.None,
+    /** The emoji catalog, recents and variant choices (Phase 4, PR B). */
+    internal val emoji: EmojiEnvironment = EmojiEnvironment.None,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
