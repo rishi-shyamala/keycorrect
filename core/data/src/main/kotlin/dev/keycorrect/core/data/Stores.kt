@@ -82,3 +82,44 @@ interface ShortcutStore {
     /** Emits the full list (sorted by trigger) now and after every change. */
     fun all(): Flow<List<Shortcut>>
 }
+
+/**
+ * Emoji recents and per-emoji variant choices, kept in the encrypted database. Pure usage history:
+ * callers record only when learning is on and incognito is off (the app wires a gate; see
+ * `GatedEmojiHistoryStore`). All calls are suspend functions that run off the main thread. Emoji
+ * values are user data and must never be logged.
+ */
+interface EmojiHistoryStore {
+    /** Up to [limit] (at most [MAX_RECENTS]) emoji values, most recently used first. */
+    suspend fun recents(limit: Int = MAX_RECENTS): List<String>
+
+    /**
+     * Notes that [emoji], the value actually inserted (for example a skin-tone variant), was used.
+     * [base] is the grid emoji the pick belongs to. Keeps at most [MAX_RECENTS] recents. Blank or
+     * oversized values are ignored.
+     */
+    suspend fun recordUse(emoji: String, base: String)
+
+    /** The remembered variant for the grid emoji [base], or null when none was chosen. */
+    suspend fun preferredVariant(base: String): String?
+
+    /** Remembers [variant] for [base]; null forgets the choice. */
+    suspend fun setPreferredVariant(base: String, variant: String?)
+
+    /** Forgets recents and variant choices last touched at or after [sinceMillis]. */
+    suspend fun clearSince(sinceMillis: Long)
+
+    /** Forgets all recents and variant choices. */
+    suspend fun clear()
+
+    companion object {
+        /** Recents kept; older ones are pruned on insert. */
+        const val MAX_RECENTS = 64
+
+        /** Longest accepted emoji / kaomoji value, in UTF-16 units. */
+        const val MAX_VALUE_LENGTH = 128
+
+        internal fun isValid(value: String): Boolean =
+            value.isNotBlank() && value.length <= MAX_VALUE_LENGTH
+    }
+}

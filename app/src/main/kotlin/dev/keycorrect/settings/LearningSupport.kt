@@ -86,7 +86,9 @@ internal fun LearningDataGate(
         LearningHostState.Unavailable ->
             StatusPanel(inline) {
                 UnavailableContent(
-                    onReset = { container.write(onFailure = onResetFailed) { host.resetAll() } }
+                    onReset = {
+                        container.write(onFailure = onResetFailed) { container.resetAllLearning() }
+                    }
                 )
             }
     }

@@ -268,6 +268,32 @@ class KeyCorrectDatabaseTest {
         assertThat(db.read { d -> columnNames(d, "shortcuts") }).contains("note")
     }
 
+    @Test
+    fun upgradeFromV3AddsEmojiTablesAndKeepsData() = runBlocking {
+        val upToV3 = Schema.MIGRATIONS.filter { it.to <= 3 }
+        val old = open(version = 3, migrations = upToV3)
+        SqlUserDictionaryStore(old).add("kept", 42)
+        SqlShortcutStore(old).put("omw", "On my way")
+        assertThat(old.read { d -> tableNames(d) }).containsNoneIn(Schema.EMOJI_TABLES)
+        old.close()
+
+        val upgraded = open()
+        assertThat(upgraded.read { d -> tableNames(d) })
+            .containsAtLeastElementsIn(Schema.EMOJI_TABLES)
+        val words = SqlUserDictionaryStore(upgraded)
+        words.load()
+        assertThat(words.snapshot["kept"]?.frequency).isEqualTo(42)
+        assertThat(SqlShortcutStore(upgraded).get("omw")?.expansion).isEqualTo("On my way")
+        val emoji = SqlEmojiHistoryStore(upgraded)
+        emoji.recordUse("😀", "😀")
+        assertThat(emoji.recents(5)).containsExactly("😀")
+    }
+
+    private fun tableNames(db: androidx.sqlite.db.SupportSQLiteDatabase) =
+        db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
+            buildList { while (c.moveToNext()) add(c.getString(0)) }
+        }
+
     private fun columnNames(db: androidx.sqlite.db.SupportSQLiteDatabase, table: String) =
         db.query("PRAGMA table_info($table)").use { c ->
             buildList { while (c.moveToNext()) add(c.getString(1)) }

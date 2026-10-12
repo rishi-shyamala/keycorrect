@@ -116,3 +116,66 @@ class InMemoryShortcutStore(private val clock: () -> Long = System::currentTimeM
 
     override fun all(): Flow<List<Shortcut>> = state.map { it.values.sortedBy(Shortcut::trigger) }
 }
+
+class InMemoryEmojiHistoryStore(private val clock: () -> Long = System::currentTimeMillis) :
+    EmojiHistoryStore {
+    private class Row(val base: String, val lastUsed: Long, val useCount: Int)
+
+    private class State(
+        val recents: Map<String, Row> = emptyMap(),
+        val variants: Map<String, Pair<String, Long>> = emptyMap(),
+    )
+
+    private val state = MutableStateFlow(State())
+
+    override suspend fun recents(limit: Int): List<String> =
+        state.value.recents.entries
+            .sortedByDescending { it.value.lastUsed }
+            .take(limit.coerceIn(0, EmojiHistoryStore.MAX_RECENTS))
+            .map { it.key }
+
+    override suspend fun recordUse(emoji: String, base: String) {
+        if (!EmojiHistoryStore.isValid(emoji) || !EmojiHistoryStore.isValid(base)) return
+        val now = clock()
+        state.update { s ->
+            // Strictly increasing so "most recent first" holds even within one millisecond.
+            val stamp =
+                maxOf(now, (s.recents.values.maxOfOrNull { it.lastUsed } ?: Long.MIN_VALUE) + 1)
+            val count = (s.recents[emoji]?.useCount ?: 0) + 1
+            val grown = s.recents + (emoji to Row(base, stamp, count))
+            val kept =
+                grown.entries
+                    .sortedByDescending { it.value.lastUsed }
+                    .take(EmojiHistoryStore.MAX_RECENTS)
+                    .associate { it.key to it.value }
+            State(kept, s.variants)
+        }
+    }
+
+    override suspend fun preferredVariant(base: String): String? = state.value.variants[base]?.first
+
+    override suspend fun setPreferredVariant(base: String, variant: String?) {
+        if (!EmojiHistoryStore.isValid(base)) return
+        if (variant != null && !EmojiHistoryStore.isValid(variant)) return
+        val now = clock()
+        state.update { s ->
+            State(
+                s.recents,
+                if (variant == null) s.variants - base else s.variants + (base to (variant to now)),
+            )
+        }
+    }
+
+    override suspend fun clearSince(sinceMillis: Long) {
+        state.update { s ->
+            State(
+                s.recents.filterValues { it.lastUsed < sinceMillis },
+                s.variants.filterValues { it.second < sinceMillis },
+            )
+        }
+    }
+
+    override suspend fun clear() {
+        state.value = State()
+    }
+}

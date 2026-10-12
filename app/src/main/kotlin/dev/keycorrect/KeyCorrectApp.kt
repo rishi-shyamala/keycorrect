@@ -3,23 +3,29 @@ package dev.keycorrect
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
+import dev.keycorrect.core.data.EmojiHistoryStore
 import dev.keycorrect.core.data.KeyCorrectDatabase
 import dev.keycorrect.core.data.ShortcutStore
+import dev.keycorrect.core.data.SqlEmojiHistoryStore
 import dev.keycorrect.core.data.SqlLearningStore
 import dev.keycorrect.core.data.SqlShortcutStore
 import dev.keycorrect.core.data.SqlUserDictionaryStore
 import dev.keycorrect.core.data.UserDictionaryStore
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyboardComposer
+import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.settings.SettingsRepository
 import dev.keycorrect.core.settings.SettingsStore
 import dev.keycorrect.ime.FlushReason
+import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 
 class KeyCorrectApp : Application() {
     lateinit var container: AppContainer
@@ -50,6 +56,42 @@ class AppContainer(private val context: Context) {
     val database: KeyCorrectDatabase by lazy { KeyCorrectDatabase.create(context) }
     val userDictionary: UserDictionaryStore by lazy { SqlUserDictionaryStore(database) }
     val shortcuts: ShortcutStore by lazy { SqlShortcutStore(database) }
+
+    private val emojiHistoryStore: EmojiHistoryStore by lazy { SqlEmojiHistoryStore(database) }
+
+    // Same gate as learning: recording needs learning on, incognito off, and known settings.
+    @Volatile private var emojiRecording = false
+    private val emojiGateStarted = lazy {
+        applicationScope.launch {
+            settingsRepository.settings.collect {
+                emojiRecording = it.learningEnabled && !it.incognito
+            }
+        }
+    }
+
+    /**
+     * Emoji recents and variant choices (encrypted). Records nothing in incognito or with learning
+     * off ([GatedEmojiHistoryStore]); cleared by "Forget recent learning" and "Reset all learning"
+     * ([resetAllLearning], [forgetLearningSince]) and by erasing personal data.
+     */
+    val emojiHistory: EmojiHistoryStore by lazy {
+        emojiGateStarted.value
+        GatedEmojiHistoryStore(emojiHistoryStore) { emojiRecording }
+    }
+
+    /** "Reset all learning": the learning data plus emoji recents and variant choices. */
+    suspend fun resetAllLearning() {
+        emojiHistoryStore.clear()
+        learningHost.resetAll()
+    }
+
+    /** "Forget recent learning": the learning from the last [minutes] and the emoji picks too. */
+    suspend fun forgetLearningSince(minutes: Int): ForgetResult {
+        emojiHistoryStore.clearSince(
+            wallClock() - TimeUnit.MINUTES.toMillis(minutes.coerceAtLeast(0).toLong())
+        )
+        return learningHost.forgetSince(minutes)
+    }
 
     /** Wall clock for learning events and the learning thread; one definition for both. */
     val wallClock: () -> Long = System::currentTimeMillis
