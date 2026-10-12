@@ -55,6 +55,9 @@ class AppEmojiEnvironment(
             val filtered = runCatching { EmojiGlyphFilter.filter(loadCatalog(), hasGlyph) }
             filtered.getOrNull()?.let { catalog ->
                 if (store != null) loadVariants(store, catalog)
+                // Builds the search index here, off the main thread: otherwise the first
+                // keystroke's strip (strongMatch) or the first search would build it.
+                catalog.byValue("")
                 loaded = catalog
             }
         }
