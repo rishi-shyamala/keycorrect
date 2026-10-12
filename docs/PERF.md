@@ -85,6 +85,8 @@ per-item cost. "Before" is this branch with the three perf commits reverted.
 | `DecoderBenchmark.composingPersonalized` (200) | 96.4 ms, 395k allocs | 69.1 ms, 185k allocs | 0.35 ms |
 | `KeystrokeBenchmark.cannedPredictor` (~480 keys) | 10.6 ms, 139k allocs | 3.3 ms, 48k allocs | ~7 µs |
 | `LearningBenchmark.applyWordEvents` (200 events) | 33.2 ms, 30k allocs | 33.2 ms, 28k allocs | 0.17 ms |
+| `EmojiBenchmark.readCatalog` (PR B) | — | 3.2 ms | once per process |
+| `EmojiBenchmark.filterByGlyph` (PR B) | — | 2.2–3.6 ms | once per process |
 
 The keystroke path gained more on the device (−68%) than on the desktop: ART doesn't remove the
 allocations HotSpot's escape analysis did. Decode stays far inside the §14 budget (≤8 ms p95).
@@ -110,6 +112,10 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
     benchmark stays at ~3.4 ms per ~480 keys (+~1 allocation per key, within noise), and the
     decoder is unchanged. The selection strip is driven by `derivedStateOf`, so typing doesn't
     recompose it.
+  - **2026-10-11, PR B (emoji).** A cold panel open costs ~6 ms on the device, in the
+    background. `strongMatch` is two hash lookups per keystroke; its index is warmed in the
+    background load. The keystroke benchmark has no catalog, so its 3.4 → 3.6 ms move with the
+    same allocation count is device noise.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
