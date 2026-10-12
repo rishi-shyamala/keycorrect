@@ -23,6 +23,12 @@ enum class SlotKind {
 
     /** A text-expansion shortcut. */
     Shortcut,
+
+    /**
+     * An emoji for the word being typed (an exact CLDR keyword). A tap replaces the word with it;
+     * it is never the autocorrect and learning is told nothing about it.
+     */
+    Emoji,
 }
 
 /**
@@ -36,6 +42,8 @@ data class StripSlot(
     val insert: String = text,
     /** Drawn bold: the slot holds what will be applied automatically. */
     val bold: Boolean = false,
+    /** What the accessibility label names: [text], or the emoji's CLDR name for an emoji slot. */
+    val label: String = text,
 )
 
 /**
@@ -72,7 +80,7 @@ data class StripModel(
 }
 
 /**
- * The accessibility label of this slot, a string resource taking [StripSlot.text]. A shortcut that
+ * The accessibility label of this slot, a string resource taking [StripSlot.label]. A shortcut that
  * would be applied on space reads as an autocorrection.
  */
 @StringRes
@@ -83,14 +91,20 @@ internal fun StripSlot.labelRes(): Int =
         SlotKind.Literal -> R.string.strip_literal
         SlotKind.Phrase -> R.string.strip_phrase
         SlotKind.Shortcut -> if (bold) R.string.strip_autocorrect else R.string.strip_shortcut
+        SlotKind.Emoji -> R.string.strip_emoji
     }
 
 /** Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested. */
+/** An emoji for the strip: the [form] to show and insert (the user's skin tone), and its [name]. */
+internal class EmojiSuggestion(val form: String, val name: String)
+
 internal object StripBuilder {
     /**
      * @param typed the composing word ("" for next-word predictions).
      * @param pending the candidate applied on space/punctuation (an autocorrect or an
      *   auto-expanding shortcut), or null.
+     * @param emoji the emoji a strong keyword match suggests for [typed], or null. It takes the
+     *   right slot, whatever was there, and is never the pending correction.
      * @param preview display text for a candidate's raw text (resolves shortcut variables).
      *
      * With a [pending] correction: centre = it, left = the literal, right = the phrase or the next
@@ -101,6 +115,7 @@ internal object StripBuilder {
         result: PredictResult,
         typed: String,
         pending: Candidate?,
+        emoji: EmojiSuggestion? = null,
         preview: (String) -> String,
     ): StripModel {
         val literalText = result.literal?.text ?: typed
@@ -125,7 +140,10 @@ internal object StripBuilder {
             left = others.getOrNull(1)?.let { slot(it, false, preview) }
             right = phrase ?: others.getOrNull(2)?.let { slot(it, false, preview) }
         }
-        return StripModel(left, centre, right)
+        val emojiSlot =
+            if (typed.isEmpty() || emoji == null) null
+            else StripSlot(emoji.form, SlotKind.Emoji, label = emoji.name)
+        return StripModel(left, centre, emojiSlot ?: right)
     }
 
     private fun literal(text: String) = StripSlot(text, SlotKind.Literal)

@@ -275,6 +275,7 @@ internal fun AppContainer.resetPersonalData(onDone: () -> Unit) {
         database.destroy()
         userDictionary.load()
         shortcuts.load()
+        emojiEnvironment.reloadHistory()
         onDone()
     }
 }

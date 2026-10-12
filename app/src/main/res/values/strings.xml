@@ -194,7 +194,7 @@
     <string name="learning_forget_24h">24 hours</string>
     <string name="learning_forget_action">Forget…</string>
     <string name="learning_forget_confirm_title">Forget the last %1$s?</string>
-    <string name="learning_forget_confirm_body">Words and corrections learned in that time are removed. Your personal dictionary entries and shortcuts that you added yourself are kept. This can\'t be undone.</string>
+    <string name="learning_forget_confirm_body">Words and corrections learned in that time, and recently used emoji, are removed. Your personal dictionary entries and shortcuts that you added yourself are kept. This can\'t be undone.</string>
     <string name="learning_forget_confirm">Forget</string>
     <string name="learning_forgot_prefix">Forgot: %1$s</string>
     <string name="learning_forgot_nothing">Nothing to forget from that time</string>
@@ -289,7 +289,7 @@
     <string name="learning_reset_title">Reset all learning</string>
     <string name="learning_reset_summary">Forget everything KeyCorrect learned from your typing, including stored sentences. Your personal dictionary words are kept.</string>
     <string name="learning_reset_action">Reset all learning</string>
-    <string name="learning_reset_body">This erases everything KeyCorrect learned from your typing: word frequencies, learned corrections, never-correct and never-suggest lists, typing accuracy data and stored sentences. Your personal dictionary and text shortcuts are kept. This can\'t be undone.</string>
+    <string name="learning_reset_body">This erases everything KeyCorrect learned from your typing: word frequencies, learned corrections, never-correct and never-suggest lists, typing accuracy data, stored sentences, and recently used emoji with their skin tone choices. Your personal dictionary and text shortcuts are kept. This can\'t be undone.</string>
     <string name="learning_reset_confirm">Reset</string>
     <string name="learning_reset_done">All learning was reset</string>
 
@@ -316,4 +316,18 @@
     <string name="editing_section_backspace">Backspace</string>
     <string name="editing_backspace_swipe">Swipe backspace to delete words</string>
     <string name="editing_backspace_swipe_summary">Swipe left on backspace to select words; let go to delete them.</string>
+
+    <string name="emoji_title">Emoji</string>
+    <string name="emoji_summary">Suggestions and default skin tone</string>
+    <string name="emoji_section_suggestions">Suggestions</string>
+    <string name="emoji_suggestions">Emoji suggestions</string>
+    <string name="emoji_suggestions_summary">Show an emoji next to the suggestions when a word you type clearly matches one, such as pizza.</string>
+    <string name="emoji_section_skin_tone">Default skin tone</string>
+    <string name="emoji_skin_tone_summary">Used for emoji that come in skin tones, unless you chose another tone for that emoji by holding it.</string>
+    <string name="emoji_tone_none">Default (yellow)</string>
+    <string name="emoji_tone_light">Light skin tone</string>
+    <string name="emoji_tone_medium_light">Medium-light skin tone</string>
+    <string name="emoji_tone_medium">Medium skin tone</string>
+    <string name="emoji_tone_medium_dark">Medium-dark skin tone</string>
+    <string name="emoji_tone_dark">Dark skin tone</string>
 </resources>

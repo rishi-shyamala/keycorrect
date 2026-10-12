@@ -8,7 +8,8 @@
     [
       { "type": "modeSwitch" },
       ",",
-      { "type": "space" },
+      { "type": "emoji" },
+      { "type": "space", "width": 4 },
       { "label": ".", "popup": ["?", "!", ",", ";", ":", "'", "\""] },
       { "type": "enter" },
     ],

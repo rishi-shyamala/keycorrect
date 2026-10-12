@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard.prediction
 
+import dev.keycorrect.core.emoji.Emoji
+import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.ComposingInput
@@ -76,6 +78,12 @@ internal class PredictiveInput(
     wallClock: () -> Long = System::currentTimeMillis,
     /** Told of word events that deserve a vibration, already filtered by the settings. */
     private val onWordFeedback: (FeedbackKind) -> Unit = {},
+    /** The emoji catalog, or null while it loads: the strip suggests no emoji without it. */
+    private val catalog: () -> EmojiCatalog? = { null },
+    /** An emoji tapped in the strip was inserted: (value, base), for the recents. */
+    private val onEmojiUsed: (String, String) -> Unit = { _, _ -> },
+    /** The form of a suggested emoji to show and insert (the user's skin tone or variant). */
+    private val emojiForm: (Emoji) -> String = { it.value },
 ) {
     /** The touches of recently finished words, for Phase 3. In memory only. */
     val touchLog = WordTouchLog()
@@ -444,7 +452,11 @@ internal class PredictiveInput(
         flushSentence(null)
         settleHeldRevert()
         retypeGuard = null // a strip tap moves on from the restored word, however it is settled
-        if (slot.kind == SlotKind.Literal) keepLiteral() else pick(slot)
+        when (slot.kind) {
+            SlotKind.Literal -> keepLiteral()
+            SlotKind.Emoji -> pickEmoji(slot)
+            else -> pick(slot)
+        }
     }
 
     /**
@@ -877,6 +889,39 @@ internal class PredictiveInput(
         requestNextWord()
     }
 
+    /**
+     * The emoji chip: the composing word is replaced by the emoji (and the usual space after a
+     * pick). Learning is told nothing: the word is not recorded as typed or corrected, so what
+     * stands for it in memory stays clean. There is no undo window either: one backspace deletes
+     * the emoji like any character (the cache drops a whole cluster), not restoring the word.
+     */
+    private fun pickEmoji(slot: StripSlot) {
+        if (composing.isEmpty()) return
+        composing.setLength(0)
+        touches.clear()
+        loop.advance()
+        latest = null
+        val trailingSpace = settings.autoSpaceAfterPick
+        editor.batchEdit {
+            editor.commitText(slot.insert)
+            if (trailingSpace) editor.commitText(" ")
+        }
+        cache.appendBefore(slot.insert)
+        if (trailingSpace) cache.appendBefore(" ")
+        abandonWord()
+        phrases.judgeTaken()
+        phrases.clear()
+        retypeGuard = null
+        restoredWord = null
+        // Recents and variant memory key on the grid emoji the form belongs to. Nothing is
+        // remembered where the field asks for no learning (incognito tabs and the like).
+        if (profile?.learningEnabled == true) {
+            onEmojiUsed(slot.insert, catalog()?.byValue(slot.insert)?.value ?: slot.insert)
+        }
+        publish(StripModel.Empty)
+        requestNextWord()
+    }
+
     private fun keepLiteral() {
         val typed = composing.toString()
         if (typed.isEmpty()) return
@@ -971,10 +1016,15 @@ internal class PredictiveInput(
                 visible,
                 typed,
                 pendingCorrection(visible, typed),
+                emojiFor(typed)?.let { EmojiSuggestion(emojiForm(it), it.name) },
                 env.expander::preview,
             )
         )
     }
+
+    /** The emoji a strong keyword match suggests for the composing [typed], if wanted. */
+    private fun emojiFor(typed: String): Emoji? =
+        if (typed.isEmpty() || !settings.emojiSuggestions) null else catalog()?.strongMatch(typed)
 
     // ------------------------------------------------------------------ context cache
 

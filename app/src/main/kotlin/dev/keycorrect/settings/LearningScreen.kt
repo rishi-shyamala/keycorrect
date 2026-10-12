@@ -188,7 +188,7 @@ private fun LearningBody(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 
-    ForgetSection(container, host, say, failed)
+    ForgetSection(container, say, failed)
 
     SectionHeader(stringResource(R.string.learning_section_learned))
     NavRow(
@@ -227,7 +227,7 @@ private fun LearningBody(
     SectionHeader(stringResource(R.string.learning_accuracy_title))
     AccuracyCard(summary.touch)
 
-    ResetSection(container, host, say, failed)
+    ResetSection(container, say, failed)
 }
 
 @Composable
@@ -240,7 +240,6 @@ private fun countSummary(text: String, count: Int): String =
 @Composable
 private fun ForgetSection(
     container: AppContainer,
-    host: LearningHost,
     say: (String) -> Unit,
     failed: String,
 ) {
@@ -298,7 +297,9 @@ private fun ForgetSection(
                         confirming = false
                         val minutes = ForgetWindows[selected]
                         scope.launch {
-                            val result = container.writeAndAwait { host.forgetSince(minutes) }
+                            val result = container.writeAndAwait {
+                                container.forgetLearningSince(minutes)
+                            }
                             say(
                                 result.fold(
                                     onSuccess = { forgetMessage(resources, it) },
@@ -434,7 +435,6 @@ private fun ProfileRow(profile: ProfileTouchStatistics) {
 @Composable
 private fun ResetSection(
     container: AppContainer,
-    host: LearningHost,
     say: (String) -> Unit,
     failed: String,
 ) {
@@ -470,7 +470,7 @@ private fun ResetSection(
                     onClick = {
                         confirming = false
                         scope.launch {
-                            val result = container.writeAndAwait { host.resetAll() }
+                            val result = container.writeAndAwait { container.resetAllLearning() }
                             say(
                                 if (result.isSuccess)
                                     resources.getString(R.string.learning_reset_done)

@@ -60,6 +60,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             learning = learningHost,
             wallClock = appContainer.wallClock,
             wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
+            emoji = appContainer.emojiEnvironment,
         )
     }
 
@@ -143,6 +144,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
         super.onStartInputView(editorInfo, restarting)
+        // Loads the emoji catalog in the background, once per process.
+        appContainer.emojiEnvironment.start()
         controller.onStartInput(
             FieldProfile.from(editorInfo),
             settingsFlow.value,

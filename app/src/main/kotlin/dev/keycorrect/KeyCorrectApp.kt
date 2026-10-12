@@ -3,23 +3,32 @@ package dev.keycorrect
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.graphics.Paint
+import dev.keycorrect.core.data.EmojiHistoryStore
 import dev.keycorrect.core.data.KeyCorrectDatabase
 import dev.keycorrect.core.data.ShortcutStore
+import dev.keycorrect.core.data.SqlEmojiHistoryStore
 import dev.keycorrect.core.data.SqlLearningStore
 import dev.keycorrect.core.data.SqlShortcutStore
 import dev.keycorrect.core.data.SqlUserDictionaryStore
 import dev.keycorrect.core.data.UserDictionaryStore
+import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyboardComposer
+import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.settings.SettingsRepository
 import dev.keycorrect.core.settings.SettingsStore
+import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
+import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 
 class KeyCorrectApp : Application() {
     lateinit var container: AppContainer
@@ -51,6 +60,66 @@ class AppContainer(private val context: Context) {
     val userDictionary: UserDictionaryStore by lazy { SqlUserDictionaryStore(database) }
     val shortcuts: ShortcutStore by lazy { SqlShortcutStore(database) }
 
+    private val emojiHistoryStore: EmojiHistoryStore by lazy { SqlEmojiHistoryStore(database) }
+
+    // Same gate as learning: recording needs learning on, incognito off, and known settings.
+    @Volatile private var emojiRecording = false
+    private val emojiGateStarted = lazy {
+        applicationScope.launch {
+            settingsRepository.settings.collect {
+                emojiRecording = it.learningEnabled && !it.incognito
+            }
+        }
+    }
+
+    /**
+     * Emoji recents and variant choices (encrypted). Records nothing in incognito or with learning
+     * off ([GatedEmojiHistoryStore]); cleared by "Forget recent learning" and "Reset all learning"
+     * ([resetAllLearning], [forgetLearningSince]) and by erasing personal data.
+     */
+    val emojiHistory: EmojiHistoryStore by lazy {
+        emojiGateStarted.value
+        GatedEmojiHistoryStore(emojiHistoryStore) { emojiRecording }
+    }
+
+    /**
+     * The emoji catalog (loaded once per process, on first use of the keyboard), recents and
+     * variant choices, shared by every keyboard instance. Start it with
+     * [AppEmojiEnvironment.start].
+     */
+    val emojiEnvironment: AppEmojiEnvironment by lazy {
+        AppEmojiEnvironment(
+            scope = applicationScope,
+            history = { emojiHistory },
+            loadCatalog = {
+                context.assets.open(EMOJI_ASSET).use { EmojiCatalog.read(it.buffered()) }
+            },
+            hasGlyph = Paint()::hasGlyph,
+            recording = { emojiRecording },
+        )
+    }
+
+    /** "Reset all learning": the learning data plus emoji recents and variant choices. */
+    suspend fun resetAllLearning() {
+        // Learning first: this also recovers an unavailable store, which a broken database must
+        // not block.
+        learningHost.resetAll()
+        runCatching { emojiHistoryStore.clear() }
+        emojiEnvironment.reloadHistory()
+    }
+
+    /** "Forget recent learning": the learning from the last [minutes] and the emoji picks too. */
+    suspend fun forgetLearningSince(minutes: Int): ForgetResult {
+        val result = learningHost.forgetSince(minutes)
+        runCatching {
+            emojiHistoryStore.clearSince(
+                wallClock() - TimeUnit.MINUTES.toMillis(minutes.coerceAtLeast(0).toLong())
+            )
+        }
+        emojiEnvironment.reloadHistory()
+        return result
+    }
+
     /** Wall clock for learning events and the learning thread; one definition for both. */
     val wallClock: () -> Long = System::currentTimeMillis
 
@@ -81,6 +150,8 @@ class AppContainer(private val context: Context) {
         if (learningHostLazy.isInitialized()) learningHost.requestFlush(FlushReason.TrimMemory)
     }
 }
+
+private const val EMOJI_ASSET = "emoji/emoji_en.kce"
 
 val Context.appContainer: AppContainer
     get() = (applicationContext as KeyCorrectApp).container

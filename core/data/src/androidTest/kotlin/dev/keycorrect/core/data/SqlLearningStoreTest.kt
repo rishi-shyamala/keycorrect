@@ -50,14 +50,15 @@ class SqlLearningStoreTest {
             opened += it
         }
 
-    @Before fun setUp() = runBlocking { open().destroy() }
+    @Before fun setUp() = runBlocking<Unit> { open().destroy() }
 
     @After
-    fun tearDown() = runBlocking {
-        opened.forEach { it.close() }
-        opened.first().destroy()
-        Unit
-    }
+    fun tearDown() =
+        runBlocking<Unit> {
+            opened.forEach { it.close() }
+            opened.first().destroy()
+            Unit
+        }
 
     private fun small() =
         PersistedLearning(
@@ -70,238 +71,253 @@ class SqlLearningStoreTest {
         )
 
     @Test
-    fun loadIsNullBeforeFirstSave() = runBlocking {
-        assertThat(SqlLearningStore(open()).load()).isNull()
-    }
+    fun loadIsNullBeforeFirstSave() =
+        runBlocking<Unit> {
+            assertThat(SqlLearningStore(open()).load()).isNull()
+        }
 
     @Test
-    fun defaultStateRoundTripsIncludingSentinels() = runBlocking {
-        val store = SqlLearningStore(open())
-        val empty = PersistedLearning()
-        store.save(empty)
-        assertThat(store.load()).isEqualTo(empty)
-    }
+    fun defaultStateRoundTripsIncludingSentinels() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            val empty = PersistedLearning()
+            store.save(empty)
+            assertThat(store.load()).isEqualTo(empty)
+        }
 
     @Test
-    fun saveReplacesPreviousState() = runBlocking {
-        val store = SqlLearningStore(open())
-        store.save(small())
-        val second =
-            small().copy(ngrams = listOf(NgramRow(1, "other", 1.0, 1)), sentences = emptyList())
-        store.save(second)
-        assertThat(store.load()).isEqualTo(second)
-    }
+    fun saveReplacesPreviousState() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            store.save(small())
+            val second =
+                small().copy(ngrams = listOf(NgramRow(1, "other", 1.0, 1)), sentences = emptyList())
+            store.save(second)
+            assertThat(store.load()).isEqualTo(second)
+        }
 
     @Test
-    fun largeStateRoundTripsAndIsFast() = runBlocking {
-        val db = open()
-        val store = SqlLearningStore(db)
-        val state = largeState()
-        val rows =
-            state.ngrams.size +
-                state.corrections.size +
-                state.touch.size +
-                state.sentences.size +
-                state.rankerWeights.size
+    fun largeStateRoundTripsAndIsFast() =
+        runBlocking<Unit> {
+            val db = open()
+            val store = SqlLearningStore(db)
+            val state = largeState()
+            val rows =
+                state.ngrams.size +
+                    state.corrections.size +
+                    state.touch.size +
+                    state.sentences.size +
+                    state.rankerWeights.size
 
-        val saveMs = measureTimeMillis { store.save(state) }
-        var loaded: PersistedLearning? = null
-        val loadMs = measureTimeMillis { loaded = store.load() }
-        // Second save over existing rows (DELETE + INSERT path).
-        val resaveMs = measureTimeMillis { store.save(state) }
-        Log.i(
-            "KeyCorrectPerf",
-            "learning rows=$rows save=${saveMs}ms resave=${resaveMs}ms load=${loadMs}ms",
-        )
-        println("KeyCorrectPerf rows=$rows save=${saveMs}ms resave=${resaveMs}ms load=${loadMs}ms")
-
-        assertThat(loaded).isEqualTo(state)
-
-        // Survives close/reopen.
-        db.close()
-        assertThat(SqlLearningStore(open()).load()).isEqualTo(state)
-        // Generous bound; real numbers are logged for the report.
-        assertThat(saveMs).isLessThan(30_000)
-    }
-
-    @Test
-    fun sentencesPersistAreEncryptedAndClearedByClear() = runBlocking {
-        val db = open()
-        val store = SqlLearningStore(db)
-        store.save(small())
-        assertThat(store.load()!!.sentences.single().text).isEqualTo("secret sentence zebra")
-        db.close()
-        val bytes = String(db.file().readBytes(), Charsets.ISO_8859_1)
-        assertThat(bytes).doesNotContain("secret sentence zebra")
-        assertThat(bytes).doesNotContain("learning_sentences")
-        val header = bytes.substring(0, 15)
-        assertThat(header).isNotEqualTo("SQLite format 3")
-
-        val store2 = SqlLearningStore(open())
-        store2.clear()
-        assertThat(store2.load()).isNull()
-        val rowCount =
-            opened.last().read { d ->
-                d.query("SELECT COUNT(*) FROM learning_sentences").use {
-                    it.moveToFirst()
-                    it.getInt(0)
-                }
-            }
-        assertThat(rowCount).isEqualTo(0)
-    }
-
-    @Test
-    fun journalAppendSinceTruncate() = runBlocking {
-        val store = SqlLearningStore(open())
-        val updates =
-            listOf(
-                JournalEntry(100, LearningUpdate.BlockWord("foo")),
-                JournalEntry(200, LearningUpdate.WordUsed(listOf("a", "b%"), "c\u001Fd", 1.5f)),
-                JournalEntry(200, LearningUpdate.AutocorrectOutcome(true)),
-                JournalEntry(
-                    300,
-                    LearningUpdate.TouchEvidence("k", listOf(TouchSample('q', 0.25f, -0.5f))),
-                ),
+            val saveMs = measureTimeMillis { store.save(state) }
+            var loaded: PersistedLearning? = null
+            val loadMs = measureTimeMillis { loaded = store.load() }
+            // Second save over existing rows (DELETE + INSERT path).
+            val resaveMs = measureTimeMillis { store.save(state) }
+            Log.i(
+                "KeyCorrectPerf",
+                "learning rows=$rows save=${saveMs}ms resave=${resaveMs}ms load=${loadMs}ms",
             )
-        store.appendJournal(updates)
-        store.appendJournal(emptyList())
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(updates)
-        assertThat(store.journalSince(200)).isEqualTo(updates.drop(1))
-        assertThat(store.journalSince(301)).isEmpty()
-
-        store.truncateJournalBefore(200)
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(updates.drop(1))
-
-        // save() keeps the journal; clear() wipes it.
-        store.save(small())
-        assertThat(store.journalSince(Long.MIN_VALUE)).hasSize(3)
-        store.truncateJournalBefore(Long.MAX_VALUE)
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
-        store.appendJournal(updates)
-        store.clear()
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
-    }
-
-    @Test
-    fun commitSavesAppendsAndTrimsInOneTransaction() = runBlocking {
-        val store = SqlLearningStore(open())
-        val old = JournalEntry(100, LearningUpdate.BlockWord("old"))
-        val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
-        store.appendJournal(listOf(old))
-        store.commit(small(), listOf(fresh), truncateBefore = 200)
-        assertThat(store.load()).isEqualTo(small())
-        assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(fresh)
-        Unit
-    }
-
-    @Test
-    fun aFailingCommitLeavesStateAndJournalUntouched() = runBlocking {
-        val store = SqlLearningStore(open())
-        val kept = JournalEntry(100, LearningUpdate.BlockWord("kept"))
-        store.save(small())
-        store.appendJournal(listOf(kept))
-        // NaN binds as NULL and violates NOT NULL: the transaction must roll back as a whole.
-        val bad = small().copy(ngrams = listOf(NgramRow(1, "x", Double.NaN, 1)))
-        val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
-        val failedCommit = runCatching { store.commit(bad, listOf(fresh), Long.MAX_VALUE) }
-        assertThat(failedCommit.isFailure).isTrue()
-        val failedReplace = runCatching { store.replaceAll(bad, listOf(fresh)) }
-        assertThat(failedReplace.isFailure).isTrue()
-        assertThat(store.load()).isEqualTo(small())
-        assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(kept)
-        Unit
-    }
-
-    @Test
-    fun replaceAllReplacesStateAndTheWholeJournal() = runBlocking {
-        val store = SqlLearningStore(open())
-        store.save(small())
-        store.appendJournal(
-            listOf(
-                JournalEntry(100, LearningUpdate.BlockWord("a")),
-                JournalEntry(200, LearningUpdate.BlockWord("b")),
+            println(
+                "KeyCorrectPerf rows=$rows save=${saveMs}ms resave=${resaveMs}ms load=${loadMs}ms"
             )
-        )
-        val remaining = listOf(JournalEntry(100, LearningUpdate.BlockWord("a")))
-        val next = small().copy(sentences = emptyList())
-        store.replaceAll(next, remaining)
-        assertThat(store.load()).isEqualTo(next)
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(remaining)
-        store.replaceAll(next, emptyList())
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
-    }
+
+            assertThat(loaded).isEqualTo(state)
+
+            // Survives close/reopen.
+            db.close()
+            assertThat(SqlLearningStore(open()).load()).isEqualTo(state)
+            // Generous bound; real numbers are logged for the report.
+            assertThat(saveMs).isLessThan(30_000)
+        }
 
     @Test
-    fun userWordFlagsRoundTrip() = runBlocking {
-        val store = SqlLearningStore(open())
-        val words =
-            listOf(
-                UserWordRow("a", "a", 0, 1, removed = false, preExisting = false),
-                UserWordRow("b", "b", 1, 2, removed = true, preExisting = false),
-                UserWordRow("c", "c", 2, 3, removed = false, preExisting = true),
-                UserWordRow("d", "d", 0, 4, removed = true, preExisting = true),
-            )
-        store.save(small().copy(userWords = words))
-        assertThat(store.load()!!.userWords).isEqualTo(words)
-    }
+    fun sentencesPersistAreEncryptedAndClearedByClear() =
+        runBlocking<Unit> {
+            val db = open()
+            val store = SqlLearningStore(db)
+            store.save(small())
+            assertThat(store.load()!!.sentences.single().text).isEqualTo("secret sentence zebra")
+            db.close()
+            val bytes = String(db.file().readBytes(), Charsets.ISO_8859_1)
+            assertThat(bytes).doesNotContain("secret sentence zebra")
+            assertThat(bytes).doesNotContain("learning_sentences")
+            val header = bytes.substring(0, 15)
+            assertThat(header).isNotEqualTo("SQLite format 3")
 
-    @Test
-    fun clearLeavesUserDictionaryAndShortcutsIntact() = runBlocking {
-        val db = open()
-        val words = SqlUserDictionaryStore(db)
-        val shortcuts = SqlShortcutStore(db)
-        words.add("keepme", 55)
-        shortcuts.put("omw", "On my way")
-        val store = SqlLearningStore(db)
-        store.save(small())
-        store.appendJournal(listOf(JournalEntry(1, LearningUpdate.BlockWord("x"))))
-
-        store.clear()
-
-        assertThat(store.load()).isNull()
-        assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
-        assertThat(words.contains("keepme")).isTrue()
-        words.load()
-        assertThat(words.snapshot["keepme"]?.frequency).isEqualTo(55)
-        assertThat(shortcuts.get("omw")?.expansion).isEqualTo("On my way")
-    }
-
-    @Test
-    fun migrationV1ToV2KeepsUserWordsAndShortcuts() = runBlocking {
-        val v1 = open(version = 1, migrations = emptyList())
-        SqlUserDictionaryStore(v1).add("legacy", 42)
-        SqlShortcutStore(v1).put("sig", "Best,\n{date}")
-        assertThat(v1.read { d -> tableNames(d) }).doesNotContain("learning_ngrams")
-        v1.close()
-
-        val v2 = open()
-        assertThat(v2.read { d -> tableNames(d) })
-            .containsAtLeastElementsIn(Schema.LEARNING_V2_TABLES)
-        val words = SqlUserDictionaryStore(v2)
-        words.load()
-        assertThat(words.snapshot["legacy"]?.frequency).isEqualTo(42)
-        assertThat(SqlShortcutStore(v2).get("sig")?.expansion).isEqualTo("Best,\n{date}")
-
-        val store = SqlLearningStore(v2)
-        assertThat(store.load()).isNull()
-        store.save(small())
-        assertThat(store.load()).isEqualTo(small())
-        assertThat(words.contains("legacy")).isTrue()
-    }
-
-    @Test
-    fun freshDatabaseHasLearningTablesAndJournalIndex() = runBlocking {
-        val db = open()
-        val (tables, indexes) =
-            db.read { d ->
-                tableNames(d) to
-                    d.query("SELECT name FROM sqlite_master WHERE type = 'index'").use { c ->
-                        buildList { while (c.moveToNext()) add(c.getString(0)) }
+            val store2 = SqlLearningStore(open())
+            store2.clear()
+            assertThat(store2.load()).isNull()
+            val rowCount =
+                opened.last().read { d ->
+                    d.query("SELECT COUNT(*) FROM learning_sentences").use {
+                        it.moveToFirst()
+                        it.getInt(0)
                     }
-            }
-        assertThat(tables).containsAtLeastElementsIn(Schema.LEARNING_V2_TABLES)
-        assertThat(indexes).contains("learning_journal_time")
-    }
+                }
+            assertThat(rowCount).isEqualTo(0)
+        }
+
+    @Test
+    fun journalAppendSinceTruncate() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            val updates =
+                listOf(
+                    JournalEntry(100, LearningUpdate.BlockWord("foo")),
+                    JournalEntry(200, LearningUpdate.WordUsed(listOf("a", "b%"), "c\u001Fd", 1.5f)),
+                    JournalEntry(200, LearningUpdate.AutocorrectOutcome(true)),
+                    JournalEntry(
+                        300,
+                        LearningUpdate.TouchEvidence("k", listOf(TouchSample('q', 0.25f, -0.5f))),
+                    ),
+                )
+            store.appendJournal(updates)
+            store.appendJournal(emptyList())
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(updates)
+            assertThat(store.journalSince(200)).isEqualTo(updates.drop(1))
+            assertThat(store.journalSince(301)).isEmpty()
+
+            store.truncateJournalBefore(200)
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(updates.drop(1))
+
+            // save() keeps the journal; clear() wipes it.
+            store.save(small())
+            assertThat(store.journalSince(Long.MIN_VALUE)).hasSize(3)
+            store.truncateJournalBefore(Long.MAX_VALUE)
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
+            store.appendJournal(updates)
+            store.clear()
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
+        }
+
+    @Test
+    fun commitSavesAppendsAndTrimsInOneTransaction() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            val old = JournalEntry(100, LearningUpdate.BlockWord("old"))
+            val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
+            store.appendJournal(listOf(old))
+            store.commit(small(), listOf(fresh), truncateBefore = 200)
+            assertThat(store.load()).isEqualTo(small())
+            assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(fresh)
+            Unit
+        }
+
+    @Test
+    fun aFailingCommitLeavesStateAndJournalUntouched() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            val kept = JournalEntry(100, LearningUpdate.BlockWord("kept"))
+            store.save(small())
+            store.appendJournal(listOf(kept))
+            // NaN binds as NULL and violates NOT NULL: the transaction must roll back as a whole.
+            val bad = small().copy(ngrams = listOf(NgramRow(1, "x", Double.NaN, 1)))
+            val fresh = JournalEntry(500, LearningUpdate.BlockWord("fresh"))
+            val failedCommit = runCatching { store.commit(bad, listOf(fresh), Long.MAX_VALUE) }
+            assertThat(failedCommit.isFailure).isTrue()
+            val failedReplace = runCatching { store.replaceAll(bad, listOf(fresh)) }
+            assertThat(failedReplace.isFailure).isTrue()
+            assertThat(store.load()).isEqualTo(small())
+            assertThat(store.journalSince(Long.MIN_VALUE)).containsExactly(kept)
+            Unit
+        }
+
+    @Test
+    fun replaceAllReplacesStateAndTheWholeJournal() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            store.save(small())
+            store.appendJournal(
+                listOf(
+                    JournalEntry(100, LearningUpdate.BlockWord("a")),
+                    JournalEntry(200, LearningUpdate.BlockWord("b")),
+                )
+            )
+            val remaining = listOf(JournalEntry(100, LearningUpdate.BlockWord("a")))
+            val next = small().copy(sentences = emptyList())
+            store.replaceAll(next, remaining)
+            assertThat(store.load()).isEqualTo(next)
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEqualTo(remaining)
+            store.replaceAll(next, emptyList())
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
+        }
+
+    @Test
+    fun userWordFlagsRoundTrip() =
+        runBlocking<Unit> {
+            val store = SqlLearningStore(open())
+            val words =
+                listOf(
+                    UserWordRow("a", "a", 0, 1, removed = false, preExisting = false),
+                    UserWordRow("b", "b", 1, 2, removed = true, preExisting = false),
+                    UserWordRow("c", "c", 2, 3, removed = false, preExisting = true),
+                    UserWordRow("d", "d", 0, 4, removed = true, preExisting = true),
+                )
+            store.save(small().copy(userWords = words))
+            assertThat(store.load()!!.userWords).isEqualTo(words)
+        }
+
+    @Test
+    fun clearLeavesUserDictionaryAndShortcutsIntact() =
+        runBlocking<Unit> {
+            val db = open()
+            val words = SqlUserDictionaryStore(db)
+            val shortcuts = SqlShortcutStore(db)
+            words.add("keepme", 55)
+            shortcuts.put("omw", "On my way")
+            val store = SqlLearningStore(db)
+            store.save(small())
+            store.appendJournal(listOf(JournalEntry(1, LearningUpdate.BlockWord("x"))))
+
+            store.clear()
+
+            assertThat(store.load()).isNull()
+            assertThat(store.journalSince(Long.MIN_VALUE)).isEmpty()
+            assertThat(words.contains("keepme")).isTrue()
+            words.load()
+            assertThat(words.snapshot["keepme"]?.frequency).isEqualTo(55)
+            assertThat(shortcuts.get("omw")?.expansion).isEqualTo("On my way")
+        }
+
+    @Test
+    fun migrationV1ToV2KeepsUserWordsAndShortcuts() =
+        runBlocking<Unit> {
+            val v1 = open(version = 1, migrations = emptyList())
+            SqlUserDictionaryStore(v1).add("legacy", 42)
+            SqlShortcutStore(v1).put("sig", "Best,\n{date}")
+            assertThat(v1.read { d -> tableNames(d) }).doesNotContain("learning_ngrams")
+            v1.close()
+
+            val v2 = open()
+            assertThat(v2.read { d -> tableNames(d) })
+                .containsAtLeastElementsIn(Schema.LEARNING_V2_TABLES)
+            val words = SqlUserDictionaryStore(v2)
+            words.load()
+            assertThat(words.snapshot["legacy"]?.frequency).isEqualTo(42)
+            assertThat(SqlShortcutStore(v2).get("sig")?.expansion).isEqualTo("Best,\n{date}")
+
+            val store = SqlLearningStore(v2)
+            assertThat(store.load()).isNull()
+            store.save(small())
+            assertThat(store.load()).isEqualTo(small())
+            assertThat(words.contains("legacy")).isTrue()
+        }
+
+    @Test
+    fun freshDatabaseHasLearningTablesAndJournalIndex() =
+        runBlocking<Unit> {
+            val db = open()
+            val (tables, indexes) =
+                db.read { d ->
+                    tableNames(d) to
+                        d.query("SELECT name FROM sqlite_master WHERE type = 'index'").use { c ->
+                            buildList { while (c.moveToNext()) add(c.getString(0)) }
+                        }
+                }
+            assertThat(tables).containsAtLeastElementsIn(Schema.LEARNING_V2_TABLES)
+            assertThat(indexes).contains("learning_journal_time")
+        }
 
     private fun tableNames(db: androidx.sqlite.db.SupportSQLiteDatabase) =
         db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->

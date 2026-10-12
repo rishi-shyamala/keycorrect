@@ -65,23 +65,36 @@ class BuiltInLayoutsTest {
     }
 
     @Test
+    fun withoutTheEmojiKeyTheSpaceTakesItsWidth() {
+        val withKey = composer.compose(KeyboardSet.Default, "letters").rows.last()
+        val without =
+            composer
+                .compose(KeyboardSet.Default, "letters", options = ComposeOptions(emojiKey = false))
+                .rows
+                .last()
+        assertThat(without.keys.map { it.action }).doesNotContain(KeyAction.Emoji)
+        assertThat(without.width).isEqualTo(withKey.width)
+        assertThat(without.keys.first { it.action == KeyAction.Space }.width).isEqualTo(5f)
+    }
+
+    @Test
     fun autoLayersGetTheVariantBottomRow() {
         fun bottomKeys(variant: BottomRowVariant) =
             composer.compose(KeyboardSet.Default, "letters", variant).rows.last().keys
 
         assertThat(bottomKeys(BottomRowVariant.Text).map { it.label })
-            .containsExactly("?123", ",", "", ".", "↵")
+            .containsExactly("?123", ",", "☺", "", ".", "↵")
             .inOrder()
         assertThat(bottomKeys(BottomRowVariant.Email).map { it.label })
-            .containsExactly("?123", "@", "", ".", "↵")
+            .containsExactly("?123", "@", "☺", "", ".", "↵")
             .inOrder()
         val url = bottomKeys(BottomRowVariant.Url)
         assertThat(url.map { it.label })
-            .containsExactly("?123", "/", "", ".", ".com", "↵")
+            .containsExactly("?123", "/", "☺", "", ".", ".com", "↵")
             .inOrder()
-        assertThat(url[4].action).isEqualTo(KeyAction.Text(".com"))
-        assertThat(url[4].popup.map { it.label }).contains(".dev")
-        assertThat(url[2].width).isEqualTo(3f)
+        assertThat(url[5].action).isEqualTo(KeyAction.Text(".com"))
+        assertThat(url[5].popup.map { it.label }).contains(".dev")
+        assertThat(url[3].width).isEqualTo(2f) // space, one unit to the emoji key
     }
 
     @Test

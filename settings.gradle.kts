@@ -35,6 +35,8 @@ include(":core:designsystem")
 
 include(":core:dictionary")
 
+include(":core:emoji")
+
 include(":core:engine-api")
 
 include(":core:ime")
@@ -50,5 +52,7 @@ include(":core:settings")
 include(":feature:keyboard-ui")
 
 include(":tools:dictbuild")
+
+include(":tools:emojibuild")
 
 include(":tools:eval")

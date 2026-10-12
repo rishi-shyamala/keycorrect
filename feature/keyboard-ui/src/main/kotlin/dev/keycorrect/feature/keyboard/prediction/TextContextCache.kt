@@ -97,10 +97,26 @@ internal class TextContextCache(private val editor: TextEditor) {
 
     fun cursorInsideWord(): Boolean = afterKnown && after.isNotEmpty() && after[0].isLetterOrDigit()
 
-    /** True at the start of the field, after whitespace, or after opening punctuation. */
+    /**
+     * True at the start of the field, after whitespace, opening punctuation or an emoji (the end of
+     * a supplementary-plane character or of an emoji presentation selector).
+     */
     fun atWordBoundary(): Boolean {
         val c = text.lastOrNull() ?: return !beforeTruncated
-        return c.isWhitespace() || c in OPENING_PUNCTUATION
+        return c.isWhitespace() || c in OPENING_PUNCTUATION || endsInEmoji()
+    }
+
+    /**
+     * The text ends in an emoji: the variation selector or keycap that ends many, or any
+     * supplementary-plane character that is not a letter or digit (most emoji, ZWJ sequences,
+     * flags). A supplementary letter (𝓐) continues a word, as an ordinary letter would.
+     */
+    private fun endsInEmoji(): Boolean {
+        val c = text.last()
+        return c == EMOJI_PRESENTATION ||
+            c == KEYCAP ||
+            (c.isLowSurrogate() &&
+                !Character.isLetterOrDigit(Character.codePointBefore(text, text.length)))
     }
 
     /**
@@ -151,5 +167,10 @@ internal class TextContextCache(private val editor: TextEditor) {
         const val OPENING_PUNCTUATION = "([{\"'“‘¿¡"
     }
 }
+
+private const val EMOJI_PRESENTATION = '\uFE0F'
+
+/** Combining enclosing keycap, which ends keycap emoji (5️⃣). */
+private const val KEYCAP = '\u20E3'
 
 internal fun isApostrophe(c: Char) = c == '\'' || c == '’' || c == 'ʼ'

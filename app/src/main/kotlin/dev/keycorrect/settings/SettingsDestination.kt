@@ -17,6 +17,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Editing : SettingsDestination("editing", R.string.editing_title)
 
+    data object Emoji : SettingsDestination("emoji", R.string.emoji_title)
+
     data object TextCorrection :
         SettingsDestination("text_correction", R.string.text_correction_title)
 
@@ -56,6 +58,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 Setup,
                 Keyboard,
                 Editing,
+                Emoji,
                 TextCorrection,
                 PersonalDictionary,
                 Shortcuts,

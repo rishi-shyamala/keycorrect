@@ -38,6 +38,9 @@ enum class BottomRowVariant(val layoutId: String) {
 /**
  * [numberRow] prepends a row of digits to the letters layer.
  *
+ * [emojiKey] keeps the bottom row's emoji key; without it (sensitive fields) the key is dropped and
+ * its width goes to the space key, so the row keeps its width.
+ *
  * [terminalRow] puts the terminal extra-keys row (`terminal_row`) above the rows of every layer, so
  * it stays on screen when the layer changes.
  *
@@ -53,6 +56,7 @@ data class ComposeOptions(
     val signedNumber: Boolean = true,
     val decimalNumber: Boolean = true,
     val terminalRow: Boolean = false,
+    val emojiKey: Boolean = true,
 )
 
 /** Builds ready-to-draw [KeyboardLayer]s from layouts, adding bottom and number rows. */
@@ -81,11 +85,25 @@ class KeyboardComposer(private val repository: LayoutRepository) {
                 val own = layout.rows(layerId)
                 addAll(if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own)
                 if (layout.bottomRow == BottomRowMode.Auto) {
-                    addAll(repository.get(variant.layoutId).rows(layerId))
+                    val bottom = repository.get(variant.layoutId).rows(layerId)
+                    addAll(if (options.emojiKey) bottom else bottom.map(::withoutEmojiKey))
                 }
             }
             KeyboardLayer(layerId, rows)
         }
+
+    /** The row without its emoji key, the key's width given to the space key. */
+    private fun withoutEmojiKey(row: ResolvedRow): ResolvedRow {
+        val emoji = row.keys.firstOrNull { it.action == KeyAction.Emoji } ?: return row
+        val keys =
+            row.keys
+                .filter { it !== emoji }
+                .map {
+                    if (it.action == KeyAction.Space) it.copy(width = it.width + emoji.width)
+                    else it
+                }
+        return row.copy(keys = keys)
+    }
 
     private fun restrictNumpad(
         rows: List<ResolvedRow>,

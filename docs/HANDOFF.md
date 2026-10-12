@@ -125,6 +125,7 @@ core/engine-api      TextEngine contract (Generate/Score/Predict tiers), Predict
 core/dictionary      KCD1 mmap binary dictionary reader + writer (JVM)
 core/decoder         ClassicEngine: spatial model, A* trie search, back-off LM, autocorrect policy, contractions,
                      cognitive-misspelling rules, personalization terms, tie rule (JVM)
+core/emoji           Emoji catalog (Unicode 17.0 + CLDR 48.2 asset), search, strongMatch; FORMAT.md (JVM)
 core/learning        Events/updates contract, SentenceContext (context buckets, shared with the decoder),
                      OutcomeClassifier (PLAN §6.3), PersonalModel + persistence/journal (JVM)
 feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), controller, PredictiveInput
@@ -133,6 +134,7 @@ feature/keyboard-ui  Keyboard UI (single-canvas renderer, overlay, semantics), c
                      KeyFeedback; Phase 4: EditingController (spacebar cursor, backspace swipe, panel and
                      selection-strip actions), EditingPanel, SelectionStrip, TextUnits, TerminalModifiers
 tools/dictbuild      Offline: fetch sources → count n-grams → compile en_US.kcd (committed asset, 8.9 MB)
+tools/emojibuild     Offline: emoji-test.txt + CLDR annotations -> emoji_en.kce (committed asset)
 tools/eval           Offline harness: spatial typist, learn mode (simulated user), misspell mode
 build-logic          Convention plugins (android app/library/compose, jvm library, kotlin serialization, detekt)
 ```

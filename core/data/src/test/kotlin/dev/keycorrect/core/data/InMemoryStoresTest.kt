@@ -103,4 +103,79 @@ class InMemoryStoresTest {
             }
         assertThat(e.error).isEqualTo(ValidationError.EXPANSION_TOO_LONG)
     }
+
+    @Test
+    fun emojiRecentsAreMostRecentFirstWithCounts() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        store.recordUse("😀", "😀")
+        store.recordUse("👍🏽", "👍") // same millisecond on purpose
+        store.recordUse("🎉", "🎉")
+        assertThat(store.recents(10)).containsExactly("🎉", "👍🏽", "😀").inOrder()
+        store.recordUse("😀", "😀")
+        assertThat(store.recents(2)).containsExactly("😀", "🎉").inOrder()
+        assertThat(store.recents(0)).isEmpty()
+    }
+
+    @Test
+    fun emojiRecentsArePrunedToSixtyFour() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        for (i in 0 until 100) {
+            now += 10
+            store.recordUse("e$i", "e$i")
+        }
+        val all = store.recents(1_000)
+        assertThat(all).hasSize(EmojiHistoryStore.MAX_RECENTS)
+        assertThat(all.first()).isEqualTo("e99")
+        assertThat(all.last()).isEqualTo("e36")
+    }
+
+    @Test
+    fun allEmojiVariantChoicesAreReadAtOnce() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        store.setPreferredVariant("👍", "👍🏽")
+        store.setPreferredVariant("👋", "👋🏿")
+        store.setPreferredVariant("👋", null)
+        assertThat(store.preferredVariants()).containsExactly("👍", "👍🏽")
+    }
+
+    @Test
+    fun emojiVariantChoiceCanBeSetAndCleared() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        assertThat(store.preferredVariant("👍")).isNull()
+        store.setPreferredVariant("👍", "👍🏽")
+        assertThat(store.preferredVariant("👍")).isEqualTo("👍🏽")
+        store.setPreferredVariant("👍", "👍🏿")
+        assertThat(store.preferredVariant("👍")).isEqualTo("👍🏿")
+        store.setPreferredVariant("👍", null)
+        assertThat(store.preferredVariant("👍")).isNull()
+    }
+
+    @Test
+    fun emojiInvalidValuesAreIgnoredAndClearWorks() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        store.recordUse("", "x")
+        store.recordUse("  ", "x")
+        store.recordUse("x".repeat(EmojiHistoryStore.MAX_VALUE_LENGTH + 1), "x")
+        assertThat(store.recents(10)).isEmpty()
+        store.recordUse("😀", "😀")
+        store.setPreferredVariant("👍", "👍🏽")
+        store.clear()
+        assertThat(store.recents(10)).isEmpty()
+        assertThat(store.preferredVariant("👍")).isNull()
+    }
+
+    @Test
+    fun emojiClearSinceKeepsOlderEntries() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        now = 1_000
+        store.recordUse("old", "old")
+        store.setPreferredVariant("a", "a1")
+        now = 5_000
+        store.recordUse("new", "new")
+        store.setPreferredVariant("b", "b1")
+        store.clearSince(3_000)
+        assertThat(store.recents(10)).containsExactly("old")
+        assertThat(store.preferredVariant("a")).isEqualTo("a1")
+        assertThat(store.preferredVariant("b")).isNull()
+    }
 }

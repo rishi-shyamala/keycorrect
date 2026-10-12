@@ -13,11 +13,15 @@ class Migration(val from: Int, val to: Int, val migrate: (SupportSQLiteDatabase)
 
 internal object Schema {
     /** Current schema version. Bump together with a new entry in [MIGRATIONS]. */
-    const val VERSION = 3
+    const val VERSION = 4
 
     /** Ordered migrations. The database is created at v1 and migrated up, so there is one path. */
     val MIGRATIONS: List<Migration> =
-        listOf(Migration(1, 2, ::migrateV1ToV2), Migration(2, 3, ::migrateV2ToV3))
+        listOf(
+            Migration(1, 2, ::migrateV1ToV2),
+            Migration(2, 3, ::migrateV2ToV3),
+            Migration(3, 4, ::migrateV3ToV4),
+        )
 
     /** The frozen v1 DDL. Never edit; add a [Migration] instead. */
     fun createV1(db: SupportSQLiteDatabase) {
@@ -61,6 +65,22 @@ internal object Schema {
         db.execSQL(
             "CREATE TABLE learning_keeps (typed TEXT NOT NULL, corrected TEXT NOT NULL, " +
                 "count INTEGER NOT NULL, first_millis INTEGER NOT NULL, last_millis INTEGER NOT NULL)"
+        )
+    }
+
+    /** Tables created by [migrateV3ToV4]. */
+    val EMOJI_TABLES: List<String> = listOf("emoji_recents", "emoji_variants")
+
+    /** v4: emoji recents (one row per emoji value) and the chosen variant per grid emoji. */
+    fun migrateV3ToV4(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE emoji_recents (emoji TEXT NOT NULL PRIMARY KEY, base TEXT NOT NULL, " +
+                "last_used INTEGER NOT NULL, use_count INTEGER NOT NULL)"
+        )
+        db.execSQL("CREATE INDEX emoji_recents_last_used ON emoji_recents (last_used)")
+        db.execSQL(
+            "CREATE TABLE emoji_variants (base TEXT NOT NULL PRIMARY KEY, " +
+                "variant TEXT NOT NULL, updated_at INTEGER NOT NULL)"
         )
     }
 

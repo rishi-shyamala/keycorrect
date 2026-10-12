@@ -37,6 +37,11 @@ fun HomeScreen(
             onClick = { onNavigate(SettingsDestination.Editing) },
         )
         NavRow(
+            title = stringResource(R.string.emoji_title),
+            supportingText = stringResource(R.string.emoji_summary),
+            onClick = { onNavigate(SettingsDestination.Emoji) },
+        )
+        NavRow(
             title = stringResource(R.string.text_correction_title),
             supportingText = stringResource(R.string.text_correction_summary),
             onClick = { onNavigate(SettingsDestination.TextCorrection) },

@@ -76,4 +76,30 @@
     <string name="selection_case_description">Change case</string>
     <string name="selection_copy">Copy</string>
     <string name="selection_copy_description">Copy selection</string>
+
+    <!-- Emoji suggestion in the strip: %1$s is the emoji's name, e.g. "pizza". -->
+    <string name="strip_emoji">Emoji: %1$s</string>
+
+    <!-- Emoji panel (PR B). Tab names are accessibility descriptions of the category icons. -->
+    <string name="emoji_loading">Loading emoji\u2026</string>
+    <string name="emoji_recents_empty">Emoji you use will show up here</string>
+    <string name="emoji_tab_recents">Recently used</string>
+    <string name="emoji_tab_smileys">Smileys and emotion</string>
+    <string name="emoji_tab_people">People and body</string>
+    <string name="emoji_tab_animals">Animals and nature</string>
+    <string name="emoji_tab_food">Food and drink</string>
+    <string name="emoji_tab_travel">Travel and places</string>
+    <string name="emoji_tab_activities">Activities</string>
+    <string name="emoji_tab_objects">Objects</string>
+    <string name="emoji_tab_symbols">Symbols</string>
+    <string name="emoji_tab_flags">Flags</string>
+    <string name="emoji_tab_kaomoji">Kaomoji</string>
+    <string name="emoji_abc">ABC</string>
+    <string name="emoji_abc_description">Back to keyboard</string>
+    <string name="emoji_search_description">Search emoji</string>
+    <string name="emoji_backspace_description">Delete</string>
+    <string name="emoji_variants_action">Choose skin tone or variant</string>
+    <string name="emoji_search_hint">Search emoji</string>
+    <string name="emoji_search_empty">No emoji found</string>
+    <string name="emoji_search_close_description">Close search</string>
 </resources>

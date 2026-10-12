@@ -157,6 +157,23 @@ Technical defaults (no objection raised):
 - **No axis lock.** Vertical moves need a whole key height of travel, so ordinary wobble doesn't
   move lines.
 
+## PR B notes (2026-10-11)
+
+- **Data.** Unicode 17.0 + CLDR 48.2, matching each other: CLDR 48 annotates exactly the 17.0 set.
+  - Unicode 18.0 is out, but its new emoji have no CLDR keywords yet, and the device fonts don't
+    draw them.
+  - The asset has 1752 base emoji, 2192 skin-tone/gender variants and 117 kaomoji of our own.
+- **Strip emoji (user decision).** Tapping it replaces the word, and nothing about that word is
+  learned. It shows in the user's chosen variant or default skin tone, like the panel.
+- **Tab S9 test.** All checks pass.
+  - The tabs moved into the strip area while the panel is open; it was empty there and the grid
+    was cramped.
+  - Search never types into the app.
+- **Default skin tone (user decision).** It stays an ordinary setting in device-protected storage,
+  treated like a theme preference. Per-emoji choices and recents stay in the encrypted DB.
+- **Cost on the Tab S9.** A cold panel open takes ~3.2 ms (catalog read) plus ~2–3.6 ms (glyph
+  filter) in the background. The search index is built in that background load.
+
 ## Feature checklist (exit)
 
 - [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
@@ -166,6 +183,6 @@ Technical defaults (no objection raised):
       checked by unit tests only)
 - [x] Selection strip: expand and case cycle
 - [x] Terminal row: Esc, Tab, Ctrl/Alt (one-shot and lock), arrows, Home/End/PgUp/PgDn
-- [ ] Emoji panel: categories, recents, skin tones, search, kaomoji; strip suggestion
+- [x] Emoji panel: categories, recents, skin tones, search, kaomoji; strip suggestion (Tab S9)
 - [ ] Clipboard: capture, filters, pin/delete/clear, images, strip chip, TTL
 - [ ] Instrumented: no password-field leaks (clipboard capture, previews, reads)

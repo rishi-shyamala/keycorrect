@@ -29,6 +29,12 @@ WIKI_BASE="https://dumps.wikimedia.org/simplewiki/${WIKI_DATE}"
 MISSPELL_REV="1199637275"
 MISSPELL_URL="https://en.wikipedia.org/w/index.php?title=Wikipedia:Lists_of_common_misspellings/For_machines&oldid=${MISSPELL_REV}&action=raw"
 
+# Emoji (Phase 4): Unicode emoji-test.txt and CLDR English annotations, Unicode License v3.
+# Versions match: CLDR 48 annotates exactly the Unicode 17.0 emoji set.
+EMOJI_VERSION="17.0.0"
+CLDR_TAG="release-48-2"
+CLDR_BASE="https://raw.githubusercontent.com/unicode-org/cldr/${CLDR_TAG}/common"
+
 # name | url | upstream-sha1 (optional, "-" if none) | transport (raw|gitiles)
 SOURCES=(
   "en_US_wordlist.combined.gz|${AOSP_BASE}/dictionaries/en_US_wordlist.combined.gz?format=TEXT|-|gitiles"
@@ -36,6 +42,9 @@ SOURCES=(
   # Tatoeba only offers a rolling weekly export; the checksum pins what we used.
   "eng_sentences.tsv.bz2|https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2|-|raw"
   "wikipedia-misspellings-${MISSPELL_REV}.txt|${MISSPELL_URL}|-|raw"
+  "emoji-test-${EMOJI_VERSION}.txt|https://unicode.org/Public/${EMOJI_VERSION}/emoji/emoji-test.txt|-|raw"
+  "cldr-${CLDR_TAG}-annotations-en.xml|${CLDR_BASE}/annotations/en.xml|-|raw"
+  "cldr-${CLDR_TAG}-annotationsDerived-en.xml|${CLDR_BASE}/annotationsDerived/en.xml|-|raw"
 )
 
 sha256_of() {
@@ -105,6 +114,7 @@ if [[ "$RECORD" -eq 1 ]]; then
     echo "# AOSP LatinIME commit ${AOSP_COMMIT}; Simple English Wikipedia dump ${WIKI_DATE};"
     echo "# Tatoeba eng_sentences.tsv.bz2 is a rolling export, recorded on $(date -u +%Y-%m-%d)."
     echo "# Wikipedia common-misspellings list (eval only): revision ${MISSPELL_REV}."
+    echo "# Emoji: Unicode ${EMOJI_VERSION} emoji-test.txt; CLDR ${CLDR_TAG} English annotations."
     for l in "${record_lines[@]}"; do echo "$l"; done
   } >"$SUMS.new"
   mv "$SUMS.new" "$SUMS"

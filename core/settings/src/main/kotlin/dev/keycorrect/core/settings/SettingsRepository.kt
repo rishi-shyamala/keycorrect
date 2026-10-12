@@ -63,6 +63,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             cursorSpeed =
                 CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
             backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
+            emojiSuggestions = this[EMOJI_SUGGESTIONS] ?: d.emojiSuggestions,
+            emojiSkinTone =
+                SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
+                    ?: d.emojiSkinTone,
         )
     }
 
@@ -94,6 +98,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[SPACEBAR_CURSOR] = s.spacebarCursor
         this[CURSOR_SPEED] = s.cursorSpeed.name
         this[BACKSPACE_SWIPE] = s.backspaceSwipe
+        this[EMOJI_SUGGESTIONS] = s.emojiSuggestions
+        this[EMOJI_SKIN_TONE] = s.emojiSkinTone.name
     }
 
     private companion object {
@@ -124,5 +130,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
         val CURSOR_SPEED = stringPreferencesKey("cursor_speed")
         val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
+        val EMOJI_SUGGESTIONS = booleanPreferencesKey("emoji_suggestions")
+        val EMOJI_SKIN_TONE = stringPreferencesKey("emoji_skin_tone")
     }
 }
