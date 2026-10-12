@@ -1,7 +1,10 @@
 package dev.keycorrect.fieldlab
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -13,10 +16,13 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.FileProvider
+import java.io.File
 
 private const val TAG = "FieldLab"
 private const val PAD_DP = 12
@@ -99,6 +105,39 @@ class FieldLabActivity : Activity() {
             imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING,
         )
 
+        label("Image field (accepts images; logs what it receives)")
+        val received = TextView(this).apply { text = "(nothing received)" }
+        column.addView(
+            EditText(this).apply {
+                hint = "paste an image here"
+                setOnReceiveContentListener(arrayOf("image/*")) { _, payload ->
+                    val clip = payload.clip
+                    val lines =
+                        (0 until clip.itemCount).mapNotNull { i ->
+                            clip.getItemAt(i).uri?.let { uri ->
+                                val bytes = runCatching {
+                                    contentResolver.openInputStream(uri)?.use {
+                                        it.readBytes().size
+                                    }
+                                }
+                                    .getOrNull()
+                                "received ${contentResolver.getType(uri)} ($bytes bytes)"
+                            }
+                        }
+                    received.text = lines.joinToString("\n").ifEmpty { "received no image" }
+                    Log.i("FieldLab", received.text.toString())
+                    null
+                }
+            }
+        )
+        column.addView(received)
+        column.addView(
+            Button(this).apply {
+                text = "Copy test image"
+                setOnClickListener { copyTestImage() }
+            }
+        )
+
         label("TYPE_NULL terminal (tap to focus; shows key events and committed text)")
         val log =
             TextView(this).apply {
@@ -120,6 +159,19 @@ class FieldLabActivity : Activity() {
         column.addView(log)
 
         setContentView(ScrollView(this).apply { addView(column) })
+    }
+
+    /** Puts a generated 64x64 PNG on the clipboard through the debug FileProvider. */
+    private fun copyTestImage() {
+        val dir = File(cacheDir, "fieldlab").apply { mkdirs() }
+        val file = File(dir, "test.png")
+        val bitmap = Bitmap.createBitmap(TEST_IMAGE_PX, TEST_IMAGE_PX, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.MAGENTA)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it) }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fieldlab", file)
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        clipboard.setPrimaryClip(ClipData.newUri(contentResolver, "field lab test image", uri))
+        Log.i("FieldLab", "copied test image")
     }
 }
 
@@ -203,3 +255,6 @@ private class TerminalView(
         logView.append(line + "\n")
     }
 }
+
+private const val TEST_IMAGE_PX = 64
+private const val PNG_QUALITY = 100
