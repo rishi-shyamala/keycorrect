@@ -732,4 +732,16 @@ class KeyboardControllerTest {
         /** Any non-zero caps mode, e.g. `TextUtils.CAP_MODE_SENTENCES`. */
         const val TextUtilsCaps = 0x4000
     }
+
+    @Test
+    fun theEmojiKeyOpensTheEmojiPanelAndIsAbsentInPasswordFields() {
+        start(textProfile)
+        assertThat(controller.layer.rows.last().keys.map { it.action }).contains(KeyAction.Emoji)
+        controller.onKey(KeyAction.Emoji)
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Emoji)
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+        assertThat(controller.layer.rows.flatMap { it.keys }.map { it.action })
+            .doesNotContain(KeyAction.Emoji)
+    }
 }

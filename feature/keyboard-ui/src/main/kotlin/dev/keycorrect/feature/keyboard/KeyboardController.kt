@@ -253,7 +253,7 @@ class KeyboardController(
                 if (!sendWithModifiers(TerminalKey(action.code))) editing.sendRawKey(action.code)
             }
             is KeyAction.Modifier -> terminalModifiers.onTap(action.modifier)
-            KeyAction.Emoji -> Unit // PR B: emoji panel
+            KeyAction.Emoji -> showPanel(KeyboardPanel.Emoji)
             KeyAction.None -> Unit
         }
     }
@@ -465,6 +465,8 @@ class KeyboardController(
             ComposeOptions(
                 numberRow = settings.numberRow || profile.sensitive,
                 terminalRow = profile.kind == FieldKind.Terminal,
+                // No emoji (nor, from PR C, clipboard) in password fields.
+                emojiKey = !profile.sensitive,
             )
         }
 

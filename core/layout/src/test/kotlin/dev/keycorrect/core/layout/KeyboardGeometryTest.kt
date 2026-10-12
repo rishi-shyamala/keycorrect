@@ -34,7 +34,8 @@ class KeyboardGeometryTest {
     @Test
     fun wideKeysCoverTheirWeight() {
         val space = geometry.slots.first { it.key.action == KeyAction.Space }
-        assertThat(space.right - space.left).isWithin(0.01f).of(500f)
+        // Four units: the emoji key takes one from the space bar.
+        assertThat(space.right - space.left).isWithin(0.01f).of(400f)
     }
 
     @Test
