@@ -61,7 +61,14 @@ class ClipboardSecurityTest {
                 )
                 .map { it.activityInfo.name }
         assertThat(launcher).isNotEmpty()
-        assertThat(info.activities.orEmpty().filter { it.exported }.map { it.name })
+        // Compose's preview activity comes from ui-tooling, a debug-only dependency with no data.
+        val debugOnly = if (BuildConfig.DEBUG) setOf(COMPOSE_PREVIEW_ACTIVITY) else emptySet()
+        assertThat(
+                info.activities
+                    .orEmpty()
+                    .filter { it.exported && it.name !in debugOnly }
+                    .map { it.name }
+            )
             .containsExactlyElementsIn(launcher)
 
         val services = info.services.orEmpty().filter { it.exported }
@@ -69,7 +76,11 @@ class ClipboardSecurityTest {
             .containsExactly("dev.keycorrect.ime.KeyCorrectImeService")
         assertThat(services.single().permission).isEqualTo("android.permission.BIND_INPUT_METHOD")
 
-        assertThat(info.receivers.orEmpty().filter { it.exported }.map { it.name }).isEmpty()
+        // Exported receivers only behind a permission apps can't hold (androidx.profileinstaller's
+        // receiver requires DUMP, which only the shell and the system have).
+        for (receiver in info.receivers.orEmpty().filter { it.exported }) {
+            assertThat(receiver.permission).isIn(SYSTEM_ONLY_PERMISSIONS)
+        }
     }
 
     @Test
@@ -115,5 +126,10 @@ class ClipboardSecurityTest {
                 .isTrue()
             assertThat(context.contentResolver.getType(uri)).isNull()
         }
+    }
+
+    private companion object {
+        const val COMPOSE_PREVIEW_ACTIVITY = "androidx.compose.ui.tooling.PreviewActivity"
+        val SYSTEM_ONLY_PERMISSIONS = setOf("android.permission.DUMP")
     }
 }

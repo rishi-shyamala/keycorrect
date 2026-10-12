@@ -63,7 +63,7 @@ class SqlClipboardStoreTest {
             val i = s.insert(NewClip.image("blob-name", "image/png", 1234, pinned = true))
             val byId = s.clips().associateBy { it.id }
             assertThat(byId.getValue(t))
-                .isEqualTo(StoredClip(t, ClipKind.Text, "hello", null, null, 0, 1_001, false))
+                .isEqualTo(StoredClip(t, ClipKind.Text, "hello", null, null, 0, 1_000, false))
             assertThat(byId.getValue(i))
                 .isEqualTo(
                     StoredClip(
@@ -73,7 +73,7 @@ class SqlClipboardStoreTest {
                         "image/png",
                         "blob-name",
                         1234,
-                        1_002,
+                        1_001, // one past the first: stamps are strictly increasing
                         true,
                     )
                 )
