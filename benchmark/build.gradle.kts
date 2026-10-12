@@ -30,6 +30,7 @@ dependencies {
     androidTestImplementation(project(":core:input"))
     androidTestImplementation(project(":core:engine-api"))
     androidTestImplementation(project(":feature:keyboard-ui"))
+    androidTestImplementation(project(":core:emoji"))
     androidTestImplementation(libs.androidx.benchmark.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
