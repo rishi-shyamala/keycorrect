@@ -25,6 +25,7 @@ import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.clipboard.ClipboardEnvironment
 import dev.keycorrect.feature.keyboard.emoji.EmojiChoice
 import dev.keycorrect.feature.keyboard.emoji.EmojiEnvironment
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanelState
@@ -64,6 +65,8 @@ class KeyboardController(
     wordFeedback: WordFeedback = WordFeedback.None,
     /** The emoji catalog, recents and variant choices (Phase 4, PR B). */
     internal val emoji: EmojiEnvironment = EmojiEnvironment.None,
+    /** Clipboard history (Phase 4, PR C). */
+    internal val clipboard: ClipboardEnvironment = ClipboardEnvironment.None,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
