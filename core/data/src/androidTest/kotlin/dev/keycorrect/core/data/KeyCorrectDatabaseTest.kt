@@ -304,6 +304,30 @@ class KeyCorrectDatabaseTest {
             assertThat(emoji.recents(5)).containsExactly("😀")
         }
 
+    @Test
+    fun upgradeFromV4AddsClipsTableAndKeepsData() =
+        runBlocking<Unit> {
+            val upToV4 = Schema.MIGRATIONS.filter { it.to <= 4 }
+            val old = open(version = 4, migrations = upToV4)
+            SqlUserDictionaryStore(old).add("kept", 42)
+            SqlEmojiHistoryStore(old).recordUse("😀", "😀")
+            assertThat(old.read { d -> tableNames(d) }).containsNoneIn(Schema.CLIP_TABLES)
+            old.close()
+
+            val upgraded = open()
+            assertThat(upgraded.read { d -> tableNames(d) })
+                .containsAtLeastElementsIn(Schema.CLIP_TABLES)
+            assertThat(upgraded.read { d -> columnNames(d, "clips") })
+                .containsAtLeast("kind", "text", "image_file", "pinned", "expires_at", "sensitive")
+            val words = SqlUserDictionaryStore(upgraded)
+            words.load()
+            assertThat(words.snapshot["kept"]?.frequency).isEqualTo(42)
+            assertThat(SqlEmojiHistoryStore(upgraded).recents(5)).containsExactly("😀")
+            val clips = SqlClipboardStore(upgraded)
+            clips.insert(NewClip.text("hello"))
+            assertThat(clips.clips().map { it.text }).containsExactly("hello")
+        }
+
     private fun tableNames(db: androidx.sqlite.db.SupportSQLiteDatabase) =
         db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
             buildList { while (c.moveToNext()) add(c.getString(0)) }

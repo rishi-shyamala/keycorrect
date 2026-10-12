@@ -76,10 +76,11 @@ class SchemaTest {
     }
 
     @Test
-    fun versionIsFour() {
-        assertThat(Schema.VERSION).isEqualTo(4)
+    fun versionIsFive() {
+        assertThat(Schema.VERSION).isEqualTo(5)
         assertThat(Schema.plan(Schema.MIGRATIONS, 1, 2)).hasSize(1)
         assertThat(Schema.plan(Schema.MIGRATIONS, 3, 4)).hasSize(1)
+        assertThat(Schema.plan(Schema.MIGRATIONS, 4, 5)).hasSize(1)
     }
 
     @Test
@@ -101,6 +102,28 @@ class SchemaTest {
                 .filter { it.startsWith("CREATE TABLE ") }
                 .map { it.removePrefix("CREATE TABLE ").substringBefore(' ') }
         assertThat(created).containsExactlyElementsIn(Schema.EMOJI_TABLES)
+        assertThat(statements.none { it.startsWith("DROP") || it.startsWith("ALTER") }).isTrue()
+    }
+
+    @Test
+    fun v4ToV5MigrationCreatesOnlyTheClipsTable() {
+        val statements = ArrayList<String>()
+        val db =
+            java.lang.reflect.Proxy.newProxyInstance(
+                javaClass.classLoader,
+                arrayOf(androidx.sqlite.db.SupportSQLiteDatabase::class.java),
+            ) { _, method, args ->
+                if (method.name == "execSQL") statements += args[0] as String
+                null
+            } as androidx.sqlite.db.SupportSQLiteDatabase
+
+        Schema.migrate(db, Schema.MIGRATIONS, 4, 5)
+
+        val created =
+            statements
+                .filter { it.startsWith("CREATE TABLE ") }
+                .map { it.removePrefix("CREATE TABLE ").substringBefore(' ') }
+        assertThat(created).containsExactlyElementsIn(Schema.CLIP_TABLES)
         assertThat(statements.none { it.startsWith("DROP") || it.startsWith("ALTER") }).isTrue()
     }
 }

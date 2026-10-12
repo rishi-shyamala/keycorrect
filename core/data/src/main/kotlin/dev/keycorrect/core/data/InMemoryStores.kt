@@ -182,3 +182,78 @@ class InMemoryEmojiHistoryStore(private val clock: () -> Long = System::currentT
         state.value = State()
     }
 }
+
+class InMemoryClipboardStore(private val clock: () -> Long = System::currentTimeMillis) :
+    ClipboardStore {
+    private class State(val clips: List<StoredClip> = emptyList(), val nextId: Long = 1)
+
+    private val state = MutableStateFlow(State())
+
+    // Newest first; the list is kept in that order.
+    override suspend fun clips(): List<StoredClip> = state.value.clips
+
+    override suspend fun insert(clip: NewClip): Long {
+        val now = clock()
+        var id = 0L
+        state.update { s ->
+            val newest = s.clips.firstOrNull()
+            // Strictly increasing so "newest first" holds even within one millisecond.
+            val stamp = maxOf(now, (newest?.createdAt ?: Long.MIN_VALUE / 2) + 1)
+            if (
+                clip.kind == ClipKind.Text &&
+                    newest?.kind == ClipKind.Text &&
+                    newest.text == clip.text
+            ) {
+                id = newest.id
+                val bumped =
+                    newest.copy(
+                        createdAt = stamp,
+                        expiresAt = if (newest.pinned) newest.expiresAt else clip.expiresAt,
+                        sensitive = clip.sensitive,
+                    )
+                return@update State(listOf(bumped) + s.clips.drop(1), s.nextId)
+            }
+            id = s.nextId
+            val row =
+                StoredClip(
+                    id,
+                    clip.kind,
+                    clip.text,
+                    clip.mimeType,
+                    clip.imageFile,
+                    clip.imageBytes,
+                    stamp,
+                    clip.pinned,
+                    clip.expiresAt,
+                    clip.sensitive,
+                )
+            State(listOf(row) + s.clips, s.nextId + 1)
+        }
+        return id
+    }
+
+    private fun edit(id: Long, change: (StoredClip) -> StoredClip) = state.update { s ->
+        State(s.clips.map { if (it.id == id) change(it) else it }, s.nextId)
+    }
+
+    private fun keep(predicate: (StoredClip) -> Boolean) = state.update { s ->
+        State(s.clips.filter(predicate), s.nextId)
+    }
+
+    override suspend fun setPinned(id: Long, pinned: Boolean) =
+        edit(id) { it.copy(pinned = pinned) }
+
+    override suspend fun delete(ids: Collection<Long>) {
+        val doomed = ids.toSet()
+        keep { it.id !in doomed }
+    }
+
+    override suspend fun clear(keepPinned: Boolean) = keep { keepPinned && it.pinned }
+
+    override suspend fun clearSince(sinceMillis: Long) = keep { it.createdAt < sinceMillis }
+
+    override suspend fun updateText(id: Long, text: String) =
+        edit(id) {
+            if (it.kind == ClipKind.Text) it.copy(text = text) else it
+        }
+}
