@@ -24,6 +24,8 @@ dependencies {
     // Public API: KeyboardController takes a LearningSink and a DeviceClass.
     api(project(":core:learning"))
     api(project(":core:settings"))
+    // Public API: KeyboardController takes an EmojiEnvironment, which exposes the catalog.
+    api(project(":core:emoji"))
     implementation(libs.compose.foundation)
 
     // The real ClassicEngine drives the end-to-end controller test; the app module wires it up.

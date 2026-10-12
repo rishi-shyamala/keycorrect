@@ -7,6 +7,16 @@ enum class CursorSpeed(val stepDp: Float) {
     Fast(FAST_STEP_DP),
 }
 
+/** Default skin tone for emoji that have tone variants; [None] is the plain (yellow) form. */
+enum class SkinTone {
+    None,
+    Light,
+    MediumLight,
+    Medium,
+    MediumDark,
+    Dark,
+}
+
 private const val SLOW_STEP_DP = 18f
 private const val NORMAL_STEP_DP = 12f
 private const val FAST_STEP_DP = 7f
@@ -67,6 +77,10 @@ data class KeyboardSettings(
     val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
     /** Swiping left on backspace selects whole words and release deletes them. */
     val backspaceSwipe: Boolean = true,
+    /** An emoji in the strip for a word that strongly matches one ("pizza" -> 🍕; PHASE4 P4-5). */
+    val emojiSuggestions: Boolean = true,
+    /** The skin tone emoji are inserted in unless one was chosen for that emoji. */
+    val emojiSkinTone: SkinTone = SkinTone.None,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
