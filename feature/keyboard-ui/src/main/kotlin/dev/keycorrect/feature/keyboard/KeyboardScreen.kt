@@ -33,6 +33,7 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanel
 import dev.keycorrect.feature.keyboard.emoji.EmojiSearchRow
+import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
 
 /**
  * The full keyboard: suggestion strip (autofill chips for now) above the key surface, with the key
@@ -167,9 +168,11 @@ private fun SuggestionArea(
 ) {
     Box(modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)) {
         val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
-        if (controller.panel == KeyboardPanel.Emoji && controller.emojiSearch.active) {
+        if (controller.panel == KeyboardPanel.Emoji) {
             val view = LocalView.current
-            EmojiSearchRow(controller, onPress = { feedback.haptic(view, settings) })
+            val press = { feedback.haptic(view, settings) }
+            if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
+            else EmojiTabStrip(controller, onPress = press)
         } else if (items.isNotEmpty()) {
             InlineSuggestionRow(items)
         } else if (controller.selectionStripVisible) {

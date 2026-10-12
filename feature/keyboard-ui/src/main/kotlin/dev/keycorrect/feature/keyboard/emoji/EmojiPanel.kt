@@ -120,15 +120,8 @@ private fun EmojiBody(
     val recents = controller.emoji.recents
     val recentCells = remember(catalog, recents) { recentCells(catalog, recents) }
     val tabs = remember(catalog) { emojiTabs(catalog) }
-    val state = controller.emojiPanel
-    val selected =
-        tabs.firstOrNull { it.key == state.tab }?.key
-            ?: tabs[if (recentCells.isEmpty()) 1.coerceAtMost(tabs.lastIndex) else 0].key
+    val selected = selectedTab(tabs, controller.emojiPanel.tab, recentCells.isNotEmpty())
     Column(modifier) {
-        EmojiTabRow(tabs, selected) {
-            onPress()
-            state.tab = it
-        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (selected) {
                 EmojiPanelState.RECENTS ->
@@ -166,9 +159,32 @@ private fun EmptyMessage(text: Int) {
     }
 }
 
+/** The tab shown: the one chosen last, else Recents, else (with no recents yet) the first group. */
+private fun selectedTab(tabs: List<EmojiTab>, chosen: String?, hasRecents: Boolean): String =
+    tabs.firstOrNull { it.key == chosen }?.key
+        ?: tabs[if (hasRecents) 0 else 1.coerceAtMost(tabs.lastIndex)].key
+
+/**
+ * The category tabs, drawn in the suggestion strip's place while the emoji panel is open (the strip
+ * has nothing to show then), so the grid below gets the whole key area. Nothing while the catalog
+ * loads.
+ */
+@Composable
+internal fun EmojiTabStrip(controller: KeyboardController, onPress: () -> Unit) {
+    val catalog = controller.emoji.catalog ?: return
+    val recents = controller.emoji.recents
+    val hasRecents = remember(catalog, recents) { recentCells(catalog, recents).isNotEmpty() }
+    val tabs = remember(catalog) { emojiTabs(catalog) }
+    val state = controller.emojiPanel
+    EmojiTabRow(tabs, selectedTab(tabs, state.tab, hasRecents)) {
+        onPress()
+        state.tab = it
+    }
+}
+
 @Composable
 private fun EmojiTabRow(tabs: List<EmojiTab>, selected: String, onSelect: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().height(TabHeight)) {
+    Row(modifier = Modifier.fillMaxSize()) {
         for (tab in tabs) {
             val on = tab.key == selected
             val description = tab.label?.let { stringResource(it) } ?: tab.key
@@ -352,7 +368,6 @@ private val KnownTabs =
         "Flags" to ("🏁" to R.string.emoji_tab_flags),
     )
 
-private val TabHeight = 36.dp
 private val TabCorner = 8.dp
 private val BarCorner = 8.dp
 private val ABC_WIDTH = 64.dp
