@@ -116,7 +116,6 @@
     <string name="clipboard_image">Image</string>
     <string name="clipboard_paste_description">Paste: %1$s</string>
     <string name="clipboard_paste_image_description">Paste image</string>
-    <string name="clipboard_paste_sensitive_description">Paste hidden code: %1$s</string>
     <string name="clipboard_pinned_description">Pinned</string>
     <string name="clipboard_menu_description">Clip actions</string>
     <string name="clipboard_pin">Pin</string>

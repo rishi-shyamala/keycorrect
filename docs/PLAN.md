@@ -318,6 +318,7 @@ SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pai
 ---
 
 ## 9. Clipboard history
+- **P4 simplified this (see `docs/PHASE4.md`): everything copied is captured as is, with no sensitivity detection, masking or expiry; the user deletes; encryption protects against other apps. The "Never stored", masking and clear-after-paste points below are superseded.**
 - Listener: `ClipboardManager.addPrimaryClipChangedListener` (only works while we are the default IME — Android 10+ restriction, which is fine).
 - **Never stored**: clips with `ClipDescription.EXTRA_IS_SENSITIVE` (API 33+), clips copied *from* a password field we were typing in, clips matching sensitive heuristics (card numbers w/ Luhn, IBAN, high-entropy tokens, `sk-…`/`ghp_…` key patterns, OTP-like codes → kept only 3 min with masked preview) — heuristics configurable.
 - Keep last **N items (default 30)**; text TTL default 7 days; pinned items never expire; images capped (default 20 MB total).

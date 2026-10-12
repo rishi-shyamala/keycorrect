@@ -103,12 +103,6 @@ data class KeyboardSettings(
     val clipboardRetention: ClipRetention = ClipRetention.Week,
     /** Copied images are kept too (encrypted, 20 MB in all). */
     val clipboardImages: Boolean = true,
-    /** Card numbers, IBANs, keys and tokens are never kept; codes only for 3 minutes. */
-    val clipboardFilterSensitive: Boolean = true,
-    /** Text that looks like a password is never kept (may also skip some ordinary clips). */
-    val clipboardFilterPasswordLike: Boolean = true,
-    /** Pasting a sensitive (short-lived) clip also clears the system clipboard. */
-    val clipboardClearAfterSensitivePaste: Boolean = false,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =

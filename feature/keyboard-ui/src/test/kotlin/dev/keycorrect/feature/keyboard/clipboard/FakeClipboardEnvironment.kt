@@ -47,9 +47,8 @@ internal class FakeClipboardEnvironment(
         fun clip(
             id: Long,
             preview: String,
-            sensitive: Boolean = false,
             pinned: Boolean = false,
             kind: ClipItem.Kind = ClipItem.Kind.Text,
-        ) = ClipItem(id, kind, preview, createdAt = id, pinned = pinned, sensitive = sensitive)
+        ) = ClipItem(id, kind, preview, createdAt = id, pinned = pinned)
     }
 }

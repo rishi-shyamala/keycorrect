@@ -36,7 +36,6 @@ data class ClipboardLimits(
 class ClipboardRepository(
     private val store: ClipboardStore,
     private val blobs: EncryptedBlobStore,
-    private val clock: () -> Long = System::currentTimeMillis,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val lock = Mutex()
@@ -44,11 +43,7 @@ class ClipboardRepository(
     suspend fun clips(): List<StoredClip> = store.clips()
 
     /** Inserts a text clip (see [ClipboardStore.insert] for the duplicate rule). */
-    suspend fun insertText(
-        text: String,
-        expiresAt: Long? = null,
-        sensitive: Boolean = false,
-    ): Long = lock.withLock { store.insert(NewClip.text(text, expiresAt, sensitive)) }
+    suspend fun insertText(text: String): Long = lock.withLock { store.insert(NewClip.text(text)) }
 
     /**
      * Encrypts [input] (read to its end, not closed) into a blob and inserts an image clip.
@@ -59,10 +54,8 @@ class ClipboardRepository(
         input: InputStream,
         mimeType: String,
         maxBytes: Long = EncryptedBlobStore.DEFAULT_MAX_BYTES,
-        expiresAt: Long? = null,
-        sensitive: Boolean = false,
     ): Long = lock.withLock {
-        insertBlob(mimeType, expiresAt, sensitive) { blobs.write(input, maxBytes) }
+        insertBlob(mimeType) { blobs.write(input, maxBytes) }
     }
 
     /** As above for an image already in memory. */
@@ -70,23 +63,19 @@ class ClipboardRepository(
         bytes: ByteArray,
         mimeType: String,
         maxBytes: Long = EncryptedBlobStore.DEFAULT_MAX_BYTES,
-        expiresAt: Long? = null,
-        sensitive: Boolean = false,
     ): Long = lock.withLock {
-        insertBlob(mimeType, expiresAt, sensitive) { blobs.write(bytes, maxBytes) }
+        insertBlob(mimeType) { blobs.write(bytes, maxBytes) }
     }
 
     private suspend fun insertBlob(
         mimeType: String,
-        expiresAt: Long?,
-        sensitive: Boolean,
         write: () -> String,
     ): Long {
         val name = withContext(io) { write() }
         var stored = false
         try {
             val size = withContext(io) { blobs.sizeOf(name) } ?: throw IOException("Blob vanished")
-            return store.insert(NewClip.image(name, mimeType, size, expiresAt, sensitive)).also {
+            return store.insert(NewClip.image(name, mimeType, size)).also {
                 stored = true
             }
         } finally {
@@ -123,20 +112,14 @@ class ClipboardRepository(
     }
 
     /**
-     * Applies the history rules and returns how many clips were deleted: unpinned expired clips
-     * first, then unpinned text clips beyond [ClipboardLimits.maxTextClips], then the oldest
-     * unpinned images until the images fit [ClipboardLimits.maxImageBytes] (pinned images count
-     * towards the total but are never removed).
+     * Applies the history rules and returns how many clips were deleted: unpinned text clips beyond
+     * [ClipboardLimits.maxTextClips], then the oldest unpinned images until the images fit
+     * [ClipboardLimits.maxImageBytes] (pinned images count towards the total but are never
+     * removed).
      */
-    suspend fun prune(
-        limits: ClipboardLimits = ClipboardLimits(),
-        nowMillis: Long = clock(),
-    ): Int = lock.withLock {
+    suspend fun prune(limits: ClipboardLimits = ClipboardLimits()): Int = lock.withLock {
         val newestFirst = store.clips()
         val doomed = LinkedHashSet<Long>()
-        newestFirst
-            .filter { !it.pinned && it.expiresAt?.let { t -> t <= nowMillis } == true }
-            .forEach { doomed += it.id }
         newestFirst
             .filter { it.kind == ClipKind.Text && !it.pinned && it.id !in doomed }
             .drop(limits.maxTextClips.coerceAtLeast(0))

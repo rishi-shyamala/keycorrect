@@ -205,12 +205,7 @@ class InMemoryClipboardStore(private val clock: () -> Long = System::currentTime
                     newest.text == clip.text
             ) {
                 id = newest.id
-                val bumped =
-                    newest.copy(
-                        createdAt = stamp,
-                        expiresAt = if (newest.pinned) newest.expiresAt else clip.expiresAt,
-                        sensitive = clip.sensitive,
-                    )
+                val bumped = newest.copy(createdAt = stamp)
                 return@update State(listOf(bumped) + s.clips.drop(1), s.nextId)
             }
             id = s.nextId
@@ -224,8 +219,6 @@ class InMemoryClipboardStore(private val clock: () -> Long = System::currentTime
                     clip.imageBytes,
                     stamp,
                     clip.pinned,
-                    clip.expiresAt,
-                    clip.sensitive,
                 )
             State(listOf(row) + s.clips, s.nextId + 1)
         }

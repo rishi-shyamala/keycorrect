@@ -22,13 +22,12 @@ class InMemoryClipboardStoreTest {
     @Test
     fun equalTextAsNewestOnlyBumpsIt() = runTest {
         val store = InMemoryClipboardStore(clock)
-        val first = store.insert(NewClip.text("a", expiresAt = 5_000))
+        val first = store.insert(NewClip.text("a"))
         now = 2_000
-        val again = store.insert(NewClip.text("a", expiresAt = 9_000))
+        val again = store.insert(NewClip.text("a"))
         assertThat(again).isEqualTo(first)
         val only = store.clips().single()
         assertThat(only.createdAt).isEqualTo(2_000)
-        assertThat(only.expiresAt).isEqualTo(9_000)
     }
 
     @Test
@@ -38,15 +37,6 @@ class InMemoryClipboardStoreTest {
         store.insert(NewClip.text("b"))
         store.insert(NewClip.text("a"))
         assertThat(store.texts()).containsExactly("a", "b", "a").inOrder()
-    }
-
-    @Test
-    fun pinnedClipKeepsItsExpiryWhenBumped() = runTest {
-        val store = InMemoryClipboardStore(clock)
-        val id = store.insert(NewClip.text("a", expiresAt = 5_000, pinned = true))
-        now = 2_000
-        store.insert(NewClip.text("a", expiresAt = 9_000))
-        assertThat(store.clips().single { it.id == id }.expiresAt).isEqualTo(5_000)
     }
 
     @Test

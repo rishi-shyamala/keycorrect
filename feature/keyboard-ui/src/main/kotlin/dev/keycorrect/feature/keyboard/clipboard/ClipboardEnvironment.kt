@@ -6,12 +6,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 data class ClipItem(
     val id: Long,
     val kind: Kind,
-    /** One-line preview; masked ("••••42") for a [sensitive] clip. Never the image. */
+    /** One-line preview of a text clip. Never the image. */
     val preview: String,
     val createdAt: Long,
     val pinned: Boolean,
-    /** Short-lived (OTP-like): masked, expires within minutes. */
-    val sensitive: Boolean,
     /**
      * A single http(s) URL whose tracking parameters can be removed
      * ([ClipboardEnvironment.cleanUrl]).
@@ -26,9 +24,9 @@ data class ClipItem(
 
 /**
  * Clipboard history for the keyboard, provided by the app: capture (a primary-clip listener while
- * we are the keyboard, with the sensitivity filters), encrypted storage and pasting. Every member
- * is called on the main thread and must not block: the host keeps [clips] in memory and does its
- * I/O in the background. Clip contents are user data and are never logged.
+ * we are the keyboard, everything copied is kept), encrypted storage and pasting. Every member is
+ * called on the main thread and must not block: the host keeps [clips] in memory and does its I/O
+ * in the background. Clip contents are user data and are never logged.
  */
 interface ClipboardEnvironment {
     /** History on (settings) and allowed now (not incognito). */

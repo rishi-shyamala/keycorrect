@@ -449,9 +449,9 @@ class KeyboardController(
     private var composingNow by mutableStateOf(false)
 
     /**
-     * The clipboard panel and the chip are offered when history is on and the field is not
-     * sensitive. (A password field has no emoji key either, so there is nothing to long-press; the
-     * chip is the one clipboard surface a sensitive field gets, see [stripClip].)
+     * The clipboard panel is offered when history is on and the field is not sensitive (a password
+     * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
+     * in any field, password fields included: pasting there is a normal use.
      */
     val clipboardAvailable: Boolean
         get() = clipboard.enabled && !profile.sensitive

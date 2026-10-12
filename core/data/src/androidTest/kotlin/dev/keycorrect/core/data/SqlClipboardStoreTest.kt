@@ -59,13 +59,11 @@ class SqlClipboardStoreTest {
     fun allFieldsRoundTrip() =
         runBlocking<Unit> {
             val s = store()
-            val t = s.insert(NewClip.text("hello", expiresAt = 5_000, sensitive = true))
+            val t = s.insert(NewClip.text("hello"))
             val i = s.insert(NewClip.image("blob-name", "image/png", 1234, pinned = true))
             val byId = s.clips().associateBy { it.id }
             assertThat(byId.getValue(t))
-                .isEqualTo(
-                    StoredClip(t, ClipKind.Text, "hello", null, null, 0, 1_001, false, 5_000, true)
-                )
+                .isEqualTo(StoredClip(t, ClipKind.Text, "hello", null, null, 0, 1_001, false))
             assertThat(byId.getValue(i))
                 .isEqualTo(
                     StoredClip(
@@ -77,8 +75,6 @@ class SqlClipboardStoreTest {
                         1234,
                         1_002,
                         true,
-                        null,
-                        false,
                     )
                 )
         }
@@ -87,27 +83,16 @@ class SqlClipboardStoreTest {
     fun equalTextAsNewestOnlyBumpsIt() =
         runBlocking<Unit> {
             val s = store()
-            val first = s.insert(NewClip.text("a", expiresAt = 5_000))
+            val first = s.insert(NewClip.text("a"))
             now = 2_000
-            val again = s.insert(NewClip.text("a", expiresAt = 9_000))
+            val again = s.insert(NewClip.text("a"))
             assertThat(again).isEqualTo(first)
             val only = s.clips().single()
             assertThat(only.createdAt).isEqualTo(2_000)
-            assertThat(only.expiresAt).isEqualTo(9_000)
 
             s.insert(NewClip.text("b"))
             s.insert(NewClip.text("a"))
             assertThat(s.clips().map { it.text }).containsExactly("a", "b", "a").inOrder()
-        }
-
-    @Test
-    fun pinnedClipKeepsItsExpiryWhenBumped() =
-        runBlocking<Unit> {
-            val s = store()
-            s.insert(NewClip.text("a", expiresAt = 5_000, pinned = true))
-            now = 2_000
-            s.insert(NewClip.text("a", expiresAt = 9_000))
-            assertThat(s.clips().single().expiresAt).isEqualTo(5_000)
         }
 
     @Test

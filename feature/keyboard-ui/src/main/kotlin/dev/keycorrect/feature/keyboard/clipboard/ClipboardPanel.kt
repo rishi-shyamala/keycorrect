@@ -206,8 +206,6 @@ private fun clipLabels(clip: ClipItem): ClipLabels =
             when {
                 clip.kind == ClipItem.Kind.Image ->
                     stringResource(R.string.clipboard_paste_image_description)
-                clip.sensitive ->
-                    stringResource(R.string.clipboard_paste_sensitive_description, clip.preview)
                 else -> stringResource(R.string.clipboard_paste_description, clip.preview)
             },
         pin = stringResource(if (clip.pinned) R.string.clipboard_unpin else R.string.clipboard_pin),
@@ -320,11 +318,11 @@ private fun Modifier.clipCardInteraction(
             }
         }
 
-/** Text with its badges (pin, lock), or the thumbnail of an image. */
+/** Text with its badge (pin), or the thumbnail of an image. */
 @Composable
 private fun ClipContent(clip: ClipItem, controller: KeyboardController) {
     val colors = MaterialTheme.colorScheme
-    val badges = (if (clip.pinned) "📌 " else "") + (if (clip.sensitive) "🔒 " else "")
+    val badges = if (clip.pinned) "📌 " else ""
     if (clip.kind == ClipItem.Kind.Image) {
         val thumbnail = controller.clipboard.thumbnail(clip.id)
         if (thumbnail != null) {

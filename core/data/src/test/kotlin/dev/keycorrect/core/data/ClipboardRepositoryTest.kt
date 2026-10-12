@@ -19,7 +19,7 @@ class ClipboardRepositoryTest {
         val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
         EncryptedBlobStore(dir, AesGcmBlobCipher { key })
     }
-    private val repo by lazy { ClipboardRepository(store, blobs, { now }) }
+    private val repo by lazy { ClipboardRepository(store, blobs) }
 
     private suspend fun image(size: Int = 10, pinned: Boolean = false): Long {
         now += 10
@@ -55,7 +55,7 @@ class ClipboardRepositoryTest {
             object : ClipboardStore by store {
                 override suspend fun insert(clip: NewClip): Long = error("db down")
             }
-        val r = ClipboardRepository(failing, blobs, { now })
+        val r = ClipboardRepository(failing, blobs)
         val e = runCatching { r.insertImage(ByteArray(5), "image/png") }.exceptionOrNull()
         assertThat(e).isInstanceOf(IllegalStateException::class.java)
         assertThat(blobs.list()).isEmpty()
@@ -96,23 +96,10 @@ class ClipboardRepositoryTest {
     }
 
     @Test
-    fun pruneDropsExpiredUnpinnedClipsOnly() = runTest {
-        repo.insertText("expired", expiresAt = 1_500)
-        val pinned = store.insert(NewClip.text("pinned-expired", expiresAt = 1_500, pinned = true))
-        repo.insertText("fresh", expiresAt = 9_000)
-        repo.insertText("forever")
-        val removed = repo.prune(nowMillis = 2_000)
-        assertThat(removed).isEqualTo(1)
-        assertThat(repo.clips().map { it.text })
-            .containsExactly("forever", "fresh", "pinned-expired")
-        assertThat(repo.clips().any { it.id == pinned }).isTrue()
-    }
-
-    @Test
     fun pruneKeepsTheNewestTextClipsAndSparesPinned() = runTest {
         val pinned = store.insert(NewClip.text("pinned", pinned = true))
         for (i in 1..5) repo.insertText("t$i")
-        val removed = repo.prune(ClipboardLimits(maxTextClips = 3), nowMillis = 2_000)
+        val removed = repo.prune(ClipboardLimits(maxTextClips = 3))
         assertThat(removed).isEqualTo(2)
         assertThat(repo.clips().map { it.text }).containsExactly("t5", "t4", "t3", "pinned")
         assertThat(repo.clips().any { it.id == pinned }).isTrue()
@@ -123,7 +110,7 @@ class ClipboardRepositoryTest {
         val oldest = image(size = 40)
         val pinned = image(size = 40, pinned = true)
         val newest = image(size = 40)
-        val removed = repo.prune(ClipboardLimits(maxImageBytes = 90), nowMillis = 0)
+        val removed = repo.prune(ClipboardLimits(maxImageBytes = 90))
         assertThat(removed).isEqualTo(1)
         assertThat(repo.clips().map { it.id }).containsExactly(newest, pinned)
         assertThat(repo.clips().any { it.id == oldest }).isFalse()

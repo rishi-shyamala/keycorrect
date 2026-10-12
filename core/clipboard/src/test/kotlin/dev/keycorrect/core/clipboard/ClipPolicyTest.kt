@@ -11,9 +11,8 @@ class ClipPolicyTest {
         id: Long,
         age: Long = 0,
         pinned: Boolean = false,
-        expiresAt: Long? = null,
         imageBytes: Long = 0,
-    ) = ClipMeta(id, now - age, pinned, expiresAt, imageBytes)
+    ) = ClipMeta(id, now - age, pinned, imageBytes)
 
     private fun delete(vararg clips: ClipMeta, max: Int = 30, budget: Long = 20L * 1024 * 1024) =
         ClipPolicy.idsToDelete(clips.toList(), now, max, 7 * day, budget)
@@ -22,17 +21,6 @@ class ClipPolicyTest {
     fun emptyAndFreshClipsAreKept() {
         assertThat(delete()).isEmpty()
         assertThat(delete(clip(1), clip(2, age = day))).isEmpty()
-    }
-
-    @Test
-    fun expiredShortLivedItemsAreDeleted() {
-        val ids =
-            delete(
-                clip(1, expiresAt = now - 1),
-                clip(2, expiresAt = now),
-                clip(3, expiresAt = now + 1),
-            )
-        assertThat(ids).containsExactly(1L, 2L).inOrder()
     }
 
     @Test
@@ -47,7 +35,7 @@ class ClipPolicyTest {
         val ids =
             delete(
                 clip(1, age = 100 * day, pinned = true),
-                clip(2, pinned = true, expiresAt = now - 5),
+                clip(2, age = 8 * day, pinned = true),
             )
         assertThat(ids).isEmpty()
     }

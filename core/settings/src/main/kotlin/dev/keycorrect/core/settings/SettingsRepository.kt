@@ -73,12 +73,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
                     ?: d.clipboardRetention,
             clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
-            clipboardFilterSensitive =
-                this[CLIPBOARD_FILTER_SENSITIVE] ?: d.clipboardFilterSensitive,
-            clipboardFilterPasswordLike =
-                this[CLIPBOARD_FILTER_PASSWORD_LIKE] ?: d.clipboardFilterPasswordLike,
-            clipboardClearAfterSensitivePaste =
-                this[CLIPBOARD_CLEAR_AFTER_SENSITIVE] ?: d.clipboardClearAfterSensitivePaste,
         )
     }
 
@@ -116,9 +110,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[CLIPBOARD_MAX_ITEMS] = s.clipboardMaxItems
         this[CLIPBOARD_RETENTION] = s.clipboardRetention.name
         this[CLIPBOARD_IMAGES] = s.clipboardImages
-        this[CLIPBOARD_FILTER_SENSITIVE] = s.clipboardFilterSensitive
-        this[CLIPBOARD_FILTER_PASSWORD_LIKE] = s.clipboardFilterPasswordLike
-        this[CLIPBOARD_CLEAR_AFTER_SENSITIVE] = s.clipboardClearAfterSensitivePaste
     }
 
     private companion object {
@@ -155,9 +146,5 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val CLIPBOARD_MAX_ITEMS = intPreferencesKey("clipboard_max_items")
         val CLIPBOARD_RETENTION = stringPreferencesKey("clipboard_retention")
         val CLIPBOARD_IMAGES = booleanPreferencesKey("clipboard_images")
-        val CLIPBOARD_FILTER_SENSITIVE = booleanPreferencesKey("clipboard_filter_sensitive")
-        val CLIPBOARD_FILTER_PASSWORD_LIKE = booleanPreferencesKey("clipboard_filter_password_like")
-        val CLIPBOARD_CLEAR_AFTER_SENSITIVE =
-            booleanPreferencesKey("clipboard_clear_after_sensitive")
     }
 }

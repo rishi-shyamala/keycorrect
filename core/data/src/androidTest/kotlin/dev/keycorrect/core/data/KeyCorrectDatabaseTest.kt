@@ -318,7 +318,7 @@ class KeyCorrectDatabaseTest {
             assertThat(upgraded.read { d -> tableNames(d) })
                 .containsAtLeastElementsIn(Schema.CLIP_TABLES)
             assertThat(upgraded.read { d -> columnNames(d, "clips") })
-                .containsAtLeast("kind", "text", "image_file", "pinned", "expires_at", "sensitive")
+                .containsAtLeast("kind", "text", "image_file", "pinned")
             val words = SqlUserDictionaryStore(upgraded)
             words.load()
             assertThat(words.snapshot["kept"]?.frequency).isEqualTo(42)

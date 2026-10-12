@@ -5,7 +5,6 @@ data class ClipMeta(
     val id: Long,
     val createdAt: Long,
     val pinned: Boolean,
-    val expiresAt: Long?,
     val imageBytes: Long,
 )
 
@@ -13,8 +12,7 @@ data class ClipMeta(
  * Retention. Pure and deterministic.
  *
  * Choices:
- * - Pinned clips are never deleted, whatever their age, expiry or size, and do not count toward
- *   [maxItems].
+ * - Pinned clips are never deleted, whatever their age or size, and do not count toward [maxItems].
  * - Pinned images do count toward [imageBudgetBytes], because they occupy the same disk space.
  * - Ties in age are broken by id (higher id = newer).
  */
@@ -33,7 +31,7 @@ object ClipPolicy {
     ): List<Long> {
         val doomed = HashSet<Long>()
         val (expired, live) =
-            clips.filter { !it.pinned }.partition { isExpired(it, now, ttlMillis) }
+            clips.filter { !it.pinned }.partition { now - it.createdAt > ttlMillis }
         expired.mapTo(doomed) { it.id }
 
         // Newest first; everything past the cap is the oldest.
@@ -52,9 +50,6 @@ object ClipPolicy {
         }
         return doomed.sorted()
     }
-
-    private fun isExpired(c: ClipMeta, now: Long, ttlMillis: Long): Boolean =
-        (c.expiresAt != null && c.expiresAt <= now) || now - c.createdAt > ttlMillis
 
     private val NEWEST_FIRST =
         compareByDescending<ClipMeta> { it.createdAt }.thenByDescending { it.id }

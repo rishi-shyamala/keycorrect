@@ -90,15 +90,14 @@ internal object Schema {
 
     /**
      * v5: clipboard history. Image bytes are not stored here; `image_file` names an encrypted blob
-     * file. `kind` is a [ClipKind] name; booleans are 0/1; `expires_at` is NULL for no expiry.
+     * file. `kind` is a [ClipKind] name; booleans are 0/1.
      */
     fun migrateV4ToV5(db: SupportSQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE clips (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "kind TEXT NOT NULL CHECK (kind IN ('Text', 'Image')), text TEXT, " +
                 "mime_type TEXT, image_file TEXT, image_bytes INTEGER NOT NULL DEFAULT 0, " +
-                "created_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, " +
-                "expires_at INTEGER, sensitive INTEGER NOT NULL DEFAULT 0)"
+                "created_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0)"
         )
         db.execSQL("CREATE INDEX clips_created_at ON clips (created_at)")
     }

@@ -26,8 +26,6 @@ class SqlClipboardStore(
                             imageBytes = c.getLong(5),
                             createdAt = c.getLong(6),
                             pinned = c.getInt(7) != 0,
-                            expiresAt = if (c.isNull(8)) null else c.getLong(8),
-                            sensitive = c.getInt(9) != 0,
                         )
                     )
                 }
@@ -44,16 +42,14 @@ class SqlClipboardStore(
                 val stamp = maxOf(now, (newest?.createdAt ?: Long.MIN_VALUE / 2) + 1)
                 if (newest != null && newest.duplicates(clip)) {
                     db.execSQL(
-                        "UPDATE clips SET created_at = ?, sensitive = ?, " +
-                            "expires_at = CASE WHEN pinned = 1 THEN expires_at ELSE ? END " +
-                            "WHERE id = ?",
-                        arrayOf<Any?>(stamp, clip.sensitive.toInt(), clip.expiresAt, newest.id),
+                        "UPDATE clips SET created_at = ? WHERE id = ?",
+                        arrayOf<Any?>(stamp, newest.id),
                     )
                     return@transaction newest.id
                 }
                 db.execSQL(
                     "INSERT INTO clips (kind, text, mime_type, image_file, image_bytes, " +
-                        "created_at, pinned, expires_at, sensitive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "created_at, pinned) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     arrayOf<Any?>(
                         clip.kind.name,
                         clip.text,
@@ -62,8 +58,6 @@ class SqlClipboardStore(
                         clip.imageBytes,
                         stamp,
                         clip.pinned.toInt(),
-                        clip.expiresAt,
-                        clip.sensitive.toInt(),
                     ),
                 )
                 db.query("SELECT last_insert_rowid()").use { c ->
@@ -159,9 +153,7 @@ class SqlClipboardStore(
     private fun Boolean.toInt(): Int = if (this) 1 else 0
 
     private companion object {
-        const val COLUMNS =
-            "id, kind, text, mime_type, image_file, image_bytes, created_at, pinned, " +
-                "expires_at, sensitive"
+        const val COLUMNS = "id, kind, text, mime_type, image_file, image_bytes, created_at, pinned"
         const val DELETE_CHUNK = 500
     }
 }

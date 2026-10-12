@@ -29,15 +29,14 @@ import dev.keycorrect.feature.keyboard.R
 
 /**
  * The "copied just now" chip, drawn in the suggestion strip when it has nothing else to show
- * ([KeyboardController.stripClip]): "📋 preview", tap to paste, ✕ to dismiss it for that clip. In a
- * sensitive field only a mask is shown ([chipText]), so a copied code can still be pasted into a
- * password field without the keyboard displaying it. Reads [KeyboardController.stripClip] here, so
- * a keystroke recomposes this and nothing above it.
+ * ([KeyboardController.stripClip]): "📋 preview", tap to paste, ✕ to dismiss it for that clip. It
+ * is shown in any field, password fields included. Reads [KeyboardController.stripClip] here, so a
+ * keystroke recomposes this and nothing above it.
  */
 @Composable
 internal fun ClipChip(controller: KeyboardController, onPress: () -> Unit) {
     val clip = controller.stripClip ?: return
-    val text = chipText(clip, controller.profile.sensitive)
+    val text = clip.preview.takeIf { clip.kind == ClipItem.Kind.Text }
     val label =
         stringResource(R.string.clipboard_chip, text ?: stringResource(R.string.clipboard_image))
     val description =

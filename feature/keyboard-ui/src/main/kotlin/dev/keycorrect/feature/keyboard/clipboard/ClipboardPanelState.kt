@@ -41,19 +41,3 @@ internal class ClipboardPanelState {
         confirmingClear = false
     }
 }
-
-/** What an unflagged clip shows in a sensitive field: no text, not even its length. */
-internal const val FIELD_MASK = "••••••"
-
-/**
- * The text a clip is shown as on the strip chip, or null for an image (the caller words that). In a
- * sensitive field (a password field) only a mask is shown: the host's own masked preview for a clip
- * it flagged sensitive, else a fixed run of dots, never the clip's text.
- */
-internal fun chipText(clip: ClipItem, fieldSensitive: Boolean): String? =
-    when {
-        clip.kind == ClipItem.Kind.Image -> null
-        clip.sensitive -> clip.preview
-        fieldSensitive -> FIELD_MASK
-        else -> clip.preview
-    }

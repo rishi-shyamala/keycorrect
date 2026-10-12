@@ -7,10 +7,8 @@ enum class ClipKind {
 
 /**
  * A stored clipboard entry. [text] is set for [ClipKind.Text]; [mimeType], [imageFile] (a blob name
- * in [EncryptedBlobStore]) and [imageBytes] (plaintext size) for [ClipKind.Image]. [expiresAt] is
- * null for clips that only age out through the history limits; pinned clips ignore it. [sensitive]
- * clips (for example one-time codes) are shown masked. Clip contents are user data and must never
- * be logged.
+ * in [EncryptedBlobStore]) and [imageBytes] (plaintext size) for [ClipKind.Image]. Clip contents
+ * are user data and must never be logged.
  */
 data class StoredClip(
     val id: Long,
@@ -21,8 +19,6 @@ data class StoredClip(
     val imageBytes: Long,
     val createdAt: Long,
     val pinned: Boolean,
-    val expiresAt: Long?,
-    val sensitive: Boolean,
 )
 
 /** A clip to insert; the store assigns the id and the creation time. */
@@ -34,19 +30,15 @@ private constructor(
     val mimeType: String?,
     val imageFile: String?,
     val imageBytes: Long,
-    val expiresAt: Long?,
-    val sensitive: Boolean,
     val pinned: Boolean,
 ) {
     companion object {
         fun text(
             text: String,
-            expiresAt: Long? = null,
-            sensitive: Boolean = false,
             pinned: Boolean = false,
         ): NewClip {
             require(text.isNotEmpty()) { "Empty text clip" }
-            return NewClip(ClipKind.Text, text, null, null, 0, expiresAt, sensitive, pinned)
+            return NewClip(ClipKind.Text, text, null, null, 0, pinned)
         }
 
         @Suppress("LongParameterList")
@@ -54,8 +46,6 @@ private constructor(
             imageFile: String,
             mimeType: String,
             imageBytes: Long,
-            expiresAt: Long? = null,
-            sensitive: Boolean = false,
             pinned: Boolean = false,
         ): NewClip {
             require(imageFile.isNotEmpty() && mimeType.isNotEmpty()) { "Incomplete image clip" }
@@ -66,8 +56,6 @@ private constructor(
                 mimeType,
                 imageFile,
                 imageBytes,
-                expiresAt,
-                sensitive,
                 pinned,
             )
         }
@@ -85,8 +73,7 @@ interface ClipboardStore {
 
     /**
      * Inserts [clip] and returns its id. A text clip equal to the newest clip's text is not
-     * duplicated: the newest clip's creation time (and expiry, unless pinned) is bumped instead and
-     * its id returned.
+     * duplicated: the newest clip's creation time is bumped instead and its id returned.
      */
     suspend fun insert(clip: NewClip): Long
 
