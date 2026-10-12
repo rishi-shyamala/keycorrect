@@ -184,6 +184,16 @@ Technical defaults (no objection raised):
   still never reads, decodes or learns from password-field text; that is about typing and is
   unrelated to clipboard capture.
 
+- **Reset flows (app wiring).** "Erase personal data" destroys the database, deletes every clip
+  image file (`noBackupFilesDir/clips`) and reloads the clipboard memory. "Reset all learning" and
+  "Forget recent learning" do **not** touch the clipboard: a clipboard history is not learning. It
+  is cleared only by "Settings > Clipboard > Clear clipboard history" (everything, pinned too),
+  per clip, or by erasing personal data.
+- **Paste of images.** `commitContent` with a per-URI read grant on `ClipImageProvider` (not
+  exported, `grantUriPermissions`, authority `<applicationId>.clips`) when the field accepts the
+  mime type; otherwise the URI is put on the system clipboard under the label
+  `dev.keycorrect.clip`, which our own capture ignores. Text over 20 000 characters is not kept.
+
 ## Feature checklist (exit)
 
 - [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release

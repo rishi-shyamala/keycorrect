@@ -330,4 +330,29 @@
     <string name="emoji_tone_medium">Medium skin tone</string>
     <string name="emoji_tone_medium_dark">Medium-dark skin tone</string>
     <string name="emoji_tone_dark">Dark skin tone</string>
+    <string name="clipboard_title">Clipboard</string>
+    <string name="clipboard_summary">History of what you copy</string>
+    <string name="clipboard_history">Clipboard history</string>
+    <string name="clipboard_history_summary">Keep what you copy while this is your keyboard, and paste it from the clipboard panel (hold the emoji key). Everything is kept as it is; you delete what you don\'t want. It is stored encrypted, and nothing is kept in incognito mode.</string>
+    <string name="clipboard_section_limits">What is kept</string>
+    <plurals name="clipboard_max_items">
+        <item quantity="one">%d clip</item>
+        <item quantity="other">%d clips</item>
+    </plurals>
+    <string name="clipboard_max_items_title">Clips to keep</string>
+    <string name="clipboard_max_items_summary">Pinned clips are kept in addition to this.</string>
+    <string name="clipboard_retention">Keep unpinned clips for</string>
+    <string name="clipboard_retention_hour">Hour</string>
+    <string name="clipboard_retention_day">Day</string>
+    <string name="clipboard_retention_week">Week</string>
+    <string name="clipboard_retention_month">Month</string>
+    <string name="clipboard_images">Save images</string>
+    <string name="clipboard_images_summary">Also keep copied images, up to 20 MB in all. They are encrypted and only shared with the app you paste them into.</string>
+    <string name="clipboard_section_clear">Clear</string>
+    <string name="clipboard_clear">Clear clipboard history</string>
+    <string name="clipboard_clear_summary">Deletes every clip, pinned ones too.</string>
+    <string name="clipboard_clear_confirm_title">Clear clipboard history?</string>
+    <string name="clipboard_clear_confirm_body">Every clip and saved image is deleted, pinned ones too. This can\'t be undone.</string>
+    <string name="clipboard_clear_confirm">Clear</string>
+    <string name="clipboard_image_copied">Image copied. Paste it with the app\'s own paste.</string>
 </resources>

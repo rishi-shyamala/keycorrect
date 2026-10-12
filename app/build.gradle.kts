@@ -16,6 +16,7 @@ android {
         applicationId = "dev.keycorrect"
         versionCode = 1
         versionName = "0.0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
         // native code. 32-bit-only devices (armeabi-v7a, x86) are intentionally unsupported.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -41,6 +42,7 @@ android {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:ime"))
+    implementation(project(":core:clipboard"))
     implementation(project(":core:data"))
     implementation(project(":core:emoji"))
     implementation(project(":core:decoder"))
@@ -57,4 +59,12 @@ dependencies {
     implementation(libs.compose.foundation)
 
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // Security test (PHASE4 PR C exit criterion): run on a device with
+    // :app:connectedDebugAndroidTest.
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.truth)
 }

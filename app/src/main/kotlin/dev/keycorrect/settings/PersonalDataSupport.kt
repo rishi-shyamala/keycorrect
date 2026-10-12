@@ -267,15 +267,18 @@ internal fun validationMessage(error: ValidationError): String =
     }
 
 /**
- * Erases the database and reloads both stores so the keyboard's in-memory snapshots are empty too.
- * Runs on the application scope; [onDone] is called afterwards (best effort).
+ * Erases the database and the clipboard's image files, and reloads the stores and the clipboard so
+ * the keyboard's in-memory snapshots are empty too. Runs on the application scope; [onDone] is
+ * called afterwards (best effort).
  */
 internal fun AppContainer.resetPersonalData(onDone: () -> Unit) {
     write(onFailure = onDone) {
         database.destroy()
+        deleteClipboardBlobs()
         userDictionary.load()
         shortcuts.load()
         emojiEnvironment.reloadHistory()
+        clipboardEnvironment.reload()
         onDone()
     }
 }

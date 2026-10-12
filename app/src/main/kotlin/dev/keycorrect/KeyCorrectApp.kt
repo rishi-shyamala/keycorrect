@@ -4,9 +4,13 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.graphics.Paint
+import dev.keycorrect.core.data.ClipboardRepository
 import dev.keycorrect.core.data.EmojiHistoryStore
+import dev.keycorrect.core.data.EncryptedBlobStore
 import dev.keycorrect.core.data.KeyCorrectDatabase
+import dev.keycorrect.core.data.KeystoreBlobCipher
 import dev.keycorrect.core.data.ShortcutStore
+import dev.keycorrect.core.data.SqlClipboardStore
 import dev.keycorrect.core.data.SqlEmojiHistoryStore
 import dev.keycorrect.core.data.SqlLearningStore
 import dev.keycorrect.core.data.SqlShortcutStore
@@ -18,17 +22,21 @@ import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.settings.SettingsRepository
 import dev.keycorrect.core.settings.SettingsStore
+import dev.keycorrect.ime.AppClipboardEnvironment
 import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class KeyCorrectApp : Application() {
     lateinit var container: AppContainer
@@ -46,7 +54,10 @@ class KeyCorrectApp : Application() {
 }
 
 /** Process-wide singletons, created once in [KeyCorrectApp]. Manual DI keeps startup cheap. */
-class AppContainer(private val context: Context) {
+class AppContainer(
+    private val context: Context,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
     /** Outlives any screen: for writes that must complete even if the UI goes away. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
@@ -97,6 +108,33 @@ class AppContainer(private val context: Context) {
             hasGlyph = Paint()::hasGlyph,
             recording = { emojiRecording },
         )
+    }
+
+    /**
+     * Clipboard image bytes, sealed with a Keystore key, in no-backup storage. Streamed out only by
+     * the non-exported [dev.keycorrect.ime.ClipImageProvider].
+     */
+    val clipboardBlobs: EncryptedBlobStore by lazy {
+        EncryptedBlobStore(File(context.noBackupFilesDir, CLIPS_DIR), KeystoreBlobCipher())
+    }
+
+    /** Deletes every clipboard image file (erase personal data). */
+    suspend fun deleteClipboardBlobs() = withContext(ioDispatcher) { clipboardBlobs.deleteAll() }
+
+    /** Clipboard rows (encrypted database) and image blobs, kept consistent. */
+    val clipboardRepository: ClipboardRepository by lazy {
+        ClipboardRepository(SqlClipboardStore(database), clipboardBlobs)
+    }
+
+    /**
+     * The clipboard history the keyboard shows, shared by every keyboard instance. Start it with
+     * [AppClipboardEnvironment.start]. Not part of "Reset all learning" (a clipboard history is not
+     * learning; the settings clear it explicitly); erased with the personal data.
+     */
+    val clipboardEnvironment: AppClipboardEnvironment by lazy {
+        AppClipboardEnvironment(applicationScope, { clipboardRepository }).also { env ->
+            applicationScope.launch { settingsRepository.settings.collect(env::applySettings) }
+        }
     }
 
     /** "Reset all learning": the learning data plus emoji recents and variant choices. */
@@ -152,6 +190,7 @@ class AppContainer(private val context: Context) {
 }
 
 private const val EMOJI_ASSET = "emoji/emoji_en.kce"
+private const val CLIPS_DIR = "clips"
 
 val Context.appContainer: AppContainer
     get() = (applicationContext as KeyCorrectApp).container

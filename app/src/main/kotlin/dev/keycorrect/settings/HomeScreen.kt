@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import dev.keycorrect.R
 
 @Composable
+@Suppress("LongMethod") // A flat list of navigation rows.
 fun HomeScreen(
     contentPadding: PaddingValues,
     status: ImeStatus,
@@ -40,6 +41,11 @@ fun HomeScreen(
             title = stringResource(R.string.emoji_title),
             supportingText = stringResource(R.string.emoji_summary),
             onClick = { onNavigate(SettingsDestination.Emoji) },
+        )
+        NavRow(
+            title = stringResource(R.string.clipboard_title),
+            supportingText = stringResource(R.string.clipboard_summary),
+            onClick = { onNavigate(SettingsDestination.Clipboard) },
         )
         NavRow(
             title = stringResource(R.string.text_correction_title),
