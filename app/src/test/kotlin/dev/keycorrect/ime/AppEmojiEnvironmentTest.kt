@@ -119,4 +119,16 @@ class AppEmojiEnvironmentTest {
         env.start()
         assertThat(env.catalog).isNull()
     }
+
+    @Test
+    fun aResetInTheSettingsEmptiesMemoryAtOnce() = runTest {
+        val env = env()
+        env.start()
+        env.onEmojiUsed(pizza, pizza)
+        env.setPreferredVariant(thumbs, thumbsLight)
+        store.clear() // what "Reset all learning" / "Erase personal data" did to the store
+        env.reloadHistory()
+        assertThat(env.recents).isEmpty()
+        assertThat(env.preferredVariant(thumbs)).isNull()
+    }
 }

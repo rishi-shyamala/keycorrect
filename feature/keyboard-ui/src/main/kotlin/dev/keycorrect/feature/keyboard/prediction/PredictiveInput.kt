@@ -913,8 +913,11 @@ internal class PredictiveInput(
         phrases.clear()
         retypeGuard = null
         restoredWord = null
-        // Recents and variant memory key on the grid emoji the form belongs to.
-        onEmojiUsed(slot.insert, catalog()?.byValue(slot.insert)?.value ?: slot.insert)
+        // Recents and variant memory key on the grid emoji the form belongs to. Nothing is
+        // remembered where the field asks for no learning (incognito tabs and the like).
+        if (profile?.learningEnabled == true) {
+            onEmojiUsed(slot.insert, catalog()?.byValue(slot.insert)?.value ?: slot.insert)
+        }
         publish(StripModel.Empty)
         requestNextWord()
     }

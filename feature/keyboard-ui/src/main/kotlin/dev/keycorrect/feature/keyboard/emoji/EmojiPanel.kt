@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +122,8 @@ private fun EmojiBody(
     val recentCells = remember(catalog, recents) { recentCells(catalog, recents) }
     val tabs = remember(catalog) { emojiTabs(catalog) }
     val selected = selectedTab(tabs, controller.emojiPanel.tab, recentCells.isNotEmpty())
+    // Pin the tab first shown, so the first pick (which creates Recents) doesn't switch to it.
+    SideEffect { if (controller.emojiPanel.tab == null) controller.emojiPanel.tab = selected }
     Column(modifier) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (selected) {

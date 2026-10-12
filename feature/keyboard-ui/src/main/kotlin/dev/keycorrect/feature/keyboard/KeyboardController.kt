@@ -401,6 +401,8 @@ class KeyboardController(
         if (panel == KeyboardPanel.Emoji && profile.sensitive) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         this.panel = panel
+        // Typing in the emoji search used the letters' shift state: work it out again.
+        if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
     }
 
     /**
@@ -417,7 +419,8 @@ class KeyboardController(
         if (profile.sensitive || value.isEmpty()) return
         input.endComposingForMove()
         tracked.commitText(value, 1)
-        if (record) emoji.onEmojiUsed(value, base)
+        // Nothing is remembered where the field asks for no learning (incognito tabs and the like).
+        if (record && profile.learningEnabled) emoji.onEmojiUsed(value, base)
         updateAutoCapitalize()
     }
 
@@ -431,7 +434,7 @@ class KeyboardController(
     /** [variant] was chosen from [item]'s long-press popup: inserts it and remembers the choice. */
     fun onEmojiVariantPicked(item: Emoji, variant: String) {
         if (profile.sensitive) return
-        emoji.setPreferredVariant(item.value, variant)
+        if (profile.learningEnabled) emoji.setPreferredVariant(item.value, variant)
         onEmojiPicked(variant, item.value)
     }
 
@@ -443,7 +446,10 @@ class KeyboardController(
     }
 
     /** Leaves the emoji search, back to the emoji grid. */
-    fun closeEmojiSearch() = emojiSearch.close()
+    fun closeEmojiSearch() {
+        emojiSearch.close()
+        updateAutoCapitalize()
+    }
 
     /** A key pressed while the emoji search is active: it edits the query and nothing else. */
     private fun onSearchKey(action: KeyAction) {

@@ -37,6 +37,12 @@ class AppEmojiEnvironment(
     private val variants = ConcurrentHashMap<String, String>()
     private var started = false
 
+    /**
+     * Guards read-modify-writes of [recentValues] (picks on the main thread, loads in the
+     * background).
+     */
+    private val recentsLock = Any()
+
     override val catalog: EmojiCatalog?
         get() = loaded
 
@@ -51,8 +57,12 @@ class AppEmojiEnvironment(
             val store = runCatching(history).getOrNull()
             val saved = store?.let { runCatching { it.recents() }.getOrNull() }.orEmpty()
             // Picks made before the history arrived stay in front.
-            recentValues = (recentValues + saved).distinct().take(EmojiHistoryStore.MAX_RECENTS)
+            synchronized(recentsLock) {
+                recentValues = (recentValues + saved).distinct().take(EmojiHistoryStore.MAX_RECENTS)
+            }
             val filtered = runCatching { EmojiGlyphFilter.filter(loadCatalog(), hasGlyph) }
+            // A failed load is tried again the next time the keyboard is shown.
+            if (filtered.isFailure) started = false
             filtered.getOrNull()?.let { catalog ->
                 if (store != null) loadVariants(store, catalog)
                 // Builds the search index here, off the main thread: otherwise the first
@@ -87,11 +97,28 @@ class AppEmojiEnvironment(
 
     override fun onEmojiUsed(value: String, base: String) {
         if (!recording()) return
-        recentValues =
-            (listOf(value) + recentValues.filter { it != value }).take(
-                EmojiHistoryStore.MAX_RECENTS
-            )
+        synchronized(recentsLock) {
+            recentValues =
+                (listOf(value) + recentValues.filter { it != value }).take(
+                    EmojiHistoryStore.MAX_RECENTS
+                )
+        }
         persist { it.recordUse(value, base) }
+    }
+
+    /**
+     * The history was reset, partly forgotten or erased in the settings: drops what memory holds
+     * and reads back what the store still has, so the panel and strip stop showing it at once
+     * rather than when the process ends.
+     */
+    suspend fun reloadHistory() {
+        val store = runCatching(history).getOrNull()
+        val saved = store?.let { runCatching { it.recents() }.getOrNull() }.orEmpty()
+        val choices = store?.let { runCatching { it.preferredVariants() }.getOrNull() }.orEmpty()
+        synchronized(recentsLock) { recentValues = saved }
+        variants.clear()
+        variants.putAll(choices)
+        variantsVersion++
     }
 
     private fun persist(write: suspend (EmojiHistoryStore) -> Unit) {

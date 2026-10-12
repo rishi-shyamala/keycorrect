@@ -259,4 +259,42 @@ class EmojiControllerTest {
         assertThat(controller.emojiSearch.active).isFalse()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
     }
+
+    @Test
+    fun nothingIsRememberedInAFieldThatAsksForNoLearning() {
+        editor.setText("")
+        controller.onStartInput(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT,
+                android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING,
+            ),
+            KeyboardSettings(),
+            identity = EditorIdentity(1, "pkg", InputType.TYPE_CLASS_TEXT, 0, null),
+        )
+        controller.onEmojiPicked(TestEmoji.PIZZA_VALUE, TestEmoji.PIZZA_VALUE)
+        val thumbs = TestEmoji.catalog.byValue(TestEmoji.THUMBS_VALUE)!!
+        controller.onEmojiVariantPicked(thumbs, TestEmoji.THUMBS_DARK)
+        assertThat(editor.text.toString())
+            .isEqualTo(TestEmoji.PIZZA_VALUE + TestEmoji.THUMBS_DARK) // still inserted
+        assertThat(emoji.used).isEmpty()
+        assertThat(emoji.preferred).isEmpty()
+    }
+
+    @Test
+    fun aLetterAfterAKeycapEmojiStartsAWord() {
+        start("5\uFE0F\u20E3")
+        type("hi")
+        assertThat(editor.composing).isEqualTo("hi")
+    }
+
+    @Test
+    fun leavingSearchWorksOutAutoCapitalisationAgain() {
+        editor.capsMode = 1 // the editor says a capital is wanted here
+        start("", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        assertThat(controller.state.shift).isNotEqualTo(ShiftState.Off) // sentence start
+        openSearch()
+        type("pi") // edits the query, using up the one-shot shift
+        controller.closeEmojiSearch()
+        assertThat(controller.state.shift).isNotEqualTo(ShiftState.Off)
+    }
 }

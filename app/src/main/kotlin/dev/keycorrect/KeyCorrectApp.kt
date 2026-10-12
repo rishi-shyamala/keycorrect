@@ -101,16 +101,23 @@ class AppContainer(private val context: Context) {
 
     /** "Reset all learning": the learning data plus emoji recents and variant choices. */
     suspend fun resetAllLearning() {
-        emojiHistoryStore.clear()
+        // Learning first: this also recovers an unavailable store, which a broken database must
+        // not block.
         learningHost.resetAll()
+        runCatching { emojiHistoryStore.clear() }
+        emojiEnvironment.reloadHistory()
     }
 
     /** "Forget recent learning": the learning from the last [minutes] and the emoji picks too. */
     suspend fun forgetLearningSince(minutes: Int): ForgetResult {
-        emojiHistoryStore.clearSince(
-            wallClock() - TimeUnit.MINUTES.toMillis(minutes.coerceAtLeast(0).toLong())
-        )
-        return learningHost.forgetSince(minutes)
+        val result = learningHost.forgetSince(minutes)
+        runCatching {
+            emojiHistoryStore.clearSince(
+                wallClock() - TimeUnit.MINUTES.toMillis(minutes.coerceAtLeast(0).toLong())
+            )
+        }
+        emojiEnvironment.reloadHistory()
+        return result
     }
 
     /** Wall clock for learning events and the learning thread; one definition for both. */
