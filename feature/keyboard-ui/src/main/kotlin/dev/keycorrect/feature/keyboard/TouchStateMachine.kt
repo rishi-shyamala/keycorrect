@@ -29,6 +29,20 @@ internal interface TouchHost {
     fun onPopupOpened()
 
     /**
+     * The emoji key opens the clipboard when held (PR C); off, it is a plain key. Read when the
+     * finger goes down.
+     */
+    val clipboardLongPress: Boolean
+        get() = false
+
+    /**
+     * A key with a long press of its own (the emoji key, see [clipboardLongPress]) was held for
+     * [longPressDelayMs]: releasing then does not also tap it. The haptic is played first, by the
+     * machine, through [onGestureTick].
+     */
+    fun onKeyLongPress(action: KeyAction) = Unit
+
+    /**
      * A key was committed (tap, repeat or popup entry). Never called for the shift key. [touch] is
      * where and when the finger went down for a plain tap, and null for repeats and popup entries
      * (whose position says nothing about the key meant).
@@ -82,6 +96,8 @@ internal interface TouchHost {
  *   press and auto-repeats; shift is reported on press and release without committing anything.
  * - A key with popup entries opens its popup after [TouchHost.longPressDelayMs]; releasing over a
  *   cell commits that entry, and moving far below the key cancels it.
+ * - The emoji key (with [TouchHost.clipboardLongPress]) is long-pressed after the same delay: a
+ *   haptic tick and [TouchHost.onKeyLongPress]; the release then types nothing.
  * - A second finger going down dismisses an open popup; the first finger's release then types
  *   nothing. Other fingers never affect a drag or swipe in progress.
  * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] before the long-press
@@ -135,6 +151,9 @@ internal class TouchStateMachine(
         /** Space: [deadline] is the hold arming rather than a popup. */
         var holdPending = false
 
+        /** Emoji key: [deadline] is its long press (the clipboard). */
+        var keyLongPressPending = false
+
         /** A repeat has fired, so a backspace can no longer become a swipe. */
         var repeatFired = false
 
@@ -152,6 +171,7 @@ internal class TouchStateMachine(
         None,
         CursorDrag,
         HoldArmed,
+        KeyLongPress,
         SelectDrag,
         BackspaceSwipe,
     }
@@ -170,7 +190,14 @@ internal class TouchStateMachine(
         for ((id, press) in presses.entries.toList()) {
             val deadline = press.deadline ?: continue
             if (deadline > now || presses[id] !== press) continue
-            if (press.holdPending) {
+            if (press.keyLongPressPending) {
+                press.deadline = null
+                press.keyLongPressPending = false
+                press.gesture = Gesture.KeyLongPress
+                touch.preview = null
+                hostCall { host.onGestureTick() }
+                hostCall { host.onKeyLongPress(press.slot.key.action) }
+            } else if (press.holdPending) {
                 press.deadline = null
                 press.holdPending = false
                 press.gesture = Gesture.HoldArmed
@@ -209,6 +236,10 @@ internal class TouchStateMachine(
             }
             key.action == KeyAction.Space && host.spacebarCursor -> {
                 press.holdPending = true
+                press.deadline = clock() + host.longPressDelayMs
+            }
+            key.action == KeyAction.Emoji && host.clipboardLongPress -> {
+                press.keyLongPressPending = true
                 press.deadline = clock() + host.longPressDelayMs
             }
             key.popup.isNotEmpty() -> press.deadline = clock() + host.longPressDelayMs

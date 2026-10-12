@@ -76,6 +76,8 @@ internal fun KeyboardSurface(
     gestures: KeyGestures,
     modifier: Modifier = Modifier,
     terminalModifiers: TerminalModifiers? = null,
+    clipboardLongPress: Boolean = false,
+    onKeyLongPress: (KeyAction) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val view = LocalView.current
@@ -91,6 +93,8 @@ internal fun KeyboardSurface(
     val currentGestures by rememberUpdatedState(gestures)
     val currentDensity by rememberUpdatedState(density)
     val currentFeedback by rememberUpdatedState(feedback)
+    val currentClipboardLongPress by rememberUpdatedState(clipboardLongPress)
+    val currentOnKeyLongPress by rememberUpdatedState(onKeyLongPress)
     var size by remember { mutableStateOf(IntSize.Zero) }
     val geometry =
         remember(layer, size) {
@@ -121,6 +125,11 @@ internal fun KeyboardSurface(
                     currentFeedback.onKeyPress(view, feedbackKind(action), currentSettings)
 
                 override fun onPopupOpened() = currentFeedback.haptic(view, currentSettings)
+
+                override val clipboardLongPress: Boolean
+                    get() = currentClipboardLongPress
+
+                override fun onKeyLongPress(action: KeyAction) = currentOnKeyLongPress(action)
 
                 override fun onKey(action: KeyAction, touch: TouchPoint?) =
                     currentOnKey(action, touch)

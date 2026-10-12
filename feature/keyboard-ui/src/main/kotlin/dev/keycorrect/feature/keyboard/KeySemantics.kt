@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.unit.Constraints
@@ -32,7 +35,9 @@ internal fun KeySemantics(
     onKey: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
     terminalModifiers: TerminalModifiers? = null,
+    onClipboard: (() -> Unit)? = null,
 ) {
+    val clipboardLabel = stringResource(R.string.clipboard_key_action)
     Layout(
         content = {
             for (row in layer.rows) {
@@ -49,6 +54,10 @@ internal fun KeySemantics(
                                     latchOf(key, terminalModifiers),
                                 )
                             role = Role.Button
+                            if (key.action == KeyAction.Emoji && onClipboard != null) {
+                                // The long press has no gesture for a screen reader.
+                                customActions = clipboardActions(clipboardLabel, onClipboard)
+                            }
                             onClick {
                                 // A failing host (e.g. a dead input connection) must not take
                                 // down the accessibility service's call.
@@ -85,3 +94,15 @@ internal fun KeySemantics(
         }
     }
 }
+
+private fun clipboardActions(label: String, open: () -> Unit) =
+    listOf(
+        CustomAccessibilityAction(label) {
+            try {
+                open()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    )

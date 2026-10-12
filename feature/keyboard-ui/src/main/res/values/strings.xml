@@ -102,4 +102,31 @@
     <string name="emoji_search_hint">Search emoji</string>
     <string name="emoji_search_empty">No emoji found</string>
     <string name="emoji_search_close_description">Close search</string>
+    <!-- Clipboard (PR C). -->
+    <string name="clipboard_key_action">Clipboard</string>
+    <string name="clipboard_title">Clipboard</string>
+    <string name="clipboard_empty">Copied text and images appear here</string>
+    <string name="clipboard_clear">Clear</string>
+    <string name="clipboard_clear_description">Clear all clips that are not pinned</string>
+    <string name="clipboard_clear_question">Clear all?</string>
+    <string name="clipboard_clear_yes">Yes</string>
+    <string name="clipboard_clear_yes_description">Yes, clear all clips that are not pinned</string>
+    <string name="clipboard_clear_cancel">Cancel</string>
+    <string name="clipboard_clear_cancel_description">Keep the clips</string>
+    <string name="clipboard_image">Image</string>
+    <string name="clipboard_paste_description">Paste: %1$s</string>
+    <string name="clipboard_paste_image_description">Paste image</string>
+    <string name="clipboard_paste_sensitive_description">Paste hidden code: %1$s</string>
+    <string name="clipboard_pinned_description">Pinned</string>
+    <string name="clipboard_menu_description">Clip actions</string>
+    <string name="clipboard_pin">Pin</string>
+    <string name="clipboard_unpin">Unpin</string>
+    <string name="clipboard_delete">Delete</string>
+    <string name="clipboard_clean">Clean link</string>
+    <string name="clipboard_menu_close">Close</string>
+    <string name="clipboard_chip">\uD83D\uDCCB %1$s</string>
+    <string name="clipboard_chip_description">Paste copied text: %1$s</string>
+    <string name="clipboard_chip_image_description">Paste copied image</string>
+    <string name="clipboard_chip_dismiss">\u2715</string>
+    <string name="clipboard_chip_dismiss_description">Dismiss copied clip</string>
 </resources>

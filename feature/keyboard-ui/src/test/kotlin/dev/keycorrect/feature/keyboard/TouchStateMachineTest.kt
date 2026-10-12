@@ -25,6 +25,13 @@ class TouchStateMachineTest {
         val swipes = mutableListOf<Int>()
         val swipeEnds = mutableListOf<Boolean>()
         var ticks = 0
+        override var clipboardLongPress = true
+        val keyLongPresses = mutableListOf<KeyAction>()
+
+        override fun onKeyLongPress(action: KeyAction) {
+            keyLongPresses += action
+            events += "keyLongPress"
+        }
 
         override val gestures =
             object : KeyGestures {
@@ -777,5 +784,62 @@ class TouchStateMachineTest {
         assertThat(host.keys).containsExactly(KeyAction.Backspace, a.key.action).inOrder()
         assertThat(host.swipes).containsExactly(1, 2).inOrder()
         assertThat(host.swipeEnds).containsExactly(true)
+    }
+
+    private val emoji
+        get() = slot(KeyAction.Emoji)
+
+    @Test
+    fun holdingTheEmojiKeyFiresTheLongPressOnceAndDoesNotTap() {
+        down(1, emoji)
+        advance(299)
+        assertThat(host.keyLongPresses).isEmpty()
+        advance(1)
+        assertThat(host.keyLongPresses).containsExactly(KeyAction.Emoji)
+        assertThat(host.ticks).isEqualTo(1)
+        assertThat(touch.preview).isNull()
+        advance(1_000)
+        machine.onUp(1)
+        assertThat(host.keys).isEmpty()
+        assertThat(host.keyLongPresses).hasSize(1)
+        assertThat(touch.pressed).isEmpty()
+    }
+
+    @Test
+    fun aShortTapOnTheEmojiKeyStillTaps() {
+        down(1, emoji)
+        advance(299)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Emoji)
+        assertThat(host.keyLongPresses).isEmpty()
+        assertThat(machine.nextDeadline()).isNull()
+    }
+
+    @Test
+    fun theEmojiKeyIsAPlainKeyWhenTheClipboardIsOff() {
+        host.clipboardLongPress = false
+        down(1, emoji)
+        assertThat(machine.nextDeadline()).isNull()
+        advance(5_000)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Emoji)
+        assertThat(host.keyLongPresses).isEmpty()
+    }
+
+    @Test
+    fun aLostEmojiTouchFiresNothing() {
+        down(1, emoji)
+        machine.cancel(1)
+        advance(1_000)
+        assertThat(host.keyLongPresses).isEmpty()
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun otherKeysHaveNoKeyLongPress() {
+        down(1, a)
+        advance(1_000)
+        machine.onUp(1)
+        assertThat(host.keyLongPresses).isEmpty()
     }
 }
