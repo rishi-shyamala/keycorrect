@@ -97,10 +97,16 @@ internal class TextContextCache(private val editor: TextEditor) {
 
     fun cursorInsideWord(): Boolean = afterKnown && after.isNotEmpty() && after[0].isLetterOrDigit()
 
-    /** True at the start of the field, after whitespace, or after opening punctuation. */
+    /**
+     * True at the start of the field, after whitespace, opening punctuation or an emoji (the end of
+     * a supplementary-plane character or of an emoji presentation selector).
+     */
     fun atWordBoundary(): Boolean {
         val c = text.lastOrNull() ?: return !beforeTruncated
-        return c.isWhitespace() || c in OPENING_PUNCTUATION
+        return c.isWhitespace() ||
+            c in OPENING_PUNCTUATION ||
+            c.isLowSurrogate() ||
+            c == EMOJI_PRESENTATION
     }
 
     /**
@@ -151,5 +157,7 @@ internal class TextContextCache(private val editor: TextEditor) {
         const val OPENING_PUNCTUATION = "([{\"'“‘¿¡"
     }
 }
+
+private const val EMOJI_PRESENTATION = '\uFE0F'
 
 internal fun isApostrophe(c: Char) = c == '\'' || c == '’' || c == 'ʼ'

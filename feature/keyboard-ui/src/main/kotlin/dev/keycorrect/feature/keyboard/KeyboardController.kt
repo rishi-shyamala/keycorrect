@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.keycorrect.core.emoji.Emoji
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.input.AutoCapitalize
 import dev.keycorrect.core.input.EnterAction
@@ -24,7 +25,10 @@ import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.emoji.EmojiChoice
 import dev.keycorrect.feature.keyboard.emoji.EmojiEnvironment
+import dev.keycorrect.feature.keyboard.emoji.EmojiPanelState
+import dev.keycorrect.feature.keyboard.emoji.EmojiSearch
 import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
@@ -120,8 +124,33 @@ class KeyboardController(
     }
 
     /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
-    val gestures: KeyGestures
-        get() = editing
+    val gestures: KeyGestures = SearchAwareGestures()
+
+    /** The emoji search; while it is active the letter keys edit its query (PR B). */
+    internal val emojiSearch = EmojiSearch()
+
+    /** The emoji panel's open tab, kept while the search or the keys are shown. */
+    internal val emojiPanel = EmojiPanelState()
+
+    private val searching: Boolean
+        get() = panel == KeyboardPanel.Emoji && emojiSearch.active
+
+    /** Space and backspace gestures act on the editor, never while a search owns the keys. */
+    private inner class SearchAwareGestures : KeyGestures {
+        override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) {
+            if (!searching) editing.onCursorDrag(dx, dy, select)
+        }
+
+        override fun onSpaceHold() {
+            if (!searching) editing.onSpaceHold()
+        }
+
+        override fun onBackspaceSwipe(words: Int) {
+            if (!searching) editing.onBackspaceSwipe(words)
+        }
+
+        override fun onBackspaceSwipeEnd(commit: Boolean) = editing.onBackspaceSwipeEnd(commit)
+    }
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
     val touchLog: WordTouchLog
@@ -193,6 +222,7 @@ class KeyboardController(
             return
         }
         panel = KeyboardPanel.Keys
+        emojiSearch.close()
         editing.reset()
         shiftHeld = false
         shiftChorded = false
@@ -236,6 +266,10 @@ class KeyboardController(
      * key, null for repeats, popup entries and accessibility actions.
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
+        if (searching) onSearchKey(action) else onTypingKey(action, touch)
+    }
+
+    private fun onTypingKey(action: KeyAction, touch: TouchPoint?) {
         cancelSwipeFor(action)
         when (action) {
             is KeyAction.Text -> onTextKey(action, touch)
@@ -356,9 +390,76 @@ class KeyboardController(
         if (editing.swipeActive && action != KeyAction.Backspace) editing.cancelSwipe()
     }
 
-    /** Shows [panel] in the key area ([KeyboardPanel.Keys] returns to the keys). */
+    /**
+     * Shows [panel] in the key area ([KeyboardPanel.Keys] returns to the keys). The emoji panel is
+     * never shown in a sensitive field; leaving it ends any emoji search.
+     */
     fun showPanel(panel: KeyboardPanel) {
+        if (panel == KeyboardPanel.Emoji && profile.sensitive) return
+        if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         this.panel = panel
+    }
+
+    /**
+     * An emoji or kaomoji [value] was picked in the emoji panel ([base] is its grid entry; it is
+     * [record]ed as used unless a kaomoji). Nothing happens in a sensitive field.
+     *
+     * Settling: like a cursor move ([PredictiveInput.endComposingForMove]), not like a separator.
+     * The composing word is finished as typed and abandoned rather than learned or autocorrected,
+     * pending suggestions and a held revert are dropped, and the text cache is reset (it is read
+     * again on the next word). The emoji is then committed through [tracked], so [OwnEditTracker]
+     * expects its selection update. An emoji is never a word and never a separator.
+     */
+    fun onEmojiPicked(value: String, base: String = value, record: Boolean = true) {
+        if (profile.sensitive || value.isEmpty()) return
+        input.endComposingForMove()
+        tracked.commitText(value, 1)
+        if (record) emoji.onEmojiUsed(value, base)
+        updateAutoCapitalize()
+    }
+
+    /** A grid emoji was tapped: inserts its preferred variant, else the default tone, else base. */
+    fun onEmojiTap(item: Emoji) = onEmojiPicked(emojiValue(item), item.value)
+
+    /** The form of [item] a tap inserts. */
+    internal fun emojiValue(item: Emoji): String =
+        EmojiChoice.resolve(item, emoji.preferredVariant(item.value), settings.emojiSkinTone)
+
+    /** [variant] was chosen from [item]'s long-press popup: inserts it and remembers the choice. */
+    fun onEmojiVariantPicked(item: Emoji, variant: String) {
+        if (profile.sensitive) return
+        emoji.setPreferredVariant(item.value, variant)
+        onEmojiPicked(variant, item.value)
+    }
+
+    /** Switches the emoji panel to search: the letters layer, typing edits the query. */
+    fun openEmojiSearch() {
+        if (profile.sensitive || panel != KeyboardPanel.Emoji) return
+        emojiSearch.open()
+        if (state.layerId != KeyboardSet.LETTERS) switchLayer(KeyboardSet.LETTERS)
+    }
+
+    /** Leaves the emoji search, back to the emoji grid. */
+    fun closeEmojiSearch() = emojiSearch.close()
+
+    /** A key pressed while the emoji search is active: it edits the query and nothing else. */
+    private fun onSearchKey(action: KeyAction) {
+        when (action) {
+            is KeyAction.Text -> typeInSearch(state.transform(action))
+            KeyAction.Space -> typeInSearch(" ")
+            KeyAction.Backspace -> emojiSearch.backspace()
+            KeyAction.Enter,
+            KeyAction.Emoji -> emojiSearch.close()
+            KeyAction.Shift -> state = state.onShift(clock())
+            is KeyAction.SwitchLayer -> switchLayer(action.layerId)
+            else -> Unit
+        }
+    }
+
+    private fun typeInSearch(text: String) {
+        markChord()
+        emojiSearch.type(text)
+        state = state.afterCharacter(shiftHeld)
     }
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */

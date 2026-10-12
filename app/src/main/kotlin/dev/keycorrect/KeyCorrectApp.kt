@@ -3,6 +3,7 @@ package dev.keycorrect
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.graphics.Paint
 import dev.keycorrect.core.data.EmojiHistoryStore
 import dev.keycorrect.core.data.KeyCorrectDatabase
 import dev.keycorrect.core.data.ShortcutStore
@@ -11,11 +12,13 @@ import dev.keycorrect.core.data.SqlLearningStore
 import dev.keycorrect.core.data.SqlShortcutStore
 import dev.keycorrect.core.data.SqlUserDictionaryStore
 import dev.keycorrect.core.data.UserDictionaryStore
+import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.settings.SettingsRepository
 import dev.keycorrect.core.settings.SettingsStore
+import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
@@ -79,6 +82,23 @@ class AppContainer(private val context: Context) {
         GatedEmojiHistoryStore(emojiHistoryStore) { emojiRecording }
     }
 
+    /**
+     * The emoji catalog (loaded once per process, on first use of the keyboard), recents and
+     * variant choices, shared by every keyboard instance. Start it with
+     * [AppEmojiEnvironment.start].
+     */
+    val emojiEnvironment: AppEmojiEnvironment by lazy {
+        AppEmojiEnvironment(
+            scope = applicationScope,
+            history = { emojiHistory },
+            loadCatalog = {
+                context.assets.open(EMOJI_ASSET).use { EmojiCatalog.read(it.buffered()) }
+            },
+            hasGlyph = Paint()::hasGlyph,
+            recording = { emojiRecording },
+        )
+    }
+
     /** "Reset all learning": the learning data plus emoji recents and variant choices. */
     suspend fun resetAllLearning() {
         emojiHistoryStore.clear()
@@ -123,6 +143,8 @@ class AppContainer(private val context: Context) {
         if (learningHostLazy.isInitialized()) learningHost.requestFlush(FlushReason.TrimMemory)
     }
 }
+
+private const val EMOJI_ASSET = "emoji/emoji_en.kce"
 
 val Context.appContainer: AppContainer
     get() = (applicationContext as KeyCorrectApp).container

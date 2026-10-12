@@ -42,6 +42,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:ime"))
     implementation(project(":core:data"))
+    implementation(project(":core:emoji"))
     implementation(project(":core:decoder"))
     implementation(project(":core:engine-api"))
     implementation(project(":core:input"))

@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.emoji.EmojiPanel
+import dev.keycorrect.feature.keyboard.emoji.EmojiSearchRow
 
 /**
  * The full keyboard: suggestion strip (autofill chips for now) above the key surface, with the key
@@ -65,7 +67,7 @@ fun KeyboardScreen(
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionArea(controller, autofill)
+                SuggestionArea(controller, settings, feedback, autofill)
                 KeyArea(controller, settings, feedback, touch)
             }
             KeyOverlay(
@@ -79,9 +81,10 @@ fun KeyboardScreen(
 }
 
 /**
- * What fills the key area: the editing panel while it is open, else the keys (the other panels
- * don't exist yet) with their accessibility nodes. Either way it is
- * [KeyboardController.heightUnits] key heights tall, so nothing jumps when the panel opens.
+ * What fills the key area: the editing or emoji panel while one is open, else the keys (also while
+ * the emoji search is on, with the search row in the strip's place) with their accessibility nodes.
+ * Either way it is [KeyboardController.heightUnits] key heights tall, so nothing jumps when the
+ * panel opens.
  */
 @Composable
 private fun KeyArea(
@@ -90,6 +93,17 @@ private fun KeyArea(
     feedback: KeyFeedback,
     touch: KeyboardTouchState,
 ) {
+    val panelHeight = settings.keyHeightDp.dp * controller.heightUnits
+    if (controller.panel == KeyboardPanel.Emoji && !controller.emojiSearch.active) {
+        val view = LocalView.current
+        EmojiPanel(
+            controller = controller,
+            barHeight = settings.keyHeightDp.dp,
+            onPress = { feedback.haptic(view, settings) },
+            modifier = Modifier.fillMaxWidth().height(panelHeight),
+        )
+        return
+    }
     if (controller.panel == KeyboardPanel.Editing) {
         val view = LocalView.current
         EditingPanel(
@@ -145,10 +159,18 @@ private fun KeyArea(
  * [PredictionStrip] only, so a new suggestion recomposes that and nothing else.
  */
 @Composable
-private fun SuggestionArea(controller: KeyboardController, autofill: InlineAutofillController?) {
+private fun SuggestionArea(
+    controller: KeyboardController,
+    settings: KeyboardSettings,
+    feedback: KeyFeedback,
+    autofill: InlineAutofillController?,
+) {
     Box(modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)) {
         val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
-        if (items.isNotEmpty()) {
+        if (controller.panel == KeyboardPanel.Emoji && controller.emojiSearch.active) {
+            val view = LocalView.current
+            EmojiSearchRow(controller, onPress = { feedback.haptic(view, settings) })
+        } else if (items.isNotEmpty()) {
             InlineSuggestionRow(items)
         } else if (controller.selectionStripVisible) {
             SelectionStrip(controller.editing)
