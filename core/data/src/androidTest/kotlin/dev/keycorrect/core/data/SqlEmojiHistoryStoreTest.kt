@@ -45,6 +45,14 @@ class SqlEmojiHistoryStoreTest {
     }
 
     @Test
+    fun allVariantChoicesAreReadInOneQuery() = runBlocking {
+        val s = store()
+        s.setPreferredVariant("👍", "👍🏽")
+        s.setPreferredVariant("👋", "👋🏿")
+        assertThat(s.preferredVariants()).containsExactly("👍", "👍🏽", "👋", "👋🏿")
+    }
+
+    @Test
     fun recentsAreMostRecentFirst() = runBlocking {
         val s = store()
         s.recordUse("😀", "😀")

@@ -61,13 +61,11 @@ class AppEmojiEnvironment(
     }
 
     private suspend fun loadVariants(store: EmojiHistoryStore, catalog: EmojiCatalog) {
-        for (group in catalog.groups) {
-            for (emoji in group.emoji) {
-                if (emoji.variants.isEmpty()) continue
-                val chosen = runCatching { store.preferredVariant(emoji.value) }.getOrNull()
-                // A choice made while loading wins over the saved one.
-                if (chosen != null) variants.putIfAbsent(emoji.value, chosen)
-            }
+        val saved = runCatching { store.preferredVariants() }.getOrDefault(emptyMap())
+        for ((base, variant) in saved) {
+            // Only choices for emoji still in the (glyph-filtered) catalog; a choice made while
+            // loading wins over the saved one.
+            if (catalog.byValue(base)?.value == base) variants.putIfAbsent(base, variant)
         }
         variantsVersion++
     }

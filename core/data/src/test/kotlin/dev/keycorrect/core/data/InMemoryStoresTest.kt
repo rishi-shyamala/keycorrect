@@ -130,6 +130,15 @@ class InMemoryStoresTest {
     }
 
     @Test
+    fun allEmojiVariantChoicesAreReadAtOnce() = runTest {
+        val store = InMemoryEmojiHistoryStore(clock)
+        store.setPreferredVariant("👍", "👍🏽")
+        store.setPreferredVariant("👋", "👋🏿")
+        store.setPreferredVariant("👋", null)
+        assertThat(store.preferredVariants()).containsExactly("👍", "👍🏽")
+    }
+
+    @Test
     fun emojiVariantChoiceCanBeSetAndCleared() = runTest {
         val store = InMemoryEmojiHistoryStore(clock)
         assertThat(store.preferredVariant("👍")).isNull()

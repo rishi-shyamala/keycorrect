@@ -154,6 +154,9 @@ class InMemoryEmojiHistoryStore(private val clock: () -> Long = System::currentT
 
     override suspend fun preferredVariant(base: String): String? = state.value.variants[base]?.first
 
+    override suspend fun preferredVariants(): Map<String, String> =
+        state.value.variants.mapValues { it.value.first }
+
     override suspend fun setPreferredVariant(base: String, variant: String?) {
         if (!EmojiHistoryStore.isValid(base)) return
         if (variant != null && !EmojiHistoryStore.isValid(variant)) return

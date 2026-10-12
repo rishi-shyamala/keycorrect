@@ -53,6 +53,12 @@ class SqlEmojiHistoryStore(
         }
     }
 
+    override suspend fun preferredVariants(): Map<String, String> = database.read { db ->
+        db.query("SELECT base, variant FROM emoji_variants", arrayOf<Any?>()).use { c ->
+            buildMap { while (c.moveToNext()) put(c.getString(0), c.getString(1)) }
+        }
+    }
+
     override suspend fun setPreferredVariant(base: String, variant: String?) {
         if (!EmojiHistoryStore.isValid(base)) return
         if (variant != null && !EmojiHistoryStore.isValid(variant)) return

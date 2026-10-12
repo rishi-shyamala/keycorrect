@@ -96,6 +96,9 @@ class KeyboardController(
             wordFeedback::onWordFeedback,
             { emoji.catalog },
             emoji::onEmojiUsed,
+            { e ->
+                EmojiChoice.resolve(e, emoji.preferredVariant(e.value), settings.emojiSkinTone)
+            },
         )
 
     /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */

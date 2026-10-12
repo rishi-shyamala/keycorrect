@@ -103,6 +103,9 @@ interface EmojiHistoryStore {
     /** The remembered variant for the grid emoji [base], or null when none was chosen. */
     suspend fun preferredVariant(base: String): String?
 
+    /** Every remembered variant choice, base to variant, in one read (loaded once at start). */
+    suspend fun preferredVariants(): Map<String, String>
+
     /** Remembers [variant] for [base]; null forgets the choice. */
     suspend fun setPreferredVariant(base: String, variant: String?)
 

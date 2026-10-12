@@ -82,6 +82,8 @@ internal class PredictiveInput(
     private val catalog: () -> EmojiCatalog? = { null },
     /** An emoji tapped in the strip was inserted: (value, base), for the recents. */
     private val onEmojiUsed: (String, String) -> Unit = { _, _ -> },
+    /** The form of a suggested emoji to show and insert (the user's skin tone or variant). */
+    private val emojiForm: (Emoji) -> String = { it.value },
 ) {
     /** The touches of recently finished words, for Phase 3. In memory only. */
     val touchLog = WordTouchLog()
@@ -911,7 +913,8 @@ internal class PredictiveInput(
         phrases.clear()
         retypeGuard = null
         restoredWord = null
-        onEmojiUsed(slot.insert, slot.insert)
+        // Recents and variant memory key on the grid emoji the form belongs to.
+        onEmojiUsed(slot.insert, catalog()?.byValue(slot.insert)?.value ?: slot.insert)
         publish(StripModel.Empty)
         requestNextWord()
     }
@@ -1010,7 +1013,7 @@ internal class PredictiveInput(
                 visible,
                 typed,
                 pendingCorrection(visible, typed),
-                emojiFor(typed),
+                emojiFor(typed)?.let { EmojiSuggestion(emojiForm(it), it.name) },
                 env.expander::preview,
             )
         )

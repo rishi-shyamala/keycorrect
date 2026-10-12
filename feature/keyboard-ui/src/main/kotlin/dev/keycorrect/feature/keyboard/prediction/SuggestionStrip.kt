@@ -2,7 +2,6 @@ package dev.keycorrect.feature.keyboard.prediction
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
-import dev.keycorrect.core.emoji.Emoji
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictResult
@@ -96,6 +95,9 @@ internal fun StripSlot.labelRes(): Int =
     }
 
 /** Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested. */
+/** An emoji for the strip: the [form] to show and insert (the user's skin tone), and its [name]. */
+internal class EmojiSuggestion(val form: String, val name: String)
+
 internal object StripBuilder {
     /**
      * @param typed the composing word ("" for next-word predictions).
@@ -113,7 +115,7 @@ internal object StripBuilder {
         result: PredictResult,
         typed: String,
         pending: Candidate?,
-        emoji: Emoji? = null,
+        emoji: EmojiSuggestion? = null,
         preview: (String) -> String,
     ): StripModel {
         val literalText = result.literal?.text ?: typed
@@ -140,7 +142,7 @@ internal object StripBuilder {
         }
         val emojiSlot =
             if (typed.isEmpty() || emoji == null) null
-            else StripSlot(emoji.value, SlotKind.Emoji, label = emoji.name)
+            else StripSlot(emoji.form, SlotKind.Emoji, label = emoji.name)
         return StripModel(left, centre, emojiSlot ?: right)
     }
 

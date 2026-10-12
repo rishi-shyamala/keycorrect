@@ -19,6 +19,8 @@ class GatedEmojiHistoryStore(
 
     override suspend fun preferredVariant(base: String): String? = delegate.preferredVariant(base)
 
+    override suspend fun preferredVariants(): Map<String, String> = delegate.preferredVariants()
+
     override suspend fun setPreferredVariant(base: String, variant: String?) {
         if (variant == null || recording()) delegate.setPreferredVariant(base, variant)
     }
