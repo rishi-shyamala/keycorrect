@@ -189,6 +189,24 @@ class ClipboardRepositoryTest {
     }
 
     @Test
+    fun aStageThatFailsMidReadLeavesNothingAndIsNotSpared() = runTest {
+        val broken =
+            object : java.io.InputStream() {
+                var left = 3
+
+                override fun read(): Int =
+                    if (left-- > 0) 1 else throw java.io.IOException("source went away")
+            }
+        assertThat(runCatching { repo.stageImage(broken) }.isFailure).isTrue()
+        assertThat(blobs.list()).isEmpty()
+        // A later stage + insert and sweep work normally (nothing stale is spared).
+        val name = repo.stageImage(ByteArrayInputStream(ByteArray(4)))
+        repo.insertStaged(name, "image/png")
+        repo.orphanSweep()
+        assertThat(blobs.list()).containsExactly(name)
+    }
+
+    @Test
     fun failedRowInsertOfAStagedImageRemovesTheBlob() = runTest {
         val failing =
             object : ClipboardStore by store {

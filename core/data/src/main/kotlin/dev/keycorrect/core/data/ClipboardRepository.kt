@@ -91,9 +91,17 @@ class ClipboardRepository(
         maxBytes: Long = EncryptedBlobStore.DEFAULT_MAX_BYTES,
     ): String {
         stagingWrites.incrementAndGet()
+        // Named and marked staged before writing: a cancellation (the capture timing out) can then
+        // still remove it, rather than leave a blob that no row will ever claim.
+        val name = EncryptedBlobStore.newName()
+        staged += name
+        var written = false
         try {
-            return runInterruptible(io) { blobs.write(input, maxBytes).also { staged += it } }
+            runInterruptible(io) { blobs.write(name, input, maxBytes) }
+            written = true
+            return name
         } finally {
+            if (!written) discardStaged(name)
             stagingWrites.decrementAndGet()
         }
     }

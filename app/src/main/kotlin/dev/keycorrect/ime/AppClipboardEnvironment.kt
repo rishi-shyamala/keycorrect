@@ -248,7 +248,15 @@ class AppClipboardEnvironment(
             scope.launch(captureDispatcher) {
                 var name: String? = null
                 try {
-                    val input = runInterruptible { open() }
+                    var opened: InputStream? = null
+                    val input =
+                        try {
+                            runInterruptible { open() }.also { opened = it }
+                        } catch (e: CancellationException) {
+                            // open() may still return after the timeout: don't leak the descriptor.
+                            runCatching { opened?.close() }
+                            throw e
+                        }
                     stream.set(input)
                     name = input?.use {
                         try {

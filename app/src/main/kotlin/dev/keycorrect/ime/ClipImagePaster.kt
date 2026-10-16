@@ -31,7 +31,10 @@ internal class ClipImagePaster(
     /** The last image committed to a field, whose read grant is released at the next one. */
     private var granted: InputContentInfoCompat? = null
 
-    /** The field is done with the image: releases the read grant of the last commit. */
+    /**
+     * Releases the read grant of the last commit. Called only when the next image is pasted, not
+     * when the field closes: an app may read a pasted image later (a chat upload, a preview).
+     */
     fun release() {
         granted?.let { runCatching { it.releasePermission() } }
         granted = null

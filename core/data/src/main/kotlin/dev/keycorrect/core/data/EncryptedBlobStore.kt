@@ -50,10 +50,13 @@ class EncryptedBlobStore(
      *
      * @throws BlobTooLargeException when the stream holds more than [maxBytes].
      */
-    fun write(input: InputStream, maxBytes: Long = defaultMaxBytes): String {
+    fun write(input: InputStream, maxBytes: Long = defaultMaxBytes): String =
+        newName().also { write(it, input, maxBytes) }
+
+    /** [write] into blob [name] (from [newName]). */
+    fun write(name: String, input: InputStream, maxBytes: Long = defaultMaxBytes) {
         require(maxBytes >= 0) { "Negative limit" }
         directory.mkdirs()
-        val name = UUID.randomUUID().toString()
         val temp = File(directory, name + TEMP_SUFFIX)
         var done = false
         try {
@@ -79,7 +82,6 @@ class EncryptedBlobStore(
             }
             if (!temp.renameTo(File(directory, name))) throw IOException("Cannot store blob")
             done = true
-            return name
         } finally {
             if (!done) temp.delete()
         }
@@ -145,6 +147,9 @@ class EncryptedBlobStore(
     private fun aadFor(name: String): ByteArray = (AAD_PREFIX + name).toByteArray(Charsets.UTF_8)
 
     companion object {
+        /** A fresh blob name, for a caller that must know it before [write] finishes. */
+        fun newName(): String = UUID.randomUUID().toString()
+
         private fun readHeader(input: InputStream): ByteArray {
             val version = input.read()
             val ivLength = input.read()
