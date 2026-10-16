@@ -1,4 +1,4 @@
-# KeyCorrect — Handoff (end of Phase 3, 2026-10-10)
+# KeyCorrect — Handoff (Phase 4 in progress, 2026-10-16)
 
 Read this first when resuming. Other docs:
 - `docs/PLAN.md`: the design and roadmap. §16 has the decisions and §17 the phases.
@@ -12,6 +12,60 @@ Read this first when resuming. Other docs:
 
 ---
 
+## 0. Resume here (2026-10-16)
+
+**Branch `phase-4-clipboard` is checked out, local only and NOT pushed.** It holds PR C, the clipboard
+history, plus the planning for feedback round 1. Its working tree is clean except the user's own
+untracked `user-feedback.md`: never commit that file.
+
+**PR C: done so far**
+- **Built:** core:clipboard (retention policy, URL cleaner), encrypted clip store (schema v5), Keystore-encrypted image blobs, the clipboard panel (long-press on the emoji key), the strip chip, capture and paste wiring (`ClipImageProvider`, not exported), Settings → Clipboard, and the security instrumented test.
+- **Simplified per the user (2026-10-12):** everything copied is captured; there is NO detection of passwords, cards, tokens or OTPs and no masking. The user deletes items. The privacy goal is only that **other apps can't read the stored data**.
+- **Reviewed:** a full review, then fixes (8c5bdc2), then a follow-up review, then fixes (eb68b37).
+- **Instrumented tests on the Tab S9:** core:data 47/47 and app `ClipboardSecurityTest` 5/5. These ran before the last two fix commits; re-run them.
+- **Release manifest checked:** only the launcher, the IME (BIND_INPUT_METHOD) and the profileinstaller receiver (DUMP) are exported; providers aren't.
+- **Bottom row reordered (user request):** ?123, emoji, comma (@ or / in email/URL), space, period, enter.
+
+**PR C: still to do, in order**
+1. **Reconnect the tablet.**
+   - The tablet R52X204HLZV was disconnected at the end of this session. adb authorisation dropped twice before: run `adb kill-server`, then have the user accept the "Allow USB debugging" prompt. The key fingerprint is C7:47:CA:45:7C:CF:75:A8:3E:DA:93:9C:4D:2F:75:5E.
+   - KeyCorrect may still be the default IME on the tablet, because an interrupted test left it. Restore Samsung after testing.
+2. **Re-run the instrumented tests:** `./gradlew :core:data:connectedDebugAndroidTest :app:connectedDebugAndroidTest`.
+3. **Clipboard device test.** It never completed, because rate limits interrupted it twice. Use only our app and its field lab.
+   - Copy via the editing panel; check the chip pastes.
+   - A long-press on the emoji key opens the panel; a short tap still opens emoji.
+   - Pin, delete, clear (pinned items stay), tap to paste.
+   - The field lab's "Copy test image" button, then paste into its "Image field". Its log shows `received image/png (N bytes)`. In a text-only field the image goes to the clipboard fallback.
+   - The password field: the chip pastes.
+   - Settings: with history off, nothing is captured.
+   - Data at rest: `run-as dev.keycorrect.debug` → grep the DB for the test text (expect 0 matches); the blobs in `no_backup/clips` must not start with the PNG magic.
+   - Check `logcat -b crash`.
+4. **Performance check:** `ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device`. The last run was killed partway, so there are no PR C numbers yet. Compare with docs/PERF.md.
+5. **Push and open the PR.** Push `phase-4-clipboard`, `gh pr create`, and write the PR body from docs/PHASE4.md "PR C decisions" and the commit list. Then bind with `mcp__ccd_pr__get_status` and offer Auto-fix.
+
+**After PR C: PR D, feedback round 1**
+- The full plan and the user's decisions are in **docs/PHASE4.md, "Feedback round 1"**. Stack the branch on `phase-4-clipboard` (e.g. `phase-4-feedback`).
+- The items:
+  1. Equal key sizes on every layer.
+  2. Emoji scroll lag: measure on a RELEASE build first.
+  3. and 4. A Samsung-like symbols layout, shift+digit order, without the rare symbols. **Photograph the Samsung keyboard's letter, symbol and number pages on the Tab S9 first.**
+  5. A Samsung-style shared shortcut row: edit panel, emoji, clipboard and settings icons when not typing; suggestions while typing.
+  6. Two sliders: edge padding and key gap.
+  7. Spacebar: **left half selects, right half moves**, with a faint split line; hold+release still opens the panel.
+  8. Bigger vector key icons.
+  9. **Bug:** Word/Line/Sentence do nothing when `getSurroundingText` reports offset −1. The fix is designed in PHASE4.md: fall back to the tracked cursor when `OwnEditTracker.pendingCount == 0`; the backspace swipe retries instead of setting `swipeTried`; at a word end, Word selects the previous word.
+  10. Swipe typing: Phase 5.
+  11. Separate the emoji tabs from the grid: own surface, divider, outline icons.
+- The user also asked to keep the overall layout as close as possible to the Samsung keyboard.
+
+**After PR D: Phase 5, swipe typing** (PLAN §7, D7: own SHARK² decoder).
+
+**User preferences learned this phase (follow them)**
+- **Keep things simple.** The user rejected heuristic sensitivity detection as over-complicated. Prefer simple behaviour with user control over clever automation.
+- **Match the Samsung keyboard's layout and feel** where reasonable.
+- The user decides UX questions; ask with AskUserQuestion and recommend an option.
+- The weekly model limits were hit during this phase. Keep subagent briefs tight, and resume workers with SendMessage when they stop.
+
 ## 1. Status
 
 | Phase | State |
@@ -20,13 +74,13 @@ Read this first when resuming. Other docs:
 | 1 Core keyboard | merged to `main`, pushed |
 | 2 Prediction core | merged to `main`, pushed |
 | 3 Learning | merged to `main` (PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1), 2026-10-11) |
-| Pre-Phase-4 cleanup | branch `pre-phase-4-cleanup` (see `docs/CODEBASE_REVIEW.md` §0) |
-| 4 Editing, clipboard, emoji | next |
+| Pre-Phase-4 cleanup, perf pass | merged (#2, #3) |
+| 4 Editing, clipboard, emoji | **in progress.** PR A (editing + terminal row, #4) and PR B (emoji, #5) are merged. PR C (clipboard) is built on `phase-4-clipboard`, unpushed (see §0). PR D (feedback round 1) is planned. |
 | 5–10 | see PLAN §17 |
 
 - **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. Merged phase branches are deleted locally and on `origin`; GitHub deletes a PR's branch when it merges.
-- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
-- **Tests:** 1067 unit tests pass (Android + JVM modules, incl. tools), and the `core:data` instrumented tests pass on the Tab S9 (25/25). Spotless, Detekt (against baselines), lint, debug and release builds are clean.
+- **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug :benchmark:assembleReleaseAndroidTest` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
+- **Tests:** ~1400 unit tests pass on `phase-4-clipboard` (Android + JVM modules, incl. tools). Instrumented: core:data 47, app 5 (`ClipboardSecurityTest`). In androidTest, test bodies must be `runBlocking<Unit> { }`: a non-void test makes JUnit reject the whole class. Spotless, Detekt (against baselines), lint, debug and release builds are clean.
 - **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
 
 ## 2. Workflow rules the user set (follow these)
@@ -52,6 +106,7 @@ Read this first when resuming. Other docs:
    - **Always restore the Samsung keyboard** afterwards: `ime set com.samsung.android.honeyboard/.service.HoneyBoardService`.
    - If another app comes to the foreground, back out; never tap inside it.
    - The user wants device tests run **before** the code review when both are pending.
+   - Use the **field lab** (debug builds; §4) for terminal, image-paste and field-type tests instead of third-party apps.
 
 ## 3. Environment and devices
 
@@ -170,6 +225,11 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
   - The tie rule for non-words is **ON**. The user accepted the trade-off: wrong corrections go from 2.5 to about 4.6 per 1000 in eval, and each one self-heals.
   - Name fields learn; email, URL and address fields don't.
   - Keyboard-fit recommendations (PLAN §6.5): the stats are collected now, and the report UI comes in Phase 8.
+- **Phase 4** (all in docs/PHASE4.md):
+  - **Shortcuts and spacebar:** no toolbar at first, but feedback round 1 adds a Samsung-style shared shortcut row. The spacebar becomes left half selects, right half moves.
+  - **Emoji:** an emoji key left of the comma, whose long-press opens the clipboard. Emoji strip suggestions replace the word and are not learned. The default skin tone is an ordinary setting.
+  - **Clipboard:** simple; it captures everything, with encryption against other apps.
+  - **Data:** Unicode 17.0 + CLDR 48.2 emoji data, downloaded with the user's approval.
 - **Haptics:** distinct vibrations for an applied autocorrect and for an unknown word that wasn't corrected (Feedback screen).
 - **Tuning (from data):** spatial sigma is 0.6, plus the cognitive-misspelling rules. See docs/EVAL.md "Applied defaults" for the current numbers.
 
@@ -200,6 +260,12 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
 - `forgetSince` can only subtract n-gram, correction and touch evidence from the last 24 h, because that is the journal's retention.
 - The delete-and-retype device failure was fixed by a session-independent check. The exact device repro was never reproduced in unit tests, but it passed on the device afterwards.
 - Settings icons are text glyphs, because material-icons isn't a dependency.
+- Phase 4:
+  - The password-like/cards/tokens clipboard filters were removed on purpose (user).
+  - Copied image clips aren't deduped.
+  - Search results stay open after a pick.
+  - The strip emoji has no undo.
+  - Detekt prints "compiler errors found during analysis" for core:layout and app (generated code); that's harmless.
 - On a landscape tablet the keys are very wide. Split/floating layouts are planned for Phase 8.
 - The Tab S9 reports `mIsHapticSupported=false` (coin motor) but still plays the effects. Strength isn't adjustable there.
 - In debug builds, the Compose keyboard is janky. Always judge performance on release builds.
@@ -232,32 +298,14 @@ build-logic          Convention plugins (android app/library/compose, jvm librar
 
 ## 10. Next steps
 
-1. Done: the pre-Phase-4 cleanup (#2) and perf pass (#3) are merged.
-2. **Deferred review items:** `docs/CODEBASE_REVIEW.md` §0 lists what was done and what is left (test fixtures, settings-list consolidation, tools CLI parser, the rest of the `PredictiveInput` split, `AutocorrectPolicy` predicates). Do them on their own branch, not mixed with Phase 4 features.
-3. **Optional:** run the Phase 3 device checks on the S23 Ultra when the user frees the phone (it's unchecked in the PR test plan).
-4. **Phase 4: editing, clipboard, emoji** (PLAN §9, §10, §11, §8 terminal row). Suggested breakdown, following the usual flow (branch `phase-4-editing`):
-   - **Spacebar gestures:** horizontal drag moves the cursor with acceleration; vertical drag moves between lines; long-press then drag selects.
-   - **Backspace:** swipe left to select and delete words.
-   - **Editing panel:** a D-pad, word jumps, Home/End, a selection toggle, select word/sentence/line/all, cut/copy/paste, undo/redo.
-   - **Selection strip:** expand the selection, toggle case, and a hook for "send to engine".
-   - **Terminal (`TYPE_NULL`) extra-keys row:** ctrl, esc, tab and arrows, sending raw key events.
-   - **Clipboard history:**
-     - Capture with a listener that works only as the default IME.
-     - Never store clips with `EXTRA_IS_SENSITIVE`, clips copied from password fields, or clips matching the heuristics (Luhn card numbers, IBANs, tokens, OTPs held for 3 minutes).
-     - Keep the last N items (default 30) with a TTL (default 7 days); pinned items never expire.
-     - Copy images into private storage at capture time and paste them via `commitContent` and a FileProvider.
-     - Store everything encrypted, and disable history in incognito and direct boot.
-   - **Emoji:**
-     - Data from Unicode `emoji-test.txt` and CLDR annotations (Unicode licence) as a build-time asset, filtered with `Paint.hasGlyph`.
-     - Categories, recents, skin tones, keyword search, and emoji suggestions in the strip.
-   - Then a device test (Chrome page plus our app), a review, fixes, a follow-up review, a PR.
-5. Later phases follow PLAN §17:
-   - 5: swipe
-   - 6: voice (STT ≤ 50 MB default; benchmark Moonshine v2 Streaming Tiny against Zipformer-20M)
-   - 7: neural and plugin engines
-   - 8: UI/UX customization, including the keyboard-fit report and haptic durations per event
-   - 9: hardening, including direct boot, `accessibilityDataSensitive` and the perf pass
-   - 10: optional
+See **§0**: PR C (finish and open), then PR D (feedback round 1), then Phase 5 (swipe). Later phases
+follow PLAN §17:
+- **6:** voice (STT ≤ 50 MB);
+- **7:** neural and plugin engines;
+- **8:** UI/UX customisation and the keyboard-fit report;
+- **9:** hardening, including direct boot and `accessibilityDataSensitive`.
+
+Deferred cleanup items are in `docs/CODEBASE_REVIEW.md` §0.
 
 ## 11. Memory
 
@@ -265,5 +313,6 @@ Claude's persistent memory for this project is in `~/.claude/projects/-home-rish
 - `keycorrect-project-plan.md` (status and decisions)
 - `user-final-say-on-design.md`
 - `review-before-push.md`
+- `profile-before-pr.md`
 
 Update `keycorrect-project-plan.md` when the status changes.
