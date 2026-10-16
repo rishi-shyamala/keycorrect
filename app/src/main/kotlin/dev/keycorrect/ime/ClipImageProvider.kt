@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import dev.keycorrect.appContainer
-import dev.keycorrect.core.data.ClipKind
 import dev.keycorrect.core.data.EncryptedBlobStore
 import dev.keycorrect.core.data.StoredClip
 import java.io.FileNotFoundException
@@ -95,8 +94,9 @@ class ClipImageProvider : ContentProvider() {
             null
         } else {
             try {
-                runBlocking { context.appContainer.clipboardRepository.clips() }
-                    .firstOrNull { it.kind == ClipKind.Image && it.imageFile == name }
+                // One row by blob name, never the whole history. Binder threads only: the keyboard
+                // itself never calls this on the main thread (see ClipImagePaster).
+                runBlocking { context.appContainer.clipboardRepository.imageClip(name) }
             } catch (_: Exception) {
                 null // database unavailable: nothing to serve
             }

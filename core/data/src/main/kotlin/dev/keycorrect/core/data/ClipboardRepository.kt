@@ -2,9 +2,12 @@ package dev.keycorrect.core.data
 
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -40,7 +43,14 @@ class ClipboardRepository(
 ) {
     private val lock = Mutex()
 
+    /** Blobs written by [stageImage] whose row is not inserted yet; [orphanSweep] spares them. */
+    private val staged = ConcurrentHashMap.newKeySet<String>()
+    private val stagingWrites = AtomicInteger()
+
     suspend fun clips(): List<StoredClip> = store.clips()
+
+    /** The image clip stored under blob [fileName]: one row, not the whole history. */
+    suspend fun imageClip(fileName: String): StoredClip? = store.imageClip(fileName)
 
     /** Inserts a text clip (see [ClipboardStore.insert] for the duplicate rule). */
     suspend fun insertText(text: String): Long = lock.withLock { store.insert(NewClip.text(text)) }
@@ -66,6 +76,44 @@ class ClipboardRepository(
     ): Long = lock.withLock {
         insertBlob(mimeType) { blobs.write(bytes, maxBytes) }
     }
+
+    /**
+     * First half of an image insert, for sources that can be slow or hang: encrypts [input] (read
+     * to its end, not closed) into a blob WITHOUT taking the repository lock, so a stuck read never
+     * blocks other changes, and returns the blob's name. The write is interruptible, so cancelling
+     * the caller (after closing [input]) frees the thread. Finish with [insertStaged], or
+     * [discardStaged] when the image is no longer wanted; until then [orphanSweep] leaves it.
+     *
+     * @throws BlobTooLargeException when the image exceeds [maxBytes].
+     */
+    suspend fun stageImage(
+        input: InputStream,
+        maxBytes: Long = EncryptedBlobStore.DEFAULT_MAX_BYTES,
+    ): String {
+        stagingWrites.incrementAndGet()
+        try {
+            return runInterruptible(io) { blobs.write(input, maxBytes).also { staged += it } }
+        } finally {
+            stagingWrites.decrementAndGet()
+        }
+    }
+
+    /** Second half: inserts the row for a blob from [stageImage]; removes the blob on failure. */
+    suspend fun insertStaged(name: String, mimeType: String): Long =
+        try {
+            lock.withLock { insertBlob(mimeType) { name } }
+        } finally {
+            staged -= name
+        }
+
+    /** Drops a blob from [stageImage] that will not get a row. */
+    suspend fun discardStaged(name: String) {
+        staged -= name
+        withContext(NonCancellable + io) { blobs.delete(name) }
+    }
+
+    /** Deletes every image file, under the repository lock (erase personal data). */
+    suspend fun deleteAllBlobs() = lock.withLock { withContext(io) { blobs.deleteAll() } }
 
     private suspend fun insertBlob(
         mimeType: String,
@@ -151,9 +199,17 @@ class ClipboardRepository(
         val clips = store.clips()
         val referenced = clips.mapNotNullTo(HashSet()) { it.imageFile }
         val files = withContext(io) { blobs.list() }
-        val orphans = files.filter {
-            it.removeSuffix(EncryptedBlobStore.TEMP_SUFFIX) !in referenced
-        }
+        // Nothing is swept while an unlocked write runs (its files are not recorded yet), and
+        // never a staged blob. Skipped files are swept at the next start.
+        val orphans =
+            if (stagingWrites.get() > 0) {
+                emptyList()
+            } else {
+                files.filter {
+                    val base = it.removeSuffix(EncryptedBlobStore.TEMP_SUFFIX)
+                    base !in referenced && base !in staged
+                }
+            }
         withContext(io) { orphans.forEach { blobs.delete(it) } }
         val present = files.toHashSet()
         val dangling =

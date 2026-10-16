@@ -145,4 +145,67 @@ class ClipboardRepositoryTest {
         assertThat(repo.clips().map { it.id }).contains(kept)
         assertThat(repo.clips().any { it.text == "text" }).isTrue()
     }
+
+    @Test
+    fun imageClipLooksUpOneRowByBlobName() = runTest {
+        val id = image()
+        val name = repo.clips().single { it.id == id }.imageFile!!
+        assertThat(repo.imageClip(name)?.id).isEqualTo(id)
+        assertThat(repo.imageClip("00000000-0000-4000-8000-000000000009")).isNull()
+    }
+
+    @Test
+    fun stagedImageSurvivesTheSweepUntilItsRowIsInserted() = runTest {
+        val bytes = ByteArray(30) { it.toByte() }
+        val name = repo.stageImage(ByteArrayInputStream(bytes))
+        assertThat(repo.clips()).isEmpty()
+        assertThat(repo.orphanSweep()).isEqualTo(0)
+        assertThat(blobs.list()).contains(name)
+
+        val id = repo.insertStaged(name, "image/png")
+        val clip = repo.clips().single { it.id == id }
+        assertThat(clip.imageFile).isEqualTo(name)
+        assertThat(repo.openImage(clip).use { it.readBytes() }).isEqualTo(bytes)
+        // Inserted: it now counts as referenced, not staged.
+        assertThat(repo.orphanSweep()).isEqualTo(0)
+        assertThat(blobs.list()).contains(name)
+    }
+
+    @Test
+    fun anAbandonedStagedImageIsRemoved() = runTest {
+        val name = repo.stageImage(ByteArrayInputStream(ByteArray(8)))
+        repo.discardStaged(name)
+        assertThat(blobs.list()).isEmpty()
+    }
+
+    @Test
+    fun aStagedImageOverTheLimitLeavesNothing() = runTest {
+        val e = runCatching {
+            repo.stageImage(ByteArrayInputStream(ByteArray(50)), 10)
+        }
+            .exceptionOrNull()
+        assertThat(e).isInstanceOf(BlobTooLargeException::class.java)
+        assertThat(blobs.list()).isEmpty()
+    }
+
+    @Test
+    fun failedRowInsertOfAStagedImageRemovesTheBlob() = runTest {
+        val failing =
+            object : ClipboardStore by store {
+                override suspend fun insert(clip: NewClip): Long = error("db down")
+            }
+        val r = ClipboardRepository(failing, blobs)
+        val name = r.stageImage(ByteArrayInputStream(ByteArray(5)))
+        val e = runCatching { r.insertStaged(name, "image/png") }.exceptionOrNull()
+        assertThat(e).isInstanceOf(IllegalStateException::class.java)
+        assertThat(blobs.list()).isEmpty()
+    }
+
+    @Test
+    fun deleteAllBlobsEmptiesTheDirectory() = runTest {
+        image()
+        image()
+        repo.deleteAllBlobs()
+        assertThat(blobs.list()).isEmpty()
+    }
 }

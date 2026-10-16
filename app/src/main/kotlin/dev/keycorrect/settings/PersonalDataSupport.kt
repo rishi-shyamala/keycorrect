@@ -274,7 +274,8 @@ internal fun validationMessage(error: ValidationError): String =
 internal fun AppContainer.resetPersonalData(onDone: () -> Unit) {
     write(onFailure = onDone) {
         database.destroy()
-        deleteClipboardBlobs()
+        // A failure here must not leave the in-memory snapshots showing erased data.
+        runCatching { deleteClipboardBlobs() }
         userDictionary.load()
         shortcuts.load()
         emojiEnvironment.reloadHistory()

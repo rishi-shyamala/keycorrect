@@ -106,6 +106,33 @@ class FieldLabActivity : Activity() {
         )
 
         label("Image field (accepts images; logs what it receives)")
+        addImageField(column)
+
+        label("TYPE_NULL terminal (tap to focus; shows key events and committed text)")
+        val log =
+            TextView(this).apply {
+                typeface = Typeface.MONOSPACE
+                textSize = LOG_TEXT_SP
+                minLines = 8
+                setBackgroundColor(Color.parseColor("#202020"))
+                setTextColor(Color.parseColor("#B0FFB0"))
+                setPadding(pad, pad, pad, pad)
+            }
+        val terminal = TerminalView(this, log)
+        column.addView(
+            terminal,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (TERMINAL_HEIGHT_DP * dp).toInt(),
+            ),
+        )
+        column.addView(log)
+
+        setContentView(ScrollView(this).apply { addView(column) })
+    }
+
+    /** An image-accepting field that logs what it receives, below [column]'s other fields. */
+    private fun addImageField(column: LinearLayout) {
         val received = TextView(this).apply { text = "(nothing received)" }
         column.addView(
             EditText(this).apply {
@@ -137,28 +164,6 @@ class FieldLabActivity : Activity() {
                 setOnClickListener { copyTestImage() }
             }
         )
-
-        label("TYPE_NULL terminal (tap to focus; shows key events and committed text)")
-        val log =
-            TextView(this).apply {
-                typeface = Typeface.MONOSPACE
-                textSize = LOG_TEXT_SP
-                minLines = 8
-                setBackgroundColor(Color.parseColor("#202020"))
-                setTextColor(Color.parseColor("#B0FFB0"))
-                setPadding(pad, pad, pad, pad)
-            }
-        val terminal = TerminalView(this, log)
-        column.addView(
-            terminal,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (TERMINAL_HEIGHT_DP * dp).toInt(),
-            ),
-        )
-        column.addView(log)
-
-        setContentView(ScrollView(this).apply { addView(column) })
     }
 
     /** Puts a generated 64x64 PNG on the clipboard through the debug FileProvider. */

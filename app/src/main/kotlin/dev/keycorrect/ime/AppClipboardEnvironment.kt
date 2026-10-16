@@ -21,12 +21,17 @@ import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.clipboard.ClipItem
 import dev.keycorrect.feature.keyboard.clipboard.ClipboardEnvironment
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "ClipboardEnv"
 
@@ -44,6 +49,18 @@ internal object MainThreadRunner : DelayedRunner {
     }
 }
 
+/**
+ * Thumbnails are decoded one at a time, process-wide. The decrypted stream of a blob is buffered
+ * whole by the AES-GCM provider (the tag is checked before any plaintext is released), so one
+ * decode can hold up to the 20 MB budget twice over; a single lane keeps that to one image.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("InjectDispatcher") // The process-wide default; the environment takes it as a parameter.
+internal val THUMBNAIL_DISPATCHER: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+/** Opens the decrypted bytes of an image; each call returns a new stream the caller closes. */
+typealias ImageSource = suspend () -> InputStream
+
 /** Puts a stored image clip into the focused field, or failing that on the system clipboard. */
 fun interface ImagePaster {
     fun paste(clip: StoredClip): Boolean
@@ -58,31 +75,40 @@ fun interface ImagePaster {
  *
  * Memory ([clips]) is the keyboard's view: every member the keyboard calls only reads it. Changes
  * (pin, delete, clear, clean URL) update memory at once and are saved by one background queue, in
- * order; captures go through the same queue. After a queued job memory is refreshed from the
- * repository, unless more jobs are waiting (they will refresh again), so a user action is never
- * undone by an older refresh. Clip contents are user data and are never logged (exception class
- * names only).
+ * order; captured text goes through the same queue. After a queued job memory is refreshed from the
+ * repository (also after a failed one; if even that fails, memory goes back to the last state
+ * read), unless more jobs are waiting (they will refresh again), so a user action is never undone
+ * by an older refresh. Copied images are read and encrypted outside the queue, on their own
+ * coroutine with a timeout, so a content provider that hangs cannot hold up the queue; only the row
+ * insert is queued. Clip contents are user data and are never logged (exception class names only).
  */
 @Suppress(
     "TooManyFunctions", // One member per ClipboardEnvironment operation plus capture.
     "TooGenericExceptionCaught", // Background jobs must never take the process down.
+    "LongParameterList", // Dispatchers, timer and decoder are injected so tests can control them.
 )
 class AppClipboardEnvironment(
     private val scope: CoroutineScope,
     private val repository: () -> ClipboardRepository,
     private val clock: () -> Long = System::currentTimeMillis,
     private val timer: DelayedRunner = MainThreadRunner,
-    private val decodeThumbnail: (ByteArray) -> ImageBitmap? = ThumbnailDecoder::decode,
+    private val decodeThumbnail: suspend (ImageSource) -> ImageBitmap? = ThumbnailDecoder::decode,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val thumbnailDispatcher: CoroutineDispatcher = THUMBNAIL_DISPATCHER,
+    private val captureDispatcher: CoroutineDispatcher = dispatcher,
+    private val captureTimeoutMillis: Long = CAPTURE_TIMEOUT_MILLIS,
 ) : ClipboardEnvironment {
     private var current by mutableStateOf(KeyboardSettings())
     private var clipList by mutableStateOf(emptyList<ClipItem>())
     private var freshId by mutableStateOf<Long?>(null)
     private var thumbVersion by mutableIntStateOf(0)
 
-    /** Guards [stored], [pending] and the publishing of [clipList]. */
+    /** Guards [stored], [confirmed], [pending] and the publishing of [clipList]. */
     private val lock = Any()
     private var stored = emptyList<StoredClip>()
+
+    /** The history as last read from the repository: where memory returns after a failed write. */
+    private var confirmed = emptyList<StoredClip>()
     private var pending = 0
 
     private val queue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -100,6 +126,9 @@ class AppClipboardEnvironment(
         }
     private val thumbLoading = HashSet<Long>()
     private val thumbFailed = HashSet<Long>()
+
+    /** Bumped (under [thumbLock]) by a reset: a load that began earlier must not fill the cache. */
+    private var thumbGeneration = 0
 
     /** Set by the keyboard service: how an image clip reaches the field. Null: no keyboard. */
     @Volatile var imagePaster: ImagePaster? = null
@@ -158,15 +187,17 @@ class AppClipboardEnvironment(
 
     /** The database was erased: forgets everything held in memory and reads back what is stored. */
     suspend fun reload() {
-        synchronized(lock) { publish(emptyList()) }
-        clearFresh()
-        synchronized(thumbLock) {
-            thumbs.clear()
-            thumbFailed.clear()
+        synchronized(lock) {
+            confirmed = emptyList()
+            publish(emptyList())
         }
-        thumbVersion++
+        clearFresh()
+        resetThumbnails()
         val fresh = runCatching { repository().clips() }.getOrDefault(emptyList())
-        synchronized(lock) { if (pending == 0) publish(fresh) }
+        synchronized(lock) {
+            confirmed = fresh
+            if (pending == 0) publish(fresh)
+        }
     }
 
     // ------------------------------------------------------------------ capture
@@ -181,23 +212,67 @@ class AppClipboardEnvironment(
     }
 
     /**
-     * An image was copied; [open] is called on the background queue. Images over the 20 MB budget
-     * are not kept.
+     * An image was copied. [open] is called off the queue, on its own coroutine, and the image is
+     * read and encrypted there; if that takes longer than [CAPTURE_TIMEOUT_MILLIS] (a content
+     * provider that hangs) the stream is closed and the image dropped. Images over the 20 MB budget
+     * are not kept. Only the row insert uses the queue.
      */
     fun captureImage(mimeType: String, open: () -> InputStream?) {
         if (!enabled || !current.clipboardImages) return
-        submit { r ->
-            val id =
-                try {
-                    open()?.use {
-                        r.insertImage(it, mimeType, ClipPolicy.DEFAULT_IMAGE_BUDGET_BYTES)
-                    }
-                } catch (_: BlobTooLargeException) {
-                    null
+        scope.launch(captureDispatcher) {
+            try {
+                val name = stageImage(open) ?: return@launch
+                submit { r ->
+                    markFresh(r.insertStaged(name, mimeType))
+                    prune(r)
                 }
-            if (id != null) markFresh(id)
-            prune(r)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Image capture failed: ${e.javaClass.name}")
+            }
         }
+    }
+
+    /**
+     * Reads and encrypts the image from [open] with a time limit; returns the staged blob's name,
+     * or null when there is no image, it is too big, or the limit passed. The reading runs on its
+     * own coroutine so that this one can give up while a read is blocked: on timeout the stream is
+     * closed (which wakes a blocked read) and the reader is cancelled and interrupted.
+     */
+    private suspend fun stageImage(open: () -> InputStream?): String? {
+        val repo = repository()
+        val result = CompletableDeferred<String?>()
+        val stream = AtomicReference<InputStream?>()
+        val reader =
+            scope.launch(captureDispatcher) {
+                var name: String? = null
+                try {
+                    val input = runInterruptible { open() }
+                    stream.set(input)
+                    name = input?.use {
+                        try {
+                            repo.stageImage(it, ClipPolicy.DEFAULT_IMAGE_BUDGET_BYTES)
+                        } catch (_: BlobTooLargeException) {
+                            null
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Image read failed: ${e.javaClass.name}")
+                } finally {
+                    // Too late (the capture gave up): nobody will insert this image.
+                    if (!result.complete(name) && name != null) repo.discardStaged(name)
+                }
+            }
+        val name = withTimeoutOrNull(captureTimeoutMillis) { result.await() }
+        if (name == null && result.complete(null)) {
+            runCatching { stream.get()?.close() }
+            reader.cancel()
+            Log.w(TAG, "Image capture timed out")
+        }
+        return name ?: result.await()
     }
 
     private suspend fun prune(r: ClipboardRepository) {
@@ -253,32 +328,51 @@ class AppClipboardEnvironment(
 
     override fun thumbnail(id: Long): ImageBitmap? {
         thumbVersion // read so drawing follows loads
-        val (cached, shouldLoad) =
-            synchronized(thumbLock) {
-                val hit = thumbs[id]
-                val load = hit == null && id !in thumbLoading && id !in thumbFailed
-                if (load) thumbLoading += id
-                hit to load
+        var cached: ImageBitmap? = null
+        var loadGeneration = -1
+        synchronized(thumbLock) {
+            cached = thumbs[id]
+            if (cached == null && id !in thumbLoading && id !in thumbFailed) {
+                thumbLoading += id
+                loadGeneration = thumbGeneration
             }
-        if (shouldLoad) scope.launch(dispatcher) { loadThumbnail(id) }
+        }
+        if (loadGeneration >= 0) {
+            scope.launch(thumbnailDispatcher) { loadThumbnail(id, loadGeneration) }
+        }
         return cached
     }
 
-    private suspend fun loadThumbnail(id: Long) {
+    private suspend fun loadThumbnail(id: Long, loadGeneration: Int) {
         val bitmap =
             try {
                 val clip = synchronized(lock) { stored.firstOrNull { it.id == id } }
-                clip?.let { c -> repository().openImage(c).use { decodeThumbnail(it.readBytes()) } }
+                val r = repository()
+                // The decoder opens the stream twice (bounds, then a sampled decode).
+                clip?.let { c -> decodeThumbnail { r.openImage(c) } }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                // A lost key or a damaged file: the thumbnail stays empty.
+            } catch (e: Throwable) {
+                // A lost key, a damaged file or too big an image (OutOfMemoryError): the
+                // thumbnail stays empty.
                 Log.w(TAG, "Thumbnail failed: ${e.javaClass.name}")
                 null
             }
         synchronized(thumbLock) {
-            thumbLoading -= id
-            if (bitmap != null) thumbs[id] = bitmap else thumbFailed += id
+            // Not if a reset or a delete happened meanwhile: the result is stale.
+            if (loadGeneration == thumbGeneration && thumbLoading.remove(id)) {
+                if (bitmap != null) thumbs[id] = bitmap else thumbFailed += id
+            }
+        }
+        thumbVersion++
+    }
+
+    private fun resetThumbnails() {
+        synchronized(thumbLock) {
+            thumbs.clear()
+            thumbFailed.clear()
+            thumbLoading.clear()
+            thumbGeneration++
         }
         thumbVersion++
     }
@@ -315,11 +409,7 @@ class AppClipboardEnvironment(
     /** "Clear clipboard history" in the settings: everything, pinned clips too. */
     fun clearAll() {
         clearFresh()
-        synchronized(thumbLock) {
-            thumbs.clear()
-            thumbFailed.clear()
-        }
-        thumbVersion++
+        resetThumbnails()
         submit({ emptyList() }) { it.clear(keepPinned = false) }
     }
 
@@ -336,6 +426,7 @@ class AppClipboardEnvironment(
         synchronized(thumbLock) {
             thumbs.remove(id)
             thumbFailed.remove(id)
+            thumbLoading.remove(id) // a load in flight is dropped when it finishes
         }
     }
 
@@ -343,7 +434,8 @@ class AppClipboardEnvironment(
 
     /**
      * Applies [local] to memory now (if given), then runs [op] on the queue and refreshes memory
-     * from the repository.
+     * from the repository. If [op] (or getting the repository) fails, memory is still refreshed, or
+     * returned to the last state read, so a change that was not saved does not stay on screen.
      */
     private fun submit(
         local: ((List<StoredClip>) -> List<StoredClip>)? = null,
@@ -353,18 +445,43 @@ class AppClipboardEnvironment(
             if (local != null) publish(local(stored))
             pending++
         }
-        queue.trySend {
-            var fresh: List<StoredClip>? = null
+        val sent = queue.trySend { run(op) }
+        if (sent.isFailure) settle(null, failed = true) // the queue is closed: nothing will run
+    }
+
+    private suspend fun run(op: suspend (ClipboardRepository) -> Unit) {
+        var fresh: List<StoredClip>? = null
+        var failed = true
+        try {
+            val r = repository()
             try {
-                val r = repository()
                 op(r)
-                fresh = r.clips()
+                failed = false
             } finally {
-                synchronized(lock) {
-                    pending--
-                    if (pending == 0 && fresh != null) publish(fresh)
-                }
+                fresh = readOrNull(r)
             }
+        } finally {
+            settle(fresh, failed)
+        }
+    }
+
+    private suspend fun readOrNull(r: ClipboardRepository): List<StoredClip>? =
+        try {
+            r.clips()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Reading the history failed: ${e.javaClass.name}")
+            null
+        }
+
+    /** Ends one job: memory follows the repository once no job is waiting. */
+    private fun settle(fresh: List<StoredClip>?, failed: Boolean) {
+        synchronized(lock) {
+            pending--
+            if (fresh != null) confirmed = fresh
+            // Nothing read after a failure: the last state read is the best truth there is.
+            if (pending == 0 && (fresh != null || failed)) publish(fresh ?: confirmed)
         }
     }
 
@@ -391,6 +508,9 @@ class AppClipboardEnvironment(
 
         /** How long the strip chip offers a new clip. */
         const val FRESH_MILLIS = 60_000L
+
+        /** How long copying one image (reading and encrypting it) may take. */
+        const val CAPTURE_TIMEOUT_MILLIS = 10_000L
 
         private const val THUMB_CACHE = 24
         private const val LOAD_FACTOR = 0.75f

@@ -31,12 +31,26 @@ class InMemoryClipboardStoreTest {
     }
 
     @Test
-    fun equalTextThatIsNotNewestIsInsertedAgain() = runTest {
+    fun equalTextAnywhereInTheHistoryMovesToTheTop() = runTest {
         val store = InMemoryClipboardStore(clock)
-        store.insert(NewClip.text("a"))
+        val a = store.insert(NewClip.text("a"))
         store.insert(NewClip.text("b"))
-        store.insert(NewClip.text("a"))
-        assertThat(store.texts()).containsExactly("a", "b", "a").inOrder()
+        store.insert(NewClip.text("c"))
+        now = 5_000
+        assertThat(store.insert(NewClip.text("a"))).isEqualTo(a)
+        assertThat(store.texts()).containsExactly("a", "c", "b").inOrder()
+        assertThat(store.clips().first().createdAt).isEqualTo(5_000)
+    }
+
+    @Test
+    fun imageClipFindsOneImageByBlobName() = runTest {
+        val store = InMemoryClipboardStore(clock)
+        store.insert(NewClip.text("f1"))
+        val id = store.insert(NewClip.image("f1", "image/png", 10))
+        store.insert(NewClip.image("f2", "image/jpeg", 20))
+        assertThat(store.imageClip("f1")?.id).isEqualTo(id)
+        assertThat(store.imageClip("f2")?.mimeType).isEqualTo("image/jpeg")
+        assertThat(store.imageClip("missing")).isNull()
     }
 
     @Test

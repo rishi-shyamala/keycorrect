@@ -90,9 +90,25 @@ class SqlClipboardStoreTest {
             val only = s.clips().single()
             assertThat(only.createdAt).isEqualTo(2_000)
 
+            // Equal text anywhere in the history moves to the top instead of being added again.
             s.insert(NewClip.text("b"))
-            s.insert(NewClip.text("a"))
-            assertThat(s.clips().map { it.text }).containsExactly("a", "b", "a").inOrder()
+            s.insert(NewClip.text("c"))
+            now = 3_000
+            assertThat(s.insert(NewClip.text("a"))).isEqualTo(first)
+            assertThat(s.clips().map { it.text }).containsExactly("a", "c", "b").inOrder()
+            assertThat(s.clips().first().createdAt).isEqualTo(3_000)
+        }
+
+    @Test
+    fun imageClipFindsOneImageByBlobName() =
+        runBlocking<Unit> {
+            val s = store()
+            s.insert(NewClip.text("f1"))
+            val id = s.insert(NewClip.image("f1", "image/png", 10))
+            s.insert(NewClip.image("f2", "image/jpeg", 20))
+            assertThat(s.imageClip("f1")?.id).isEqualTo(id)
+            assertThat(s.imageClip("f2")?.mimeType).isEqualTo("image/jpeg")
+            assertThat(s.imageClip("missing")).isNull()
         }
 
     @Test

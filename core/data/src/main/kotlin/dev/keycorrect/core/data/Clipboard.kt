@@ -71,9 +71,14 @@ interface ClipboardStore {
     /** Every clip, newest first (pinned clips are interleaved by time; the UI groups them). */
     suspend fun clips(): List<StoredClip>
 
+    /** The image clip stored under blob [fileName], or null. A single-row lookup. */
+    suspend fun imageClip(fileName: String): StoredClip?
+
     /**
-     * Inserts [clip] and returns its id. A text clip equal to the newest clip's text is not
-     * duplicated: the newest clip's creation time is bumped instead and its id returned.
+     * Inserts [clip] and returns its id. A text clip equal to ANY existing text clip is not
+     * duplicated: that clip (the most recent such one) moves to the top (its creation time is
+     * bumped) and its id is returned. Images are never deduplicated: comparing them would mean
+     * decrypting and hashing every stored blob.
      */
     suspend fun insert(clip: NewClip): Long
 

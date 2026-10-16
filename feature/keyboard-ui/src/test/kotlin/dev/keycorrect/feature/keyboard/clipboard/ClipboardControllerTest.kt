@@ -140,6 +140,19 @@ class ClipboardControllerTest {
     }
 
     @Test
+    fun aFailedPasteKeepsThePanelOpen() {
+        start("x")
+        controller.openClipboard()
+        controller.onClipPicked(99) // nothing to paste
+        assertThat(editor.text.toString()).isEqualTo("x")
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Clipboard)
+
+        clipboard.texts[1] = "y"
+        controller.onClipPicked(1)
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+    }
+
+    @Test
     fun aMissingClipPastesNothing() {
         start("x")
         controller.onClipPicked(99)

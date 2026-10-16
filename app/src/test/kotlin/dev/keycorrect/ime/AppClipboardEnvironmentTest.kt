@@ -1,8 +1,10 @@
 package dev.keycorrect.ime
 
+import androidx.compose.ui.graphics.ImageBitmap
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.data.AesGcmBlobCipher
 import dev.keycorrect.core.data.ClipboardRepository
+import dev.keycorrect.core.data.ClipboardStore
 import dev.keycorrect.core.data.EncryptedBlobStore
 import dev.keycorrect.core.data.InMemoryClipboardStore
 import dev.keycorrect.core.settings.ClipRetention
@@ -10,8 +12,15 @@ import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.clipboard.ClipItem
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.KeyGenerator
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -47,25 +56,42 @@ class AppClipboardEnvironmentTest {
     private val timer = FakeTimer()
     private val imageBytes = ByteArray(2_000) { (it * 7).toByte() }
 
-    private class Rig(val env: AppClipboardEnvironment, val repo: ClipboardRepository)
+    private class Rig(
+        val env: AppClipboardEnvironment,
+        val repo: ClipboardRepository,
+        val blobs: EncryptedBlobStore,
+    )
 
-    private fun TestScope.rig(settings: KeyboardSettings = KeyboardSettings()): Rig {
+    /** While true the environment cannot get its repository (a lost key, say). */
+    private var broken = false
+
+    private fun TestScope.rig(
+        settings: KeyboardSettings = KeyboardSettings(),
+        rows: ClipboardStore = store,
+        decode: suspend (ImageSource) -> ImageBitmap? = { null },
+        thumbnailDispatcher: CoroutineDispatcher? = null,
+        captureDispatcher: CoroutineDispatcher? = null,
+        captureTimeout: Long = AppClipboardEnvironment.CAPTURE_TIMEOUT_MILLIS,
+    ): Rig {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
         val blobs = EncryptedBlobStore(File(tmp.root, "clips"), AesGcmBlobCipher { key })
-        val repo = ClipboardRepository(store, blobs, dispatcher)
+        val repo = ClipboardRepository(rows, blobs, dispatcher)
         val env =
             AppClipboardEnvironment(
                 backgroundScope,
-                { repo },
+                { if (broken) throw IOException("key lost") else repo },
                 clock = { now },
                 timer = timer,
-                decodeThumbnail = { null },
+                decodeThumbnail = decode,
                 dispatcher = dispatcher,
+                thumbnailDispatcher = thumbnailDispatcher ?: dispatcher,
+                captureDispatcher = captureDispatcher ?: dispatcher,
+                captureTimeoutMillis = captureTimeout,
             )
         env.applySettings(settings)
         env.start()
-        return Rig(env, repo)
+        return Rig(env, repo, blobs)
     }
 
     private fun AppClipboardEnvironment.copy(text: String) {
@@ -331,5 +357,154 @@ class AppClipboardEnvironmentTest {
         rig.env.reload()
         assertThat(rig.env.clips).isEmpty()
         assertThat(rig.env.freshClip()).isNull()
+    }
+
+    // ------------------------------------------------------------------ review fixes
+
+    @Test
+    fun equalTextAnywhereInTheHistoryMovesToTheTop() = runTest {
+        val rig = rig()
+        rig.env.copy("a")
+        rig.env.copy("b")
+        rig.env.copy("c")
+        rig.env.copy("a")
+        assertThat(rig.env.previews).containsExactly("a", "c", "b").inOrder()
+        assertThat(rig.repo.clips()).hasSize(3)
+    }
+
+    @Test
+    fun aFailedWriteDoesNotLeaveTheOptimisticChangeOnScreen() = runTest {
+        val failing =
+            object : ClipboardStore by store {
+                override suspend fun delete(ids: Collection<Long>) = throw IOException("disk full")
+            }
+        val rig = rig(rows = failing)
+        rig.env.copy("keep")
+        rig.env.copy("drop")
+        rig.env.delete(rig.env.clips.single { it.preview == "drop" }.id)
+        // The delete was not saved: memory shows what is stored again.
+        assertThat(rig.env.previews).containsExactly("drop", "keep").inOrder()
+        // Nothing is stuck: the next change still shows.
+        rig.env.copy("later")
+        assertThat(rig.env.previews).containsExactly("later", "drop", "keep").inOrder()
+    }
+
+    @Test
+    fun aChangeWhenTheRepositoryIsUnavailableGoesBackToTheLastState() = runTest {
+        val rig = rig()
+        rig.env.copy("one")
+        broken = true
+        rig.env.delete(rig.env.clips.single().id)
+        assertThat(rig.env.previews).containsExactly("one")
+        broken = false
+        rig.env.copy("two")
+        assertThat(rig.env.previews).containsExactly("two", "one").inOrder()
+    }
+
+    @Test
+    fun aThumbnailLoadFromBeforeAReloadDoesNotFillTheCache() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val decodes = AtomicInteger()
+        val rig =
+            rig(
+                decode = {
+                    decodes.incrementAndGet()
+                    gate.await()
+                    null // a failed decode: would mark the clip as failed
+                }
+            )
+        rig.env.captureImage("image/png") { ByteArrayInputStream(imageBytes) }
+        val id = rig.env.clips.single().id
+        rig.env.thumbnail(id)
+        assertThat(decodes.get()).isEqualTo(1)
+
+        rig.env.reload() // the history was erased and read back while the load was running
+        gate.complete(Unit)
+        rig.env.thumbnail(id)
+        // The old result was dropped: the clip is neither loading nor marked failed, so it loads.
+        assertThat(decodes.get()).isEqualTo(2)
+    }
+
+    @Test
+    fun anOutOfMemoryWhileDecodingLeavesTheThumbnailEmptyAndIsNotRetried() = runTest {
+        val decodes = AtomicInteger()
+        val rig =
+            rig(
+                decode = {
+                    decodes.incrementAndGet()
+                    throw OutOfMemoryError("test")
+                }
+            )
+        rig.env.captureImage("image/png") { ByteArrayInputStream(imageBytes) }
+        val id = rig.env.clips.single().id
+        assertThat(rig.env.thumbnail(id)).isNull()
+        assertThat(rig.env.thumbnail(id)).isNull()
+        assertThat(decodes.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun thumbnailsAreDecodedOneAtATime() = runTest {
+        val running = AtomicInteger()
+        val most = AtomicInteger()
+        val done = AtomicInteger()
+        val rig =
+            rig(
+                decode = {
+                    most.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+                    Thread.sleep(20)
+                    running.decrementAndGet()
+                    done.incrementAndGet()
+                    null
+                },
+                // The default: the process-wide single lane.
+                thumbnailDispatcher = THUMBNAIL_DISPATCHER,
+            )
+        repeat(6) { rig.env.captureImage("image/png") { ByteArrayInputStream(imageBytes) } }
+        rig.env.clips.forEach { rig.env.thumbnail(it.id) }
+        eventually { done.get() == 6 }
+        assertThat(most.get()).isEqualTo(1)
+    }
+
+    /** A stream whose read blocks until it is closed, like a content provider that hangs. */
+    private class HangingStream : InputStream() {
+        val closed = CountDownLatch(1)
+
+        override fun read(): Int {
+            closed.await()
+            throw IOException("closed")
+        }
+
+        override fun close() = closed.countDown()
+    }
+
+    @Test
+    fun aHangingImageReadDoesNotBlockTheQueueAndIsDroppedAfterTheTimeout() = runTest {
+        val rig = rig(captureDispatcher = Dispatchers.IO, captureTimeout = 200)
+        val hanging = HangingStream()
+        rig.env.captureImage("image/png") { hanging }
+        // Text copied meanwhile goes through at once.
+        rig.env.copy("while the image hangs")
+        assertThat(rig.env.previews).containsExactly("while the image hangs")
+        // After the timeout the stream is closed and nothing is kept.
+        assertThat(hanging.closed.await(10, TimeUnit.SECONDS)).isTrue()
+        eventually { rig.blobs.list().isEmpty() }
+        assertThat(rig.repo.clips().map { it.kind })
+            .doesNotContain(dev.keycorrect.core.data.ClipKind.Image)
+    }
+
+    @Test
+    fun aSlowButFinishingImageReadIsKept() = runTest {
+        val rig = rig(captureDispatcher = Dispatchers.IO, captureTimeout = 5_000)
+        rig.env.captureImage("image/png") { ByteArrayInputStream(imageBytes) }
+        eventually { rig.env.clips.size == 1 }
+        assertThat(rig.env.clips.single().kind).isEqualTo(ClipItem.Kind.Image)
+    }
+
+    private fun eventually(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "Condition not met in time" }
+            Thread.sleep(10)
+        }
     }
 }

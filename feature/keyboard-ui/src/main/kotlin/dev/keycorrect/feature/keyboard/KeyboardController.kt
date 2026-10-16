@@ -496,13 +496,18 @@ class KeyboardController(
      * is then committed through [tracked] so [OwnEditTracker] expects its selection update. Pasted
      * text is never a word to learn from and no learning event is produced. Allowed in a sensitive
      * field (that is how a copied code reaches a password field); the text is never read back.
-     * Images are committed by the host. The panel then returns to the keys.
+     * Images are committed by the host. The panel then returns to the keys, unless the paste
+     * failed.
      */
     fun onClipPicked(id: Long) {
         input.endComposingForMove()
-        clipboard.paste(id) { text -> if (text.isNotEmpty()) tracked.commitText(text, 1) }
-        chipDismissedFor = id
+        val pasted =
+            clipboard.paste(id) { text -> if (text.isNotEmpty()) tracked.commitText(text, 1) }
         composingNow = false
+        // A failed paste (an image the field refused and the clipboard could not take) leaves the
+        // panel open, so the user sees nothing happened and can pick again.
+        if (!pasted) return
+        chipDismissedFor = id
         showPanel(KeyboardPanel.Keys)
         updateAutoCapitalize()
     }

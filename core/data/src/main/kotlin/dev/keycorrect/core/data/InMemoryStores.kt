@@ -192,6 +192,9 @@ class InMemoryClipboardStore(private val clock: () -> Long = System::currentTime
     // Newest first; the list is kept in that order.
     override suspend fun clips(): List<StoredClip> = state.value.clips
 
+    override suspend fun imageClip(fileName: String): StoredClip? =
+        state.value.clips.firstOrNull { it.kind == ClipKind.Image && it.imageFile == fileName }
+
     override suspend fun insert(clip: NewClip): Long {
         val now = clock()
         var id = 0L
@@ -199,14 +202,16 @@ class InMemoryClipboardStore(private val clock: () -> Long = System::currentTime
             val newest = s.clips.firstOrNull()
             // Strictly increasing so "newest first" holds even within one millisecond.
             val stamp = maxOf(now, (newest?.createdAt ?: Long.MIN_VALUE / 2) + 1)
-            if (
-                clip.kind == ClipKind.Text &&
-                    newest?.kind == ClipKind.Text &&
-                    newest.text == clip.text
-            ) {
-                id = newest.id
-                val bumped = newest.copy(createdAt = stamp)
-                return@update State(listOf(bumped) + s.clips.drop(1), s.nextId)
+            val existing =
+                if (clip.kind == ClipKind.Text) {
+                    s.clips.firstOrNull { it.kind == ClipKind.Text && it.text == clip.text }
+                } else {
+                    null
+                }
+            if (existing != null) {
+                id = existing.id
+                val bumped = existing.copy(createdAt = stamp)
+                return@update State(listOf(bumped) + s.clips.filter { it.id != id }, s.nextId)
             }
             id = s.nextId
             val row =

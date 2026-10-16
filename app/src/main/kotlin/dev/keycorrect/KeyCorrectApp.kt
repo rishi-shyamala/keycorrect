@@ -30,13 +30,11 @@ import dev.keycorrect.ime.LearningHost
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class KeyCorrectApp : Application() {
     lateinit var container: AppContainer
@@ -54,10 +52,7 @@ class KeyCorrectApp : Application() {
 }
 
 /** Process-wide singletons, created once in [KeyCorrectApp]. Manual DI keeps startup cheap. */
-class AppContainer(
-    private val context: Context,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) {
+class AppContainer(private val context: Context) {
     /** Outlives any screen: for writes that must complete even if the UI goes away. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
@@ -118,8 +113,8 @@ class AppContainer(
         EncryptedBlobStore(File(context.noBackupFilesDir, CLIPS_DIR), KeystoreBlobCipher())
     }
 
-    /** Deletes every clipboard image file (erase personal data). */
-    suspend fun deleteClipboardBlobs() = withContext(ioDispatcher) { clipboardBlobs.deleteAll() }
+    /** Deletes every clipboard image file (erase personal data), under the repository's lock. */
+    suspend fun deleteClipboardBlobs() = clipboardRepository.deleteAllBlobs()
 
     /** Clipboard rows (encrypted database) and image blobs, kept consistent. */
     val clipboardRepository: ClipboardRepository by lazy {

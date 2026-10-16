@@ -147,6 +147,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onFinishInput() {
+        imagePaster.release()
         controller.onFinishInput()
         autofill.clear()
         super.onFinishInput()

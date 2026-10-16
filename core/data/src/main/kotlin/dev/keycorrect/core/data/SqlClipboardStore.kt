@@ -1,51 +1,64 @@
 package dev.keycorrect.core.data
 
+import android.database.Cursor
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** [ClipboardStore] on [KeyCorrectDatabase] (`clips`; schema v5). */
+@Suppress("TooManyFunctions") // One member per store operation plus three small query helpers.
 class SqlClipboardStore(
     private val database: KeyCorrectDatabase,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : ClipboardStore {
     private val writeLock = Mutex()
 
-    @Suppress("MagicNumber") // Column positions of COLUMNS.
     override suspend fun clips(): List<StoredClip> = database.read { db ->
-        db.query("SELECT $COLUMNS FROM clips ORDER BY created_at DESC, id DESC").use { c ->
-            buildList(c.count) {
-                while (c.moveToNext()) {
-                    add(
-                        StoredClip(
-                            id = c.getLong(0),
-                            kind = ClipKind.valueOf(c.getString(1)),
-                            text = if (c.isNull(2)) null else c.getString(2),
-                            mimeType = if (c.isNull(3)) null else c.getString(3),
-                            imageFile = if (c.isNull(4)) null else c.getString(4),
-                            imageBytes = c.getLong(5),
-                            createdAt = c.getLong(6),
-                            pinned = c.getInt(7) != 0,
-                        )
+        db.query("SELECT $COLUMNS FROM clips ORDER BY created_at DESC, id DESC").use(::rows)
+    }
+
+    override suspend fun imageClip(fileName: String): StoredClip? = database.read { db ->
+        db.query(
+                "SELECT $COLUMNS FROM clips WHERE kind = 'Image' AND image_file = ? LIMIT 1",
+                arrayOf<Any?>(fileName),
+            )
+            .use(::rows)
+            .firstOrNull()
+    }
+
+    @Suppress("MagicNumber") // Column positions of COLUMNS.
+    private fun rows(c: Cursor): List<StoredClip> =
+        buildList(c.count) {
+            while (c.moveToNext()) {
+                add(
+                    StoredClip(
+                        id = c.getLong(0),
+                        kind = ClipKind.valueOf(c.getString(1)),
+                        text = if (c.isNull(2)) null else c.getString(2),
+                        mimeType = if (c.isNull(3)) null else c.getString(3),
+                        imageFile = if (c.isNull(4)) null else c.getString(4),
+                        imageBytes = c.getLong(5),
+                        createdAt = c.getLong(6),
+                        pinned = c.getInt(7) != 0,
                     )
-                }
+                )
             }
         }
-    }
 
     override suspend fun insert(clip: NewClip): Long {
         val now = clock()
         return writeLock.withLock {
             database.transaction { db ->
-                val newest = newest(db)
                 // Strictly increasing so "newest first" holds even within one millisecond.
-                val stamp = maxOf(now, (newest?.createdAt ?: Long.MIN_VALUE / 2) + 1)
-                if (newest != null && newest.duplicates(clip)) {
+                val stamp = maxOf(now, (newestStamp(db) ?: Long.MIN_VALUE / 2) + 1)
+                val existing =
+                    if (clip.kind == ClipKind.Text) newestWithText(db, clip.text) else null
+                if (existing != null) {
                     db.execSQL(
                         "UPDATE clips SET created_at = ? WHERE id = ?",
-                        arrayOf<Any?>(stamp, newest.id),
+                        arrayOf<Any?>(stamp, existing),
                     )
-                    return@transaction newest.id
+                    return@transaction existing
                 }
                 db.execSQL(
                     "INSERT INTO clips (kind, text, mime_type, image_file, image_bytes, " +
@@ -123,32 +136,19 @@ class SqlClipboardStore(
         }
     }
 
-    private class Newest(
-        val id: Long,
-        val createdAt: Long,
-        val isText: Boolean,
-        val text: String?,
-    ) {
-        fun duplicates(clip: NewClip) = isText && clip.kind == ClipKind.Text && text == clip.text
-    }
+    private fun newestStamp(db: SupportSQLiteDatabase): Long? =
+        db.query("SELECT MAX(created_at) FROM clips").use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
 
-    @Suppress("MagicNumber")
-    private fun newest(db: SupportSQLiteDatabase): Newest? =
+    /** The id of the most recent text clip equal to [text] (any position in the history). */
+    private fun newestWithText(db: SupportSQLiteDatabase, text: String?): Long? =
         db.query(
-                "SELECT id, created_at, kind, text FROM clips ORDER BY created_at DESC, id DESC LIMIT 1"
+                "SELECT id FROM clips WHERE kind = 'Text' AND text = ? " +
+                    "ORDER BY created_at DESC, id DESC LIMIT 1",
+                arrayOf<Any?>(text),
             )
-            .use { c ->
-                if (!c.moveToFirst()) {
-                    null
-                } else {
-                    Newest(
-                        c.getLong(0),
-                        c.getLong(1),
-                        c.getString(2) == ClipKind.Text.name,
-                        if (c.isNull(3)) null else c.getString(3),
-                    )
-                }
-            }
+            .use { c -> if (c.moveToFirst()) c.getLong(0) else null }
 
     private fun Boolean.toInt(): Int = if (this) 1 else 0
 

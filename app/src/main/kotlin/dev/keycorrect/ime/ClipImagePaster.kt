@@ -28,12 +28,22 @@ internal class ClipImagePaster(
     private val context: Context,
     private val target: () -> PasteTarget,
 ) : ImagePaster {
+    /** The last image committed to a field, whose read grant is released at the next one. */
+    private var granted: InputContentInfoCompat? = null
+
+    /** The field is done with the image: releases the read grant of the last commit. */
+    fun release() {
+        granted?.let { runCatching { it.releasePermission() } }
+        granted = null
+    }
+
     override fun paste(clip: StoredClip): Boolean {
         val name = clip.imageFile
         val mime = clip.mimeType
         if (name == null || mime == null) return false
+        release() // one grant at a time
         val uri = ClipImageProvider.uriFor(context, name)
-        return commitToField(uri, mime) || putOnClipboard(uri)
+        return commitToField(uri, mime) || putOnClipboard(uri, mime)
     }
 
     private fun commitToField(uri: Uri, mime: String): Boolean {
@@ -42,13 +52,17 @@ internal class ClipImagePaster(
         val connection = t.connection
         if (connection == null || info == null || !accepts(info, mime)) return false
         val description = ClipDescription(CLIPBOARD_LABEL, arrayOf(mime))
-        return InputConnectionCompat.commitContent(
-            connection,
-            info,
-            InputContentInfoCompat(uri, description, null),
-            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
-            null,
-        )
+        val content = InputContentInfoCompat(uri, description, null)
+        val committed =
+            InputConnectionCompat.commitContent(
+                connection,
+                info,
+                content,
+                InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                null,
+            )
+        if (committed) granted = content
+        return committed
     }
 
     private fun accepts(info: EditorInfo, mime: String): Boolean =
@@ -56,10 +70,13 @@ internal class ClipImagePaster(
             ClipDescription.compareMimeTypes(mime, it)
         }
 
-    private fun putOnClipboard(uri: Uri): Boolean {
+    private fun putOnClipboard(uri: Uri, mime: String): Boolean {
         val manager = context.getSystemService(ClipboardManager::class.java) ?: return false
         return try {
-            manager.setPrimaryClip(ClipData.newUri(context.contentResolver, CLIPBOARD_LABEL, uri))
+            // The description is given, not derived: ClipData.newUri would ask the provider for
+            // the type (getType) on this, the main, thread.
+            val description = ClipDescription(CLIPBOARD_LABEL, arrayOf(mime))
+            manager.setPrimaryClip(ClipData(description, ClipData.Item(uri)))
             // Android 13+ confirms a copy itself.
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 Toast.makeText(context, R.string.clipboard_image_copied, Toast.LENGTH_SHORT).show()
