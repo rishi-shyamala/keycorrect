@@ -414,7 +414,7 @@ Tooling: Macrobenchmark + baseline profiles; microbenchmarks for decoder; `:tool
 | D10 ✅ | Raw-text buffer for engine finetuning | — | **On by default with a toggle**, encrypted, 7-day retention, never from sensitive fields. |
 | D11 | App identity | name & package id | "KeyCorrect", `dev.keycorrect` (placeholder — your call). |
 | D12 ✅ | Build environment | — | You install JDK 21 + Android cmdline tools/SDK/NDK; I verify versions (see `docs/SETUP.md`). |
-| P4 ✅ | Phase 4 entry points, defaults, delivery | — | Decided 2026-10-11, see `docs/PHASE4.md`: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; three PRs. |
+| P4 ✅ | Phase 4 entry points, defaults, delivery (feedback round 1 on 2026-10-16 added a Samsung-style shortcut row and a split spacebar: left half selects, right half moves) | — | Decided 2026-10-11, see `docs/PHASE4.md`: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; three PRs. |
 
 ## 17. Phased roadmap
 

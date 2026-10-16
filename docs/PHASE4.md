@@ -194,7 +194,27 @@ Technical defaults (no objection raised):
   mime type; otherwise the URI is put on the system clipboard under the label
   `dev.keycorrect.clip`, which our own capture ignores. Text over 20 000 characters is not kept.
 
-## Feature checklist (exit)
+## Feedback round 1 (user, 2026-10-16) → PR D
+
+From `user-feedback.md`, after daily use. PR C (clipboard) is finished first, and PR D stacks on it.
+
+| # | Feedback | Plan |
+|---|---|---|
+| 1 | Keys are a different size in the symbols view | Every layer uses the letters layer's key height and key unit, and has the same row count as the letters (matching Samsung's pages). Fewer keys in a row are centred or spaced, never stretched. |
+| 2 | The emoji grid lags when scrolling fast | Measure on the Tab S9 with a **release** build (debug Compose is far slower). Then fix: stable keys and contentType, glyphs drawn from a cached `TextLayoutResult` or bitmap per emoji instead of a `Text` per cell, and nothing recomposed per scroll frame. Add a scroll-jank check to the device test. |
+| 3 | Symbols should sit where they are on a regular keyboard | The symbols page 1 top row is digits 1–0, with the shift+digit symbols `! @ # $ % ^ & * ( )` in that order beneath (US layout). |
+| 4 | Organise symbols like Samsung's, drop the rare ones | Copy Samsung's page structure: the rows, the 1/2 and 2/2 pages, and where the common punctuation sits. Drop the rarely used symbols (card suits and the like). Needs screenshots of the Samsung keyboard on the Tab S9. |
+| 5 | Shortcuts to the edit/select panel, emoji and clipboard in the top row | **Decision: Samsung-style shared row.** When not typing, the strip shows shortcut icons (editing panel, emoji, clipboard, settings); while typing, suggestions take that row. Supersedes P4-1's "no toolbar"; the emoji key and the long-press stay. |
+| 6 | Options to remove the edge padding and the gaps between keys | **Decision: two sliders**, in Settings → Appearance: edge padding and key gap, each from 0 up to today's size (the default). |
+| 7 | Use the left/right side of the spacebar for select / move | **Decision: dragging on the left half selects, dragging on the right half moves the cursor**, with a faint line on the spacebar at the split. Hold+release still opens the editing panel. Supersedes P4-3's hold+drag select. |
+| 8 | Bigger, clearer key symbols (tab, enter, shift, …) | Vector icons drawn on the key canvas (shift and its caps-lock form, enter and its action variants, backspace, tab, arrows, emoji, the layer switch), about 1.6× today's glyph size, with consistent stroke weight and contrast. |
+| 9 | Word/Line/Sentence in the select panel don't work | **Bug.** `getSurroundingText` reports offset −1 ("unknown") in editors that use the platform default, and those actions then did nothing. Fall back to the tracked cursor when no own edit is pending; at a word end (e.g. after a space), Word selects the previous word. Verify on device in EditText and Chrome. |
+| 10 | No swipe typing | **Decision:** Phase 5 (own SHARK² decoder), right after this round. |
+| 11 | The emoji header blends into the grid | The tab row gets its own surface colour and a divider, monochrome outline icons (not emoji) for the categories, and a clear selected indicator. |
+
+Also requested: keep the overall layout as close as possible to the Samsung keyboard (bottom row: ?123, emoji, comma, space, period, enter; done). Points 3–4 and the rest of the layout need the tablet connected to photograph the Samsung keyboard's pages.
+
+
 
 - [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
       opens the editing panel (Tab S9: field lab EditText and Chrome textarea)
