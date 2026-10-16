@@ -14,34 +14,25 @@ Read this first when resuming. Other docs:
 
 ## 0. Resume here (2026-10-16)
 
-**Branch `phase-4-clipboard` is checked out, local only and NOT pushed.** It holds PR C, the clipboard
-history, plus the planning for feedback round 1. Its working tree is clean except the user's own
-untracked `user-feedback.md`: never commit that file.
+**Branch `phase-4-clipboard` holds PR C, the clipboard history, plus the planning for feedback
+round 1. It is finished and verified, and only needs pushing and a PR (step 5 below).** Its working
+tree is clean except the user's own untracked `user-feedback.md`: never commit that file.
 
-**PR C: done so far**
+**PR C: done**
 - **Built:** core:clipboard (retention policy, URL cleaner), encrypted clip store (schema v5), Keystore-encrypted image blobs, the clipboard panel (long-press on the emoji key), the strip chip, capture and paste wiring (`ClipImageProvider`, not exported), Settings → Clipboard, and the security instrumented test.
 - **Simplified per the user (2026-10-12):** everything copied is captured; there is NO detection of passwords, cards, tokens or OTPs and no masking. The user deletes items. The privacy goal is only that **other apps can't read the stored data**.
-- **Reviewed:** a full review, then fixes (8c5bdc2), then a follow-up review, then fixes (eb68b37).
-- **Instrumented tests on the Tab S9:** core:data 47/47 and app `ClipboardSecurityTest` 5/5. These ran before the last two fix commits; re-run them.
+- **Reviewed:** a full review, then fixes (621a425), then a follow-up review, then fixes (e359543).
+- **Instrumented tests on the Tab S9 (2026-10-16, final code):** core:data 48/48 and app `ClipboardSecurityTest` 5/5.
+- **Device test on the Tab S9 (2026-10-16): all pass.** Copy → chip → paste; long-press emoji = clipboard, tap = emoji; pin/delete/clear (pinned stays); image paste into the field lab's image field (`received image/png (235 bytes)`) and the text-field fallback to the system clipboard; the chip in the password field; history off → nothing captured (the panel is then unavailable and the long-press acts as a tap, by design); data at rest (no test text in the DB/WAL; the blob starts `01 0c…`, not the PNG magic); no crashes. Samsung keyboard restored.
+  - Note: in a password field Bitwarden's inline suggestion takes the strip over the chip (autofill outranks the chip by design).
+- **Performance check:** no hot-path changes (docs/PERF.md findings log, 2026-10-16).
+- **CI set run locally:** `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` all pass (~1400 unit tests).
 - **Release manifest checked:** only the launcher, the IME (BIND_INPUT_METHOD) and the profileinstaller receiver (DUMP) are exported; providers aren't.
 - **Bottom row reordered (user request):** ?123, emoji, comma (@ or / in email/URL), space, period, enter.
+- **History rewritten before the first push (user decision, 2026-10-16):** GitHub push protection blocked a since-deleted test fixture holding Stripe's public example key (`ClipSensitivityTest.kt`, commit da393e1). The string was split (`"sk_" + "live_…"`) in that commit with `git filter-branch`; the final tree is unchanged. Backup branch `backup/phase-4-clipboard-pre-rewrite` (local only): delete it once the PR is up.
 
-**PR C: still to do, in order**
-1. **Reconnect the tablet.**
-   - The tablet R52X204HLZV was disconnected at the end of this session. adb authorisation dropped twice before: run `adb kill-server`, then have the user accept the "Allow USB debugging" prompt. The key fingerprint is C7:47:CA:45:7C:CF:75:A8:3E:DA:93:9C:4D:2F:75:5E.
-   - KeyCorrect may still be the default IME on the tablet, because an interrupted test left it. Restore Samsung after testing.
-2. **Re-run the instrumented tests:** `./gradlew :core:data:connectedDebugAndroidTest :app:connectedDebugAndroidTest`.
-3. **Clipboard device test.** It never completed, because rate limits interrupted it twice. Use only our app and its field lab.
-   - Copy via the editing panel; check the chip pastes.
-   - A long-press on the emoji key opens the panel; a short tap still opens emoji.
-   - Pin, delete, clear (pinned items stay), tap to paste.
-   - The field lab's "Copy test image" button, then paste into its "Image field". Its log shows `received image/png (N bytes)`. In a text-only field the image goes to the clipboard fallback.
-   - The password field: the chip pastes.
-   - Settings: with history off, nothing is captured.
-   - Data at rest: `run-as dev.keycorrect.debug` → grep the DB for the test text (expect 0 matches); the blobs in `no_backup/clips` must not start with the PNG magic.
-   - Check `logcat -b crash`.
-4. **Performance check:** `ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device`. The last run was killed partway, so there are no PR C numbers yet. Compare with docs/PERF.md.
-5. **Push and open the PR.** Push `phase-4-clipboard`, `gh pr create`, and write the PR body from docs/PHASE4.md "PR C decisions" and the commit list. Then bind with `mcp__ccd_pr__get_status` and offer Auto-fix.
+**PR C: still to do**
+5. **Push and open the PR.** Push `phase-4-clipboard`, `gh pr create`, and write the PR body from docs/PHASE4.md "PR C decisions" and the commit list. Then bind with `mcp__ccd_pr__get_status` and offer Auto-fix. (The first push attempt in auto mode was denied by the permission classifier; the user pushes or approves it.)
 
 **After PR C: PR D, feedback round 1**
 - The full plan and the user's decisions are in **docs/PHASE4.md, "Feedback round 1"**. Stack the branch on `phase-4-clipboard` (e.g. `phase-4-feedback`).
@@ -75,12 +66,12 @@ untracked `user-feedback.md`: never commit that file.
 | 2 Prediction core | merged to `main`, pushed |
 | 3 Learning | merged to `main` (PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1), 2026-10-11) |
 | Pre-Phase-4 cleanup, perf pass | merged (#2, #3) |
-| 4 Editing, clipboard, emoji | **in progress.** PR A (editing + terminal row, #4) and PR B (emoji, #5) are merged. PR C (clipboard) is built on `phase-4-clipboard`, unpushed (see §0). PR D (feedback round 1) is planned. |
+| 4 Editing, clipboard, emoji | **in progress.** PR A (editing + terminal row, #4) and PR B (emoji, #5) are merged. PR C (clipboard) is finished and verified on `phase-4-clipboard`, waiting to be pushed (see §0). PR D (feedback round 1) is planned. |
 | 5–10 | see PLAN §17 |
 
 - **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. Merged phase branches are deleted locally and on `origin`; GitHub deletes a PR's branch when it merges.
 - **CI:** `.github/workflows/ci.yml` (GitHub Actions) runs `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug :benchmark:assembleReleaseAndroidTest` on pushes to `main` and on PRs. The eval harness's misspell data isn't fetched in CI.
-- **Tests:** ~1400 unit tests pass on `phase-4-clipboard` (Android + JVM modules, incl. tools). Instrumented: core:data 47, app 5 (`ClipboardSecurityTest`). In androidTest, test bodies must be `runBlocking<Unit> { }`: a non-void test makes JUnit reject the whole class. Spotless, Detekt (against baselines), lint, debug and release builds are clean.
+- **Tests:** ~1400 unit tests pass on `phase-4-clipboard` (Android + JVM modules, incl. tools). Instrumented: core:data 48, app 5 (`ClipboardSecurityTest`). In androidTest, test bodies must be `runBlocking<Unit> { }`: a non-void test makes JUnit reject the whole class. Spotless, Detekt (against baselines), lint, debug and release builds are clean.
 - **Git identity (repo-local):** Rishi Shyamala <rishis007@gmail.com>. Commits end with the `Co-Authored-By: Claude …` line, and PR bodies end with the "Generated with Claude Code" line.
 
 ## 2. Workflow rules the user set (follow these)
