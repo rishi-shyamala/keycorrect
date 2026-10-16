@@ -116,6 +116,11 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
     background. `strongMatch` is two hash lookups per keystroke; its index is warmed in the
     background load. The keystroke benchmark has no catalog, so its 3.4 → 3.6 ms move with the
     same allocation count is device noise.
+  - **2026-10-16, PR C (clipboard).** Nothing new on the hot paths: capture runs off the
+    keystroke path (clipboard listener → background queue). Device: decode 56.6 ms / 200,
+    personalized 68.7 ms, keystroke 3.66 ms / ~480 keys with the same 48.7k allocations, learning
+    33.1 ms, emoji 3.4 + 2.2 ms. Desktop: decode p50/p95/p99 0.060/0.432/0.960 ms, learn eval
+    17.6 s / 5.0 s, keystroke 3.5 KB / 13.0 KB per key; eval outputs unchanged (94.08%, 4.19/1000).
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
