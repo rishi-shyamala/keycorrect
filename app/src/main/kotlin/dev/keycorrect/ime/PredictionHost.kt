@@ -11,6 +11,10 @@ import dev.keycorrect.core.decoder.AutocorrectConfig
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
+import dev.keycorrect.core.engineapi.PredictRequest
+import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
 import dev.keycorrect.core.settings.KeyboardSettings
@@ -147,9 +151,20 @@ class PredictionHost(
         engine.load()
         installRankingProvider(engine)
         engineTieRule = tieRule
-        predictor = Predictor { request, stale ->
-            decodeActivity.track { engine.predictNow(request, stale) }
-        }
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult =
+                    decodeActivity.track {
+                        engine.predictNow(request, stale)
+                    }
+
+                override fun predictGesture(
+                    request: GestureRequest,
+                    stale: () -> Boolean,
+                ): PredictResult = decodeActivity.track { engine.decodeGestureNow(request, stale) }
+
+                override fun warmUpGestures(layout: KeyLayoutModel) = engine.warmUpGestures(layout)
+            }
         // Build the contraction index here, off the main thread, rather than in the first
         // decode (which may be a separator decode on main). Predictions need not wait for it.
         runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }

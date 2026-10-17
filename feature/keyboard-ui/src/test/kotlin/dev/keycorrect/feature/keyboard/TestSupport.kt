@@ -3,6 +3,7 @@ package dev.keycorrect.feature.keyboard
 import android.view.KeyEvent
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.input.EditAction
@@ -373,6 +374,22 @@ internal class ScriptedPredictor : Predictor {
                 phrase = phrase?.let { Candidate(it, -1f, CandidateSource.Dictionary, true) },
                 autocorrectRunnerUp = runnerUp?.let { dict(it) },
             )
+    }
+
+    /** Every swipe decode asked for (previews and finals), in order. */
+    val gestureRequests = mutableListOf<GestureRequest>()
+
+    /** The words a swipe decodes to, best first; empty means nothing fits. */
+    var swipeWords: List<String> = emptyList()
+
+    override fun predictGesture(request: GestureRequest, stale: () -> Boolean): PredictResult {
+        gestureRequests += request
+        return PredictResult(
+            candidates = swipeWords.map { dict(it) },
+            literal = null,
+            autocorrect = swipeWords.firstOrNull()?.let { dict(it) },
+            sequence = request.sequence,
+        )
     }
 
     override fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult {

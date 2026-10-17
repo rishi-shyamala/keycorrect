@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard.prediction
 
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 
@@ -11,6 +13,17 @@ import dev.keycorrect.core.engineapi.PredictResult
  */
 fun interface Predictor {
     fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult
+
+    /**
+     * Decodes a swipe (docs/PHASE5.md), on the decoder thread for previews and, when the decoder is
+     * idle, on the main thread on lift. [stale] works as in [predict]. The default knows no
+     * gestures: an empty result, so nothing is committed.
+     */
+    fun predictGesture(request: GestureRequest, stale: () -> Boolean): PredictResult =
+        PredictResult(emptyList(), null, null, sequence = request.sequence)
+
+    /** Builds what a first swipe on [layout] needs ahead of time. Background thread; idempotent. */
+    fun warmUpGestures(layout: KeyLayoutModel) = Unit
 }
 
 /** A text-expansion shortcut as the keyboard needs it. */

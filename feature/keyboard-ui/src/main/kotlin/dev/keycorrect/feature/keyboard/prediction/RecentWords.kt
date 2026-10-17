@@ -41,7 +41,10 @@ internal class Tracked(
 
     /** The word was inserted by tapping a suggestion (so deleting it right away is a mis-tap). */
     val picked: Boolean
-        get() = method == Learned.SuggestionPicked || method == Learned.PredictionPicked
+        get() =
+            method == Learned.SuggestionPicked ||
+                method == Learned.PredictionPicked ||
+                method == Learned.Gesture
 }
 
 /**
