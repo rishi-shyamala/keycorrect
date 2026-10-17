@@ -630,16 +630,45 @@ class TouchStateMachineTest {
         assertThat(host.drags).isEmpty()
     }
 
+    /** A press in the middle of the left (select) half of the space bar. */
+    private fun downLeft(id: Long) =
+        machine.onDown(id, space.left + (space.right - space.left) / 4f, space.centerY)
+
+    private fun moveLeft(id: Long, dx: Float) =
+        machine.onMove(id, space.left + (space.right - space.left) / 4f + dx, space.centerY)
+
     @Test
-    fun spaceHeldThenDraggedSelects() {
-        down(1, space)
+    fun dragOnTheLeftHalfSelects() {
+        host.longPressDelayMs = 100_000L
+        downLeft(1)
+        now += 1_000
+        moveLeft(1, 30f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun dragOnTheRightHalfMovesEvenAfterTheHold() {
+        down(1, space) // the centre is the right half's start
         advance(300)
         now += 1_000
         move(1, space, 30f)
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.drags).containsExactly(Triple(3, 0, false))
         assertThat(host.holds).isEqualTo(0)
         assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun heldOnTheLeftHalfThenDraggedSelects() {
+        downLeft(1)
+        advance(300)
+        now += 1_000
+        moveLeft(1, 30f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.holds).isEqualTo(0)
     }
 
     @Test

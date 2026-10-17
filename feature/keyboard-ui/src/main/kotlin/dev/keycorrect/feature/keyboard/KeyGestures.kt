@@ -7,8 +7,8 @@ package dev.keycorrect.feature.keyboard
 interface KeyGestures {
     /**
      * Space was dragged: move the cursor [dx] steps (chars; negative is left) and [dy] lines
-     * (negative is up). With [select] (the drag started with a hold) the moves extend the selection
-     * from where the cursor was.
+     * (negative is up). With [select] (the drag started on the left half of the space bar) the
+     * moves extend the selection from where the cursor was.
      */
     fun onCursorDrag(dx: Int, dy: Int, select: Boolean)
 
