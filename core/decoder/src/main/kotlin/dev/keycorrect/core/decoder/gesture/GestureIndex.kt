@@ -51,15 +51,20 @@ internal class GestureWordList(dict: Dictionary, config: GestureConfig) {
     }
 }
 
-/** A word's ideal path: the key centres of its letters, resampled. */
-internal class Template(
+/**
+ * A word's ideal path: the key centres of its letters, resampled. Cache slots are recycled, so a
+ * template is only valid until the next [GestureLayoutIndex] lookup that may evict it.
+ */
+internal class Template(n: Int) {
     /** Resampled points (interleaved x, y), in layout pixels. */
-    val pts: FloatArray,
+    val pts = FloatArray(2 * n)
+
     /** [pts] normalised for position and scale (see [PathMath.normalize]). */
-    val shape: FloatArray,
+    val shape = FloatArray(2 * n)
+
     /** Length of the key-centre polyline in pixels; 0 when the word sits on one key. */
-    val length: Float,
-) {
+    var length = 0f
+
     val isPoint: Boolean
         get() = length <= 0f
 }
@@ -92,11 +97,19 @@ internal class GestureLayoutIndex(
     private val cellStart: IntArray
     private val cellWords: IntArray
 
-    private val templates =
-        object : LinkedHashMap<String, Template>(1024, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Template>) =
-                size > config.templateCacheSize
-        }
+    // LRU cache of dictionary-word templates in preallocated slots (no allocation once warm):
+    // [slotOf] maps a word to its slot (-1 = none); slots form a doubly linked list, most recently
+    // used at [head], least at [tail]. User-word templates are built into [userTemplate] uncached.
+    private val cacheCap = config.templateCacheSize.coerceAtLeast(1)
+    private val slotOf = IntArray(words.size) { -1 }
+    private val slotWord = IntArray(cacheCap)
+    private val slotPrev = IntArray(cacheCap)
+    private val slotNext = IntArray(cacheCap)
+    private val slotTemplate = Array(cacheCap) { EMPTY }
+    private var slotsUsed = 0
+    private var head = -1
+    private var tail = -1
+    private val userTemplate = Template(config.resamplePoints)
     private var polyline = FloatArray(64)
     private val scratchSeq = ByteArray(MAX_SEQ)
 
@@ -190,16 +203,54 @@ internal class GestureLayoutIndex(
 
     fun pathLengthOf(w: Int): Float = pathLength[w]
 
-    /** Template of dictionary word [w]; cached. */
-    fun templateOf(w: Int): Template =
-        templates[words.keys[w]]
-            ?: build(words.keys[w], seqKeys, seqOff[w], seqOff[w + 1] - seqOff[w])
+    /** Template of dictionary word [w]; cached (valid until the next lookup). */
+    fun templateOf(w: Int): Template {
+        var slot = slotOf[w]
+        if (slot >= 0) {
+            if (slot != head) {
+                unlink(slot)
+                pushFront(slot)
+            }
+            return slotTemplate[slot]
+        }
+        if (slotsUsed < cacheCap) {
+            slot = slotsUsed++
+            slotTemplate[slot] = Template(config.resamplePoints)
+        } else {
+            slot = tail
+            unlink(slot)
+            slotOf[slotWord[slot]] = -1
+        }
+        slotWord[slot] = w
+        slotOf[w] = slot
+        pushFront(slot)
+        val t = slotTemplate[slot]
+        fill(t, seqKeys, seqOff[w], seqOff[w + 1] - seqOff[w])
+        return t
+    }
 
-    /** Template of an arbitrary [key] whose sequence is [seq] (length [len]); cached by key. */
-    fun templateOfSequence(key: String, seq: ByteArray, len: Int): Template =
-        templates[key] ?: build(key, seq, 0, len)
+    private fun unlink(s: Int) {
+        val p = slotPrev[s]
+        val n = slotNext[s]
+        if (p >= 0) slotNext[p] = n else head = n
+        if (n >= 0) slotPrev[n] = p else tail = p
+    }
 
-    private fun build(key: String, seq: ByteArray, off: Int, len: Int): Template {
+    private fun pushFront(s: Int) {
+        slotPrev[s] = -1
+        slotNext[s] = head
+        if (head >= 0) slotPrev[head] = s
+        head = s
+        if (tail < 0) tail = s
+    }
+
+    /** Template of an arbitrary word whose sequence is [seq] (length [len]); not cached. */
+    fun templateOfSequence(seq: ByteArray, len: Int): Template {
+        fill(userTemplate, seq, 0, len)
+        return userTemplate
+    }
+
+    private fun fill(t: Template, seq: ByteArray, off: Int, len: Int) {
         if (polyline.size < 2 * len) polyline = FloatArray(2 * len)
         for (i in 0 until len) {
             val k = seq[off + i].toInt()
@@ -207,19 +258,16 @@ internal class GestureLayoutIndex(
             polyline[2 * i + 1] = keyY[k]
         }
         val n = config.resamplePoints
-        val pts = FloatArray(2 * n)
-        PathMath.resample(polyline, len, pts, n)
-        val shape = FloatArray(2 * n)
-        PathMath.normalize(pts, n, shape)
-        val t = Template(pts, shape, PathMath.length(polyline, len))
-        templates[key] = t
-        return t
+        PathMath.resample(polyline, len, t.pts, n)
+        PathMath.normalize(t.pts, n, t.shape)
+        t.length = PathMath.length(polyline, len)
     }
 
     /** Scratch for callers building a sequence for [templateOfSequence]. */
     fun scratch(): ByteArray = scratchSeq
 
     companion object {
+        private val EMPTY = Template(0)
         const val MAX_SEQ = 64
         const val ASCII = 128
     }

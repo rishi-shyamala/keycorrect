@@ -96,7 +96,7 @@ class GestureDecoderTest {
         // Apostrophes are ignored, case too; a char off the layout makes the word unusable.
         assertThat(index.sequence("Don't", seq)).isEqualTo(4)
         assertThat(index.sequence("café", seq)).isEqualTo(0)
-        val t = index.templateOfSequence("hello", seq.also { index.sequence("hello", it) }, 4)
+        val t = index.templateOfSequence(seq.also { index.sequence("hello", it) }, 4)
         assertThat(t.pts.size).isEqualTo(2 * 64)
         val h = TestKeyboard.layout.keys.first { it.char == 'h' }
         val o = TestKeyboard.layout.keys.first { it.char == 'o' }

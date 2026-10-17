@@ -159,7 +159,7 @@ internal class GestureDecoder(
             if ((u and STALE_MASK) == 0 && stale()) return false
             val len = if (words.contains(key)) 0 else index.sequence(key, seq)
             if (len > 0 && startOk[seq[0].toInt()] && endOk[seq[len - 1].toInt()]) {
-                val t = index.templateOfSequence(key, seq, len)
+                val t = index.templateOfSequence(seq, len)
                 if (lengthFits(t.length)) consider(t, key, u, 0f)
             }
         }
