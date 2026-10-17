@@ -393,12 +393,46 @@ class BuiltInLayoutsTest {
         assertThat(labels(rows[0]).joinToString("")).isEqualTo("=_<>[]{}\\|")
         assertThat(labels(rows[1]).joinToString("")).isEqualTo("`~€£¥¢°•×÷")
         assertThat(labels(rows[2]))
-            .containsExactly("2/2", "¡", "¿", "«", "»", "…", "§", "©", "⌫")
+            .containsExactly("2/2", "¡", "¿", "«", "»", "…", "§", "©", "®", "⌫")
             .inOrder()
         val layerKey = rows[2].keys.first()
         assertThat(layerKey.action).isEqualTo(KeyAction.SwitchLayer("symbols"))
         assertThat(layerKey.description).isEqualTo("Switch to symbols")
         assertThat(rows.all { it.width == 10f }).isTrue()
+    }
+
+    @Test
+    fun symbolsRowThreeHasTheSameControlsAndEightCharacterKeysOnBothPages() {
+        val rows =
+            listOf("symbols", "symbols2").map { id ->
+                composer.compose(KeyboardSet.Default, id).rows[2].keys
+            }
+        for (keys in rows) {
+            assertThat(keys).hasSize(10)
+            assertThat(keys.first().width).isEqualTo(1f)
+            assertThat(keys.last().width).isEqualTo(1f)
+            assertThat(keys.first().action).isInstanceOf(KeyAction.SwitchLayer::class.java)
+            assertThat(keys.last().action).isEqualTo(KeyAction.Backspace)
+            assertThat(
+                    keys.drop(1).dropLast(1).all { it.action is KeyAction.Text && it.width == 1f }
+                )
+                .isTrue()
+        }
+        assertThat(rows[0].map { it.width }).isEqualTo(rows[1].map { it.width })
+    }
+
+    @Test
+    fun theBottomRowsOfBothSymbolsPagesAreIdentical() {
+        for (variant in BottomRowVariant.entries) {
+            for (numberRow in listOf(false, true)) {
+                val options = ComposeOptions(numberRow = numberRow)
+                val bottoms =
+                    listOf("symbols", "symbols2").map {
+                        composer.compose(KeyboardSet.Default, it, variant, options).rows.last()
+                    }
+                assertThat(bottoms[0]).isEqualTo(bottoms[1])
+            }
+        }
     }
 
     @Test
