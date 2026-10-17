@@ -92,5 +92,15 @@ data class ResolvedRow(val keys: List<ResolvedKey>, val height: Float = 1f) {
         get() = keys.sumOf { it.width.toDouble() }.toFloat()
 }
 
-/** A fully composed keyboard page, ready to draw. */
-data class KeyboardLayer(val id: String, val rows: List<ResolvedRow>)
+/** A row added to a layout when the number row is on: [row] goes in at row index [insertAt]. */
+data class NumberRowExtra(val insertAt: Int, val row: ResolvedRow)
+
+/**
+ * A fully composed keyboard page, ready to draw.
+ *
+ * [gridUnits] is the minimum number of key units the geometry divides the width by: every key unit
+ * is `width / max(gridUnits, widest row)`. The composer sets 10 (the letters grid) on every layer
+ * except the numeric pads, so all of those share one letter-key width. 0 (the default) means the
+ * unit is `width / widest row`, which numeric pads and hand-built layers keep.
+ */
+data class KeyboardLayer(val id: String, val rows: List<ResolvedRow>, val gridUnits: Float = 0f)

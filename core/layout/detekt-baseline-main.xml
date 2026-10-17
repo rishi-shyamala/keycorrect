@@ -26,7 +26,7 @@
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$fun resolveAll</ID>
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$kind == LayoutKind.Bottom</ID>
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$mode == BottomRowMode.Auto</ID>
-    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$return Layout(file.id, file.name, kind, mode, onLetters, otherwise)</ID>
+    <ID>UnreachableCode:LayoutParser.kt:LayoutParser$return Layout( file.id, file.name, kind, mode, onLetters, otherwise, resolveExtra(file, kind), )</ID>
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val file = try { json.decodeFromJsonElement(LayoutFile.serializer(), tree) } catch (e: SerializationException) { throw LayoutParseException("Layout '$id': ${e.message}", e) }</ID>
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val kind = LayoutKind.entries.firstOrNull { it.json == file.kind } ?: fail("kind", "unknown kind '${file.kind}'")</ID>
     <ID>UnreachableCode:LayoutParser.kt:LayoutParser$val mode = if (file.bottomRow == null) { if (kind == LayoutKind.Letters || kind == LayoutKind.Symbols) { BottomRowMode.Auto } else { BottomRowMode.Included } } else { BottomRowMode.entries.firstOrNull { it.json == file.bottomRow } ?: fail("bottomRow", "unknown bottomRow '${file.bottomRow}'") }</ID>

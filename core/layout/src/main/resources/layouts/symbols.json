@@ -1,4 +1,6 @@
-// Symbols layer, page 1. The bottom row is appended at runtime (bottomRow: auto).
+// Symbols layer, page 1: digits, the shifted digits in US order, then punctuation.
+// The bottom row is appended at runtime (bottomRow: auto). With the number row on, numberRowExtra adds
+// a row of operators under the digits so this page has as many rows as the letters.
 {
   "format": 1,
   "id": "symbols",
@@ -18,27 +20,43 @@
       { "label": "0", "hint": null, "popup": ["⁰", "∅"] },
     ],
     [
+      { "label": "!", "popup": ["¡"] },
       "@",
       { "label": "#", "popup": ["№"] },
       { "label": "$", "popup": ["€", "£", "¥", "¢"] },
-      "_",
+      { "label": "%", "popup": ["‰"] },
+      "^",
       { "label": "&", "popup": ["§"] },
-      { "label": "-", "popup": ["–", "—", "_"] },
-      { "label": "+", "popup": ["±"] },
+      { "label": "*", "popup": ["†", "‡", "★"] },
       { "label": "(", "popup": ["[", "{", "<"] },
       { "label": ")", "popup": ["]", "}", ">"] },
-      { "label": "/", "popup": ["\\"] },
     ],
     [
-      { "type": "layer", "label": "=\\<", "target": "symbols2", "width": 1.5, "style": "modifier", "description": "More symbols" },
-      { "label": "*", "popup": ["†", "‡", "★"] },
-      { "label": "\"", "popup": ["“", "”", "„", "«", "»"] },
-      { "label": "'", "popup": ["‘", "’", "‚", "‹", "›"] },
+      { "type": "layer", "label": "1/2", "target": "symbols2", "width": 1, "style": "modifier", "description": "More symbols" },
+      { "label": "-", "popup": ["_", "–", "—"] },
+      { "label": "'", "popup": ["`", "‘", "’"] },
+      { "label": "\"", "popup": ["“", "”"] },
       ":",
       ";",
-      { "label": "!", "popup": ["¡"] },
+      { "label": "/", "popup": ["\\"] },
       { "label": "?", "popup": ["¿"] },
-      { "type": "backspace" },
+      { "label": "+", "popup": ["±"] },
+      { "type": "backspace", "width": 1 },
     ],
   ],
+  "numberRowExtra": {
+    "insertAt": 1,
+    "row": [
+      { "label": "+", "popup": ["±"] },
+      "×",
+      "÷",
+      { "label": "=", "popup": ["≠", "≈"] },
+      { "label": "/", "popup": ["\\"] },
+      "_",
+      { "label": "<", "popup": ["≤"] },
+      { "label": ">", "popup": ["≥"] },
+      { "label": "[", "popup": ["{"] },
+      { "label": "]", "popup": ["}"] },
+    ],
+  },
 }

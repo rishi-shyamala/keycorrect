@@ -36,7 +36,13 @@ enum class BottomRowVariant(val layoutId: String) {
 }
 
 /**
- * [numberRow] prepends a row of digits to the letters layer.
+ * [numberRow] prepends a row of digits to the letters layer. The symbol layers get their layout's
+ * `numberRowExtra` row instead (page 1 inserts operators under its digits, page 2 a digits row on
+ * top), so every layer has the same number of rows and the same key height.
+ *
+ * [bottomKeyWidth] is the width, in letter-key units, of every non-space key in the bottom row; the
+ * space key takes the rest so the row is exactly 10 units. If the side keys would leave the space
+ * less than 1 unit, they shrink to leave it exactly 1 (the row stays 10 units wide).
  *
  * [emojiKey] keeps the bottom row's emoji key; without it (sensitive fields) the key is dropped and
  * its width goes to the space key, so the row keeps its width.
@@ -57,7 +63,12 @@ data class ComposeOptions(
     val decimalNumber: Boolean = true,
     val terminalRow: Boolean = false,
     val emojiKey: Boolean = true,
-)
+    val bottomKeyWidth: Float = DEFAULT_BOTTOM_KEY_WIDTH,
+) {
+    companion object {
+        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.45f
+    }
+}
 
 /** Builds ready-to-draw [KeyboardLayer]s from layouts, adding bottom and number rows. */
 class KeyboardComposer(private val repository: LayoutRepository) {
@@ -79,30 +90,62 @@ class KeyboardComposer(private val repository: LayoutRepository) {
     ): KeyboardLayer =
         cache.getOrPut(CacheKey(set, layerId, variant, options)) {
             val layout = repository.get(set.layoutId(layerId))
+            val numeric = layout.kind.isNumeric
             val rows = buildList {
                 if (options.terminalRow) addAll(repository.get(TERMINAL_ROW).rows(layerId))
                 if (options.numberRow && layerId == KeyboardSet.LETTERS) add(NUMBER_ROW)
                 val own = layout.rows(layerId)
-                addAll(if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own)
+                if (numeric) {
+                    addAll(
+                        if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own
+                    )
+                } else {
+                    val capped = own.map(::capFunctionKeys).toMutableList()
+                    val extra = layout.numberRowExtra
+                    if (options.numberRow && extra != null) capped.add(extra.insertAt, extra.row)
+                    addAll(capped)
+                }
                 if (layout.bottomRow == BottomRowMode.Auto) {
                     val bottom = repository.get(variant.layoutId).rows(layerId)
-                    addAll(if (options.emojiKey) bottom else bottom.map(::withoutEmojiKey))
+                    addAll(bottom.map { sizeBottomRow(it, options) })
                 }
             }
-            KeyboardLayer(layerId, rows)
+            KeyboardLayer(layerId, rows, if (numeric) 0f else GRID_UNITS)
         }
 
-    /** The row without its emoji key, the key's width given to the space key. */
-    private fun withoutEmojiKey(row: ResolvedRow): ResolvedRow {
-        val emoji = row.keys.firstOrNull { it.action == KeyAction.Emoji } ?: return row
+    /** Modifier and action keys (shift, backspace, layer, enter, ...) are at most 1.5 units. */
+    private fun capFunctionKeys(row: ResolvedRow): ResolvedRow =
+        if (row.keys.none { it.isFunctionKey && it.width > MAX_FUNCTION_WIDTH }) {
+            row
+        } else {
+            row.copy(
+                keys =
+                    row.keys.map {
+                        if (it.isFunctionKey && it.width > MAX_FUNCTION_WIDTH) {
+                            it.copy(width = MAX_FUNCTION_WIDTH)
+                        } else {
+                            it
+                        }
+                    }
+            )
+        }
+
+    /**
+     * A bottom row (one with a space key) with the emoji key dropped if disabled, every other key
+     * [ComposeOptions.bottomKeyWidth] wide and the space key taking the rest of 10 units.
+     */
+    private fun sizeBottomRow(row: ResolvedRow, options: ComposeOptions): ResolvedRow {
+        if (row.keys.none { it.action == KeyAction.Space }) return row
         val keys =
-            row.keys
-                .filter { it !== emoji }
-                .map {
-                    if (it.action == KeyAction.Space) it.copy(width = it.width + emoji.width)
-                    else it
-                }
-        return row.copy(keys = keys)
+            if (options.emojiKey) row.keys else row.keys.filter { it.action != KeyAction.Emoji }
+        val sides = keys.count { it.action != KeyAction.Space }
+        var side = options.bottomKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
+        if (GRID_UNITS - side * sides < MIN_SPACE_WIDTH)
+            side = (GRID_UNITS - MIN_SPACE_WIDTH) / sides
+        val space = GRID_UNITS - side * sides
+        return row.copy(
+            keys = keys.map { it.copy(width = if (it.action == KeyAction.Space) space else side) }
+        )
     }
 
     private fun restrictNumpad(
@@ -127,8 +170,20 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         }
     }
 
+    private val LayoutKind.isNumeric: Boolean
+        get() = this == LayoutKind.Numpad || this == LayoutKind.Phone || this == LayoutKind.Datetime
+
+    private val ResolvedKey.isFunctionKey: Boolean
+        get() = style == KeyStyle.Modifier || style == KeyStyle.Action
+
     private companion object {
         const val TERMINAL_ROW = "terminal_row"
+
+        /** The letters grid: ten standard keys across. */
+        const val GRID_UNITS = 10f
+        const val MAX_FUNCTION_WIDTH = 1.5f
+        const val MIN_BOTTOM_KEY_WIDTH = 0.1f
+        const val MIN_SPACE_WIDTH = 1f
 
         val NUMBER_ROW =
             ResolvedRow(

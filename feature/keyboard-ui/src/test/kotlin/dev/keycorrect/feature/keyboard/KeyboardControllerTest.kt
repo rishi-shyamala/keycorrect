@@ -53,6 +53,9 @@ class KeyboardControllerTest {
 
     private fun labels() = controller.layer.rows.flatMap { r -> r.keys.map { it.label } }
 
+    private fun popupLabels(label: String) =
+        controller.layer.rows.flatMap { it.keys }.first { it.label == label }.popup.map { it.label }
+
     private fun type(text: String) = text.forEach { controller.onKey(KeyAction.Text("$it")) }
 
     private val shiftedA = KeyAction.Text("a", "A")
@@ -101,15 +104,17 @@ class KeyboardControllerTest {
     }
 
     @Test
-    fun urlFieldGetsDotComKey() {
+    fun urlFieldGetsSlashKeyWithDotComOnThePeriod() {
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
-        assertThat(labels()).contains(".com")
+        assertThat(labels()).contains("/")
+        assertThat(popupLabels(".")).contains(".com")
     }
 
     @Test
     fun plainTextHasNeitherAtNorDotCom() {
         start()
-        assertThat(labels()).containsNoneOf("@", ".com")
+        assertThat(labels()).containsNoneOf("@", "/")
+        assertThat(popupLabels(".")).doesNotContain(".com")
     }
 
     @Test
@@ -374,7 +379,7 @@ class KeyboardControllerTest {
             restarting = true,
         )
         assertThat(controller.state.layerId).isEqualTo("letters")
-        assertThat(labels()).contains(".com")
+        assertThat(popupLabels(".")).contains(".com")
     }
 
     @Test

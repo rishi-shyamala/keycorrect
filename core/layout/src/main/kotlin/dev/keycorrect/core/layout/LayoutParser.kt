@@ -138,8 +138,44 @@ internal object LayoutParser {
 
         val onLetters = resolveAll(onLetters = true)
         val otherwise = if (kind == LayoutKind.Bottom) resolveAll(onLetters = false) else onLetters
-        return Layout(file.id, file.name, kind, mode, onLetters, otherwise)
+        return Layout(
+            file.id,
+            file.name,
+            kind,
+            mode,
+            onLetters,
+            otherwise,
+            resolveExtra(file, kind),
+        )
     }
+
+    /** The `numberRowExtra` of [file], validated; null if the file has none. */
+    private fun resolveExtra(file: LayoutFile, kind: LayoutKind): NumberRowExtra? {
+        val e = file.numberRowExtra ?: return null
+        val path = "numberRowExtra"
+        val problem =
+            when {
+                kind == LayoutKind.Bottom || kind == LayoutKind.Extra ->
+                    path to "not valid on bottom or extra layouts"
+                e.insertAt !in 0..file.rows.size ->
+                    "$path.insertAt" to "must be between 0 and ${file.rows.size}, got ${e.insertAt}"
+                !(e.row.height > 0f) ->
+                    "$path.row.height" to "must be positive, got ${e.row.height}"
+                e.row.keys.isEmpty() -> "$path.row.keys" to "must not be empty"
+                else -> null
+            }
+        if (problem != null) throw extraError(file.id, problem.first, problem.second)
+        val keys =
+            e.row.keys.mapIndexed { k, key ->
+                resolveKey(key, "$path.row.keys[$k]", kind, true, popup = false) { p, m ->
+                    throw extraError(file.id, p, m)
+                }
+            }
+        return NumberRowExtra(e.insertAt, ResolvedRow(keys, e.row.height))
+    }
+
+    private fun extraError(id: String, path: String, message: String) =
+        LayoutParseException("Layout '$id' at $path: $message")
 
     private fun resolveKey(
         key: Key,

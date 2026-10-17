@@ -27,7 +27,8 @@ class KeyboardGeometry(val layer: KeyboardLayer, val width: Float, val height: F
     val slots: List<KeySlot>
 
     init {
-        val unitsPerRow = layer.rows.maxOfOrNull { it.width }?.takeIf { it > 0f } ?: 1f
+        val widest = layer.rows.maxOfOrNull { it.width } ?: 0f
+        val unitsPerRow = maxOf(layer.gridUnits, widest).takeIf { it > 0f } ?: 1f
         val unit = width / unitsPerRow
         val totalWeight = layer.rows.sumOf { it.height.toDouble() }
         var index = 0
