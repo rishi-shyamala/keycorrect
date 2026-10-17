@@ -270,6 +270,51 @@ class EditingControllerTest {
     }
 
     @Test
+    fun thePanelLaysOutThePadAndTheTwoHelperColumns() {
+        assertThat(PadRows.map { it.size }).containsExactly(3, 3, 3)
+        assertThat(PadRows[1][1]).isEqualTo(EditingAction.SelectToggle)
+        assertThat(PadRows.flatten())
+            .containsExactly(
+                EditingAction.WordLeft,
+                EditingAction.Up,
+                EditingAction.WordRight,
+                EditingAction.Left,
+                EditingAction.SelectToggle,
+                EditingAction.Right,
+                EditingAction.Home,
+                EditingAction.Down,
+                EditingAction.End,
+            )
+            .inOrder()
+        assertThat(LeftColumn)
+            .containsExactly(
+                EditingAction.SelectAll,
+                EditingAction.Copy,
+                EditingAction.Cut,
+                EditingAction.Close,
+            )
+            .inOrder()
+        assertThat(RightColumn)
+            .containsExactly(
+                EditingAction.Paste,
+                EditingAction.Undo,
+                EditingAction.Redo,
+                EditingAction.Backspace,
+            )
+            .inOrder()
+        val shown = PadRows.flatten() + LeftColumn + RightColumn
+        assertThat(shown).containsNoDuplicates()
+        // Everything but the selection strip's word/sentence/line selection and forward delete.
+        assertThat(EditingAction.entries - shown.toSet())
+            .containsExactly(
+                EditingAction.SelectWord,
+                EditingAction.SelectSentence,
+                EditingAction.SelectLine,
+                EditingAction.Delete,
+            )
+    }
+
+    @Test
     fun panelMenuActions() {
         start("hello")
         for (action in
