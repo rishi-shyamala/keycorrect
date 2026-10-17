@@ -61,10 +61,20 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             wallClock = appContainer.wallClock,
             wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
             emoji = appContainer.emojiEnvironment,
+            clipboard = appContainer.clipboardEnvironment,
         )
     }
 
     private val feedback by lazy { KeyFeedback(this) }
+
+    /** Takes what is copied while we are the keyboard into the clipboard history. */
+    private val clipboardCapture by lazy {
+        ClipboardCapture(this, appContainer.clipboardEnvironment, appContainer.applicationScope)
+    }
+
+    private val imagePaster by lazy {
+        ClipImagePaster(this) { PasteTarget(currentInputConnection, currentInputEditorInfo) }
+    }
 
     private val autofill by lazy { InlineAutofillController(this, mainExecutor) }
 
@@ -76,6 +86,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         updateDevice(resources.configuration)
         // Dictionary and user data load in the background; suggestions appear once they're ready.
         predictionHost.start()
+        clipboardCapture.register()
+        appContainer.clipboardEnvironment.imagePaster = imagePaster
         lifecycleScope.launch {
             appContainer.settingsRepository.settings.collect {
                 settingsFlow.value = it
@@ -105,6 +117,10 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onDestroy() {
+        clipboardCapture.unregister()
+        with(appContainer.clipboardEnvironment) {
+            if (imagePaster === this@KeyCorrectImeService.imagePaster) imagePaster = null
+        }
         learningHost.requestFlush(FlushReason.TrimMemory)
         if (predictionHostLazy.isInitialized()) predictionHost.close()
         super.onDestroy()
@@ -146,6 +162,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         super.onStartInputView(editorInfo, restarting)
         // Loads the emoji catalog in the background, once per process.
         appContainer.emojiEnvironment.start()
+        // Loads the clipboard history in the background and applies its retention rules.
+        appContainer.clipboardEnvironment.start()
         controller.onStartInput(
             FieldProfile.from(editorInfo),
             settingsFlow.value,

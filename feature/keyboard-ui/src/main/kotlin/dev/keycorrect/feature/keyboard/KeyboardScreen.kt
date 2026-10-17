@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.clipboard.ClipChip
+import dev.keycorrect.feature.keyboard.clipboard.ClipboardPanel
+import dev.keycorrect.feature.keyboard.clipboard.ClipboardTitleStrip
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanel
 import dev.keycorrect.feature.keyboard.emoji.EmojiSearchRow
 import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
@@ -95,26 +98,29 @@ private fun KeyArea(
     touch: KeyboardTouchState,
 ) {
     val panelHeight = settings.keyHeightDp.dp * controller.heightUnits
-    if (controller.panel == KeyboardPanel.Emoji && !controller.emojiSearch.active) {
-        val view = LocalView.current
-        EmojiPanel(
-            controller = controller,
-            barHeight = settings.keyHeightDp.dp,
-            onPress = { feedback.haptic(view, settings) },
-            modifier = Modifier.fillMaxWidth().height(panelHeight),
-        )
-        return
+    val view = LocalView.current
+    val onPress = { feedback.haptic(view, settings) }
+    val panelModifier = Modifier.fillMaxWidth().height(panelHeight)
+    val barHeight = settings.keyHeightDp.dp
+    when {
+        controller.panel == KeyboardPanel.Emoji && !controller.emojiSearch.active ->
+            EmojiPanel(controller, barHeight, onPress, panelModifier)
+        controller.panel == KeyboardPanel.Clipboard ->
+            ClipboardPanel(controller, barHeight, onPress, panelModifier)
+        controller.panel == KeyboardPanel.Editing ->
+            EditingPanel(controller.editing, onPress, panelModifier)
+        else -> Keys(controller, settings, feedback, touch)
     }
-    if (controller.panel == KeyboardPanel.Editing) {
-        val view = LocalView.current
-        EditingPanel(
-            editing = controller.editing,
-            onPress = { feedback.haptic(view, settings) },
-            modifier =
-                Modifier.fillMaxWidth().height(settings.keyHeightDp.dp * controller.heightUnits),
-        )
-        return
-    }
+}
+
+/** The keys with their accessibility nodes. */
+@Composable
+private fun Keys(
+    controller: KeyboardController,
+    settings: KeyboardSettings,
+    feedback: KeyFeedback,
+    touch: KeyboardTouchState,
+) {
     val layer = controller.layer
     val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
@@ -141,6 +147,8 @@ private fun KeyArea(
             onShiftUp = onShiftUp,
             gestures = controller.gestures,
             terminalModifiers = controller.terminalModifiers,
+            clipboardLongPress = controller.clipboardAvailable,
+            onKeyLongPress = controller::onKeyLongPress,
         )
         KeySemantics(
             layer = layer,
@@ -149,6 +157,7 @@ private fun KeyArea(
             onKey = onSemanticKey,
             modifier = Modifier.matchParentSize(),
             terminalModifiers = controller.terminalModifiers,
+            onClipboard = if (controller.clipboardAvailable) controller::openClipboard else null,
         )
     }
 }
@@ -173,6 +182,9 @@ private fun SuggestionArea(
             val press = { feedback.haptic(view, settings) }
             if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
             else EmojiTabStrip(controller, onPress = press)
+        } else if (controller.panel == KeyboardPanel.Clipboard) {
+            val view = LocalView.current
+            ClipboardTitleStrip(controller, onPress = { feedback.haptic(view, settings) })
         } else if (items.isNotEmpty()) {
             InlineSuggestionRow(items)
         } else if (controller.selectionStripVisible) {
@@ -187,6 +199,9 @@ private fun SuggestionArea(
                 onNeverCancel = controller::onNeverSuggestCancel,
                 canBlock = { controller.canBlockSuggestions },
             )
+            // Only when the strip above is empty (see KeyboardController.stripClip).
+            val view = LocalView.current
+            ClipChip(controller, onPress = { feedback.haptic(view, settings) })
         }
     }
 }

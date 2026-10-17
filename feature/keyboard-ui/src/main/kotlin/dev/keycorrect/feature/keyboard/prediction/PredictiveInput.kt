@@ -103,6 +103,11 @@ internal class PredictiveInput(
     private var predictionOn = false
 
     private val composing = StringBuilder()
+
+    /** Whether a word is being composed (read by the controller for the clipboard chip). */
+    val isComposing: Boolean
+        get() = composing.isNotEmpty()
+
     private val touches = ArrayList<TouchPoint?>()
 
     private val cache = TextContextCache(editor)

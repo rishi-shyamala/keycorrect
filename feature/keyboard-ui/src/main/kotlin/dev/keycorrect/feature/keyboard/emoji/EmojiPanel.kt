@@ -250,7 +250,7 @@ private fun EmojiBottomBar(
 }
 
 @Composable
-private fun BarButton(
+internal fun BarButton(
     text: String,
     description: String,
     modifier: Modifier = Modifier,
@@ -287,7 +287,7 @@ private fun BarButton(
 
 /** Backspace sends a delete to the app; held, it repeats after a short delay. */
 @Composable
-private fun BackspaceButton(
+internal fun BackspaceButton(
     controller: KeyboardController,
     onPress: () -> Unit,
     modifier: Modifier,
@@ -373,7 +373,7 @@ private val KnownTabs =
 
 private val TabCorner = 8.dp
 private val BarCorner = 8.dp
-private val ABC_WIDTH = 64.dp
+internal val ABC_WIDTH = 64.dp
 private val BAR_BUTTON_WIDTH = 52.dp
 private const val TAB_ICON_SIZE = 18
 private const val BAR_TEXT_SIZE = 18

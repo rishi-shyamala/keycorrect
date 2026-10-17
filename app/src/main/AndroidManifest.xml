@@ -27,6 +27,16 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Serves image clips to the app they are pasted into. Never exported: another app reaches a
+          URI only through a per-URI grant (commitContent, or the system clipboard's grant).
+        -->
+        <provider
+            android:name=".ime.ClipImageProvider"
+            android:authorities="${applicationId}.clips"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <service
             android:name=".ime.KeyCorrectImeService"
             android:exported="true"

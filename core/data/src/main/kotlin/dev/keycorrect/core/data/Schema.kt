@@ -13,7 +13,7 @@ class Migration(val from: Int, val to: Int, val migrate: (SupportSQLiteDatabase)
 
 internal object Schema {
     /** Current schema version. Bump together with a new entry in [MIGRATIONS]. */
-    const val VERSION = 4
+    const val VERSION = 5
 
     /** Ordered migrations. The database is created at v1 and migrated up, so there is one path. */
     val MIGRATIONS: List<Migration> =
@@ -21,6 +21,7 @@ internal object Schema {
             Migration(1, 2, ::migrateV1ToV2),
             Migration(2, 3, ::migrateV2ToV3),
             Migration(3, 4, ::migrateV3ToV4),
+            Migration(4, 5, ::migrateV4ToV5),
         )
 
     /** The frozen v1 DDL. Never edit; add a [Migration] instead. */
@@ -82,6 +83,23 @@ internal object Schema {
             "CREATE TABLE emoji_variants (base TEXT NOT NULL PRIMARY KEY, " +
                 "variant TEXT NOT NULL, updated_at INTEGER NOT NULL)"
         )
+    }
+
+    /** Tables created by [migrateV4ToV5]. */
+    val CLIP_TABLES: List<String> = listOf("clips")
+
+    /**
+     * v5: clipboard history. Image bytes are not stored here; `image_file` names an encrypted blob
+     * file. `kind` is a [ClipKind] name; booleans are 0/1.
+     */
+    fun migrateV4ToV5(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE clips (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "kind TEXT NOT NULL CHECK (kind IN ('Text', 'Image')), text TEXT, " +
+                "mime_type TEXT, image_file TEXT, image_bytes INTEGER NOT NULL DEFAULT 0, " +
+                "created_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL("CREATE INDEX clips_created_at ON clips (created_at)")
     }
 
     /** Every learning table in the current schema (v2 tables plus later additions). */

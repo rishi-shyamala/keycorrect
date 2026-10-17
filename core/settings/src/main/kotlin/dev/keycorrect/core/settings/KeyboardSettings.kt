@@ -17,6 +17,19 @@ enum class SkinTone {
     Dark,
 }
 
+/** How long unpinned clipboard history items are kept. */
+enum class ClipRetention(val millis: Long) {
+    Hour(HOUR_MS),
+    Day(DAY_MS),
+    Week(WEEK_MS),
+    Month(MONTH_MS),
+}
+
+private const val HOUR_MS = 3_600_000L
+private const val DAY_MS = 86_400_000L
+private const val WEEK_MS = 604_800_000L
+private const val MONTH_MS = 2_592_000_000L // 30 days
+
 private const val SLOW_STEP_DP = 18f
 private const val NORMAL_STEP_DP = 12f
 private const val FAST_STEP_DP = 7f
@@ -81,10 +94,20 @@ data class KeyboardSettings(
     val emojiSuggestions: Boolean = true,
     /** The skin tone emoji are inserted in unless one was chosen for that emoji. */
     val emojiSkinTone: SkinTone = SkinTone.None,
+    /**
+     * Clipboard history (PHASE4 PR C): copied text and images, encrypted, while we're the keyboard.
+     */
+    val clipboardHistory: Boolean = true,
+    /** Unpinned clips kept at most (pinned ones are kept regardless). */
+    val clipboardMaxItems: Int = 30,
+    val clipboardRetention: ClipRetention = ClipRetention.Week,
+    /** Copied images are kept too (encrypted, 20 MB in all). */
+    val clipboardImages: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
         copy(
+            clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
             keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
             longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
             hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
@@ -106,6 +129,7 @@ data class KeyboardSettings(
         val HAPTIC_STRENGTH_RANGE = 0..255
         val SOUND_VOLUME_RANGE = 0f..1f
         val REVERTS_RANGE = 1..5
+        val CLIPBOARD_MAX_ITEMS_RANGE = 5..100
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }
 }

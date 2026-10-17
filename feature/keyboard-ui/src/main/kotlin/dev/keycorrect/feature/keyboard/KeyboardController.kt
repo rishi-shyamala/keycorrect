@@ -25,6 +25,9 @@ import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.core.learning.DeviceClass
 import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.clipboard.ClipItem
+import dev.keycorrect.feature.keyboard.clipboard.ClipboardEnvironment
+import dev.keycorrect.feature.keyboard.clipboard.ClipboardPanelState
 import dev.keycorrect.feature.keyboard.emoji.EmojiChoice
 import dev.keycorrect.feature.keyboard.emoji.EmojiEnvironment
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanelState
@@ -64,6 +67,8 @@ class KeyboardController(
     wordFeedback: WordFeedback = WordFeedback.None,
     /** The emoji catalog, recents and variant choices (Phase 4, PR B). */
     internal val emoji: EmojiEnvironment = EmojiEnvironment.None,
+    /** Clipboard history (Phase 4, PR C). */
+    internal val clipboard: ClipboardEnvironment = ClipboardEnvironment.None,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
@@ -216,6 +221,7 @@ class KeyboardController(
         if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
         input.onStartInput(profile, settings, newField = !sameField)
+        composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
         val newOptions = composeOptions(profile, settings)
         if (sameField) {
@@ -226,6 +232,7 @@ class KeyboardController(
         }
         panel = KeyboardPanel.Keys
         emojiSearch.close()
+        clipboardPanel.reset()
         editing.reset()
         shiftHeld = false
         shiftChorded = false
@@ -270,6 +277,7 @@ class KeyboardController(
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
+        composingNow = input.isComposing
     }
 
     private fun onTypingKey(action: KeyAction, touch: TouchPoint?) {
@@ -382,6 +390,7 @@ class KeyboardController(
             UpdateVerdict.External -> Unit
         }
         input.onExternalChange(collapsed = update.known && update.collapsed)
+        composingNow = input.isComposing
         updateAutoCapitalize()
     }
 
@@ -399,7 +408,9 @@ class KeyboardController(
      */
     fun showPanel(panel: KeyboardPanel) {
         if (panel == KeyboardPanel.Emoji && profile.sensitive) return
+        if (panel == KeyboardPanel.Clipboard && !clipboardAvailable) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
+        if (panel != KeyboardPanel.Clipboard) clipboardPanel.reset()
         this.panel = panel
         // Typing in the emoji search used the letters' shift state: work it out again.
         if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
@@ -422,6 +433,101 @@ class KeyboardController(
         // Nothing is remembered where the field asks for no learning (incognito tabs and the like).
         if (record && profile.learningEnabled) emoji.onEmojiUsed(value, base)
         updateAutoCapitalize()
+    }
+
+    // ------------------------------------------------------------------ clipboard (PR C)
+
+    /** Clipboard UI state: the card whose actions are open, and the clear-all confirmation. */
+    internal val clipboardPanel = ClipboardPanelState()
+
+    /** A clip tapped on the strip chip is not offered again; set here so the chip hides. */
+    private var chipDismissedFor by mutableStateOf<Long?>(null)
+
+    /**
+     * Mirrors [PredictiveInput.isComposing] as observable state, so the chip hides while typing.
+     */
+    private var composingNow by mutableStateOf(false)
+
+    /**
+     * The clipboard panel is offered when history is on and the field is not sensitive (a password
+     * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
+     * in any field, password fields included: pasting there is a normal use.
+     */
+    val clipboardAvailable: Boolean
+        get() = clipboard.enabled && !profile.sensitive
+
+    /**
+     * A key was held. Only the emoji key has a long press: it opens the clipboard when
+     * [clipboardAvailable]. Where it is not (history off, sensitive field) the key surface never
+     * arms the long press, so a slow press is just a tap that opens the emoji panel; this is the
+     * same rule again for callers that reach here another way.
+     */
+    fun onKeyLongPress(action: KeyAction) {
+        if (action == KeyAction.Emoji) openClipboard()
+    }
+
+    /** Opens the clipboard panel; does nothing when it is not [clipboardAvailable]. */
+    fun openClipboard() = showPanel(KeyboardPanel.Clipboard)
+
+    /**
+     * The clip shown as a chip in the strip: only when the strip would otherwise be empty (keys
+     * showing, no word being composed, no suggestions, no selection strip), history is on, the host
+     * has a fresh clip and the user hasn't dismissed or pasted it. Autofill chips outrank it in the
+     * UI. Reads observable state only, so a keystroke recomposes just the chip. The host must back
+     * [ClipboardEnvironment.freshClip] with state (and age it out), as there is no timer here.
+     */
+    val stripClip: ClipItem?
+        get() {
+            if (!clipboard.enabled || panel != KeyboardPanel.Keys) return null
+            if (composingNow || !strip.isEmpty || selectionStripVisible) return null
+            return clipboard.freshClip()?.takeIf { it.id != chipDismissedFor }
+        }
+
+    /** The chip's ✕: hides it for [id] (the clip stays in the history). */
+    fun dismissClipChip(id: Long) {
+        chipDismissedFor = id
+    }
+
+    /**
+     * Clip [id] was tapped in the panel or on the chip: pastes it into the field.
+     *
+     * Settling is the same as for an emoji ([onEmojiPicked]): the composing word is finished as
+     * typed and abandoned, not corrected or learned, pending suggestions are dropped, and the text
+     * is then committed through [tracked] so [OwnEditTracker] expects its selection update. Pasted
+     * text is never a word to learn from and no learning event is produced. Allowed in a sensitive
+     * field (that is how a copied code reaches a password field); the text is never read back.
+     * Images are committed by the host. The panel then returns to the keys, unless the paste
+     * failed.
+     */
+    fun onClipPicked(id: Long) {
+        input.endComposingForMove()
+        val pasted =
+            clipboard.paste(id) { text -> if (text.isNotEmpty()) tracked.commitText(text, 1) }
+        composingNow = false
+        // A failed paste (an image the field refused and the clipboard could not take) leaves the
+        // panel open, so the user sees nothing happened and can pick again.
+        if (!pasted) return
+        chipDismissedFor = id
+        showPanel(KeyboardPanel.Keys)
+        updateAutoCapitalize()
+    }
+
+    fun pinClip(id: Long, pinned: Boolean) = clipboard.setPinned(id, pinned)
+
+    fun deleteClip(id: Long) {
+        clipboard.delete(id)
+        clipboardPanel.closeMenu()
+    }
+
+    fun cleanClipUrl(id: Long) {
+        clipboard.cleanUrl(id)
+        clipboardPanel.closeMenu()
+    }
+
+    /** "Clear" confirmed: deletes every unpinned clip. */
+    fun clearClips() {
+        clipboard.clearUnpinned()
+        clipboardPanel.reset()
     }
 
     /** A grid emoji was tapped: inserts its preferred variant, else the default tone, else base. */
@@ -476,6 +582,7 @@ class KeyboardController(
         selection = EditorSelection()
         editing.reset()
         input.onFinishInput()
+        composingNow = false
         ownEdits.reset()
     }
 
@@ -491,6 +598,7 @@ class KeyboardController(
     /** A strip slot was tapped. */
     fun onSuggestionTap(slot: StripSlot) {
         input.onStripTap(slot)
+        composingNow = input.isComposing
         updateAutoCapitalize()
     }
 

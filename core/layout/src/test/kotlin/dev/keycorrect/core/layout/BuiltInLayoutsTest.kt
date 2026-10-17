@@ -83,14 +83,14 @@ class BuiltInLayoutsTest {
             composer.compose(KeyboardSet.Default, "letters", variant).rows.last().keys
 
         assertThat(bottomKeys(BottomRowVariant.Text).map { it.label })
-            .containsExactly("?123", ",", "☺", "", ".", "↵")
+            .containsExactly("?123", "☺", ",", "", ".", "↵")
             .inOrder()
         assertThat(bottomKeys(BottomRowVariant.Email).map { it.label })
-            .containsExactly("?123", "@", "☺", "", ".", "↵")
+            .containsExactly("?123", "☺", "@", "", ".", "↵")
             .inOrder()
         val url = bottomKeys(BottomRowVariant.Url)
         assertThat(url.map { it.label })
-            .containsExactly("?123", "/", "☺", "", ".", ".com", "↵")
+            .containsExactly("?123", "☺", "/", "", ".", ".com", "↵")
             .inOrder()
         assertThat(url[5].action).isEqualTo(KeyAction.Text(".com"))
         assertThat(url[5].popup.map { it.label }).contains(".dev")

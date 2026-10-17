@@ -10,7 +10,7 @@ checklist below is done, and instrumented tests show no password-field leaks.
 | P4-1 | How the panels are reached | **Keys only, no toolbar.** An emoji key opens the emoji panel, and its long-press opens the clipboard. A long-press on space opens the editing panel. |
 | P4-2 | Emoji key placement | **A new key left of space** in the text, email and URL bottom rows; space gets one unit narrower. It's absent from number, phone and date pads and from password fields. |
 | P4-3 | Space long-press | A hold released **without moving** opens the editing panel. A hold **followed by a drag** selects from the cursor. A quick drag with no hold moves the cursor. |
-| P4-4 | Clipboard history | **On by default, text and images** (20 MB image cap), with the §9 rules: 30 items, 7-day TTL, pinned items kept, encrypted, sensitive clips filtered, off in incognito. |
+| P4-4 | Clipboard history | **On by default, text and images** (20 MB image cap), with the §9 rules: 30 items, 7-day TTL, pinned items kept, encrypted, off in incognito. |
 | P4-5 | Emoji in the suggestion strip | **On.** The right-hand slot shows an emoji only for a strong match (an exact CLDR keyword). A setting turns it off. |
 | P4-6 | Delivery | **Three PRs**: A editing + terminal row, B emoji, C clipboard. Each gets a device test, the performance check and a review. B comes before C so the new emoji key works from the start: its tap opens the emoji panel. |
 
@@ -120,29 +120,25 @@ Technical defaults (no objection raised):
 1. **Capture.**
    - `addPrimaryClipChangedListener` while we're the default keyboard. Nothing is captured in
      incognito, during direct boot, or while history is off.
-2. **Never stored.**
-   - Clips with `EXTRA_IS_SENSITIVE`, and clips copied while a sensitive field is focused.
-   - Heuristic matches: Luhn card numbers, IBANs, high-entropy tokens, and API-key patterns such
-     as `sk-…` and `ghp_…`.
-   - OTP-like codes are kept for 3 minutes only, with masked previews.
-   - The heuristics can be configured.
-3. **Store** (SQLCipher, schema migration).
+2. **Store** (SQLCipher, schema migration).
+   - Everything copied is captured as is (no detection, no masking, no short-lived clips). The
+     user deletes what they don't want: per clip, or clear all.
    - Text clips: the last 30, with a 7-day TTL; pinned clips never expire.
    - Images are copied into app-private storage at capture time, with a 20 MB total cap.
-4. **Paste.**
+3. **Paste.**
    - Text is committed. Images go through `commitContent` and a non-exported `FileProvider` with
      a per-URI grant, if the editor accepts the type. Otherwise the clip is put back on the
      primary clipboard.
-   - An option clears the system clipboard after pasting a sensitive item.
-5. **UI.**
+4. **UI.**
    - A panel (long-press on the emoji key) with pin, delete and clear all.
-   - A strip chip for a clip copied in the last 60 s; it's masked in password fields.
+   - A strip chip for a clip copied in the last 60 s, shown in any field (password fields too). The panel opens
+     from the emoji key's long-press, which doesn't exist in password fields.
    - URL clips offer a "clean tracking parameters" action.
-6. **Settings.** On/off, history size, TTL, images, the heuristics, and clear-after-paste.
-7. **Tests.**
-   - Unit tests for the filters and TTL.
-   - **Instrumented tests (the exit criterion):** nothing captured from a password field; the
-     sensitive flag respected; nothing in incognito; masked previews.
+5. **Settings.** On/off, history size, TTL and images.
+6. **Tests.**
+   - Unit tests for retention (max items, TTL, image budget, pinned kept).
+   - **Instrumented tests (the exit criterion):** nothing captured in incognito; stored
+     data unreadable by other apps (encrypted DB and image blobs, no exported provider).
    - Device test, the performance check, then review.
 
 ## PR A device-test notes (Tab S9, 2026-10-11)
@@ -174,7 +170,51 @@ Technical defaults (no objection raised):
 - **Cost on the Tab S9.** A cold panel open takes ~3.2 ms (catalog read) plus ~2–3.6 ms (glyph
   filter) in the background. The search index is built in that background load.
 
-## Feature checklist (exit)
+## PR C decisions (user, 2026-10-12)
+
+- **Image clips are encrypted.** AES-GCM with a Keystore-backed key, like the database key, and
+  decrypted only when pasted, streamed through our non-exported content provider.
+- **Clearing the system clipboard after pasting a sensitive clip is off by default.** It is a
+  setting. *Superseded by the decision below: there is no sensitive-paste handling.*
+- **Simple history (user, 2026-10-12).** No sensitivity detection: no password, card, IBAN,
+  token, key or OTP heuristics, no masking, no short-lived or expiring clips, no "sensitive"
+  flag, no clear-after-paste. Everything copied is captured as is, and the user deletes what
+  they don't want (per clip, clear all). Protection is against other apps: SQLCipher for the
+  rows, Keystore-encrypted image blobs, a non-exported provider, and no backup. The keyboard
+  still never reads, decodes or learns from password-field text; that is about typing and is
+  unrelated to clipboard capture.
+
+- **Reset flows (app wiring).** "Erase personal data" destroys the database, deletes every clip
+  image file (`noBackupFilesDir/clips`) and reloads the clipboard memory. "Reset all learning" and
+  "Forget recent learning" do **not** touch the clipboard: a clipboard history is not learning. It
+  is cleared only by "Settings > Clipboard > Clear clipboard history" (everything, pinned too),
+  per clip, or by erasing personal data.
+- **Paste of images.** `commitContent` with a per-URI read grant on `ClipImageProvider` (not
+  exported, `grantUriPermissions`, authority `<applicationId>.clips`) when the field accepts the
+  mime type; otherwise the URI is put on the system clipboard under the label
+  `dev.keycorrect.clip`, which our own capture ignores. Text over 20 000 characters is not kept.
+
+## Feedback round 1 (user, 2026-10-16) → PR D
+
+From `user-feedback.md`, after daily use. PR C (clipboard) is finished first, and PR D stacks on it.
+
+| # | Feedback | Plan |
+|---|---|---|
+| 1 | Keys are a different size in the symbols view | Every layer uses the letters layer's key height and key unit, and has the same row count as the letters (matching Samsung's pages). Fewer keys in a row are centred or spaced, never stretched. |
+| 2 | The emoji grid lags when scrolling fast | Measure on the Tab S9 with a **release** build (debug Compose is far slower). Then fix: stable keys and contentType, glyphs drawn from a cached `TextLayoutResult` or bitmap per emoji instead of a `Text` per cell, and nothing recomposed per scroll frame. Add a scroll-jank check to the device test. |
+| 3 | Symbols should sit where they are on a regular keyboard | The symbols page 1 top row is digits 1–0, with the shift+digit symbols `! @ # $ % ^ & * ( )` in that order beneath (US layout). |
+| 4 | Organise symbols like Samsung's, drop the rare ones | Copy Samsung's page structure: the rows, the 1/2 and 2/2 pages, and where the common punctuation sits. Drop the rarely used symbols (card suits and the like). Needs screenshots of the Samsung keyboard on the Tab S9. |
+| 5 | Shortcuts to the edit/select panel, emoji and clipboard in the top row | **Decision: Samsung-style shared row.** When not typing, the strip shows shortcut icons (editing panel, emoji, clipboard, settings); while typing, suggestions take that row. Supersedes P4-1's "no toolbar"; the emoji key and the long-press stay. |
+| 6 | Options to remove the edge padding and the gaps between keys | **Decision: two sliders**, in Settings → Appearance: edge padding and key gap, each from 0 up to today's size (the default). |
+| 7 | Use the left/right side of the spacebar for select / move | **Decision: dragging on the left half selects, dragging on the right half moves the cursor**, with a faint line on the spacebar at the split. Hold+release still opens the editing panel. Supersedes P4-3's hold+drag select. |
+| 8 | Bigger, clearer key symbols (tab, enter, shift, …) | Vector icons drawn on the key canvas (shift and its caps-lock form, enter and its action variants, backspace, tab, arrows, emoji, the layer switch), about 1.6× today's glyph size, with consistent stroke weight and contrast. |
+| 9 | Word/Line/Sentence in the select panel don't work | **Bug.** `getSurroundingText` reports offset −1 ("unknown") in editors that use the platform default, and those actions then did nothing. Fall back to the tracked cursor when no own edit is pending; at a word end (e.g. after a space), Word selects the previous word. Verify on device in EditText and Chrome. |
+| 10 | No swipe typing | **Decision:** Phase 5 (own SHARK² decoder), right after this round. |
+| 11 | The emoji header blends into the grid | The tab row gets its own surface colour and a divider, monochrome outline icons (not emoji) for the categories, and a clear selected indicator. |
+
+Also requested: keep the overall layout as close as possible to the Samsung keyboard (bottom row: ?123, emoji, comma, space, period, enter; done). Points 3–4 and the rest of the layout need the tablet connected to photograph the Samsung keyboard's pages.
+
+
 
 - [x] Space drag moves the cursor (horizontal and vertical); hold + drag selects; hold + release
       opens the editing panel (Tab S9: field lab EditText and Chrome textarea)
@@ -184,5 +224,5 @@ Technical defaults (no objection raised):
 - [x] Selection strip: expand and case cycle
 - [x] Terminal row: Esc, Tab, Ctrl/Alt (one-shot and lock), arrows, Home/End/PgUp/PgDn
 - [x] Emoji panel: categories, recents, skin tones, search, kaomoji; strip suggestion (Tab S9)
-- [ ] Clipboard: capture, filters, pin/delete/clear, images, strip chip, TTL
-- [ ] Instrumented: no password-field leaks (clipboard capture, previews, reads)
+- [ ] Clipboard: capture, pin/delete/clear, images, strip chip, TTL
+- [ ] Instrumented: clipboard data unreadable by other apps (encrypted DB and image blobs, no exported provider)

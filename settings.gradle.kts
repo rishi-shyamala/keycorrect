@@ -27,6 +27,8 @@ include(":app")
 
 include(":benchmark")
 
+include(":core:clipboard")
+
 include(":core:data")
 
 include(":core:decoder")

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug field lab only: the generated test image it copies to the clipboard. -->
+<paths>
+    <cache-path name="fieldlab" path="fieldlab/" />
+</paths>

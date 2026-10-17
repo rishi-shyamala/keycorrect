@@ -67,6 +67,12 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             emojiSkinTone =
                 SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
                     ?: d.emojiSkinTone,
+            clipboardHistory = this[CLIPBOARD_HISTORY] ?: d.clipboardHistory,
+            clipboardMaxItems = this[CLIPBOARD_MAX_ITEMS] ?: d.clipboardMaxItems,
+            clipboardRetention =
+                ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
+                    ?: d.clipboardRetention,
+            clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
         )
     }
 
@@ -100,6 +106,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[BACKSPACE_SWIPE] = s.backspaceSwipe
         this[EMOJI_SUGGESTIONS] = s.emojiSuggestions
         this[EMOJI_SKIN_TONE] = s.emojiSkinTone.name
+        this[CLIPBOARD_HISTORY] = s.clipboardHistory
+        this[CLIPBOARD_MAX_ITEMS] = s.clipboardMaxItems
+        this[CLIPBOARD_RETENTION] = s.clipboardRetention.name
+        this[CLIPBOARD_IMAGES] = s.clipboardImages
     }
 
     private companion object {
@@ -132,5 +142,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
         val EMOJI_SUGGESTIONS = booleanPreferencesKey("emoji_suggestions")
         val EMOJI_SKIN_TONE = stringPreferencesKey("emoji_skin_tone")
+        val CLIPBOARD_HISTORY = booleanPreferencesKey("clipboard_history")
+        val CLIPBOARD_MAX_ITEMS = intPreferencesKey("clipboard_max_items")
+        val CLIPBOARD_RETENTION = stringPreferencesKey("clipboard_retention")
+        val CLIPBOARD_IMAGES = booleanPreferencesKey("clipboard_images")
     }
 }
