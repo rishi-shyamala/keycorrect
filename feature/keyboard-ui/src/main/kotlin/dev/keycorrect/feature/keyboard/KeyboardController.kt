@@ -222,6 +222,7 @@ class KeyboardController(
         input.onStartInput(profile, settings, newField = !sameField)
         composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
+        refreshFieldEmpty(newField = !sameField)
         val newOptions = composeOptions(profile, settings)
         if (sameField) {
             applyOptions(newOptions)
@@ -280,6 +281,10 @@ class KeyboardController(
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
+        if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
+            sawText = true
+            if (fieldEmpty) fieldEmpty = false
+        }
     }
 
     private fun onTypingKey(action: KeyAction, touch: TouchPoint?) {
@@ -384,6 +389,7 @@ class KeyboardController(
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
+        refreshFieldEmpty()
         val verdict = ownEdits.onUpdate(update)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
         if (verdict == UpdateVerdict.External) editing.dropDeferred()
@@ -497,11 +503,38 @@ class KeyboardController(
     val stripBusy: Boolean
         get() =
             stripBusy(
+                fieldHasText = !fieldEmpty,
                 stripEmpty = strip.isEmpty,
                 composing = composingNow,
                 selectionStrip = selectionStripVisible,
                 hasClip = stripClip != null,
             )
+
+    /**
+     * Whether the field has no text at all (nothing before or after the cursor), which is when the
+     * strip's tools spread out. Known from the selection updates: a cursor past 0 or a range means
+     * text. A cursor at 0 is empty as long as no text has been seen in the field ([sawText]: this
+     * costs no editor read, so opening a field is as cheap as before); once text has been there
+     * (deleted back to the start, cleared by the app) the editor is asked for one char after the
+     * cursor. Sensitive fields are never read, and where the editor can't say, the field counts as
+     * having text.
+     */
+    private var fieldEmpty by mutableStateOf(true)
+    private var sawText = false
+
+    private fun refreshFieldEmpty(newField: Boolean = false) {
+        if (newField) sawText = false
+        val sel = selection
+        if (sel.known && (sel.selStart > 0 || !sel.collapsed)) sawText = true
+        val empty =
+            when {
+                sel.known && (sel.selStart > 0 || !sel.collapsed) -> false
+                sel.known && sawText && !profile.sensitive ->
+                    editor.textAfterCursor(1)?.isEmpty() ?: false
+                else -> !sawText
+            }
+        if (fieldEmpty != empty) fieldEmpty = empty
+    }
 
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>

@@ -634,9 +634,9 @@ internal class PredictiveInput(
 
     /**
      * The vibration for the word just finished at a separator: a double tick for an autocorrection,
-     * a soft buzz for a word that is in no dictionary and wasn't corrected. Only here, once per
-     * word, never per key; shortcuts, words the user explicitly keeps, single letters and anything
-     * that isn't a plain word (digits, symbols, addresses) stay silent.
+     * a triple short buzz for a word that is in no dictionary and wasn't corrected. Only here, once
+     * per word, never per key; shortcuts, words the user explicitly keeps, single letters and
+     * anything that isn't a plain word (digits, symbols, addresses) stay silent.
      */
     private fun wordFeedback(
         decision: Decision?,

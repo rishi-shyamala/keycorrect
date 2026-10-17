@@ -253,4 +253,14 @@ class WordHapticsTest {
         assertThat(hapticWanted(FeedbackKind.UnknownWord, all.copy(hapticOnAutocorrect = false)))
             .isTrue()
     }
+
+    @Test
+    fun theUnknownWordBuzzIsThreeShortPulsesDistinctFromTheDoubleTick() {
+        val timings = unknownWordTimings()
+        // off, on, off, on, off, on: three ~12 ms pulses starting 60 ms apart.
+        assertThat(timings.toList()).containsExactly(0L, 12L, 48L, 12L, 48L, 12L).inOrder()
+        val starts = (1 until timings.size step 2).map { timings.take(it).sum() }
+        assertThat(starts.zipWithNext { a, b -> b - a }).containsExactly(60L, 60L)
+        assertThat(timings.size / 2).isGreaterThan(2) // the autocorrect pattern has two
+    }
 }
