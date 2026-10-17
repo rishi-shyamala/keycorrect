@@ -34,8 +34,8 @@ class KeyboardGeometryTest {
     @Test
     fun wideKeysCoverTheirWeight() {
         val space = geometry.slots.first { it.key.action == KeyAction.Space }
-        // 10 units minus five side keys of 0.75.
-        assertThat(space.right - space.left).isWithin(0.5f).of(625f)
+        // 10 units minus four side keys of 0.75 and Enter's 1.25.
+        assertThat(space.right - space.left).isWithin(0.5f).of(575f)
     }
 
     @Test

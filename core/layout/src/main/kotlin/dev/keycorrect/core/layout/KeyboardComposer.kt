@@ -40,9 +40,10 @@ enum class BottomRowVariant(val layoutId: String) {
  * `numberRowExtra` row instead (page 1 inserts operators under its digits, page 2 a digits row on
  * top), so every layer has the same number of rows and the same key height.
  *
- * [bottomKeyWidth] is the width, in letter-key units, of every non-space key in the bottom row; the
- * space key takes the rest so the row is exactly 10 units. If the side keys would leave the space
- * less than 1 unit, they shrink to leave it exactly 1 (the row stays 10 units wide).
+ * [bottomKeyWidth] is the width, in letter-key units, of every non-space key in the bottom row
+ * except Enter, which is never narrower than 1.25 units; the space key takes the rest so the row is
+ * exactly 10 units. If the side keys would leave the space less than 1 unit, they shrink in
+ * proportion to leave it exactly 1 (the row stays 10 units wide).
  *
  * [emojiKey] keeps the bottom row's emoji key; without it (sensitive fields) the key is dropped and
  * its width goes to the space key, so the row keeps its width.
@@ -132,19 +133,25 @@ class KeyboardComposer(private val repository: LayoutRepository) {
 
     /**
      * A bottom row (one with a space key) with the emoji key dropped if disabled, every other key
-     * [ComposeOptions.bottomKeyWidth] wide and the space key taking the rest of 10 units.
+     * [ComposeOptions.bottomKeyWidth] wide (Enter at least [ENTER_KEY_WIDTH]) and the space key
+     * taking the rest of 10 units.
      */
     private fun sizeBottomRow(row: ResolvedRow, options: ComposeOptions): ResolvedRow {
         if (row.keys.none { it.action == KeyAction.Space }) return row
         val keys =
             if (options.emojiKey) row.keys else row.keys.filter { it.action != KeyAction.Emoji }
-        val sides = keys.count { it.action != KeyAction.Space }
-        var side = options.bottomKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
-        if (GRID_UNITS - side * sides < MIN_SPACE_WIDTH)
-            side = (GRID_UNITS - MIN_SPACE_WIDTH) / sides
-        val space = GRID_UNITS - side * sides
+        val side = options.bottomKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
+        fun wanted(key: ResolvedKey) =
+            if (key.action == KeyAction.Enter) maxOf(side, ENTER_KEY_WIDTH) else side
+        val sides = keys.filter { it.action != KeyAction.Space }.sumOf { wanted(it).toDouble() }
+        // Side keys so wide that the space would drop under its minimum shrink in proportion.
+        val scale = minOf(1.0, (GRID_UNITS - MIN_SPACE_WIDTH) / sides).toFloat()
+        val space = GRID_UNITS - (sides * scale).toFloat()
         return row.copy(
-            keys = keys.map { it.copy(width = if (it.action == KeyAction.Space) space else side) }
+            keys =
+                keys.map {
+                    it.copy(width = if (it.action == KeyAction.Space) space else wanted(it) * scale)
+                }
         )
     }
 
@@ -184,6 +191,8 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         const val MAX_FUNCTION_WIDTH = 1.5f
         const val MIN_BOTTOM_KEY_WIDTH = 0.1f
         const val MIN_SPACE_WIDTH = 1f
+        /** Enter stays a little wider than a letter key, whatever the bottom-row key width. */
+        const val ENTER_KEY_WIDTH = 1.25f
 
         val NUMBER_ROW =
             ResolvedRow(

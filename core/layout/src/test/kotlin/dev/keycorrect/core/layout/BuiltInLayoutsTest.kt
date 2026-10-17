@@ -76,7 +76,7 @@ class BuiltInLayoutsTest {
         assertThat(without.width).isWithin(1e-4f).of(withKey.width)
         assertThat(without.keys.first { it.action == KeyAction.Space }.width)
             .isWithin(1e-4f)
-            .of(10f - 4 * 0.75f)
+            .of(10f - 3 * 0.75f - 1.25f)
     }
 
     @Test
@@ -108,17 +108,28 @@ class BuiltInLayoutsTest {
             for (layerId in listOf("letters", "symbols", "symbols2")) {
                 val row = bottomRow(variant, layerId)
                 row.keys
-                    .filter { it.action != KeyAction.Space }
+                    .filter { it.action != KeyAction.Space && it.action != KeyAction.Enter }
                     .forEach { assertThat(it.width).isEqualTo(0.75f) }
+                assertThat(row.keys.first { it.action == KeyAction.Enter }.width).isEqualTo(1.25f)
                 val space = row.keys.first { it.action == KeyAction.Space }
-                assertThat(space.width).isWithin(1e-4f).of(10f - 5 * 0.75f)
+                assertThat(space.width).isWithin(1e-4f).of(10f - 4 * 0.75f - 1.25f)
                 assertThat(row.width).isWithin(1e-4f).of(10f)
             }
         }
         val wide = bottomRow(options = ComposeOptions(bottomKeyWidth = 1f))
         assertThat(wide.keys.filter { it.action != KeyAction.Space }.map { it.width })
-            .containsExactly(1f, 1f, 1f, 1f, 1f)
-        assertThat(wide.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(5f)
+            .containsExactly(1f, 1f, 1f, 1f, 1.25f)
+        assertThat(wide.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(4.75f)
+    }
+
+    @Test
+    fun enterIsNeverNarrowerThanTheOtherSideKeys() {
+        for (width in listOf(0.3f, 0.75f, 1.25f, 1.5f)) {
+            val row = bottomRow(options = ComposeOptions(bottomKeyWidth = width))
+            val enter = row.keys.first { it.action == KeyAction.Enter }.width
+            assertThat(enter).isEqualTo(maxOf(width, 1.25f))
+            assertThat(row.width).isWithin(1e-4f).of(10f)
+        }
     }
 
     @Test
@@ -135,7 +146,7 @@ class BuiltInLayoutsTest {
                 assertThat(row.width).isWithin(1e-4f).of(10f)
                 assertThat(row.keys.first { it.action == KeyAction.Space }.width)
                     .isWithin(1e-4f)
-                    .of(10f - 4 * width)
+                    .of(10f - 3 * width - maxOf(width, 1.25f))
             }
         }
     }
