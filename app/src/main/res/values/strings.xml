@@ -24,6 +24,10 @@
     <string name="keyboard_section_appearance">Appearance</string>
     <string name="keyboard_section_behaviour">Behaviour</string>
     <string name="keyboard_key_height">Key height</string>
+    <string name="keyboard_bottom_key_width">Bottom-row key width</string>
+    <string name="keyboard_bottom_key_width_summary">Width of ?123, emoji, comma, period and Enter, as a share of a letter key</string>
+    <string name="keyboard_edge_padding">Edge padding</string>
+    <string name="keyboard_key_gap">Gap between keys</string>
     <string name="keyboard_number_row">Number row</string>
     <string name="keyboard_number_row_summary">Show digits above the letters</string>
     <string name="keyboard_key_preview">Key preview popup</string>

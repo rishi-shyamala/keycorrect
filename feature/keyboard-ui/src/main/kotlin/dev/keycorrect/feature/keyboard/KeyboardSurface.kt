@@ -47,6 +47,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Enough for every label of a layer in each shift state, so drawing never re-measures text. */
 private const val TEXT_CACHE_SIZE = 256
 
+/** Key icons are drawn this big: about 1.6 times the 16 sp modifier glyphs they replace. */
+private const val KEY_ICON_DP = 26f
+
+/** Height of the spacebar's split line as a share of the key's height. */
+private const val SPLIT_LINE_HEIGHT = 0.4f
+
 /** Backspace swipe travel per further word, in dp. */
 private const val WORD_STEP_DP = 40f
 
@@ -219,7 +225,10 @@ internal fun KeyboardSurface(
                     }
                 }
     ) {
-        val gap = KeyGap.toPx()
+        val gap = settings.keyGapDp.dp.toPx()
+        val iconPx = KEY_ICON_DP.dp.toPx()
+        val splitWidth = 1.dp.toPx()
+        val spaceSplit = settings.spacebarCursor
         val radius = CornerRadius(KeyCornerRadius.toPx())
         val hintInset = 5.dp.toPx()
         val pressed = touch.pressed
@@ -236,15 +245,40 @@ internal fun KeyboardSurface(
                 size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
                 cornerRadius = radius,
             )
-            textCache.label(slot.index, key)?.let { layout ->
-                drawText(
-                    layout,
-                    color = keyContent(key, isPressed, shiftState, colors, latch),
-                    topLeft =
-                        Offset(
-                            slot.centerX - layout.size.width / 2f,
-                            slot.centerY - layout.size.height / 2f,
-                        ),
+            val icon = keyIconFor(key, shiftState, enterLabel)
+            if (icon != null) {
+                with(KeyIconArt) {
+                    drawKeyIcon(
+                        icon,
+                        keyContent(key, isPressed, shiftState, colors, latch),
+                        slot.centerX,
+                        slot.centerY,
+                        iconPx,
+                    )
+                }
+            } else {
+                textCache.label(slot.index, key)?.let { layout ->
+                    drawText(
+                        layout,
+                        color = keyContent(key, isPressed, shiftState, colors, latch),
+                        topLeft =
+                            Offset(
+                                slot.centerX - layout.size.width / 2f,
+                                slot.centerY - layout.size.height / 2f,
+                            ),
+                    )
+                }
+            }
+            if (spaceSplit && key.action == KeyAction.Space) {
+                // The spacebar gestures' split: drags left of it select, right of it move.
+                val x = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
+                val half = (slot.bottom - slot.top - gap) * SPLIT_LINE_HEIGHT / 2
+                drawLine(
+                    color =
+                        keyContent(key, isPressed, shiftState, colors, latch).copy(alpha = 0.25f),
+                    start = Offset(x, slot.centerY - half),
+                    end = Offset(x, slot.centerY + half),
+                    strokeWidth = splitWidth,
                 )
             }
             textCache.hint(slot.index, key)?.let { layout ->

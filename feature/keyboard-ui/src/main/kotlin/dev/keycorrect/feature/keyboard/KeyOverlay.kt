@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.keycorrect.core.layout.KeySlot
@@ -43,6 +44,7 @@ internal fun KeyOverlay(
     touch: KeyboardTouchState,
     shift: () -> ShiftState,
     enterLabel: String,
+    keyGap: Dp,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -54,7 +56,16 @@ internal fun KeyOverlay(
         val shiftState = shift()
         touch.popup?.let { drawPopup(it, origin, shiftState, colors, textMeasurer, popupStyle) }
         touch.preview?.let {
-            drawPreview(it, origin, shiftState, enterLabel, colors, textMeasurer, previewStyle)
+            drawPreview(
+                it,
+                origin,
+                shiftState,
+                enterLabel,
+                keyGap.toPx(),
+                colors,
+                textMeasurer,
+                previewStyle,
+            )
         }
     }
 }
@@ -64,11 +75,12 @@ private fun DrawScope.drawPreview(
     origin: Offset,
     shift: ShiftState,
     enterLabel: String,
+    keyGap: Float,
     colors: ColorScheme,
     textMeasurer: TextMeasurer,
     style: TextStyle,
 ) {
-    val gap = KeyGap.toPx() / 2
+    val gap = keyGap / 2
     val key =
         Rect(slot.left + gap, slot.top + gap, slot.right - gap, slot.bottom - gap).translate(origin)
     val bounds = previewBounds(key, PreviewOverlap.toPx(), size)

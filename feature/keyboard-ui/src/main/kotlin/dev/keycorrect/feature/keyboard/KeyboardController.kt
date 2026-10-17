@@ -260,7 +260,10 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
-    /** Applies changed [settings]; recomposes the layer if the number row changed. */
+    /**
+     * Applies changed [settings]; recomposes the layer if the number row or bottom-key width
+     * changed.
+     */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
         input.updateSettings(settings)
@@ -720,6 +723,7 @@ class KeyboardController(
             ComposeOptions(
                 numberRow = settings.numberRow || profile.sensitive,
                 terminalRow = profile.kind == FieldKind.Terminal,
+                bottomKeyWidth = settings.bottomKeyWidth,
                 // No emoji (nor, from PR C, clipboard) in password fields.
                 emojiKey = !profile.sensitive,
             )

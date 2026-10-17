@@ -128,6 +128,24 @@ class KeyboardControllerTest {
         assertThat(controller.profile.sensitive).isTrue()
     }
 
+    private fun emojiKeyWidth() =
+        controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Emoji }.width
+
+    @Test
+    fun bottomKeyWidthSettingSizesTheBottomRowAndRecomposesOnChange() {
+        start()
+        assertThat(emojiKeyWidth()).isEqualTo(0.45f)
+        val spaceBefore =
+            controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Space }
+        controller.updateSettings(KeyboardSettings(bottomKeyWidth = 1f))
+        assertThat(emojiKeyWidth()).isEqualTo(1f)
+        val spaceAfter =
+            controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Space }
+        assertThat(spaceAfter.width).isLessThan(spaceBefore.width)
+        start(settings = KeyboardSettings(bottomKeyWidth = 0.8f))
+        assertThat(emojiKeyWidth()).isEqualTo(0.8f)
+    }
+
     @Test
     fun enterActionComesFromProfile() {
         start(profile(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEARCH))

@@ -43,6 +43,7 @@ import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
  * previews and popups drawn over both.
  */
 @Composable
+@Suppress("LongParameterList") // the host's state, feedback and callbacks; one entry point
 fun KeyboardScreen(
     controller: KeyboardController,
     settings: KeyboardSettings,
@@ -68,7 +69,7 @@ fun KeyboardScreen(
                 .windowInsetsPadding(
                     WindowInsets.navigationBars.union(WindowInsets.tappableElement)
                 )
-                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .padding(settings.edgePaddingDp.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -79,6 +80,7 @@ fun KeyboardScreen(
                 touch = touch,
                 shift = shift,
                 enterLabel = enterLabel,
+                keyGap = settings.keyGapDp.dp,
                 modifier = Modifier.matchParentSize(),
             )
         }
