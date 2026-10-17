@@ -210,6 +210,14 @@ data class GestureConfig(
     val maxWords: Int = 60_000,
     /** The first/last point must lie within this many key widths of the word's first/last key. */
     val endRadius: Float = 1.5f,
+    /**
+     * Pre-filter before a word's template is built: its letters must be matchable, in order, to
+     * [keyReachSamples] equidistant gesture points, each within this many key widths (plus half the
+     * sample spacing) of its key. Generous: it only has to drop words that leave the path.
+     */
+    val keyReachKeyWidths: Float = 2.0f,
+    /** Equidistant gesture points the [keyReachKeyWidths] test looks at (2 to 32). */
+    val keyReachSamples: Int = 24,
     /** Gesture / template path length must lie within [lengthRatioMin], [lengthRatioMax]. */
     val lengthRatioMin: Float = 0.5f,
     val lengthRatioMax: Float = 2.0f,

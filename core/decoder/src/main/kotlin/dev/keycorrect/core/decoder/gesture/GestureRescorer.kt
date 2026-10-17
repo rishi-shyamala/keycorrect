@@ -15,6 +15,11 @@ import dev.keycorrect.core.learning.Personalization
  * The second stage of swipe decoding: adds the contextual language model (with the personal n-gram
  * and the right context), user words and blocked words to the [GestureDecoder] shortlist and ranks
  * it. Driven by the engine under its lock, after it bound the language model's personalization.
+ *
+ * Word set: a word the dictionary flags possibly offensive or not-a-word is never suggested, even
+ * when it is also a user word (on the typed path such a word is left to the trie search, which
+ * skips flagged words too); such a user word is not swipeable. Blocked words are dropped,
+ * [Personalization.preferredCasing] sets the surface form of dictionary words.
  */
 internal class GestureRescorer(
     private val dictionary: Dictionary,

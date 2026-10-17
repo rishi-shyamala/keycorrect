@@ -11,6 +11,12 @@ import kotlin.math.hypot
 /**
  * The most frequent dictionary words as distinct lowercase keys, independent of any layout. [ids]
  * holds the smallest (most frequent) word id of each key and [unigram] its log-probability.
+ *
+ * Words the dictionary flags possibly offensive or not-a-word are left out, so a user word with the
+ * same key is not swipeable either: [GestureRescorer] rejects it because every dictionary id of its
+ * key is excluded, matching the typed path (its trie search skips flagged words, and
+ * `ClassicEngine` leaves user words that are in the dictionary to it). A user word that is an
+ * ordinary dictionary word is scored as the dictionary word.
  */
 internal class GestureWordList(dict: Dictionary, config: GestureConfig) {
     val keys: Array<String>
@@ -202,6 +208,22 @@ internal class GestureLayoutIndex(
     fun lastKey(w: Int): Int = seqKeys[seqOff[w + 1] - 1].toInt()
 
     fun pathLengthOf(w: Int): Float = pathLength[w]
+
+    /**
+     * True if word [w]'s letters can be matched, in order, to gesture samples: [masks] holds for
+     * each layout key the set of samples (bit i = sample i) within reach of the key, and each
+     * letter needs a sample at or after the one matched to the previous letter. Greedy earliest
+     * matching is exact for this subsequence test.
+     */
+    fun visitsInOrder(w: Int, masks: IntArray): Boolean {
+        var from = 0
+        for (p in seqOff[w] until seqOff[w + 1]) {
+            val m = masks[seqKeys[p].toInt()] and (-1 shl from)
+            if (m == 0) return false
+            from = Integer.numberOfTrailingZeros(m)
+        }
+        return true
+    }
 
     /** Template of dictionary word [w]; cached (valid until the next lookup). */
     fun templateOf(w: Int): Template {

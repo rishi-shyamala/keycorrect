@@ -1,6 +1,7 @@
 package dev.keycorrect.core.decoder
 
 import dev.keycorrect.core.decoder.gesture.GestureDecoder
+import dev.keycorrect.core.decoder.gesture.GestureLayoutIndex
 import dev.keycorrect.core.decoder.gesture.GestureRescorer
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.dictionary.WordFlags
@@ -148,7 +149,9 @@ class ClassicEngine(
      * pay for them (tens of ms on a phone). Safe from any background thread; idempotent.
      */
     fun warmUpGestures(layout: KeyLayoutModel) {
-        lock.withLock { gestures.warmUp(layout) }
+        // Not under [lock]: the build walks every word and must not stall typed predictions.
+        // GestureDecoder serialises builders on its own lock and publishes the finished index.
+        gestures.warmUp(layout)
     }
 
     /**
@@ -158,18 +161,27 @@ class ClassicEngine(
      * "I", or the user prefers another form): shift, caps lock and auto-capitalisation are left to
      * the keyboard, which knows that state.
      */
-    fun decodeGestureNow(request: GestureRequest, stale: () -> Boolean = isStale): PredictResult =
-        lock.withLock {
-            decodeGestureLocked(request, stale)
-        }
+    fun decodeGestureNow(request: GestureRequest, stale: () -> Boolean = isStale): PredictResult {
+        // A new layout's index is built here, before taking [lock] (see warmUpGestures), so typed
+        // predictions from another thread never wait for it. The index is only read or mutated
+        // (its template cache) by gesture decodes, which [lock] serialises.
+        val index =
+            if (request.layout.keys.isEmpty() || stale()) null
+            else gestures.indexFor(request.layout)
+        return lock.withLock { decodeGestureLocked(request, index, stale) }
+    }
 
-    private fun decodeGestureLocked(request: GestureRequest, stale: () -> Boolean): PredictResult {
+    private fun decodeGestureLocked(
+        request: GestureRequest,
+        index: GestureLayoutIndex?,
+        stale: () -> Boolean,
+    ): PredictResult {
         val count =
             if (stale()) {
                 -1
             } else {
                 lexicon.refresh()
-                gestures.run(request.layout, request.gesture, lexicon, stale)
+                gestures.run(index, request.gesture, lexicon, stale)
             }
         val ranked =
             if (count > 0) {

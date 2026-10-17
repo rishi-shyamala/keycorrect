@@ -228,7 +228,7 @@ class SwipeEvaluator(
     }
 
     private companion object {
-        val BUCKETS = listOf("1", "2-3", "4-6", "7+")
+        val BUCKETS = listOf("2-3", "4-6", "7+")
     }
 
     private fun wordSeed(sentence: Int, word: Int): Long =
@@ -243,7 +243,6 @@ class SwipeEvaluator(
     private fun lengthBucket(word: String): String {
         val n = word.count { it.isLetter() }
         return when {
-            n <= 1 -> "1"
             n <= 3 -> "2-3"
             n <= 6 -> "4-6"
             else -> "7+"

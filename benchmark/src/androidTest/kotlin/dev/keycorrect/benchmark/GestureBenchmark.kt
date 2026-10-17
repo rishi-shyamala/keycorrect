@@ -19,7 +19,8 @@ import org.junit.runner.RunWith
  * One measured iteration decodes the whole fixed batch of [GestureInputs.requests] (about 60
  * swipes), so the reported time divided by the batch size is the mean cost of one decode on lift.
  * The word list and template index are built before measuring (`warmUpGestures`); the first-ever
- * swipe pays for them otherwise.
+ * swipe pays for them otherwise. [decodeCold] measures a single decode on an empty template cache
+ * (what the first swipes after startup or a layout change cost), [decodeOnLift] the warmed-up cost.
  */
 @RunWith(AndroidJUnit4::class)
 class GestureBenchmark {
@@ -37,6 +38,22 @@ class GestureBenchmark {
             var n = 0
             for (r in requests) n += engine.decodeGestureNow(r).candidates.size
             sink = n
+        }
+        assertTrue(sink > 0)
+    }
+
+    @Test
+    fun decodeCold() {
+        val requests = GestureInputs.requests
+        var i = 0
+        lateinit var engine: ClassicEngine
+        benchmarkRule.measureRepeated {
+            // Fresh engine and index (empty template cache), built with timing paused.
+            runWithTimingDisabled {
+                engine = ClassicEngine(BenchDictionary.dictionary)
+                engine.warmUpGestures(BenchKeyboard.layout)
+            }
+            sink += engine.decodeGestureNow(requests[i++ % requests.size]).candidates.size
         }
         assertTrue(sink > 0)
     }

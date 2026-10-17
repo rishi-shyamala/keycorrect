@@ -5,11 +5,18 @@ import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.decoder.GestureConfig
 import dev.keycorrect.core.decoder.TestKeyboard
+import dev.keycorrect.core.dictionary.Dictionary
+import dev.keycorrect.core.dictionary.DictionaryData
+import dev.keycorrect.core.dictionary.DictionaryWriter
+import dev.keycorrect.core.dictionary.WordEntry
+import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.Capability
 import dev.keycorrect.core.engineapi.GestureInput
 import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
+import dev.keycorrect.core.learning.Personalization
+import java.nio.ByteBuffer
 import kotlin.math.abs
 import kotlin.math.hypot
 import org.junit.Test
@@ -81,6 +88,47 @@ class GestureDecoderTest {
         val xs = listOf(out[0], out[2], out[4])
         assertThat(xs.max() - xs.min()).isWithin(1e-5f).of(1f)
         assertThat((out[0] + out[2] + out[4])).isWithin(1e-5f).of(0f)
+    }
+
+    @Test
+    fun resamplingWithDuplicatePointsSkipsTheZeroLengthSegments() {
+        // The path is 0,0 -> 0,0 -> 10,0 -> 10,0: duplicates must not produce NaN or gaps.
+        val out = FloatArray(2 * 6)
+        PathMath.resample(floatArrayOf(0f, 0f, 0f, 0f, 10f, 0f, 10f, 0f), 4, out, 6)
+        for (i in 0 until 6) {
+            assertThat(out[2 * i]).isWithin(1e-4f).of(2f * i)
+            assertThat(out[2 * i + 1]).isEqualTo(0f)
+        }
+    }
+
+    @Test
+    fun resamplingTwoPointsInterpolatesLinearly() {
+        val out = FloatArray(2 * 5)
+        PathMath.resample(floatArrayOf(0f, 0f, 8f, 6f), 2, out, 5)
+        for (i in 0 until 5) {
+            assertThat(out[2 * i]).isWithin(1e-4f).of(2f * i)
+            assertThat(out[2 * i + 1]).isWithin(1e-4f).of(1.5f * i)
+        }
+        assertThat(PathMath.length(out, 5)).isWithin(1e-3f).of(10f)
+    }
+
+    @Test
+    fun resamplingToTwoPointsKeepsTheEndpoints() {
+        val out = FloatArray(4)
+        PathMath.resample(floatArrayOf(1f, 2f, 5f, 2f, 9f, 6f), 3, out, 2)
+        assertThat(out.toList()).containsExactly(1f, 2f, 9f, 6f).inOrder()
+    }
+
+    @Test
+    fun normalizeReportsDegenerateCurves() {
+        val out = FloatArray(6)
+        assertThat(PathMath.normalize(floatArrayOf(4f, 4f, 4f, 4f, 4f, 4f), 3, out)).isFalse()
+        assertThat(out.toList()).containsExactly(0f, 0f, 0f, 0f, 0f, 0f)
+        // Two points: centred, longer side 1.
+        val two = FloatArray(4)
+        assertThat(PathMath.normalize(floatArrayOf(0f, 0f, 6f, 8f), 2, two)).isTrue()
+        assertThat(two[2] - two[0]).isWithin(1e-5f).of(0.75f)
+        assertThat(two[3] - two[1]).isWithin(1e-5f).of(1f)
     }
 
     // ------------------------------------------------------------ templates
@@ -311,6 +359,158 @@ class GestureDecoderTest {
                 )
         )
         assertThat(times[(times.size * 95) / 100] / 1e6).isLessThan(30.0)
+    }
+
+    // ------------------------------------------------------------ cache, filters, word sets
+
+    private fun snapshot(r: dev.keycorrect.core.engineapi.PredictResult) =
+        r.candidates.map { it.text to it.score }
+
+    private val sampleGestures by lazy {
+        listOf("hello", "the", "world", "keyboard", "thank", "friend", "please", "which").flatMap {
+            w ->
+            (1L..3L).map { Swipes.through(w, it, 0.25f, 0.08f) }
+        }
+    }
+
+    @Test
+    fun templateCacheEvictionDoesNotChangeResults() {
+        val big = ClassicEngine(dictionary)
+        val tiny =
+            ClassicEngine(dictionary, ClassicConfig(gesture = GestureConfig(templateCacheSize = 3)))
+        val expected = sampleGestures.map { snapshot(decode(it, engine = big, max = 5)) }
+        repeat(3) {
+            // Repeated rounds on a thrashing cache give the same, bit-identical results.
+            val got = sampleGestures.map { snapshot(decode(it, engine = tiny, max = 5)) }
+            assertThat(got).isEqualTo(expected)
+        }
+    }
+
+    @Test
+    fun theKeyReachFilterNeverDropsTheTrueWord() {
+        val off =
+            ClassicEngine(
+                dictionary,
+                ClassicConfig(gesture = GestureConfig(keyReachKeyWidths = 1e6f)),
+            )
+        val words =
+            listOf("hello", "the", "world", "keyboard", "tomorrow", "thank", "friend", "please")
+        for (w in words) {
+            for (seed in 1L..10L) {
+                for ((jitter, noise) in listOf(0f to 0f, 0.25f to 0.08f, 0.4f to 0.1f)) {
+                    val g = Swipes.through(w, seed, jitter, noise)
+                    val with = snapshot(decode(g, max = 5))
+                    val without = snapshot(decode(g, engine = off, max = 5))
+                    if (w in without.map { it.first }) {
+                        assertThat(with.map { it.first }).contains(w)
+                    }
+                    assertThat(with.firstOrNull()).isEqualTo(without.firstOrNull())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun blockedWordsAreNotSuggested() {
+        val blocked =
+            object : Personalization by Personalization.None {
+                override fun isBlocked(word: String) = word == "hello"
+            }
+        val e = ClassicEngine(dictionary, personalization = { blocked })
+        val words = decode(Swipes.through("hello"), engine = e, max = 10).candidates.map { it.text }
+        assertThat(words).isNotEmpty()
+        assertThat(words).doesNotContain("hello")
+        assertThat(top("hello", n = 10)).contains("hello")
+    }
+
+    @Test
+    fun offensiveAndNotAWordEntriesAreNotSwipeable() {
+        assertThat(top("damn", n = 10)).doesNotContain("damn")
+        assertThat(top("etc", n = 10)).doesNotContain("etc")
+        // Also as a user word: the dictionary's flag wins, as on the typed path.
+        val e = ClassicEngine(dictionary, userWords = { listOf("damn", "etc") })
+        for (w in listOf("damn", "etc")) {
+            val got = decode(Swipes.through(w), engine = e, max = 10).candidates.map { it.text }
+            assertThat(got).doesNotContain(w)
+        }
+    }
+
+    @Test
+    fun preferredCasingIsApplied() {
+        val pers =
+            object : Personalization by Personalization.None {
+                override fun preferredCasing(key: String) = if (key == "hello") "HeLLo" else null
+            }
+        val e = ClassicEngine(dictionary, personalization = { pers })
+        val r = decode(Swipes.through("hello"), engine = e, max = 3)
+        assertThat(r.candidates.first().text).isEqualTo("HeLLo")
+        assertThat(r.candidates.map { it.text }).doesNotContain("hello")
+    }
+
+    @Test
+    fun wordsWithApostrophesAreSwipedWithoutThem() {
+        assertThat(top("dont", n = 3)).contains("don't")
+        assertThat(top("dont", n = 1)).containsExactly("don't")
+    }
+
+    @Test
+    fun wordsWithACharMissingFromTheLayoutAreSkipped() {
+        val base = GestureTestDictionary.data
+        val odd = WordEntry.fromCount("ab\u65e5", 5000L, 2_000_000L, 0)
+        val data = DictionaryData(base.metadata, base.words + odd, base.bigrams, base.trigrams)
+        val dict =
+            Dictionary.open(ByteBuffer.wrap(DictionaryWriter.write(data, skipUnknownNgrams = true)))
+        val e = ClassicEngine(dict)
+        e.warmUpGestures(TestKeyboard.layout)
+        val got = decode(Swipes.through("ab"), engine = e, max = 10).candidates.map { it.text }
+        assertThat(got).doesNotContain("ab\u65e5")
+        assertThat(decode(Swipes.through("hello"), engine = e, max = 1).candidates.map { it.text })
+            .containsExactly("hello")
+    }
+
+    @Test
+    fun aUserWordThatIsAlsoInTheDictionaryAppearsOnceAsADictionaryWord() {
+        val e = ClassicEngine(dictionary, userWords = { listOf("hello", "Zorblax") })
+        val r = decode(Swipes.through("hello"), engine = e, max = 10)
+        val hellos = r.candidates.filter { it.text.equals("hello", ignoreCase = true) }
+        assertThat(hellos).hasSize(1)
+        assertThat(hellos.single().source).isEqualTo(CandidateSource.Dictionary)
+    }
+
+    @Test
+    fun staleFiringMidScanAbandonsTheDecodeAndLeavesNoState() {
+        val e = ClassicEngine(GestureTestDictionary.large)
+        e.warmUpGestures(TestKeyboard.layout)
+        val g = Swipes.through("keyboard", 2, 0.2f, 0.05f)
+        val expected = snapshot(decode(g, engine = e, max = 5))
+        assertThat(expected).isNotEmpty()
+        var calls = 0
+        // Let the entry checks pass, then fire inside the dictionary scan.
+        val aborted = decode(g, engine = e, max = 5) { ++calls > 4 }
+        assertThat(aborted.candidates).isEmpty()
+        assertThat(calls).isAtLeast(5)
+        assertThat(snapshot(decode(g, engine = e, max = 5))).isEqualTo(expected)
+    }
+
+    @Test
+    fun warmingUpAndDecodingFromTwoThreadsAgree() {
+        // The index build runs outside the engine lock (typed predictions never wait for it);
+        // a decode on the same new layout meanwhile waits only for that build and is correct.
+        val e = ClassicEngine(GestureTestDictionary.large)
+        val layout = TestKeyboard.layout.copy(id = 77)
+        val warm = Thread { e.warmUpGestures(layout) }
+        warm.start()
+        val typed =
+            dev.keycorrect.core.engineapi.PredictRequest(
+                TypingContext("hello "),
+                dev.keycorrect.core.engineapi.ComposingInput.Empty,
+                layout,
+            )
+        assertThat(e.predictNow(typed).candidates).isNotEmpty()
+        val r =
+            e.decodeGestureNow(GestureRequest(TypingContext(), Swipes.through("hello"), layout, 1))
+        warm.join()
+        assertThat(r.candidates.map { it.text }).containsExactly("hello")
     }
 
     @Test
