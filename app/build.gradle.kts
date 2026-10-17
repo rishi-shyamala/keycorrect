@@ -1,7 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("keycorrect.android.application")
     id("keycorrect.android.compose")
 }
+
+// The version lives in version.properties; every build appends the commit it was built from, so
+// Settings → About shows exactly which build is installed.
+val appVersion =
+    Properties().apply { rootProject.file("version.properties").inputStream().use(::load) }
+val gitCommit: String =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+            isIgnoreExitValue = true
+        }
+        .standardOutput
+        .asText
+        .map { it.trim() }
+        .getOrElse("")
+
+// Release signing comes from Gradle properties outside the repo (~/.gradle/gradle.properties,
+// docs/INSTALL.md). Without them the release APK is built unsigned (as on CI).
+val releaseStoreFile = providers.gradleProperty("keycorrect.release.storeFile").orNull
 
 android {
     namespace = "dev.keycorrect"
@@ -14,12 +35,25 @@ android {
 
     defaultConfig {
         applicationId = "dev.keycorrect"
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = appVersion.getProperty("versionCode").toInt()
+        versionName =
+            appVersion.getProperty("versionName") +
+                (if (gitCommit.isNotEmpty()) "+$gitCommit" else "")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
         // native code. 32-bit-only devices (armeabi-v7a, x86) are intentionally unsupported.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = providers.gradleProperty("keycorrect.release.storePassword").get()
+                keyAlias = providers.gradleProperty("keycorrect.release.keyAlias").get()
+                keyPassword = providers.gradleProperty("keycorrect.release.keyPassword").get()
+            }
+        }
     }
 
     buildTypes {
@@ -29,6 +63,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
