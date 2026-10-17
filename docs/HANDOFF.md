@@ -14,14 +14,15 @@ Read this first when resuming. Other docs:
 
 ## 0. Resume here (2026-10-16)
 
-**Branch `phase-4-clipboard` holds PR C, the clipboard history, plus the planning for feedback
-round 1. It is finished and verified, and only needs pushing and a PR (step 5 below).** Its working
+**PR C, the clipboard history (plus the planning for feedback round 1), is open as
+[rishi-shyamala/keycorrect#6](https://github.com/rishi-shyamala/keycorrect/pull/6) from branch
+`phase-4-clipboard`, waiting for CI and the user's merge.** Its working
 tree is clean except the user's own untracked `user-feedback.md`: never commit that file.
 
 **PR C: done**
 - **Built:** core:clipboard (retention policy, URL cleaner), encrypted clip store (schema v5), Keystore-encrypted image blobs, the clipboard panel (long-press on the emoji key), the strip chip, capture and paste wiring (`ClipImageProvider`, not exported), Settings → Clipboard, and the security instrumented test.
 - **Simplified per the user (2026-10-12):** everything copied is captured; there is NO detection of passwords, cards, tokens or OTPs and no masking. The user deletes items. The privacy goal is only that **other apps can't read the stored data**.
-- **Reviewed:** a full review, then fixes (621a425), then a follow-up review, then fixes (e359543).
+- **Reviewed:** a full review, then fixes (ba9aa1e), then a follow-up review, then fixes (e1e839d).
 - **Instrumented tests on the Tab S9 (2026-10-16, final code):** core:data 48/48 and app `ClipboardSecurityTest` 5/5.
 - **Device test on the Tab S9 (2026-10-16): all pass.** Copy → chip → paste; long-press emoji = clipboard, tap = emoji; pin/delete/clear (pinned stays); image paste into the field lab's image field (`received image/png (235 bytes)`) and the text-field fallback to the system clipboard; the chip in the password field; history off → nothing captured (the panel is then unavailable and the long-press acts as a tap, by design); data at rest (no test text in the DB/WAL; the blob starts `01 0c…`, not the PNG magic); no crashes. Samsung keyboard restored.
   - Note: in a password field Bitwarden's inline suggestion takes the strip over the chip (autofill outranks the chip by design).
@@ -29,10 +30,7 @@ tree is clean except the user's own untracked `user-feedback.md`: never commit t
 - **CI set run locally:** `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` all pass (~1400 unit tests).
 - **Release manifest checked:** only the launcher, the IME (BIND_INPUT_METHOD) and the profileinstaller receiver (DUMP) are exported; providers aren't.
 - **Bottom row reordered (user request):** ?123, emoji, comma (@ or / in email/URL), space, period, enter.
-- **History rewritten before the first push (user decision, 2026-10-16):** GitHub push protection blocked a since-deleted test fixture holding Stripe's public example key (`ClipSensitivityTest.kt`, commit da393e1). The string was split (`"sk_" + "live_…"`) in that commit with `git filter-branch`; the final tree is unchanged. Backup branch `backup/phase-4-clipboard-pre-rewrite` (local only): delete it once the PR is up.
-
-**PR C: still to do**
-5. **Push and open the PR.** Push `phase-4-clipboard`, `gh pr create`, and write the PR body from docs/PHASE4.md "PR C decisions" and the commit list. Then bind with `mcp__ccd_pr__get_status` and offer Auto-fix. (The first push attempt in auto mode was denied by the permission classifier; the user pushes or approves it.)
+- **History rewritten before the first push (user decision, 2026-10-16):** GitHub push protection blocked a since-deleted test fixture (`ClipSensitivityTest.kt`, commit c0a57cc) holding documentation-example tokens (Stripe, GitHub, Slack, AWS, Google, OpenAI). Every token-shaped literal there is now split in half (`"ghp_16C7…" + "…"`); the final tree is unchanged. **Never put realistic token strings in test fixtures:** split them.
 
 **After PR C: PR D, feedback round 1**
 - The full plan and the user's decisions are in **docs/PHASE4.md, "Feedback round 1"**. Stack the branch on `phase-4-clipboard` (e.g. `phase-4-feedback`).
@@ -66,7 +64,7 @@ tree is clean except the user's own untracked `user-feedback.md`: never commit t
 | 2 Prediction core | merged to `main`, pushed |
 | 3 Learning | merged to `main` (PR [rishi-shyamala/keycorrect#1](https://github.com/rishi-shyamala/keycorrect/pull/1), 2026-10-11) |
 | Pre-Phase-4 cleanup, perf pass | merged (#2, #3) |
-| 4 Editing, clipboard, emoji | **in progress.** PR A (editing + terminal row, #4) and PR B (emoji, #5) are merged. PR C (clipboard) is finished and verified on `phase-4-clipboard`, waiting to be pushed (see §0). PR D (feedback round 1) is planned. |
+| 4 Editing, clipboard, emoji | **in progress.** PR A (editing + terminal row, #4) and PR B (emoji, #5) are merged. PR C (clipboard) is open as #6, waiting for merge (see §0). PR D (feedback round 1) is planned. |
 | 5–10 | see PLAN §17 |
 
 - **Remote:** `origin` = `https://github.com/rishi-shyamala/keycorrect.git`. Merged phase branches are deleted locally and on `origin`; GitHub deletes a PR's branch when it merges.
