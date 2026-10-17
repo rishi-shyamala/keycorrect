@@ -143,7 +143,7 @@ data class KeyboardSettings(
         val BOTTOM_KEY_WIDTH_RANGE = 0.30f..1.50f
         val EDGE_PADDING_DP_RANGE = 0..4
         val KEY_GAP_DP_RANGE = 0..6
-        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.45f
+        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
         const val DEFAULT_EDGE_PADDING_DP = 4
         const val DEFAULT_KEY_GAP_DP = 6
         val LONG_PRESS_DELAY_MS_RANGE = 150..800

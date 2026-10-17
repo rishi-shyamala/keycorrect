@@ -54,7 +54,7 @@ class SettingsRepositoryTest {
     fun defaultsMatchSpec() {
         val d = KeyboardSettings()
         assertThat(d.keyHeightDp).isEqualTo(54)
-        assertThat(d.bottomKeyWidth).isEqualTo(0.45f)
+        assertThat(d.bottomKeyWidth).isEqualTo(0.75f)
         assertThat(d.edgePaddingDp).isEqualTo(4)
         assertThat(d.keyGapDp).isEqualTo(6)
         assertThat(d.numberRow).isFalse()
@@ -142,7 +142,7 @@ class SettingsRepositoryTest {
         assertThat(s.edgePaddingDp).isEqualTo(0)
         assertThat(s.keyGapDp).isEqualTo(6)
         assertThat(KeyboardSettings(bottomKeyWidth = Float.NaN).sanitized().bottomKeyWidth)
-            .isEqualTo(0.45f)
+            .isEqualTo(0.75f)
     }
 
     @Test

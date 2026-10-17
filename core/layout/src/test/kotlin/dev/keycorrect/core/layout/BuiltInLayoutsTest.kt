@@ -76,7 +76,7 @@ class BuiltInLayoutsTest {
         assertThat(without.width).isWithin(1e-4f).of(withKey.width)
         assertThat(without.keys.first { it.action == KeyAction.Space }.width)
             .isWithin(1e-4f)
-            .of(10f - 4 * 0.45f)
+            .of(10f - 4 * 0.75f)
     }
 
     @Test
@@ -109,9 +109,9 @@ class BuiltInLayoutsTest {
                 val row = bottomRow(variant, layerId)
                 row.keys
                     .filter { it.action != KeyAction.Space }
-                    .forEach { assertThat(it.width).isEqualTo(0.45f) }
+                    .forEach { assertThat(it.width).isEqualTo(0.75f) }
                 val space = row.keys.first { it.action == KeyAction.Space }
-                assertThat(space.width).isWithin(1e-4f).of(10f - 5 * 0.45f)
+                assertThat(space.width).isWithin(1e-4f).of(10f - 5 * 0.75f)
                 assertThat(row.width).isWithin(1e-4f).of(10f)
             }
         }
@@ -124,7 +124,7 @@ class BuiltInLayoutsTest {
     @Test
     fun bottomRowWithoutEmojiStillFillsTenUnits() {
         for (variant in BottomRowVariant.entries) {
-            for (width in listOf(0.3f, 0.45f, 1f, 1.5f)) {
+            for (width in listOf(0.3f, 0.75f, 1f, 1.5f)) {
                 val row =
                     bottomRow(
                         variant,

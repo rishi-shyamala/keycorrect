@@ -78,7 +78,7 @@ Layouts with `"bottomRow": "auto"` get a bottom row appended at runtime, chosen 
 Composer sizing (all layers except `numpad`/`phone`/`datetime`):
 - One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched.
 - Keys with style `modifier` or `action` (shift, backspace, layer, enter, keycode, modifier) are capped at 1.5u.
-- In the bottom row (the row with the space key) every key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.45) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, space, comma (@ for email, / for URL), period, enter`.
+- In the bottom row (the row with the space key) every key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.75) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, space, comma (@ for email, / for URL), period, enter`.
 
 An optional number row (setting) is prepended to the `letters` layer; the symbol layers get their `numberRowExtra` row instead.
 

@@ -134,7 +134,7 @@ class KeyboardControllerTest {
     @Test
     fun bottomKeyWidthSettingSizesTheBottomRowAndRecomposesOnChange() {
         start()
-        assertThat(emojiKeyWidth()).isEqualTo(0.45f)
+        assertThat(emojiKeyWidth()).isEqualTo(0.75f)
         val spaceBefore =
             controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Space }
         controller.updateSettings(KeyboardSettings(bottomKeyWidth = 1f))

@@ -66,7 +66,7 @@ data class ComposeOptions(
     val bottomKeyWidth: Float = DEFAULT_BOTTOM_KEY_WIDTH,
 ) {
     companion object {
-        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.45f
+        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
     }
 }
 
