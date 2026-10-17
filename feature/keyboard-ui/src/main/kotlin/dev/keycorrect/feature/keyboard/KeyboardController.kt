@@ -283,6 +283,7 @@ class KeyboardController(
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
             sawText = true
+            zeroChecked = false
             if (fieldEmpty) fieldEmpty = false
         }
     }
@@ -389,8 +390,9 @@ class KeyboardController(
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
-        refreshFieldEmpty()
         val verdict = ownEdits.onUpdate(update)
+        // Our own edits don't change what a cursor at 0 has after it; anything else might.
+        refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
         if (verdict == UpdateVerdict.External) editing.dropDeferred()
         editing.onEditsSettled()
@@ -522,19 +524,26 @@ class KeyboardController(
     private var fieldEmpty by mutableStateOf(true)
     private var sawText = false
 
-    private fun refreshFieldEmpty(newField: Boolean = false) {
+    /** The editor was asked about the text after a cursor at 0, and has not moved since. */
+    private var zeroChecked = false
+
+    private fun refreshFieldEmpty(newField: Boolean = false, externalChange: Boolean = false) {
         if (newField) sawText = false
+        if (newField || externalChange) zeroChecked = false
         val sel = selection
-        if (sel.known && (sel.selStart > 0 || !sel.collapsed)) sawText = true
-        val empty =
-            when {
-                sel.known && (sel.selStart > 0 || !sel.collapsed) -> false
-                sel.known && sawText && !profile.sensitive ->
-                    editor.textAfterCursor(1)?.isEmpty() ?: false
-                else -> !sawText
-            }
+        val hasText = sel.known && (sel.selStart > 0 || !sel.collapsed)
+        if (hasText) sawText = true
+        val atZero = sel.known && sel.collapsed && sel.selStart == 0 && canAskEditor()
+        val empty = !hasText && (if (atZero && zeroChecked) fieldEmpty else askFieldEmpty(sel))
+        zeroChecked = atZero
         if (fieldEmpty != empty) fieldEmpty = empty
     }
+
+    private fun canAskEditor() = sawText && !profile.sensitive
+
+    /** Empty by the editor when it can be asked, else by whether text was ever seen. */
+    private fun askFieldEmpty(sel: EditorSelection): Boolean =
+        if (sel.known && canAskEditor()) editor.textAfterCursor(1)?.isEmpty() ?: false else !sawText
 
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>

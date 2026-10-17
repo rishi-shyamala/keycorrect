@@ -256,4 +256,54 @@ class StripToolTest {
         controller.onTool(StripTool.Clipboard) {}
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
     }
+
+    // ------------------------------------------------------------------ editor reads
+
+    @Test
+    fun aSensitiveFieldIsNeverReadAndItsToolsStayCompactDownToZero() {
+        start(password)
+        controller.onKey(KeyAction.Text("a"))
+        controller.onKey(KeyAction.Text("b"))
+        assertThat(controller.stripBusy).isTrue()
+        controller.onKey(KeyAction.Backspace)
+        controller.onKey(KeyAction.Backspace)
+        assertThat(editor.text.toString()).isEmpty()
+        // Text was seen and can't be checked, so the field still counts as having text.
+        assertThat(controller.stripBusy).isTrue()
+        controller.onKey(KeyAction.Backspace)
+        assertThat(controller.stripBusy).isTrue()
+        assertThat(editor.afterCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun aNewFieldForgetsTheTextSeenInTheLastOne() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        assertThat(controller.stripBusy).isTrue()
+        start()
+        assertThat(controller.stripBusy).isFalse()
+    }
+
+    @Test
+    fun typingInANormalFieldAddsNoStripReads() {
+        start()
+        // The first letter makes the predictor read its context once; the strip never asks.
+        controller.onKey(KeyAction.Text("h"))
+        val before = editor.afterCalls
+        controller.onKey(KeyAction.Text("i"))
+        controller.onKey(KeyAction.Space)
+        controller.onKey(KeyAction.Text("a"))
+        assertThat(editor.afterCalls).isEqualTo(before)
+    }
+
+    @Test
+    fun aCursorSittingAtZeroIsReadOnlyOnce() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Backspace)
+        val afterFirst = editor.afterCalls
+        repeat(3) { controller.onKey(KeyAction.Backspace) }
+        assertThat(editor.afterCalls).isEqualTo(afterFirst)
+        assertThat(controller.stripBusy).isFalse()
+    }
 }

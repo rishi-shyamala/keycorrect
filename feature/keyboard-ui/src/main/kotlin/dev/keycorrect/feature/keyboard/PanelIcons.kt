@@ -46,12 +46,16 @@ internal object PanelIcons {
         )
     val Search = outlineIcon("search", KeyIcon.EnterSearch.path)
 
-    /** Selection brackets around one short line: select the word. */
-    val SelectWord = outlineIcon("select_word", "M7 5H4v14h3M17 5h3v14h-3M8 12h8")
+    /** One word in a box with an underline: select the word. */
+    val SelectWord =
+        outlineIcon(
+            "select_word",
+            "M5 7h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM7 18h10",
+        )
 
-    /** Selection brackets around several lines: select the sentence. */
+    /** Lines of text ending in a full stop: select the sentence. */
     val SelectSentence =
-        outlineIcon("select_sentence", "M7 5H4v14h3M17 5h3v14h-3M8 9h8M8 12h8M8 15h5")
+        outlineIcon("select_sentence", "M4 6h16M4 10h16M4 14h9M16.5 14.5h.01M4 18h6")
 
     /** A capital and a small letter: change case. */
     val Case =

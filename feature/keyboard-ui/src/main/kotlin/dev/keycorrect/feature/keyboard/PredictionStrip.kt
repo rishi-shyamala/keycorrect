@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,10 +15,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +33,11 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.takeOrElse
@@ -218,9 +219,9 @@ private fun RowScope.Slot(
 }
 
 /**
- * A slot's word, in full when it can be: the font shrinks to [SHRINK_FACTOR] of its size when the
- * text overflows its slot, and only text that still doesn't fit is ellipsized. Overflow is learned
- * from the one text layout, once per slot text, so typing costs nothing extra.
+ * A slot's word, in full when it can be: the font shrinks to [SHRINK_FACTOR] of its size (not below
+ * [MIN_SLOT_SIZE]) when the text overflows its slot, and only text that still doesn't fit is
+ * ellipsized. Overflow is measured (cached) once per text and slot width.
  */
 @Composable
 private fun ShrinkingText(slot: StripSlot, color: Color, weight: FontWeight) {
@@ -234,19 +235,45 @@ private fun ShrinkingText(slot: StripSlot, color: Color, weight: FontWeight) {
         )
         return
     }
-    var shrunk by remember(slot.text) { mutableStateOf(false) }
-    val base = LocalTextStyle.current.fontSize.takeOrElse { DEFAULT_SLOT_SIZE }
-    Text(
-        slot.text,
-        color = color,
-        fontWeight = weight,
-        fontSize = if (shrunk) base * SHRINK_FACTOR else base,
-        textAlign = TextAlign.Center,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        onTextLayout = { if (it.didOverflowWidth) shrunk = true },
-    )
+    val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
+    val style = LocalTextStyle.current.copy(fontWeight = weight)
+    val base = style.fontSize.takeOrElse { DEFAULT_SLOT_SIZE }
+    BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val available = constraints.maxWidth
+        // Keyed on the text and the room it has, so a slot that widens gets its full size back and
+        // a new long word is shrunk in its first frame, not after an ellipsized one.
+        val size =
+            remember(slot.text, available, style, base) {
+                val full = style.copy(fontSize = base)
+                val overflows =
+                    available != Constraints.Infinity &&
+                        measurer
+                            .measure(
+                                slot.text,
+                                full,
+                                TextOverflow.Ellipsis,
+                                softWrap = false,
+                                maxLines = 1,
+                                constraints = Constraints(maxWidth = available),
+                            )
+                            .didOverflowWidth
+                if (overflows) shrunkSize(base) else base
+            }
+        Text(
+            slot.text,
+            color = color,
+            fontWeight = weight,
+            fontSize = size,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
+
+/** [base] shrunk to [SHRINK_FACTOR] of its size, but never below [MIN_SLOT_SIZE] (or [base]). */
+internal fun shrunkSize(base: TextUnit): TextUnit =
+    minOf(base.value, maxOf(base.value * SHRINK_FACTOR, MIN_SLOT_SIZE.value)).sp
 
 /**
  * The share of the strip a slot gets, proportional to its text (with a minimum, and a maximum so a
@@ -293,6 +320,8 @@ private const val MIN_SLOT_WEIGHT = 5f
 private const val MAX_SLOT_WEIGHT = 14f
 private const val SHRINK_FACTOR = 0.8f
 private val DEFAULT_SLOT_SIZE = 14.sp
+private val MIN_SLOT_SIZE = 12.sp
+private const val MEASURE_CACHE = 16
 private val SlotCorner = 8.dp
 private val SlotPadding = 4.dp
 
