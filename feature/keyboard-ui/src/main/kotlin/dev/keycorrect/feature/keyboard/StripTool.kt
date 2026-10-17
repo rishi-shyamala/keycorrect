@@ -19,6 +19,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
@@ -130,7 +131,7 @@ internal fun StripTools(
 ) {
     val tools = controller.tools
     val progress = rememberBusyProgress(controller, autofillActive)
-    val editing = controller.panel == KeyboardPanel.Editing
+    val editSelected = controller.editToolSelected
     val leftCount = leftToolCount(tools)
     val edgePx = with(LocalDensity.current) { EdgeToolWidth.roundToPx() }
     Layout(
@@ -140,7 +141,7 @@ internal fun StripTools(
                     icon = tool.icon(),
                     description = tool.description(),
                     progress = progress,
-                    selected = if (tool == StripTool.Edit) editing else null,
+                    selected = if (tool == StripTool.Edit) editSelected else null,
                 ) {
                     onPress()
                     controller.onTool(tool, onOpenSettings)
@@ -210,11 +211,17 @@ private fun ToolButton(
 ) {
     Box(
         modifier =
-            Modifier.fillMaxHeight().clickable(onClick = onClick).clearAndSetSemantics {
-                contentDescription = description
-                role = Role.Button
-                if (selected != null) this.selected = selected
-            },
+            // Never focusable: a focus highlight on the first tool (Edit) when a selection change
+            // moves or drops the focus elsewhere in the strip looked like the tool being selected.
+            // The selected look is the [selected] flag alone.
+            Modifier.fillMaxHeight()
+                .focusProperties { canFocus = false }
+                .clickable(onClick = onClick)
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    role = Role.Button
+                    if (selected != null) this.selected = selected
+                },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

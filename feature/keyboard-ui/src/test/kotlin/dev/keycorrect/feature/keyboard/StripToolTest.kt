@@ -230,6 +230,34 @@ class StripToolTest {
     }
 
     @Test
+    fun theEditToolIsSelectedOnlyWhileTheEditingPanelIsOpen() {
+        start()
+        assertThat(controller.editToolSelected).isFalse()
+        controller.onTool(StripTool.Edit) {}
+        assertThat(controller.editToolSelected).isTrue()
+        controller.onTool(StripTool.Edit) {}
+        assertThat(controller.editToolSelected).isFalse()
+        controller.showPanel(KeyboardPanel.Emoji)
+        assertThat(controller.editToolSelected).isFalse()
+    }
+
+    @Test
+    fun selectionEventsNeverSelectTheEditTool() {
+        start()
+        "hello world".forEach { controller.onKey(KeyAction.Text("$it")) }
+        // A range appears (selection strip), grows, is replaced and collapses again.
+        for ((a, b) in listOf(0 to 5, 0 to 11, 6 to 11, 11 to 11)) {
+            editor.setSelection(a, b)
+            controller.onSelectionChanged(a, b, a, b)
+            assertThat(controller.editToolSelected).isFalse()
+        }
+        controller.editing.expandSelectionToWord()
+        controller.editing.cycleCase()
+        assertThat(controller.editToolSelected).isFalse()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+    }
+
+    @Test
     fun theButtonsOpenTheirPanels() {
         start()
         controller.onTool(StripTool.Emoji) {}

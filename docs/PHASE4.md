@@ -240,3 +240,16 @@ Also requested: keep the overall layout as close as possible to the Samsung keyb
 7. **Suggestion slots.** Widths are proportional to the text (min 5, max 14 chars); the font shrinks to 80% before ellipsizing.
 8. **Emoji search button.** A vector magnifier replaces the glyph.
 
+## Feedback round 3 (user, 2026-10-17)
+
+| # | Item | Decision |
+|---|---|---|
+| A | Editing panel layout | Gboard-style move panel with helper columns (separate change). |
+| B | Spacebar joystick | The joystick on the spacebar drags, with rate-based movement beyond the ring (separate change). |
+| 1 | Keyboard opens on letters | **The keyboard opens on the field's home layer (letters for text) whenever it is opened for input**: a new field, or the same field shown again after being hidden. The layer, shift and a manual field mode are kept only for the restart that a configuration change (rotation) causes. The service tells these apart with `ConfigRestartTracker`: `onConfigurationChanged` (while the keyboard shows) opens a 1.5 s window in which `onStartInputView` counts as `restarting`; every other start is passed as `restarting = false`, so `EditorIdentity.continues` is false. An app's own `restartInput` on the same field therefore also opens on letters. Limit: if an app recreates its activity on rotation, the field is new and resets. |
+| 2 | ABC from a panel | ABC in the emoji, clipboard and editing panels returns to the **home layer** (letters, or the number pad), not the symbols page that was up before. The strip's Edit tool and pasting a clip keep the layer. |
+| 3 | Symbols pages | Row 3 of both pages: 1u layer key, eight 1u character keys, 1u backspace (page 2 gains `®` after `©`), so nothing jumps when switching. Bottom rows are the same by construction (tested). |
+| 4 | Clip chip icon | The recent-clip chip uses the strip's vector clipboard icon instead of the emoji. |
+| 5 | Haptic pulse length | Each pulse of the autocorrect double pulse and the unknown-word triple buzz is **20 ms** (was 12 ms) and set by two sliders in Settings → Feedback (`autocorrectPulseMs`, `unknownWordPulseMs`, 5-60 ms, disabled with their switches). Both are plain waveforms (primitive ticks have no settable length); gaps stay 43 ms and 48 ms. |
+| 6 | Edit tool flash | The Edit tool is selected only while the editing panel is open (`editToolSelected`, derived from `panel`). Not reproducible without a device; most likely cause: the tool buttons were focusable `clickable`s, so when the strip content changed on a selection event (selection strip in, focused strip button out) focus moved to the first focusable, the Edit tool, and its focus highlight looked selected. The tools are now not focusable. |
+| 7 | Manual layout switch | **Decision (user): long-press ?123 in plain text fields** (`FieldKind.Text`) offers Text, Email (@), URL (/), Number (123), Phone (☎) (`fieldMode` popup entries, `KeyAction.SetFieldMode`). The choice replaces the profile for layout, bottom row and suggestion/autocorrect/learning rules (`FieldProfile.withKind`) until the field changes; it survives a rotation restart. Number and phone get a thin ABC key under the pad to go back. Not offered in fields that declare a kind. |

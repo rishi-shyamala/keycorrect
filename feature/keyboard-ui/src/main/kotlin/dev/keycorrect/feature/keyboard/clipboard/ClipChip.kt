@@ -76,6 +76,7 @@ internal fun ClipChip(controller: KeyboardController, onPress: () -> Unit) {
 }
 
 @Composable
+@Suppress("LongParameterList") // one small private button; every part is drawn
 private fun ChipButton(
     label: String,
     description: String,
