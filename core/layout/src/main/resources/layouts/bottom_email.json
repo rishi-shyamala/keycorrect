@@ -1,4 +1,5 @@
-// Bottom row for email address fields.
+// Bottom row for email address fields. Widths here are placeholders: the composer sizes the side keys to
+// ComposeOptions.bottomKeyWidth and gives the rest of the 10 units to the space key.
 {
   "format": 1,
   "id": "bottom_email",
@@ -6,12 +7,12 @@
   "kind": "bottom",
   "rows": [
     [
-      { "type": "modeSwitch" },
+      { "type": "modeSwitch", "width": 1.5 },
       { "type": "emoji" },
-      "@",
       { "type": "space", "width": 4 },
+      "@",
       ".",
-      { "type": "enter" },
+      { "type": "enter", "width": 1.5 },
     ],
   ],
 }

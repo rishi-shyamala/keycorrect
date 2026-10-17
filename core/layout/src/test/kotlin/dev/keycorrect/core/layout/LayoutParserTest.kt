@@ -186,6 +186,47 @@ class LayoutParserTest {
         }
     }
 
+    // numberRowExtra
+
+    @Test
+    fun numberRowExtraParses() {
+        val parsed =
+            parse(
+                layout(
+                    """[["a"],["b"]]""",
+                    kind = "symbols",
+                    extra =
+                        """"numberRowExtra":{"insertAt":1,"row":["1",{"label":"2","popup":["x"]}]},""",
+                )
+            )
+        val extra = parsed.numberRowExtra!!
+        assertThat(extra.insertAt).isEqualTo(1)
+        assertThat(extra.row.keys.map { it.label }).containsExactly("1", "2").inOrder()
+        assertThat(extra.row.keys[1].popup.single().label).isEqualTo("x")
+        assertThat(parse(layout("""[["a"]]""", kind = "symbols")).numberRowExtra).isNull()
+    }
+
+    @Test
+    fun numberRowExtraIsValidated() {
+        fun err(extra: String, kind: String = "symbols") =
+            errorOf(layout("""[["a"],["b"]]""", kind = kind, extra = extra))
+        assertThat(err(""""numberRowExtra":{"insertAt":3,"row":["1"]},"""))
+            .contains("numberRowExtra.insertAt")
+        assertThat(err(""""numberRowExtra":{"insertAt":-1,"row":["1"]},"""))
+            .contains("numberRowExtra.insertAt")
+        assertThat(err(""""numberRowExtra":{"insertAt":0,"row":[]},"""))
+            .contains("numberRowExtra.row.keys")
+        assertThat(err(""""numberRowExtra":{"insertAt":0,"row":[{"type":"bogus"}]},"""))
+            .contains("numberRowExtra.row.keys[0].type")
+        assertThat(
+                err(
+                    """"numberRowExtra":{"insertAt":0,"row":["1"]},"bottomRow":"included",""",
+                    "bottom",
+                )
+            )
+            .contains("numberRowExtra")
+    }
+
     // Validation
 
     @Test

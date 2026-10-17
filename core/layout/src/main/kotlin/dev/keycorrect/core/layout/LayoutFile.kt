@@ -20,6 +20,13 @@ internal data class LayoutFile(
     val kind: String = "letters",
     val bottomRow: String? = null,
     val rows: List<@Serializable(with = RowSerializer::class) Row>,
+    val numberRowExtra: NumberRowExtraFile? = null,
+)
+
+@Serializable
+internal data class NumberRowExtraFile(
+    val insertAt: Int,
+    val row: @Serializable(with = RowSerializer::class) Row,
 )
 
 @Serializable

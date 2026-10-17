@@ -21,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -43,12 +42,14 @@ import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
  * previews and popups drawn over both.
  */
 @Composable
+@Suppress("LongParameterList") // the host's state, feedback and callbacks; one entry point
 fun KeyboardScreen(
     controller: KeyboardController,
     settings: KeyboardSettings,
     feedback: KeyFeedback,
     modifier: Modifier = Modifier,
     autofill: InlineAutofillController? = null,
+    onOpenSettings: () -> Unit = {},
 ) {
     // Shift is a lambda read only in draw and semantics phases, so neither typing nor a shift
     // change recomposes anything here. It is the effective shift: keys draw shifted while the
@@ -67,17 +68,18 @@ fun KeyboardScreen(
                 .windowInsetsPadding(
                     WindowInsets.navigationBars.union(WindowInsets.tappableElement)
                 )
-                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .padding(settings.edgePaddingDp.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionArea(controller, settings, feedback, autofill)
+                SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
                 KeyArea(controller, settings, feedback, touch)
             }
             KeyOverlay(
                 touch = touch,
                 shift = shift,
                 enterLabel = enterLabel,
+                keyGap = settings.keyGapDp.dp,
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -163,10 +165,12 @@ private fun Keys(
 }
 
 /**
- * Fixed-height area above the keys: autofill chips when there are any (they take priority), else
- * the selection strip while a range is selected, else the prediction strip, else nothing. The
- * height never changes, so the keys below don't jump. The controller's strip is read inside
- * [PredictionStrip] only, so a new suggestion recomposes that and nothing else.
+ * Fixed-height area above the keys. While the keys or editing panel show, it is the tool strip
+ * ([StripTools]) around the content: autofill chips when there are any (they take priority), else
+ * the selection strip while a range is selected, else the prediction strip and recent-clip chip.
+ * The emoji and clipboard panels fill it with their own headers instead. The height never changes,
+ * so the keys below don't jump. The controller's strip is read inside [PredictionStrip] only, so a
+ * new suggestion recomposes that and nothing else.
  */
 @Composable
 private fun SuggestionArea(
@@ -174,35 +178,57 @@ private fun SuggestionArea(
     settings: KeyboardSettings,
     feedback: KeyFeedback,
     autofill: InlineAutofillController?,
+    onOpenSettings: () -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)) {
-        val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
-        if (controller.panel == KeyboardPanel.Emoji) {
-            val view = LocalView.current
-            val press = { feedback.haptic(view, settings) }
-            if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
-            else EmojiTabStrip(controller, onPress = press)
-        } else if (controller.panel == KeyboardPanel.Clipboard) {
-            val view = LocalView.current
-            ClipboardTitleStrip(controller, onPress = { feedback.haptic(view, settings) })
-        } else if (items.isNotEmpty()) {
-            InlineSuggestionRow(items)
-        } else if (controller.selectionStripVisible) {
-            SelectionStrip(controller.editing)
-        } else {
-            PredictionStrip(
-                strip = { controller.strip },
-                onSlot = controller::onSuggestionTap,
-                onAddWord = controller::onAddWordTap,
-                onSlotLongPress = controller::onSuggestionLongPress,
-                onNeverYes = controller::onNeverSuggestConfirm,
-                onNeverCancel = controller::onNeverSuggestCancel,
-                canBlock = { controller.canBlockSuggestions },
-            )
-            // Only when the strip above is empty (see KeyboardController.stripClip).
-            val view = LocalView.current
-            ClipChip(controller, onPress = { feedback.haptic(view, settings) })
+    val view = LocalView.current
+    val press = { feedback.haptic(view, settings) }
+    val modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)
+    when {
+        controller.panel == KeyboardPanel.Emoji ->
+            Box(modifier) {
+                if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
+                else EmojiTabStrip(controller, onPress = press)
+            }
+        controller.panel == KeyboardPanel.Clipboard ->
+            Box(modifier) { ClipboardTitleStrip(controller, onPress = press) }
+        else -> {
+            val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
+            StripTools(
+                controller = controller,
+                onPress = press,
+                onOpenSettings = onOpenSettings,
+                autofillActive = items.isNotEmpty(),
+                modifier = modifier,
+            ) {
+                StripContent(controller, items, press)
+            }
         }
+    }
+}
+
+/** What fills the strip between the tools; see [SuggestionArea]. */
+@Composable
+private fun StripContent(
+    controller: KeyboardController,
+    items: List<InlineSuggestionItem>,
+    onPress: () -> Unit,
+) {
+    if (items.isNotEmpty()) {
+        InlineSuggestionRow(items)
+    } else if (controller.selectionStripVisible) {
+        SelectionStrip(controller.editing)
+    } else {
+        PredictionStrip(
+            strip = { controller.strip },
+            onSlot = controller::onSuggestionTap,
+            onAddWord = controller::onAddWordTap,
+            onSlotLongPress = controller::onSuggestionLongPress,
+            onNeverYes = controller::onNeverSuggestConfirm,
+            onNeverCancel = controller::onNeverSuggestCancel,
+            canBlock = { controller.canBlockSuggestions },
+        )
+        // Only when the strip above is empty (see KeyboardController.stripClip).
+        ClipChip(controller, onPress = onPress)
     }
 }
 

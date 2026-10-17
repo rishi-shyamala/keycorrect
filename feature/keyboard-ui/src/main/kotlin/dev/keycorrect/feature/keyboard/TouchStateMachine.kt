@@ -8,6 +8,12 @@ import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
 import kotlin.math.hypot
 
+/**
+ * Where the space bar splits, as a fraction of its width: a drag starting left of it selects, right
+ * of it moves the cursor. The renderer draws a faint line there.
+ */
+internal const val SPACE_SELECT_SPLIT = 0.5f
+
 /** Delay before a held repeatable key (backspace) starts repeating. */
 internal const val REPEAT_START_DELAY_MS = 400L
 
@@ -100,10 +106,11 @@ internal interface TouchHost {
  *   haptic tick and [TouchHost.onKeyLongPress]; the release then types nothing.
  * - A second finger going down dismisses an open popup; the first finger's release then types
  *   nothing. Other fingers never affect a drag or swipe in progress.
- * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] before the long-press
- *   delay is a cursor drag ([CursorDragTracker]) and no space is typed. Held still for the delay it
- *   is armed (a tick): moving then is a select drag, and releasing without moving calls
- *   `onSpaceHold`. A plain tap types a space.
+ * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] is a drag
+ *   ([CursorDragTracker]) and no space is typed. A drag that went down on the left part of the key
+ *   (before [SPACE_SELECT_SPLIT] of its width) selects; on the right part it moves the cursor.
+ *   Without a drag, releasing types a space however long it was held (the editing panel has its own
+ *   button in the strip).
  * - Backspace (with [TouchHost.backspaceSwipe]): it still deletes on press. Moving left past the
  *   slop before the first repeat starts a swipe: the repeat stops, words = 1 + the extra leftward
  *   travel / [TouchHost.wordStepPx] (0 back within the slop), and release commits if words > 0. A
@@ -148,9 +155,6 @@ internal class TouchStateMachine(
         /** Where a space or backspace press has got to; [Gesture.None] for a plain press. */
         var gesture = Gesture.None
 
-        /** Space: [deadline] is the hold arming rather than a popup. */
-        var holdPending = false
-
         /** Emoji key: [deadline] is its long press (the clipboard). */
         var keyLongPressPending = false
 
@@ -170,7 +174,6 @@ internal class TouchStateMachine(
     private enum class Gesture {
         None,
         CursorDrag,
-        HoldArmed,
         KeyLongPress,
         SelectDrag,
         BackspaceSwipe,
@@ -197,11 +200,6 @@ internal class TouchStateMachine(
                 touch.preview = null
                 hostCall { host.onGestureTick() }
                 hostCall { host.onKeyLongPress(press.slot.key.action) }
-            } else if (press.holdPending) {
-                press.deadline = null
-                press.holdPending = false
-                press.gesture = Gesture.HoldArmed
-                hostCall { host.onGestureTick() }
             } else if (press.repeating) {
                 press.repeatFired = true
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
@@ -233,10 +231,6 @@ internal class TouchStateMachine(
                 hostCall { host.onKey(key.action, null) }
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
-            }
-            key.action == KeyAction.Space && host.spacebarCursor -> {
-                press.holdPending = true
-                press.deadline = clock() + host.longPressDelayMs
             }
             key.action == KeyAction.Emoji && host.clipboardLongPress -> {
                 press.keyLongPressPending = true
@@ -274,7 +268,6 @@ internal class TouchStateMachine(
             press.isShift -> hostCall { host.onShiftUp() }
             press.gesture == Gesture.BackspaceSwipe ->
                 hostCall { host.gestures.onBackspaceSwipeEnd(press.swipeWords > 0) }
-            press.gesture == Gesture.HoldArmed -> hostCall { host.gestures.onSpaceHold() }
             press.gesture != Gesture.None -> Unit
             popup != null -> {
                 touch.popup = null
@@ -324,11 +317,10 @@ internal class TouchStateMachine(
         val drag = press.drag
         if (drag == null) {
             if (hypot(press.x - press.downX, press.y - press.downY) <= host.slopPx) return
-            // Past the slop: before the hold this is a cursor drag, after it a select drag.
-            press.gesture =
-                if (press.gesture == Gesture.HoldArmed) Gesture.SelectDrag else Gesture.CursorDrag
-            press.deadline = null
-            press.holdPending = false
+            // Past the slop: the half of the space bar the finger went down on picks the drag.
+            val slot = press.slot
+            val split = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
+            press.gesture = if (press.downX < split) Gesture.SelectDrag else Gesture.CursorDrag
             press.drag =
                 CursorDragTracker(
                     host.cursorStepPx,
@@ -380,7 +372,7 @@ internal class TouchStateMachine(
 
     private fun openPopup(id: Long, press: Press) {
         val slot = press.slot
-        val panel = PopupPanel.above(slot, slot.key.popup.size, geometry.width)
+        val panel = PopupPanel.above(slot, slot.key.popup.size, geometry.width, geometry.unit)
         touch.preview = null
         touch.popup = PopupState(id, slot, panel, slot.key.popup, panel.indexAt(press.x))
         hostCall { host.onPopupOpened() }

@@ -11,9 +11,12 @@ Layouts are JSON files. The built-in ones live in `core/layout/src/main/resource
   "kind": "letters",           // letters | symbols | numpad | phone | datetime | bottom | extra
   "bottomRow": "auto",         // auto (default for letters/symbols): a bottom row is appended at runtime
                                // included (default for numpad/phone/datetime/bottom): rows are complete
-  "rows": [ /* Row */ ]
+  "rows": [ /* Row */ ],
+  "numberRowExtra": { "insertAt": 1, "row": [ /* Key | "shorthand" */ ] }   // optional, see below
 }
 ```
+
+`numberRowExtra` (optional, not on `bottom`/`extra` layouts): a row the composer inserts at row index `insertAt` (0..number of rows) only when the "number row" setting is on. The symbol pages use it so every layer has as many rows as the letters layer: page 1 inserts `+ × ÷ = / _ < > [ ]` under its digits (`insertAt: 1`), page 2 a digits row on top (`insertAt: 0`). `row` takes the same forms as a normal row (bare array or `{ "height", "keys" }`).
 
 ## Row
 ```jsonc
@@ -72,7 +75,12 @@ Layouts with `"bottomRow": "auto"` get a bottom row appended at runtime, chosen 
 | Email address | `bottom_email` |
 | URL | `bottom_url` |
 
-An optional number row (setting) is prepended to the `letters` layer.
+Composer sizing (all layers except `numpad`/`phone`/`datetime`):
+- One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched.
+- Keys with style `modifier` or `action` (shift, backspace, layer, enter, keycode, modifier) are capped at 1.5u.
+- In the bottom row (the row with the space key) every key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.75; Enter at least 1.25) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, space, comma (@ for email, / for URL), period, enter`.
+
+An optional number row (setting) is prepended to the `letters` layer; the symbol layers get their `numberRowExtra` row instead.
 
 ## Terminal row
 The `extra` kind holds keys that are composed above the rows of every layer. The built-in `terminal_row` layout (Esc, Tab, Ctrl, Alt, ←, ↓, ↑, →, with Home, PgDn, PgUp and End on the long-press popups of the arrows) is added when `ComposeOptions.terminalRow` is set, which the keyboard does for terminal fields (`TYPE_NULL`). It goes above the number row and above every layer, so it stays when the layer changes, and its height counts in the keyboard's height units. `extra` layouts default to `"bottomRow": "included"` and are not layers of the keyboard set.

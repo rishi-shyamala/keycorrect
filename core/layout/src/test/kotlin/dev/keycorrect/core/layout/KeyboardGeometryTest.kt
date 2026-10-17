@@ -34,8 +34,8 @@ class KeyboardGeometryTest {
     @Test
     fun wideKeysCoverTheirWeight() {
         val space = geometry.slots.first { it.key.action == KeyAction.Space }
-        // Four units: the emoji key takes one from the space bar.
-        assertThat(space.right - space.left).isWithin(0.01f).of(400f)
+        // 10 units minus four side keys of 0.75 and Enter's 1.25.
+        assertThat(space.right - space.left).isWithin(0.5f).of(575f)
     }
 
     @Test
@@ -77,6 +77,23 @@ class KeyboardGeometryTest {
         assertThat(g.hitTest(150f, 50f)?.key?.label).isEqualTo("a")
         assertThat(g.hitTest(250f, 50f)?.key?.label).isEqualTo("b")
         for (x in 0..399 step 10) assertThat(g.hitTest(x.toFloat(), 50f)!!.key.isSpacer).isFalse()
+    }
+
+    @Test
+    fun gridUnitsSetsTheUnitForNarrowLayers() {
+        val rows = listOf(ResolvedRow(listOf(key("a"), key("b"))))
+        val plain = KeyboardGeometry(KeyboardLayer("t", rows), 1000f, 100f)
+        assertThat(plain.slots[0].right - plain.slots[0].left).isEqualTo(500f)
+        val grid = KeyboardGeometry(KeyboardLayer("t", rows, gridUnits = 10f), 1000f, 100f)
+        assertThat(grid.slots[0].right - grid.slots[0].left).isEqualTo(100f)
+        assertThat(grid.slots[0].left).isEqualTo(400f) // still centred
+    }
+
+    @Test
+    fun rowsWiderThanTheGridShrinkTheUnit() {
+        val row = ResolvedRow(List(12) { key("k$it") })
+        val g = KeyboardGeometry(KeyboardLayer("t", listOf(row), gridUnits = 10f), 1200f, 100f)
+        assertThat(g.slots[0].right - g.slots[0].left).isEqualTo(100f)
     }
 
     @Test

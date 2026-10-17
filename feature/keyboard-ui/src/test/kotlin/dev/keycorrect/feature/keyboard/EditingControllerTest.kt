@@ -323,7 +323,7 @@ class EditingControllerTest {
     @Test
     fun closeReturnsToTheKeysAndClearsSelectMode() {
         start("hello")
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
         perform(EditingAction.SelectToggle)
         perform(EditingAction.Close)
@@ -333,17 +333,30 @@ class EditingControllerTest {
     }
 
     @Test
-    fun spaceHoldAfterCloseStartsWithSelectModeOff() {
+    fun theEditToolTogglesThePanel() {
+        start("hello")
+        assertThat(controller.toolsVisible).isTrue()
+        controller.toggleEditingPanel()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
+        assertThat(controller.toolsVisible).isTrue()
+        controller.toggleEditingPanel()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+        controller.showPanel(KeyboardPanel.Emoji)
+        assertThat(controller.toolsVisible).isFalse()
+    }
+
+    @Test
+    fun theEditToolOpensThePanelWithSelectModeOff() {
         start("hello")
         perform(EditingAction.SelectToggle)
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         assertThat(controller.editing.selectMode).isFalse()
     }
 
     @Test
     fun panelClosesInANewFieldButNotWhenTheSameFieldRestarts() {
         start("one", fieldId = 1)
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         perform(EditingAction.SelectToggle)
         start("one", fieldId = 1, restarting = true)
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
@@ -414,7 +427,7 @@ class EditingControllerTest {
 
     @Test
     fun selectAroundDoesNothingWhereThereIsNothingToSelect() {
-        start("a  b", at = 2)
+        start("a   b", at = 3)
         perform(EditingAction.SelectWord)
         assertThat(editor.selections).isEmpty()
     }
@@ -646,11 +659,23 @@ class TextUnitsTest {
         assertThat(word("don't stop", 2)).isEqualTo("don't")
         assertThat(word("don't stop", 10)).isEqualTo("stop")
         assertThat(word("don't stop", 6)).isEqualTo("stop")
-        assertThat(word("a  b", 2)).isNull()
+        assertThat(word("a   b", 3)).isNull()
         assertThat(word("", 0)).isNull()
         assertThat(word("one two three", 5, 10)).isEqualTo("two three")
         assertThat(word("naïve café", 8)).isEqualTo("café")
         assertThat(word("x_1 y", 1)).isEqualTo("x_1")
+    }
+
+    @Test
+    fun wordAtAWordEndTakesTheWordBefore() {
+        assertThat(word("foo bar", 3)).isEqualTo("foo")
+        assertThat(word("foo bar", 4)).isEqualTo("bar")
+        assertThat(word("foo bar ", 8)).isEqualTo("bar")
+        assertThat(word("foo. ", 5)).isNull() // punctuation in between: not a word end
+        assertThat(word("foo\n", 4)).isNull() // only a space counts
+        assertThat(word(" ", 1)).isNull()
+        assertThat(word("a  b", 2)).isEqualTo("a")
+        assertThat(word("foo bar ", 8, 8)).isEqualTo("bar")
     }
 
     @Test

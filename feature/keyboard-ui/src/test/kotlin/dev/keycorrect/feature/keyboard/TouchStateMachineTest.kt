@@ -21,7 +21,6 @@ class TouchStateMachineTest {
         override var lineStepPx = 50f
         override var wordStepPx = 40f
         val drags = mutableListOf<Triple<Int, Int, Boolean>>()
-        var holds = 0
         val swipes = mutableListOf<Int>()
         val swipeEnds = mutableListOf<Boolean>()
         var ticks = 0
@@ -37,10 +36,6 @@ class TouchStateMachineTest {
             object : KeyGestures {
                 override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) {
                     drags += Triple(dx, dy, select)
-                }
-
-                override fun onSpaceHold() {
-                    holds++
                 }
 
                 override fun onBackspaceSwipe(words: Int) {
@@ -568,7 +563,6 @@ class TouchStateMachineTest {
         machine.onUp(1)
         assertThat(host.keys).containsExactly(KeyAction.Space)
         assertThat(host.drags).isEmpty()
-        assertThat(host.holds).isEqualTo(0)
     }
 
     @Test
@@ -579,7 +573,6 @@ class TouchStateMachineTest {
         assertThat(host.drags).containsExactly(Triple(4, 0, false))
         assertThat(host.ticks).isEqualTo(1)
         assertThat(host.keys).isEmpty()
-        assertThat(host.holds).isEqualTo(0)
     }
 
     @Test
@@ -617,29 +610,54 @@ class TouchStateMachineTest {
     }
 
     @Test
-    fun spaceHeldThenReleasedOpensTheHoldAction() {
+    fun spaceHeldThenReleasedTypesASpace() {
         down(1, space)
-        advance(299)
-        assertThat(host.ticks).isEqualTo(0)
-        advance(1)
-        assertThat(host.ticks).isEqualTo(1)
+        assertThat(machine.nextDeadline()).isNull()
+        advance(1_000)
         move(1, space, 4f) // within the slop
         machine.onUp(1)
-        assertThat(host.holds).isEqualTo(1)
-        assertThat(host.keys).isEmpty()
+        assertThat(host.ticks).isEqualTo(0)
+        assertThat(host.keys).containsExactly(KeyAction.Space)
         assertThat(host.drags).isEmpty()
     }
 
+    /** A press in the middle of the left (select) half of the space bar. */
+    private fun downLeft(id: Long) =
+        machine.onDown(id, space.left + (space.right - space.left) / 4f, space.centerY)
+
+    private fun moveLeft(id: Long, dx: Float) =
+        machine.onMove(id, space.left + (space.right - space.left) / 4f + dx, space.centerY)
+
     @Test
-    fun spaceHeldThenDraggedSelects() {
-        down(1, space)
+    fun dragOnTheLeftHalfSelects() {
+        host.longPressDelayMs = 100_000L
+        downLeft(1)
+        now += 1_000
+        moveLeft(1, 30f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun dragOnTheRightHalfMovesEvenAfterTheHold() {
+        down(1, space) // the centre is the right half's start
         advance(300)
         now += 1_000
         move(1, space, 30f)
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
-        assertThat(host.holds).isEqualTo(0)
+        assertThat(host.drags).containsExactly(Triple(3, 0, false))
         assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun heldOnTheLeftHalfThenDraggedSelects() {
+        downLeft(1)
+        advance(300)
+        now += 1_000
+        moveLeft(1, 30f)
+        machine.onUp(1)
+        assertThat(host.drags).containsExactly(Triple(3, 0, true))
     }
 
     @Test
@@ -649,7 +667,6 @@ class TouchStateMachineTest {
         move(1, space, 30f)
         advance(1_000)
         machine.onUp(1)
-        assertThat(host.holds).isEqualTo(0)
         assertThat(host.drags.all { !it.third }).isTrue()
         assertThat(machine.nextDeadline()).isNull()
     }
@@ -664,7 +681,6 @@ class TouchStateMachineTest {
         machine.onUp(1)
         assertThat(host.keys).containsExactly(KeyAction.Space)
         assertThat(host.drags).isEmpty()
-        assertThat(host.holds).isEqualTo(0)
         assertThat(host.ticks).isEqualTo(0)
     }
 
@@ -677,7 +693,6 @@ class TouchStateMachineTest {
         advance(300)
         machine.cancel(2)
         assertThat(host.keys).isEmpty()
-        assertThat(host.holds).isEqualTo(0)
         assertThat(host.swipeEnds).isEmpty()
     }
 

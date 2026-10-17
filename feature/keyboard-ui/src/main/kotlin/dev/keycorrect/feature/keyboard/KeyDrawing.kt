@@ -9,7 +9,10 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.ResolvedKey
 
-/** Space between neighbouring keys; each key is drawn inset by half of it inside its slot. */
+/**
+ * Space between neighbouring keys at its default; each key is drawn inset by half of the gap
+ * ([dev.keycorrect.core.settings.KeyboardSettings.keyGapDp]) inside its slot.
+ */
 internal val KeyGap = 6.dp
 internal val KeyCornerRadius = 10.dp
 
@@ -53,7 +56,7 @@ internal fun keyDescription(
 /** The text on the Enter key for [action]: its action name, or a return arrow for a line break. */
 internal fun enterLabel(action: EnterAction): String =
     when (action) {
-        EnterAction.NewLine -> "↵"
+        EnterAction.NewLine -> ENTER_NEW_LINE
         is EnterAction.Editor ->
             // "Previous" is too wide for a key.
             if (action.actionId == EditorInfo.IME_ACTION_PREVIOUS) "Prev"

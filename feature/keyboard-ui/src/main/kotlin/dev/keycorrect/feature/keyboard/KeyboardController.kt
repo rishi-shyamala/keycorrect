@@ -38,6 +38,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
+import kotlin.math.roundToInt
 
 /**
  * Translates key actions into editor operations and owns the keyboard's observable state: the
@@ -120,6 +121,8 @@ class KeyboardController(
             ::showPanel,
             { selection },
             { profile.sensitive },
+            ownEdits::settledSelection,
+            clock,
         )
 
     /**
@@ -147,10 +150,6 @@ class KeyboardController(
     private inner class SearchAwareGestures : KeyGestures {
         override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) {
             if (!searching) editing.onCursorDrag(dx, dy, select)
-        }
-
-        override fun onSpaceHold() {
-            if (!searching) editing.onSpaceHold()
         }
 
         override fun onBackspaceSwipe(words: Int) {
@@ -258,7 +257,10 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
-    /** Applies changed [settings]; recomposes the layer if the number row changed. */
+    /**
+     * Applies changed [settings]; recomposes the layer if the number row or bottom-key width
+     * changed.
+     */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
         input.updateSettings(settings)
@@ -382,7 +384,11 @@ class KeyboardController(
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
-        when (val verdict = ownEdits.onUpdate(update)) {
+        val verdict = ownEdits.onUpdate(update)
+        // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
+        if (verdict == UpdateVerdict.External) editing.dropDeferred()
+        editing.onEditsSettled()
+        when (verdict) {
             is UpdateVerdict.Own -> {
                 val resync = verdict.composingLength
                 if (resync < 0 || input.resyncComposing(resync)) return
@@ -411,6 +417,7 @@ class KeyboardController(
         if (panel == KeyboardPanel.Clipboard && !clipboardAvailable) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         if (panel != KeyboardPanel.Clipboard) clipboardPanel.reset()
+        if (panel != KeyboardPanel.Editing) editing.dropDeferred()
         this.panel = panel
         // Typing in the emoji search used the letters' shift state: work it out again.
         if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
@@ -482,6 +489,45 @@ class KeyboardController(
             if (composingNow || !strip.isEmpty || selectionStripVisible) return null
             return clipboard.freshClip()?.takeIf { it.id != chipDismissedFor }
         }
+
+    /**
+     * Whether the strip has content besides the tools (see [stripBusy]), so they sit small at its
+     * edges. Observable state only; autofill chips are the UI's to add.
+     */
+    val stripBusy: Boolean
+        get() =
+            stripBusy(
+                stripEmpty = strip.isEmpty,
+                composing = composingNow,
+                selectionStrip = selectionStripVisible,
+                hasClip = stripClip != null,
+            )
+
+    /** The strip's tools for the current field (see [toolsFor]). */
+    internal val tools: List<StripTool>
+        get() = toolsFor(profile.sensitive, clipboardAvailable)
+
+    /**
+     * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
+     * clipboard panels use the strip for their own headers).
+     */
+    val toolsVisible: Boolean
+        get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
+
+    /** The Edit tool: opens the editing panel, or goes back to the keys from it. */
+    fun toggleEditingPanel() {
+        if (panel == KeyboardPanel.Editing) showPanel(KeyboardPanel.Keys) else editing.openPanel()
+    }
+
+    /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
+    internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
+        when (tool) {
+            StripTool.Edit -> toggleEditingPanel()
+            StripTool.Emoji -> showPanel(KeyboardPanel.Emoji)
+            StripTool.Clipboard -> openClipboard()
+            StripTool.Settings -> openSettings()
+        }
+    }
 
     /** The chip's ✕: hides it for [id] (the clip stays in the history). */
     fun dismissClipChip(id: Long) {
@@ -644,10 +690,17 @@ class KeyboardController(
     val currentTouchKey: String
         get() = input.touchKey
 
-    /** Layer (and number row) plus key height: touch offsets are only comparable within one. */
+    /**
+     * Layer (and number row), key height and bottom-row key width, plus a geometry version: touch
+     * offsets are only comparable within one. The version changes whenever the built-in key
+     * positions change (g2: shared key unit, Samsung-like bottom row and symbol pages).
+     */
     private fun updateLayoutKey() {
         val rows = (if (options.numberRow) "+nr" else "") + (if (options.terminalRow) "+tr" else "")
-        input.setLayoutKey("${state.layerId}$rows@${settings.keyHeightDp}dp")
+        val bottom = (options.bottomKeyWidth * PERCENT).roundToInt()
+        input.setLayoutKey(
+            "${state.layerId}$rows@${settings.keyHeightDp}dp/b$bottom/$GEOMETRY_VERSION"
+        )
     }
 
     /**
@@ -688,6 +741,7 @@ class KeyboardController(
             ComposeOptions(
                 numberRow = settings.numberRow || profile.sensitive,
                 terminalRow = profile.kind == FieldKind.Terminal,
+                bottomKeyWidth = settings.bottomKeyWidth,
                 // No emoji (nor, from PR C, clipboard) in password fields.
                 emojiKey = !profile.sensitive,
             )
@@ -743,6 +797,9 @@ class KeyboardController(
     }
 
     private companion object {
+        /** Bumped when built-in key positions change, so old touch offsets aren't mixed in. */
+        const val GEOMETRY_VERSION = "g2"
+        const val PERCENT = 100f
         const val NUMPAD = "numpad"
         const val PHONE = "phone"
         const val DATETIME = "datetime"

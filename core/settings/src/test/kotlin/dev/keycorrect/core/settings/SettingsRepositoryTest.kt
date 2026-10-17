@@ -54,6 +54,9 @@ class SettingsRepositoryTest {
     fun defaultsMatchSpec() {
         val d = KeyboardSettings()
         assertThat(d.keyHeightDp).isEqualTo(54)
+        assertThat(d.bottomKeyWidth).isEqualTo(0.75f)
+        assertThat(d.edgePaddingDp).isEqualTo(4)
+        assertThat(d.keyGapDp).isEqualTo(6)
         assertThat(d.numberRow).isFalse()
         assertThat(d.keyPreview).isTrue()
         assertThat(d.longPressDelayMs).isEqualTo(300)
@@ -79,6 +82,9 @@ class SettingsRepositoryTest {
         val custom =
             KeyboardSettings(
                 keyHeightDp = 72,
+                bottomKeyWidth = 0.8f,
+                edgePaddingDp = 1,
+                keyGapDp = 0,
                 numberRow = true,
                 keyPreview = false,
                 longPressDelayMs = 450,
@@ -117,6 +123,26 @@ class SettingsRepositoryTest {
         assertThat(store.data.first()[stringPreferencesKey("cursor_speed")]).isEqualTo("Slow")
         store.edit { it[stringPreferencesKey("cursor_speed")] = "Warp" }
         assertThat(repo.settings.first().cursorSpeed).isEqualTo(CursorSpeed.Normal)
+    }
+
+    @Test
+    fun layoutSizesClampOnWriteAndRead() = runTest {
+        repo.update { it.copy(bottomKeyWidth = 9f, edgePaddingDp = 40, keyGapDp = -3) }
+        var s = repo.settings.first()
+        assertThat(s.bottomKeyWidth).isEqualTo(1.5f)
+        assertThat(s.edgePaddingDp).isEqualTo(4)
+        assertThat(s.keyGapDp).isEqualTo(0)
+        store.edit {
+            it[floatPreferencesKey("bottom_key_width")] = 0.01f
+            it[intPreferencesKey("edge_padding_dp")] = -1
+            it[intPreferencesKey("key_gap_dp")] = 99
+        }
+        s = repo.settings.first()
+        assertThat(s.bottomKeyWidth).isEqualTo(0.3f)
+        assertThat(s.edgePaddingDp).isEqualTo(0)
+        assertThat(s.keyGapDp).isEqualTo(6)
+        assertThat(KeyboardSettings(bottomKeyWidth = Float.NaN).sanitized().bottomKeyWidth)
+            .isEqualTo(0.75f)
     }
 
     @Test

@@ -96,4 +96,55 @@ class KeyDrawingTest {
         assertThat(latchOf(ctrl, null)).isEqualTo(ModifierLatch.Off)
         now += 1
     }
+
+    private fun code(code: Int) = ResolvedKey("x", KeyAction.KeyCode(code))
+
+    @Test
+    fun shiftIconFollowsTheStateAndTheThreeFormsDiffer() {
+        val icons = ShiftState.entries.map { keyIconFor(shift, it, "↵") }
+        assertThat(icons)
+            .containsExactly(
+                KeyIcon.ShiftOff, // Off
+                KeyIcon.ShiftOn, // Auto
+                KeyIcon.ShiftOn, // Once
+                KeyIcon.ShiftLocked,
+            )
+            .inOrder()
+        assertThat(setOf(KeyIcon.ShiftOff, KeyIcon.ShiftOn, KeyIcon.ShiftLocked)).hasSize(3)
+    }
+
+    @Test
+    fun enterShowsAnIconForLineBreakSearchAndSendOnly() {
+        fun icon(action: EnterAction) = keyIconFor(enter, ShiftState.Off, enterLabel(action))
+        assertThat(icon(EnterAction.NewLine)).isEqualTo(KeyIcon.EnterReturn)
+        assertThat(icon(EnterAction.Editor(EditorInfo.IME_ACTION_SEARCH)))
+            .isEqualTo(KeyIcon.EnterSearch)
+        assertThat(icon(EnterAction.Editor(EditorInfo.IME_ACTION_SEND)))
+            .isEqualTo(KeyIcon.EnterSend)
+        for (id in
+            listOf(
+                EditorInfo.IME_ACTION_GO,
+                EditorInfo.IME_ACTION_NEXT,
+                EditorInfo.IME_ACTION_DONE,
+                EditorInfo.IME_ACTION_PREVIOUS,
+            )) {
+            assertThat(icon(EnterAction.Editor(id))).isNull()
+        }
+    }
+
+    @Test
+    fun otherKeysMapToTheirIconsAndPlainKeysToNone() {
+        fun icon(key: ResolvedKey) = keyIconFor(key, ShiftState.Off, "↵")
+        assertThat(icon(ResolvedKey("⌫", KeyAction.Backspace))).isEqualTo(KeyIcon.Backspace)
+        assertThat(icon(ResolvedKey("e", KeyAction.Emoji))).isEqualTo(KeyIcon.Emoji)
+        assertThat(icon(code(KeyCodes.TAB))).isEqualTo(KeyIcon.Tab)
+        assertThat(icon(code(KeyCodes.DPAD_LEFT))).isEqualTo(KeyIcon.ArrowLeft)
+        assertThat(icon(code(KeyCodes.DPAD_RIGHT))).isEqualTo(KeyIcon.ArrowRight)
+        assertThat(icon(code(KeyCodes.DPAD_UP))).isEqualTo(KeyIcon.ArrowUp)
+        assertThat(icon(code(KeyCodes.DPAD_DOWN))).isEqualTo(KeyIcon.ArrowDown)
+        assertThat(icon(code(KeyCodes.ESCAPE))).isNull()
+        assertThat(icon(code(KeyCodes.PAGE_UP))).isNull()
+        assertThat(icon(letter)).isNull()
+        assertThat(icon(ResolvedKey("?123", KeyAction.SwitchLayer("symbols1")))).isNull()
+    }
 }

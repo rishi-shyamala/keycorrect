@@ -35,6 +35,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val d = KeyboardSettings()
         return KeyboardSettings(
             keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
+            bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
+            edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
+            keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
             numberRow = this[NUMBER_ROW] ?: d.numberRow,
             keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
             longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
@@ -78,6 +81,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     private fun MutablePreferences.write(s: KeyboardSettings) {
         this[KEY_HEIGHT_DP] = s.keyHeightDp
+        this[BOTTOM_KEY_WIDTH] = s.bottomKeyWidth
+        this[EDGE_PADDING_DP] = s.edgePaddingDp
+        this[KEY_GAP_DP] = s.keyGapDp
         this[NUMBER_ROW] = s.numberRow
         this[KEY_PREVIEW] = s.keyPreview
         this[LONG_PRESS_DELAY_MS] = s.longPressDelayMs
@@ -114,6 +120,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     private companion object {
         val KEY_HEIGHT_DP = intPreferencesKey("key_height_dp")
+        val BOTTOM_KEY_WIDTH = floatPreferencesKey("bottom_key_width")
+        val EDGE_PADDING_DP = intPreferencesKey("edge_padding_dp")
+        val KEY_GAP_DP = intPreferencesKey("key_gap_dp")
         val NUMBER_ROW = booleanPreferencesKey("number_row")
         val KEY_PREVIEW = booleanPreferencesKey("key_preview")
         val LONG_PRESS_DELAY_MS = intPreferencesKey("long_press_delay_ms")

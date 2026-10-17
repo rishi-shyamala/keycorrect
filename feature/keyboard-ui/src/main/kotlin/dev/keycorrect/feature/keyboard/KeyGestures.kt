@@ -7,13 +7,10 @@ package dev.keycorrect.feature.keyboard
 interface KeyGestures {
     /**
      * Space was dragged: move the cursor [dx] steps (chars; negative is left) and [dy] lines
-     * (negative is up). With [select] (the drag started with a hold) the moves extend the selection
-     * from where the cursor was.
+     * (negative is up). With [select] (the drag started on the left half of the space bar) the
+     * moves extend the selection from where the cursor was.
      */
     fun onCursorDrag(dx: Int, dy: Int, select: Boolean)
-
-    /** Space was held and released without moving: open the editing panel. */
-    fun onSpaceHold()
 
     /**
      * Backspace was swiped left: the [words] whole words before the cursor are selected as a
@@ -28,8 +25,6 @@ interface KeyGestures {
         val None =
             object : KeyGestures {
                 override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) = Unit
-
-                override fun onSpaceHold() = Unit
 
                 override fun onBackspaceSwipe(words: Int) = Unit
 

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.keycorrect.core.input.EditAction
+import dev.keycorrect.core.input.Surrounding
 import dev.keycorrect.core.input.TextEditor
 import kotlin.math.abs
 
@@ -118,14 +119,23 @@ private fun moves(code: Int, meta: Int = 0) = KeyPress(code, meta, moves = true)
  * the backspace swipe need the text around the cursor, so they are unavailable in sensitive fields
  * (nothing is read there) and where the editor does not expose its text. Key events and the
  * context-menu actions work everywhere. [selection] is the latest the platform reported.
+ *
+ * Some editors report no offset of the text they return (-1, "unknown"). The field position is then
+ * the keyboard's tracked selection ([settledSelection]), trusted only while none of its own edits
+ * is still in flight; until then the action is retried ([onEditsSettled]) rather than given up.
  */
 @Suppress("TooManyFunctions")
-internal class EditingController(
+internal class EditingController
+@Suppress("LongParameterList") // the editor, then read-only views of the controller's state
+constructor(
     private val editor: TextEditor,
     private val endComposing: () -> Unit,
     private val showPanel: (KeyboardPanel) -> Unit,
     private val selection: () -> EditorSelection = { EditorSelection() },
     private val sensitive: () -> Boolean = { false },
+    /** The tracked selection while no own edit is in flight (null otherwise). */
+    private val settledSelection: () -> EditorSelection? = { null },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : KeyGestures {
     /** While on, the panel's moves extend the selection (shift is added). */
     var selectMode: Boolean by mutableStateOf(false)
@@ -144,6 +154,16 @@ internal class EditingController(
 
     private var swipe: Swipe? = null
     private var swipeTried = false
+
+    /** Set by [readOrigin] when only an unsettled tracker kept it from the origin: try again. */
+    private var originUnsettled = false
+
+    /** The swipe's origin was unsettled: no new read until [onEditsSettled] (one read per wait). */
+    private var awaitingSettle = false
+
+    /** A selection action waiting for the tracker to settle, and when it was asked for. */
+    private var deferred: ((CharSequence, Int, Int) -> TextSpan?)? = null
+    private var deferredAt = 0L
 
     /**
      * The backspace swipe's origin: the cursor and the text before it, as they were at the start.
@@ -166,8 +186,10 @@ internal class EditingController(
         }
     }
 
-    override fun onSpaceHold() {
+    /** Opens the editing panel (the strip's edit button), with select mode off. */
+    fun openPanel() {
         selectMode = false
+        deferred = null
         showPanel(KeyboardPanel.Editing)
     }
 
@@ -183,6 +205,7 @@ internal class EditingController(
         val active = swipe
         swipe = null
         swipeTried = false
+        awaitingSettle = false
         swipeActive = false
         if (active == null) return
         if (commit && active.length > 0) {
@@ -206,9 +229,15 @@ internal class EditingController(
 
     /** Remembers where the swipe began; null (and nothing more tried) where it cannot work. */
     private fun startSwipe(): Swipe? {
-        if (swipeTried) return null
-        swipeTried = true
-        return readOrigin()?.also {
+        if (swipeTried || awaitingSettle) return null
+        originUnsettled = false
+        val origin = readOrigin()
+        // An unknown field offset with an own edit in flight is not final: the first move after
+        // the tracker settles retries (not every move, each of which would read the editor).
+        if (origin == null) {
+            if (originUnsettled) awaitingSettle = true else swipeTried = true
+        }
+        return origin?.also {
             swipe = it
             swipeActive = true
         }
@@ -221,12 +250,28 @@ internal class EditingController(
     private fun readOrigin(): Swipe? {
         if (sensitive()) return null
         endComposing()
-        return editor
-            .surroundingText(SWIPE_CONTEXT_CHARS, 0)
-            ?.takeIf { it.collapsed }
-            ?.let {
-                Swipe(it.fieldStart, it.text.subSequence(0, it.selectionStart))
+        val read = editor.surroundingText(SWIPE_CONTEXT_CHARS, 0)?.takeIf { it.collapsed }
+        val base = read?.let(::fieldBase) ?: -1
+        if (read != null && base < 0) originUnsettled = true
+        return if (read != null && base >= 0) {
+            Swipe(base + read.selectionStart, read.text.subSequence(0, read.selectionStart))
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Where [read]'s text begins in the field: its offset, or where the tracked selection puts it
+     * when the editor reports none. -1 while that cannot be told (an own edit is in flight, or the
+     * tracker disagrees with the text).
+     */
+    private fun fieldBase(read: Surrounding): Int {
+        if (read.offset >= 0) return read.offset
+        val tracked =
+            settledSelection()?.takeIf {
+                it.known && it.selEnd - it.selStart == read.selectionEnd - read.selectionStart
             }
+        return tracked?.let { (it.selStart - read.selectionStart).coerceAtLeast(-1) } ?: -1
     }
 
     // ------------------------------------------------------------------ editing panel
@@ -255,9 +300,11 @@ internal class EditingController(
             EditingAction.SelectToggle -> selectMode = !selectMode
             EditingAction.Close -> {
                 selectMode = false
+                deferred = null
                 showPanel(KeyboardPanel.Keys)
             }
             else -> {
+                deferred = null
                 endComposing()
                 action.menu?.let { editor.contextMenuAction(it) }
                 action.expand?.let { selectAround(it) }
@@ -312,7 +359,9 @@ internal class EditingController(
         selectMode = false
         swipe = null
         swipeTried = false
+        awaitingSettle = false
         swipeActive = false
+        deferred = null
     }
 
     /** The selected range and its text, read from the editor; null where nothing is selected. */
@@ -323,35 +372,73 @@ internal class EditingController(
             .takeIf { !sensitive() }
             ?.surroundingText(0, 0)
             ?.takeIf { !it.collapsed && it.selectionEnd - it.selectionStart <= MAX_SELECTION_CHARS }
-            ?.let {
+            ?.let { read ->
+                val base = fieldBase(read).takeIf { it >= 0 } ?: return@let null
                 Selected(
-                    TextSpan(it.fieldStart, it.fieldEnd),
-                    it.text.subSequence(it.selectionStart, it.selectionEnd).toString(),
+                    TextSpan(base + read.selectionStart, base + read.selectionEnd),
+                    read.text.subSequence(read.selectionStart, read.selectionEnd).toString(),
                 )
             }
 
-    /** The text around the selection, and where the selection is in it; null where unreadable. */
+    /**
+     * The text around the selection, and where the selection is in it; null where unreadable. A
+     * [base] below 0 means the field position is not known yet (see [fieldBase]).
+     */
     private class Window(val text: String, val base: Int, val start: Int, val end: Int)
 
     private fun readWindow(): Window? =
         editor
             .takeIf { !sensitive() }
             ?.surroundingText(CONTEXT_CHARS, CONTEXT_CHARS)
-            ?.let { Window(it.text.toString(), it.offset, it.selectionStart, it.selectionEnd) }
+            ?.let { Window(it.text.toString(), fieldBase(it), it.selectionStart, it.selectionEnd) }
 
     /**
      * Selects what [expand] makes of the selection (or the cursor) and the text around it (the text
      * before it, the selected text and the text after it). False where there is nothing to change.
      */
-    private fun selectAround(expand: (CharSequence, Int, Int) -> TextSpan?): Boolean {
-        val span =
-            readWindow()?.let { w ->
-                expand(w.text, w.start, w.end)
-                    ?.takeIf { it.start != w.start || it.end != w.end }
-                    ?.let { TextSpan(it.start + w.base, it.end + w.base) }
-            }
+    private fun selectAround(
+        expand: (CharSequence, Int, Int) -> TextSpan?,
+        askedAt: Long = clock(),
+    ): Boolean {
+        deferred = null
+        val window = readWindow()
+        if (window != null && window.base < 0) {
+            // The editor gave no offset and an own edit is in flight: ask again once it settles,
+            // still timed from when the user asked.
+            deferred = expand
+            deferredAt = askedAt
+            return false
+        }
+        val span = window?.let { w ->
+            expand(w.text, w.start, w.end)
+                ?.takeIf { it.start != w.start || it.end != w.end }
+                ?.let { TextSpan(it.start + w.base, it.end + w.base) }
+        }
         span?.let { editor.setSelection(it.start, it.end) }
         return span != null
+    }
+
+    /**
+     * The tracker may have settled (the platform reported the keyboard's own edits): carries out a
+     * selection action that was waiting for it, unless it has waited too long to be what the user
+     * still wants.
+     */
+    fun onEditsSettled() {
+        awaitingSettle = false
+        val waiting = deferred ?: return
+        if (clock() - deferredAt > DEFERRED_MAX_MS) {
+            deferred = null
+            return
+        }
+        if (settledSelection() != null) selectAround(waiting, deferredAt)
+    }
+
+    /**
+     * Drops a selection action still waiting for the tracker: the user moved the cursor themselves
+     * or left the panel, so it would land somewhere they no longer mean.
+     */
+    fun dropDeferred() {
+        deferred = null
     }
 
     private companion object {
@@ -362,5 +449,8 @@ internal class EditingController(
         const val CONTEXT_CHARS = 1000
         /** Longer selections are left alone by the case change and the engine hook. */
         const val MAX_SELECTION_CHARS = 4000
+
+        /** How long a selection action waits for the tracker to settle. */
+        const val DEFERRED_MAX_MS = 1500L
     }
 }

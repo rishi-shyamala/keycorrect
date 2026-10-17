@@ -53,6 +53,9 @@ class KeyboardControllerTest {
 
     private fun labels() = controller.layer.rows.flatMap { r -> r.keys.map { it.label } }
 
+    private fun popupLabels(label: String) =
+        controller.layer.rows.flatMap { it.keys }.first { it.label == label }.popup.map { it.label }
+
     private fun type(text: String) = text.forEach { controller.onKey(KeyAction.Text("$it")) }
 
     private val shiftedA = KeyAction.Text("a", "A")
@@ -77,21 +80,21 @@ class KeyboardControllerTest {
     @Test
     fun currentTouchKeyTracksDeviceLayerNumberRowAndKeyHeight() {
         start()
-        assertThat(controller.currentTouchKey).isEqualTo("Phone/port/letters@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Phone/port/letters@54dp/b75/g2")
 
         controller.updateDevice(tablet = true, landscape = true)
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters@54dp/b75/g2")
 
         controller.updateSettings(KeyboardSettings(numberRow = true, keyHeightDp = 60))
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters+nr@60dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters+nr@60dp/b75/g2")
 
         controller.onKey(KeyAction.SwitchLayer("symbols"))
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/symbols+nr@60dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/symbols+nr@60dp/b75/g2")
 
         // A sensitive field forces the number row on, as the layout (and so the key) shows.
         controller.updateDevice(tablet = false, landscape = false, hardwareKeyboard = true)
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
-        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp/b75/g2")
     }
 
     @Test
@@ -101,15 +104,17 @@ class KeyboardControllerTest {
     }
 
     @Test
-    fun urlFieldGetsDotComKey() {
+    fun urlFieldGetsSlashKeyWithDotComOnThePeriod() {
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI))
-        assertThat(labels()).contains(".com")
+        assertThat(labels()).contains("/")
+        assertThat(popupLabels(".")).contains(".com")
     }
 
     @Test
     fun plainTextHasNeitherAtNorDotCom() {
         start()
-        assertThat(labels()).containsNoneOf("@", ".com")
+        assertThat(labels()).containsNoneOf("@", "/")
+        assertThat(popupLabels(".")).doesNotContain(".com")
     }
 
     @Test
@@ -121,6 +126,24 @@ class KeyboardControllerTest {
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
         assertThat(controller.layer.rows.size).isEqualTo(plainRows + 1)
         assertThat(controller.profile.sensitive).isTrue()
+    }
+
+    private fun emojiKeyWidth() =
+        controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Emoji }.width
+
+    @Test
+    fun bottomKeyWidthSettingSizesTheBottomRowAndRecomposesOnChange() {
+        start()
+        assertThat(emojiKeyWidth()).isEqualTo(0.75f)
+        val spaceBefore =
+            controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Space }
+        controller.updateSettings(KeyboardSettings(bottomKeyWidth = 1f))
+        assertThat(emojiKeyWidth()).isEqualTo(1f)
+        val spaceAfter =
+            controller.layer.rows.flatMap { it.keys }.first { it.action == KeyAction.Space }
+        assertThat(spaceAfter.width).isLessThan(spaceBefore.width)
+        start(settings = KeyboardSettings(bottomKeyWidth = 0.8f))
+        assertThat(emojiKeyWidth()).isEqualTo(0.8f)
     }
 
     @Test
@@ -374,7 +397,7 @@ class KeyboardControllerTest {
             restarting = true,
         )
         assertThat(controller.state.layerId).isEqualTo("letters")
-        assertThat(labels()).contains(".com")
+        assertThat(popupLabels(".")).contains(".com")
     }
 
     @Test

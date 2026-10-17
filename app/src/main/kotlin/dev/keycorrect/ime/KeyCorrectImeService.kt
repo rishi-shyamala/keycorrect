@@ -1,6 +1,7 @@
 package dev.keycorrect.ime
 
 import android.content.ComponentCallbacks2
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
@@ -22,6 +23,7 @@ import dev.keycorrect.feature.keyboard.KeyFeedback
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardScreen
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
+import dev.keycorrect.settings.SettingsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -129,7 +131,22 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     @Composable
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
-        KeyCorrectTheme { KeyboardScreen(controller, settings, feedback, autofill = autofill) }
+        KeyCorrectTheme {
+            KeyboardScreen(
+                controller,
+                settings,
+                feedback,
+                autofill = autofill,
+                onOpenSettings = ::openSettings,
+            )
+        }
+    }
+
+    /** The shortcut row's gear: our settings app, in its own task (a service has no task). */
+    private fun openSettings() {
+        startActivity(
+            Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     /**

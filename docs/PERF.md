@@ -121,6 +121,18 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
     personalized 68.7 ms, keystroke 3.66 ms / ~480 keys with the same 48.7k allocations, learning
     33.1 ms, emoji 3.4 + 2.2 ms. Desktop: decode p50/p95/p99 0.060/0.432/0.960 ms, learn eval
     17.6 s / 5.0 s, keystroke 3.5 KB / 13.0 KB per key; eval outputs unchanged (94.08%, 4.19/1000).
+  - **2026-10-16, PR D (feedback round 1).** The decoder and keystroke paths are unchanged.
+    - Device: decode 56.6 ms per 200, personalized 69.4 ms, keystroke 3.65 ms per ~480 keys (same
+      48.7k allocations), learning 33.1 ms.
+    - Desktop: decode p50/p95/p99 0.059/0.444/1.001 ms, learn eval 17.5 s / 4.9 s, keystroke
+      3.5 KB / 13.1 KB per key.
+    - Eval accuracy moved 94.08% → 94.11% (false corrections unchanged at 4.19/1000). This is
+      expected: the simulated typist uses the real layout, and the bottom row moved.
+    - Emoji grid (release build, Tab S9, 5 fresh tabs × 6 flings): janky frames 2.6% → 1.9% after
+      cells draw with one shared Paint. The release build was already smooth; the reported lag was
+      mostly debug-build Compose.
+    - The tool strip reads its animation progress only in the layout and draw phases, so typing
+      doesn't recompose it.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.

@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -185,37 +188,64 @@ internal fun EmojiTabStrip(controller: KeyboardController, onPress: () -> Unit) 
     }
 }
 
+/**
+ * The tab row: its own surface (a tonal step above the keyboard's, so it doesn't merge with the
+ * grid), outline icons tinted onSurfaceVariant, the selected one in primary with an underline, and
+ * a 1 dp divider along the bottom.
+ */
 @Composable
 private fun EmojiTabRow(tabs: List<EmojiTab>, selected: String, onSelect: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxSize()) {
-        for (tab in tabs) {
-            val on = tab.key == selected
-            val description = tab.label?.let { stringResource(it) } ?: tab.key
-            Box(
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 1.dp, vertical = 2.dp)
-                        .clip(RoundedCornerShape(TabCorner))
-                        .background(
-                            if (on) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainer
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxSize().background(colors.surfaceContainerHigh)) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            for (tab in tabs) {
+                val on = tab.key == selected
+                val description = tab.label?.let { stringResource(it) } ?: tab.key
+                val tint = if (on) colors.primary else colors.onSurfaceVariant
+                Box(
+                    modifier =
+                        Modifier.weight(1f)
+                            .fillMaxHeight()
+                            .clickable(role = Role.Tab) { onSelect(tab.key) }
+                            .clearAndSetSemantics {
+                                contentDescription = description
+                                role = Role.Tab
+                                this.selected = on
+                                onClick {
+                                    onSelect(tab.key)
+                                    true
+                                }
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (tab.icon != null) {
+                        Icon(
+                            tab.icon,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(TabIconSize),
                         )
-                        .clickable(role = Role.Tab) { onSelect(tab.key) }
-                        .clearAndSetSemantics {
-                            contentDescription = description
-                            role = Role.Tab
-                            this.selected = on
-                            onClick {
-                                onSelect(tab.key)
-                                true
-                            }
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(tab.icon, fontSize = TAB_ICON_SIZE.sp, maxLines = 1)
+                    } else {
+                        Text(
+                            tab.text.orEmpty(),
+                            color = tint,
+                            fontSize = TAB_TEXT_SIZE.sp,
+                            maxLines = 1,
+                        )
+                    }
+                    if (on) {
+                        Box(
+                            Modifier.align(Alignment.BottomCenter)
+                                .width(TabIndicatorWidth)
+                                .height(TabIndicatorHeight)
+                                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                                .background(colors.primary)
+                        )
+                    }
+                }
             }
         }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outlineVariant))
     }
 }
 
@@ -344,38 +374,57 @@ private fun recentCells(catalog: EmojiCatalog, recents: List<String>): List<Emoj
         catalog.byValue(value)?.let { EmojiCell(it, value) }
     }
 
-/** One tab of the panel: an emoji [icon] and its accessibility [label] (null: use [key]). */
-internal class EmojiTab(val key: String, val icon: String, val label: Int?)
+/**
+ * One tab of the panel: an outline [icon] (or, for groups without one, a [text] glyph) and its
+ * accessibility [label] (null: use [key]).
+ */
+internal class EmojiTab(val key: String, val icon: ImageVector?, val text: String?, val label: Int?)
 
 private fun emojiTabs(catalog: EmojiCatalog): List<EmojiTab> = buildList {
-    add(EmojiTab(EmojiPanelState.RECENTS, "🕒", R.string.emoji_tab_recents))
+    add(
+        EmojiTab(
+            EmojiPanelState.RECENTS,
+            tabIconFor(EmojiPanelState.RECENTS),
+            null,
+            R.string.emoji_tab_recents,
+        )
+    )
     for (group in catalog.groups) {
-        val known = KnownTabs[group.name]
-        add(EmojiTab(group.name, known?.first ?: group.emoji.first().value, known?.second))
+        val icon = tabIconFor(group.name)
+        add(
+            EmojiTab(
+                group.name,
+                icon,
+                if (icon == null) group.emoji.first().value else null,
+                KnownLabels[group.name],
+            )
+        )
     }
     if (catalog.kaomojiGroups.isNotEmpty()) {
-        add(EmojiTab(EmojiPanelState.KAOMOJI, "^_^", R.string.emoji_tab_kaomoji))
+        add(EmojiTab(EmojiPanelState.KAOMOJI, null, "^_^", R.string.emoji_tab_kaomoji))
     }
 }
 
-private val KnownTabs =
+private val KnownLabels =
     mapOf(
-        "Smileys & Emotion" to ("😀" to R.string.emoji_tab_smileys),
-        "People & Body" to ("👋" to R.string.emoji_tab_people),
-        "Animals & Nature" to ("🐻" to R.string.emoji_tab_animals),
-        "Food & Drink" to ("🍔" to R.string.emoji_tab_food),
-        "Travel & Places" to ("🚗" to R.string.emoji_tab_travel),
-        "Activities" to ("⚽" to R.string.emoji_tab_activities),
-        "Objects" to ("💡" to R.string.emoji_tab_objects),
-        "Symbols" to ("🔣" to R.string.emoji_tab_symbols),
-        "Flags" to ("🏁" to R.string.emoji_tab_flags),
+        "Smileys & Emotion" to R.string.emoji_tab_smileys,
+        "People & Body" to R.string.emoji_tab_people,
+        "Animals & Nature" to R.string.emoji_tab_animals,
+        "Food & Drink" to R.string.emoji_tab_food,
+        "Travel & Places" to R.string.emoji_tab_travel,
+        "Activities" to R.string.emoji_tab_activities,
+        "Objects" to R.string.emoji_tab_objects,
+        "Symbols" to R.string.emoji_tab_symbols,
+        "Flags" to R.string.emoji_tab_flags,
     )
 
-private val TabCorner = 8.dp
+private val TabIconSize = 22.dp
+private val TabIndicatorWidth = 24.dp
+private val TabIndicatorHeight = 3.dp
 private val BarCorner = 8.dp
 internal val ABC_WIDTH = 64.dp
 private val BAR_BUTTON_WIDTH = 52.dp
-private const val TAB_ICON_SIZE = 18
+private const val TAB_TEXT_SIZE = 15
 private const val BAR_TEXT_SIZE = 18
 private const val REPEAT_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L

@@ -1,4 +1,5 @@
-// Bottom row for ordinary text fields.
+// Bottom row for ordinary text fields. Widths here are placeholders: the composer sizes the side keys to
+// ComposeOptions.bottomKeyWidth and gives the rest of the 10 units to the space key.
 {
   "format": 1,
   "id": "bottom_text",
@@ -6,12 +7,12 @@
   "kind": "bottom",
   "rows": [
     [
-      { "type": "modeSwitch" },
+      { "type": "modeSwitch", "width": 1.5 },
       { "type": "emoji" },
-      ",",
       { "type": "space", "width": 4 },
+      ",",
       { "label": ".", "popup": ["?", "!", ",", ";", ":", "'", "\""] },
-      { "type": "enter" },
+      { "type": "enter", "width": 1.5 },
     ],
   ],
 }

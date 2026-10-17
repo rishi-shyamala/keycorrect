@@ -56,7 +56,7 @@ class BuiltInLayoutsTest {
                     assertThat(layer.id).isEqualTo(layerId)
                     val layout = repository.get(KeyboardSet.Default.layoutId(layerId))
                     if (layout.bottomRow == BottomRowMode.Auto) {
-                        assertThat(rowUnits(layer.rows.last())).isEqualTo(10.0)
+                        assertThat(rowUnits(layer.rows.last())).isWithin(1e-4).of(10.0)
                     }
                     layer.rows.forEach { assertThat(rowUnits(it)).isAtMost(10.0) }
                 }
@@ -73,8 +73,10 @@ class BuiltInLayoutsTest {
                 .rows
                 .last()
         assertThat(without.keys.map { it.action }).doesNotContain(KeyAction.Emoji)
-        assertThat(without.width).isEqualTo(withKey.width)
-        assertThat(without.keys.first { it.action == KeyAction.Space }.width).isEqualTo(5f)
+        assertThat(without.width).isWithin(1e-4f).of(withKey.width)
+        assertThat(without.keys.first { it.action == KeyAction.Space }.width)
+            .isWithin(1e-4f)
+            .of(10f - 3 * 0.75f - 1.25f)
     }
 
     @Test
@@ -83,18 +85,90 @@ class BuiltInLayoutsTest {
             composer.compose(KeyboardSet.Default, "letters", variant).rows.last().keys
 
         assertThat(bottomKeys(BottomRowVariant.Text).map { it.label })
-            .containsExactly("?123", "☺", ",", "", ".", "↵")
+            .containsExactly("?123", "☺", "", ",", ".", "↵")
             .inOrder()
         assertThat(bottomKeys(BottomRowVariant.Email).map { it.label })
-            .containsExactly("?123", "☺", "@", "", ".", "↵")
+            .containsExactly("?123", "☺", "", "@", ".", "↵")
             .inOrder()
         val url = bottomKeys(BottomRowVariant.Url)
-        assertThat(url.map { it.label })
-            .containsExactly("?123", "☺", "/", "", ".", ".com", "↵")
-            .inOrder()
-        assertThat(url[5].action).isEqualTo(KeyAction.Text(".com"))
-        assertThat(url[5].popup.map { it.label }).contains(".dev")
-        assertThat(url[3].width).isEqualTo(2f) // space, one unit to the emoji key
+        assertThat(url.map { it.label }).containsExactly("?123", "☺", "", "/", ".", "↵").inOrder()
+        assertThat(url[4].popup.map { it.label }).contains(".com")
+        assertThat(bottomKeys(BottomRowVariant.Text)[4].popup.map { it.label }).contains("?")
+    }
+
+    private fun bottomRow(
+        variant: BottomRowVariant = BottomRowVariant.Text,
+        layerId: String = "letters",
+        options: ComposeOptions = ComposeOptions(),
+    ) = composer.compose(KeyboardSet.Default, layerId, variant, options).rows.last()
+
+    @Test
+    fun bottomRowSideKeysUseTheOptionAndSpaceTakesTheRest() {
+        for (variant in BottomRowVariant.entries) {
+            for (layerId in listOf("letters", "symbols", "symbols2")) {
+                val row = bottomRow(variant, layerId)
+                row.keys
+                    .filter { it.action != KeyAction.Space && it.action != KeyAction.Enter }
+                    .forEach { assertThat(it.width).isEqualTo(0.75f) }
+                assertThat(row.keys.first { it.action == KeyAction.Enter }.width).isEqualTo(1.25f)
+                val space = row.keys.first { it.action == KeyAction.Space }
+                assertThat(space.width).isWithin(1e-4f).of(10f - 4 * 0.75f - 1.25f)
+                assertThat(row.width).isWithin(1e-4f).of(10f)
+            }
+        }
+        val wide = bottomRow(options = ComposeOptions(bottomKeyWidth = 1f))
+        assertThat(wide.keys.filter { it.action != KeyAction.Space }.map { it.width })
+            .containsExactly(1f, 1f, 1f, 1f, 1.25f)
+        assertThat(wide.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(4.75f)
+    }
+
+    @Test
+    fun enterIsNeverNarrowerThanTheOtherSideKeys() {
+        for (width in listOf(0.3f, 0.75f, 1.25f, 1.5f)) {
+            val row = bottomRow(options = ComposeOptions(bottomKeyWidth = width))
+            val enter = row.keys.first { it.action == KeyAction.Enter }.width
+            assertThat(enter).isEqualTo(maxOf(width, 1.25f))
+            assertThat(row.width).isWithin(1e-4f).of(10f)
+        }
+    }
+
+    @Test
+    fun bottomRowWithoutEmojiStillFillsTenUnits() {
+        for (variant in BottomRowVariant.entries) {
+            for (width in listOf(0.3f, 0.75f, 1f, 1.5f)) {
+                val row =
+                    bottomRow(
+                        variant,
+                        options = ComposeOptions(emojiKey = false, bottomKeyWidth = width),
+                    )
+                assertThat(row.keys.map { it.action }).doesNotContain(KeyAction.Emoji)
+                assertThat(row.keys).hasSize(5)
+                assertThat(row.width).isWithin(1e-4f).of(10f)
+                assertThat(row.keys.first { it.action == KeyAction.Space }.width)
+                    .isWithin(1e-4f)
+                    .of(10f - 3 * width - maxOf(width, 1.25f))
+            }
+        }
+    }
+
+    @Test
+    fun bottomRowSideKeysShrinkRatherThanSqueezeTheSpaceBelowOneUnit() {
+        val row = bottomRow(options = ComposeOptions(bottomKeyWidth = 3f))
+        assertThat(row.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(1f)
+        assertThat(row.width).isWithin(1e-4f).of(10f)
+    }
+
+    @Test
+    fun bottomKeyWidthIsPartOfTheCacheKey() {
+        val a = composer.compose(KeyboardSet.Default, "letters")
+        val b =
+            composer.compose(
+                KeyboardSet.Default,
+                "letters",
+                options = ComposeOptions(bottomKeyWidth = 1f),
+            )
+        assertThat(b).isNotEqualTo(a)
+        assertThat(composer.compose(KeyboardSet.Default, "letters")).isSameInstanceAs(a)
     }
 
     @Test
@@ -141,7 +215,7 @@ class BuiltInLayoutsTest {
     }
 
     @Test
-    fun numberRowOnlyOnLetters() {
+    fun numberRowAddsOneRowToLettersAndSymbolsButNotNumpads() {
         val plain = composer.compose(KeyboardSet.Default, "letters")
         val withRow =
             composer.compose(
@@ -154,10 +228,118 @@ class BuiltInLayoutsTest {
             .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
             .inOrder()
         assertThat(withRow.rows.drop(1)).isEqualTo(plain.rows)
-        for (id in listOf("symbols", "symbols2", "numpad", "phone", "datetime")) {
+        for (id in listOf("numpad", "phone", "datetime")) {
             assertThat(composer.compose(KeyboardSet.Default, id, options = ComposeOptions(true)))
                 .isEqualTo(composer.compose(KeyboardSet.Default, id))
         }
+        for (id in listOf("symbols", "symbols2")) {
+            val sym = composer.compose(KeyboardSet.Default, id)
+            val symRow =
+                composer.compose(
+                    KeyboardSet.Default,
+                    id,
+                    options = ComposeOptions(numberRow = true),
+                )
+            assertThat(symRow.rows).hasSize(sym.rows.size + 1)
+        }
+    }
+
+    private val letterLayers = listOf("letters", "symbols", "symbols2")
+
+    @Test
+    fun letterAndSymbolLayersHaveEqualRowCounts() {
+        for (numberRow in listOf(false, true)) {
+            for (terminal in listOf(false, true)) {
+                val counts = letterLayers.map {
+                    composer
+                        .compose(
+                            KeyboardSet.Default,
+                            it,
+                            options = ComposeOptions(numberRow = numberRow, terminalRow = terminal),
+                        )
+                        .rows
+                        .size
+                }
+                assertThat(counts.distinct()).hasSize(1)
+                assertThat(counts[0])
+                    .isEqualTo(4 + (if (numberRow) 1 else 0) + (if (terminal) 1 else 0))
+            }
+        }
+    }
+
+    @Test
+    fun extraRowsLandWhereTheLayoutSays() {
+        val opts = ComposeOptions(numberRow = true)
+        val p1 = composer.compose(KeyboardSet.Default, "symbols", options = opts).rows
+        assertThat(p1[0].keys.map { it.label }.joinToString("")).isEqualTo("1234567890")
+        assertThat(p1[1].keys.map { it.label }.joinToString("")).isEqualTo("+×÷=/_<>[]")
+        assertThat(p1[2].keys.map { it.label }.joinToString("")).isEqualTo("!@#$%^&*()")
+        val p2 = composer.compose(KeyboardSet.Default, "symbols2", options = opts).rows
+        assertThat(p2[0].keys.map { it.label }.joinToString("")).isEqualTo("1234567890")
+        assertThat(p2[1].keys.map { it.label }.joinToString("")).isEqualTo("=_<>[]{}\\|")
+    }
+
+    @Test
+    fun allLettersAndSymbolsLayersShareOneKeyUnit() {
+        for (numberRow in listOf(false, true)) {
+            for (terminal in listOf(false, true)) {
+                for (variant in BottomRowVariant.entries) {
+                    val units = letterLayers.map {
+                        val layer =
+                            composer.compose(
+                                KeyboardSet.Default,
+                                it,
+                                variant,
+                                ComposeOptions(numberRow = numberRow, terminalRow = terminal),
+                            )
+                        val g = KeyboardGeometry(layer, 1080f, 600f)
+                        val row = layer.rows.first { r -> r.keys.size == 10 }
+                        val slot = g.slots.first { s -> s.key === row.keys[0] }
+                        slot.right - slot.left
+                    }
+                    units.forEach { assertThat(it).isWithin(1e-3f).of(108f) }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun numpadsKeepTheirOwnUnit() {
+        val numpad = composer.compose(KeyboardSet.Default, "numpad")
+        val g = KeyboardGeometry(numpad, 1000f, 400f)
+        val one = g.slots.first { it.key.label == "1" }
+        assertThat(one.right - one.left).isWithin(1e-3f).of(250f)
+    }
+
+    @Test
+    fun functionKeysAreCappedAtOneAndAHalfUnits() {
+        val layers = letterLayers.flatMap { id ->
+            listOf(false, true).map {
+                composer.compose(
+                    KeyboardSet.Default,
+                    id,
+                    options = ComposeOptions(numberRow = it, terminalRow = true),
+                )
+            }
+        }
+        for (layer in layers) {
+            layer.rows
+                .flatMap { it.keys }
+                .filter { it.style == KeyStyle.Modifier || it.style == KeyStyle.Action }
+                .forEach { assertThat(it.width).isAtMost(1.5f) }
+        }
+        // The cap is applied by the composer, not only by the files' own widths.
+        val wide =
+            """{"format":1,"id":"w","name":"W","kind":"letters","rows":[[
+            {"type":"shift","width":3},"a",{"type":"enter","width":2},{"type":"space","width":6}]]}"""
+        val repo = LayoutRepository { id -> if (id == "w") wide else BuiltInLayouts.loader(id) }
+        val capped =
+            KeyboardComposer(repo)
+                .compose(KeyboardSet(mapOf("letters" to "w")), "letters")
+                .rows
+                .first()
+                .keys
+        assertThat(capped.map { it.width }).containsExactly(1.5f, 1f, 1.5f, 6f).inOrder()
     }
 
     @Test
@@ -176,18 +358,47 @@ class BuiltInLayoutsTest {
         assertThat(rows[2].keys.last().action).isEqualTo(KeyAction.Backspace)
     }
 
+    private fun labels(row: ResolvedRow) = row.keys.map { it.label }
+
     @Test
-    fun symbolsLayerKeysTargetSecondPage() {
-        val symbols = repository.get("symbols").rows("symbols")
-        val layerKey = symbols[2].keys.first()
-        assertThat(layerKey.label).isEqualTo("=\\<")
+    fun symbolsPageOneContent() {
+        val rows = repository.get("symbols").rows("symbols")
+        assertThat(rows).hasSize(3)
+        assertThat(labels(rows[0]).joinToString("")).isEqualTo("1234567890")
+        assertThat(labels(rows[1]).joinToString("")).isEqualTo("!@#$%^&*()")
+        assertThat(labels(rows[2]))
+            .containsExactly("1/2", "-", "'", "\"", ":", ";", "/", "?", "+", "⌫")
+            .inOrder()
+        val layerKey = rows[2].keys.first()
         assertThat(layerKey.action).isEqualTo(KeyAction.SwitchLayer("symbols2"))
-        assertThat(layerKey.width).isEqualTo(1.5f)
-        val dollar = symbols[1].keys.first { it.label == "$" }
-        assertThat(dollar.popup.map { it.label }).containsExactly("€", "£", "¥", "¢").inOrder()
-        val more = repository.get("symbols_more").rows("symbols2")
-        assertThat(more[2].keys.first().action).isEqualTo(KeyAction.SwitchLayer("symbols"))
-        assertThat(more[2].keys.first().label).isEqualTo("?123")
+        assertThat(layerKey.description).isEqualTo("More symbols")
+        assertThat(rows[2].keys.last().action).isEqualTo(KeyAction.Backspace)
+        assertThat(rows.all { it.width == 10f }).isTrue()
+        fun popup(label: String) =
+            rows.flatMap { it.keys }.first { it.label == label }.popup.map { it.label }
+        assertThat(popup("-")).containsExactly("_", "–", "—").inOrder()
+        assertThat(popup("/")).containsExactly("\\")
+        assertThat(popup("'")).containsExactly("`", "‘", "’").inOrder()
+        assertThat(popup("\"")).containsExactly("“", "”").inOrder()
+        assertThat(popup("?")).containsExactly("¿")
+        assertThat(popup("!")).containsExactly("¡")
+        assertThat(popup("$")).containsExactly("€", "£", "¥", "¢").inOrder()
+        assertThat(popup("1")).contains("½")
+    }
+
+    @Test
+    fun symbolsPageTwoContent() {
+        val rows = repository.get("symbols_more").rows("symbols2")
+        assertThat(rows).hasSize(3)
+        assertThat(labels(rows[0]).joinToString("")).isEqualTo("=_<>[]{}\\|")
+        assertThat(labels(rows[1]).joinToString("")).isEqualTo("`~€£¥¢°•×÷")
+        assertThat(labels(rows[2]))
+            .containsExactly("2/2", "¡", "¿", "«", "»", "…", "§", "©", "⌫")
+            .inOrder()
+        val layerKey = rows[2].keys.first()
+        assertThat(layerKey.action).isEqualTo(KeyAction.SwitchLayer("symbols"))
+        assertThat(layerKey.description).isEqualTo("Switch to symbols")
+        assertThat(rows.all { it.width == 10f }).isTrue()
     }
 
     @Test

@@ -1,4 +1,5 @@
-// Bottom row for URL fields.
+// Bottom row for URL fields. Widths here are placeholders: the composer sizes the side keys to
+// ComposeOptions.bottomKeyWidth and gives the rest of the 10 units to the space key.
 {
   "format": 1,
   "id": "bottom_url",
@@ -6,13 +7,12 @@
   "kind": "bottom",
   "rows": [
     [
-      { "type": "modeSwitch" },
+      { "type": "modeSwitch", "width": 1.5 },
       { "type": "emoji" },
+      { "type": "space", "width": 4 },
       "/",
-      { "type": "space", "width": 2 },
-      ".",
-      { "type": "text", "label": ".com", "width": 2, "popup": [".org", ".net", ".io", ".dev", ".app"] },
-      { "type": "enter" },
+      { "label": ".", "popup": [".com", ".org", ".net", ".io", ".dev", ".app"] },
+      { "type": "enter", "width": 1.5 },
     ],
   ],
 }

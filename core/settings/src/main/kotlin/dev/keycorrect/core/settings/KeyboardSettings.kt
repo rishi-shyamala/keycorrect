@@ -38,6 +38,17 @@ private const val FAST_STEP_DP = 7f
 data class KeyboardSettings(
     /** Key height in dp, [KEY_HEIGHT_DP_RANGE]. */
     val keyHeightDp: Int = 54,
+    /**
+     * Minimum width of the bottom row's side keys (?123, emoji, comma, period, Enter) as a fraction
+     * of a letter key, [BOTTOM_KEY_WIDTH_RANGE]; the spare width goes to the space bar.
+     */
+    val bottomKeyWidth: Float = DEFAULT_BOTTOM_KEY_WIDTH,
+    /**
+     * Padding around the whole keyboard in dp, [EDGE_PADDING_DP_RANGE]; the default is the old one.
+     */
+    val edgePaddingDp: Int = DEFAULT_EDGE_PADDING_DP,
+    /** Space between neighbouring keys in dp, [KEY_GAP_DP_RANGE]; 0 = keys touch. */
+    val keyGapDp: Int = DEFAULT_KEY_GAP_DP,
     val numberRow: Boolean = false,
     val keyPreview: Boolean = true,
     /** Long-press threshold in milliseconds, [LONG_PRESS_DELAY_MS_RANGE]. */
@@ -109,6 +120,11 @@ data class KeyboardSettings(
         copy(
             clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
             keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
+            bottomKeyWidth =
+                if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
+                else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
+            edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
+            keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
             longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
             hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
             hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
@@ -124,6 +140,12 @@ data class KeyboardSettings(
 
     companion object {
         val KEY_HEIGHT_DP_RANGE = 40..80
+        val BOTTOM_KEY_WIDTH_RANGE = 0.30f..1.50f
+        val EDGE_PADDING_DP_RANGE = 0..4
+        val KEY_GAP_DP_RANGE = 0..6
+        const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
+        const val DEFAULT_EDGE_PADDING_DP = 4
+        const val DEFAULT_KEY_GAP_DP = 6
         val LONG_PRESS_DELAY_MS_RANGE = 150..800
         val HAPTIC_DURATION_MS_RANGE = 0..100
         val HAPTIC_STRENGTH_RANGE = 0..255

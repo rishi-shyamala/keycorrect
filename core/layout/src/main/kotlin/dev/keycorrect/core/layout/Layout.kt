@@ -23,6 +23,7 @@ enum class BottomRowMode(val json: String) {
  * A parsed and validated layout file. Compose it into a [KeyboardLayer] with [KeyboardComposer].
  */
 class Layout
+@Suppress("LongParameterList") // a plain holder of the parsed file's parts
 internal constructor(
     val id: String,
     val name: String,
@@ -30,6 +31,8 @@ internal constructor(
     val bottomRow: BottomRowMode,
     private val onLettersLayer: List<ResolvedRow>,
     private val otherwise: List<ResolvedRow>,
+    /** Row the composer inserts when the number row is on, or null. */
+    val numberRowExtra: NumberRowExtra? = null,
 ) {
     /**
      * Rows for the layer named [layerId]. Only bottom layouts differ by layer, because their
