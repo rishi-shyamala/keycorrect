@@ -151,6 +151,7 @@ private fun Keys(
             terminalModifiers = controller.terminalModifiers,
             clipboardLongPress = controller.clipboardAvailable,
             onKeyLongPress = controller::onKeyLongPress,
+            swipeTyping = controller.swipeTypingActive && settings.gestureTyping,
         )
         KeySemantics(
             layer = layer,

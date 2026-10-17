@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard.prediction
 
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 
@@ -11,6 +13,17 @@ import dev.keycorrect.core.engineapi.PredictResult
  */
 fun interface Predictor {
     fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult
+
+    /**
+     * Decodes a swipe (docs/PHASE5.md), always on the decoder thread (previews and the final decode
+     * on lift, which the main thread only waits for briefly). [stale] works as in [predict]. The
+     * default knows no gestures: an empty result, so nothing is committed.
+     */
+    fun predictGesture(request: GestureRequest, stale: () -> Boolean): PredictResult =
+        PredictResult(emptyList(), null, null, sequence = request.sequence)
+
+    /** Builds what a first swipe on [layout] needs ahead of time. Background thread; idempotent. */
+    fun warmUpGestures(layout: KeyLayoutModel) = Unit
 }
 
 /** A text-expansion shortcut as the keyboard needs it. */
@@ -22,7 +35,12 @@ data class ShortcutRule(val expansion: String, val autoExpand: Boolean)
  * loaded); tests fake it.
  */
 interface PredictionBackend {
-    /** The engine, or null while it isn't available (loading, missing or broken dictionary). */
+    /**
+     * The engine, or null while it isn't available (loading, missing or broken dictionary). It may
+     * be set from another thread, so implementations back it with snapshot state
+     * (`mutableStateOf`): the keyboard reads it while composing (gesture typing is on only with an
+     * engine) and must recompose when the engine arrives.
+     */
     val predictor: Predictor?
 
     /** The shortcut whose trigger matches [trigger] (case-insensitive), or null. */

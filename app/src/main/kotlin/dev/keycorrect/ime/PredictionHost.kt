@@ -2,6 +2,9 @@ package dev.keycorrect.ime
 
 import android.content.res.AssetManager
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.keycorrect.core.data.ShortcutMode
 import dev.keycorrect.core.data.ShortcutSnapshot
 import dev.keycorrect.core.data.ShortcutStore
@@ -11,6 +14,10 @@ import dev.keycorrect.core.decoder.AutocorrectConfig
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
+import dev.keycorrect.core.engineapi.PredictRequest
+import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
 import dev.keycorrect.core.settings.KeyboardSettings
@@ -61,8 +68,12 @@ class PredictionHost(
     /** `InputProfile.touchKey` of the layout on screen; read on the decoder thread per decode. */
     private val touchKey: () -> String? = { null },
 ) : PredictionBackend {
-    @Volatile
-    override var predictor: Predictor? = null
+    /**
+     * Snapshot state: the keyboard reads it while composing (gesture typing is on only with an
+     * engine), and the engine arrives on a background thread, after the first composition. State
+     * writes are safe from any thread; the Compose runtime applies them and recomposes readers.
+     */
+    override var predictor: Predictor? by mutableStateOf(null)
         private set
 
     @Volatile private var dictionary: Dictionary? = null
@@ -147,9 +158,20 @@ class PredictionHost(
         engine.load()
         installRankingProvider(engine)
         engineTieRule = tieRule
-        predictor = Predictor { request, stale ->
-            decodeActivity.track { engine.predictNow(request, stale) }
-        }
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult =
+                    decodeActivity.track {
+                        engine.predictNow(request, stale)
+                    }
+
+                override fun predictGesture(
+                    request: GestureRequest,
+                    stale: () -> Boolean,
+                ): PredictResult = decodeActivity.track { engine.decodeGestureNow(request, stale) }
+
+                override fun warmUpGestures(layout: KeyLayoutModel) = engine.warmUpGestures(layout)
+            }
         // Build the contraction index here, off the main thread, rather than in the first
         // decode (which may be a separator decode on main). Predictions need not wait for it.
         runCatching { engine.warmUp() }.onFailure { logFailure("contraction index", it) }

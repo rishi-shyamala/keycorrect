@@ -104,6 +104,15 @@ internal class KeyboardTouchState {
 
     var popup by mutableStateOf<PopupState?>(null)
 
+    /**
+     * The swipe path to draw as a trail while a swipe is in progress (null otherwise). The path
+     * grows in place, so the overlay watches [trailVersion] to know to redraw.
+     */
+    var trail by mutableStateOf<SwipePath?>(null)
+
+    /** Bumped on every point the trail gains. */
+    var trailVersion by mutableIntStateOf(0)
+
     /** Window position of the key surface's top-left corner. */
     var surfaceOrigin by mutableStateOf(Offset.Zero)
 
@@ -118,5 +127,6 @@ internal class KeyboardTouchState {
         pressed = emptySet()
         preview = null
         popup = null
+        trail = null
     }
 }

@@ -4,9 +4,12 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.ComposingInput
+import dev.keycorrect.core.engineapi.GestureInput
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyboardComposer
@@ -234,6 +237,51 @@ class DecoderLoopTest {
         loop.submit(request(loop.advance())) { delivered += it }
         assertThat(executor.queue).isEmpty()
         assertThat(loop.predictNow(request(1))).isNull()
+    }
+
+    // ------------------------------------------------------------------ final swipe decode
+
+    private fun gestureRequest(seq: Long) =
+        GestureRequest(
+            TypingContext(),
+            GestureInput(listOf(TouchPoint(0f, 0f, 0L), TouchPoint(1f, 1f, 10L))),
+            KeyLayoutModel(1, emptyList()),
+            3,
+            seq,
+        )
+
+    @Test
+    fun aFinalGestureDecodeIsDeliveredLateWhileTheSequenceIsCurrent() {
+        val seq = loop.advance()
+        val final = loop.submitFinalGesture(gestureRequest(seq))!!
+        assertThat(final.await(1)).isFalse() // the decoder thread has not run
+        assertThat(final.whenDone { delivered += it }).isTrue()
+        executor.runAll()
+        assertThat(delivered.map { it.sequence }).containsExactly(seq)
+    }
+
+    @Test
+    fun aFinalGestureDecodeIsNotDeliveredAfterNewerInputOrACancel() {
+        val seq = loop.advance()
+        val newer = loop.submitFinalGesture(gestureRequest(seq))!!
+        newer.whenDone { delivered += it }
+        loop.advance()
+        val seq2 = loop.advance()
+        val cancelled = loop.submitFinalGesture(gestureRequest(seq2))!!
+        cancelled.whenDone { delivered += it }
+        cancelled.cancel()
+        executor.runAll()
+        assertThat(delivered).isEmpty()
+    }
+
+    @Test
+    fun aFinalGestureDecodeThatFinishedFirstIsReadDirectly() {
+        val seq = loop.advance()
+        val final = loop.submitFinalGesture(gestureRequest(seq))!!
+        executor.runAll()
+        assertThat(final.await(1)).isTrue()
+        assertThat(final.result?.sequence).isEqualTo(seq)
+        assertThat(final.whenDone { delivered += it }).isFalse()
     }
 
     // ------------------------------------------------------------------ separator policy

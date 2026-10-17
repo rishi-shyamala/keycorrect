@@ -20,6 +20,12 @@ internal const val REPEAT_START_DELAY_MS = 400L
 /** Gap between repeats once a held key is repeating. */
 internal const val REPEAT_INTERVAL_MS = 50L
 
+/**
+ * A press on a letter key becomes a swipe (gesture typing) once the finger has travelled more than
+ * this share of that key's width from where it went down, and is over a different key.
+ */
+internal const val SWIPE_START_KEY_WIDTHS = 0.6f
+
 /** What the touch handling needs from its surroundings. */
 internal interface TouchHost {
     /** Whether a key preview bubble is shown for character keys. */
@@ -65,7 +71,18 @@ internal interface TouchHost {
     val gestures: KeyGestures
         get() = KeyGestures.None
 
-    /** Spacebar drag/hold gestures are on; off, space is a plain key. */
+    /**
+     * Gesture typing is on for this field (setting and field type, docs/PHASE5.md): a press on a
+     * letter key that travels far enough becomes a swipe ([KeyGestures.onSwipeStart]).
+     */
+    val swipeTyping: Boolean
+        get() = false
+
+    /** Draw the swipe's trail (the machine publishes the path in [KeyboardTouchState.trail]). */
+    val swipeTrail: Boolean
+        get() = false
+
+    /** Spacebar drag gestures are on; off, space is a plain key. */
     val spacebarCursor: Boolean
         get() = false
 
@@ -106,6 +123,13 @@ internal interface TouchHost {
  *   haptic tick and [TouchHost.onKeyLongPress]; the release then types nothing.
  * - A second finger going down dismisses an open popup; the first finger's release then types
  *   nothing. Other fingers never affect a drag or swipe in progress.
+ * - Swipe (with [TouchHost.swipeTyping]): a press on a letter key that travels more than
+ *   [SWIPE_START_KEY_WIDTHS] of that key's width and is over another key becomes a swipe: the popup
+ *   timer and preview are dropped, the points (the down point, then every move, recorded from the
+ *   start even while it was still an ordinary press) go into one [SwipePath] reported through
+ *   [KeyGestures.onSwipeStart]/[KeyGestures.onSwipeMove], and release ends it with
+ *   [KeyGestures.onSwipeEnd] and types nothing. A lost touch is [KeyGestures.onSwipeCancel]. Other
+ *   fingers going down meanwhile are ignored. Before the threshold it is an ordinary press.
  * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] is a drag
  *   ([CursorDragTracker]) and no space is typed. A drag that went down on the left part of the key
  *   (before [SPACE_SELECT_SPLIT] of its width) selects; on the right part it moves the cursor.
@@ -177,9 +201,23 @@ internal class TouchStateMachine(
         KeyLongPress,
         SelectDrag,
         BackspaceSwipe,
+        Swipe,
     }
 
     private val presses = HashMap<Long, Press>()
+
+    /** The points of the swipe in progress; cleared when it ends or is cancelled. */
+    private val swipePath = SwipePath()
+
+    /** The pointer whose press is the swipe in progress. */
+    private var swipeId: Long? = null
+
+    /**
+     * The pointer whose letter-key press is being recorded into [swipePath] while it is still an
+     * ordinary press, so that a swipe, once recognised, already holds the start of the gesture. Its
+     * path is cleared when the press ends without becoming a swipe.
+     */
+    private var bufferId: Long? = null
 
     /**
      * Milliseconds from [clock] at which [onTimer] next has work, or null if nothing is pending.
@@ -215,6 +253,8 @@ internal class TouchStateMachine(
 
     fun onDown(id: Long, x: Float, y: Float) {
         onTimer()
+        // A swipe in progress ignores other fingers: they neither end it nor type.
+        if (swipeId != null && swipeId != id) return
         if (presses.containsKey(id)) cancel(id)
         val slot = geometry.hitTest(x, y) ?: return
         val key = slot.key
@@ -222,6 +262,7 @@ internal class TouchStateMachine(
         // A second finger dismisses an open popup; it then types normally.
         cancelPopup()
         presses[id] = press
+        startBuffer(id, press)
         publishPressed()
         if (host.showPreviews && key.style == KeyStyle.Character) touch.preview = slot
         hostCall { host.onPress(key.action) }
@@ -248,7 +289,7 @@ internal class TouchStateMachine(
         when (press.slot.key.action) {
             KeyAction.Space -> if (host.spacebarCursor) moveSpace(press)
             KeyAction.Backspace -> if (host.backspaceSwipe) moveBackspace(press)
-            else -> Unit
+            else -> if (host.swipeTyping) moveLetter(id, press)
         }
         val popup = touch.popup?.takeIf { it.owner == id } ?: return
         if (isFarBelow(y, popup.slot)) {
@@ -262,10 +303,12 @@ internal class TouchStateMachine(
         onTimer()
         val press = presses.remove(id) ?: return
         release(press)
+        dropBuffer(id, press)
         val slot = press.slot
         val popup = touch.popup?.takeIf { it.owner == id }
         when {
             press.isShift -> hostCall { host.onShiftUp() }
+            press.gesture == Gesture.Swipe -> endSwipe(end = true)
             press.gesture == Gesture.BackspaceSwipe ->
                 hostCall { host.gestures.onBackspaceSwipeEnd(press.swipeWords > 0) }
             press.gesture != Gesture.None -> Unit
@@ -282,11 +325,13 @@ internal class TouchStateMachine(
     fun cancel(id: Long) {
         val press = presses.remove(id) ?: return
         release(press)
+        dropBuffer(id, press)
         if (touch.popup?.owner == id) touch.popup = null
         if (press.isShift) hostCall { host.onShiftUp() }
         if (press.gesture == Gesture.BackspaceSwipe) {
             hostCall { host.gestures.onBackspaceSwipeEnd(false) }
         }
+        if (press.gesture == Gesture.Swipe) endSwipe(end = false)
     }
 
     /**
@@ -354,6 +399,77 @@ internal class TouchStateMachine(
         }
     }
 
+    /** A letter key's press that has gone far enough onto another key becomes the swipe. */
+    private fun moveLetter(id: Long, press: Press) {
+        if (press.gesture == Gesture.Swipe) {
+            swipePath.add(press.x, press.y, clock())
+            touch.trailVersion++
+            hostCall { host.gestures.onSwipeMove(swipePath) }
+        } else if (bufferId == id) {
+            swipePath.add(press.x, press.y, clock())
+            if (canStartSwipe(id, press)) startSwipe(id, press)
+        }
+    }
+
+    private fun startBuffer(id: Long, press: Press) {
+        if (!host.swipeTyping || swipeId != null || bufferId != null) return
+        if (!isLetterKey(press.slot)) return
+        bufferId = id
+        swipePath.clear()
+        swipePath.add(press.downX, press.downY, press.downTime)
+    }
+
+    /** The press ended as an ordinary press: forget what was recorded for it. */
+    private fun dropBuffer(id: Long, press: Press) {
+        if (bufferId == id && press.gesture != Gesture.Swipe) {
+            bufferId = null
+            swipePath.clear()
+        }
+    }
+
+    private fun canStartSwipe(id: Long, press: Press): Boolean {
+        val slot = press.slot
+        if (press.gesture != Gesture.None || swipeId != null || touch.popup?.owner == id) {
+            return false
+        }
+        val reach = (slot.right - slot.left) * SWIPE_START_KEY_WIDTHS
+        return isLetterKey(slot) &&
+            hypot(press.x - press.downX, press.y - press.downY) > reach &&
+            geometry.hitTest(press.x, press.y)?.let { it.index != slot.index } == true
+    }
+
+    private fun startSwipe(id: Long, press: Press) {
+        press.gesture = Gesture.Swipe
+        press.deadline = null
+        press.repeating = false
+        press.keyLongPressPending = false
+        swipeId = id
+        touch.preview = null
+        touch.popup = null
+        publishPressed()
+        if (host.swipeTrail) touch.trail = swipePath
+        touch.trailVersion++
+        hostCall { host.gestures.onSwipeStart(swipePath) }
+    }
+
+    private fun endSwipe(end: Boolean) {
+        swipeId = null
+        bufferId = null
+        touch.trail = null
+        if (end) hostCall { host.gestures.onSwipeEnd(swipePath) }
+        else {
+            hostCall { host.gestures.onSwipeCancel() }
+        }
+        swipePath.clear()
+    }
+
+    private fun isLetterKey(slot: KeySlot): Boolean {
+        val action = slot.key.action
+        return slot.key.style == KeyStyle.Character &&
+            action is KeyAction.Text &&
+            action.text.firstOrNull()?.isLetter() == true
+    }
+
     private fun release(press: Press) {
         press.deadline = null
         publishPressed()
@@ -361,7 +477,8 @@ internal class TouchStateMachine(
     }
 
     private fun publishPressed() {
-        touch.pressed = presses.values.mapTo(HashSet()) { it.slot.index }
+        touch.pressed =
+            presses.values.filter { it.gesture != Gesture.Swipe }.mapTo(HashSet()) { it.slot.index }
     }
 
     private fun cancelPopup() {
