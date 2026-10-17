@@ -95,8 +95,15 @@ data class KeyboardSettings(
     val hapticOnAutocorrect: Boolean = true,
     /** Distinct vibration when a finished word is not in any dictionary and wasn't corrected. */
     val hapticOnUnknownWord: Boolean = true,
-    /** Dragging on the spacebar moves the cursor; hold then drag selects (docs/PHASE4.md). */
+    /**
+     * Dragging on the spacebar moves the cursor (right half) or selects (left half);
+     * docs/PHASE4.md.
+     */
     val spacebarCursor: Boolean = true,
+    /** Gesture (swipe) typing on letter keys (docs/PHASE5.md). */
+    val gestureTyping: Boolean = true,
+    /** Draw the swipe's trail under the finger. */
+    val gestureTrail: Boolean = true,
     /** How far a spacebar drag moves per character. */
     val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
     /** Swiping left on backspace selects whole words and release deletes them. */
