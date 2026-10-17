@@ -32,6 +32,13 @@ tree is clean except the user's own untracked `user-feedback.md`: never commit t
 - **Bottom row reordered (user request):** ?123, emoji, comma (@ or / in email/URL), space, period, enter.
 - **History rewritten before the first push (user decision, 2026-10-16):** GitHub push protection blocked a since-deleted test fixture (`ClipSensitivityTest.kt`, commit c0a57cc) holding documentation-example tokens (Stripe, GitHub, Slack, AWS, Google, OpenAI). Every token-shaped literal there is now split in half (`"ghp_16C7…" + "…"`); the final tree is unchanged. **Never put realistic token strings in test fixtures:** split them.
 
+**PR D status (2026-10-16, end of session):** branch `phase-4-feedback` (local, NOT pushed) has every
+feedback-round-1 item plus the user's later changes (animated tool strip: edit+emoji left,
+clipboard+settings right; no hold on space; bottom-row keys 75% of a letter key; Enter ≥1.25u).
+Unit tests, detekt and lint are green; device-tested on the Tab S9. Left: read the reviewer's
+findings (re-run a review of `git diff main...HEAD` if lost), fix, compare the on-device
+benchmark numbers with docs/PERF.md, then push and open the PR. Build/install guide: docs/INSTALL.md.
+
 **After PR C: PR D, feedback round 1**
 - The full plan and the user's decisions are in **docs/PHASE4.md, "Feedback round 1"**. Stack the branch on `phase-4-clipboard` (e.g. `phase-4-feedback`).
 - The items:
