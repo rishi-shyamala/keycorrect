@@ -450,7 +450,10 @@ class ClassicEngineTest {
     fun engineInfoAndSequence() {
         assertThat(engine.info.id).isEqualTo("classic")
         assertThat(engine.info.capabilities)
-            .containsExactly(dev.keycorrect.core.engineapi.Capability.Predict)
+            .containsExactly(
+                dev.keycorrect.core.engineapi.Capability.Predict,
+                dev.keycorrect.core.engineapi.Capability.Gesture,
+            )
         assertThat(engine.info.languages).containsExactly("en-US")
         val r = engine.predictNow(request(TestKeyboard.typed("hello")).copy(sequence = 42))
         assertThat(r.sequence).isEqualTo(42)

@@ -14,6 +14,7 @@ data class ClassicConfig(
     val autocorrect: AutocorrectConfig = AutocorrectConfig(),
     val phrase: PhraseConfig = PhraseConfig(),
     val user: UserDataConfig = UserDataConfig(),
+    val gesture: GestureConfig = GestureConfig(),
 )
 
 /** Per-key Gaussian touch model (§4.4). */
@@ -195,4 +196,45 @@ data class UserDataConfig(
      * P_base)`, used where `Personalization.userLogProb` is non-null.
      */
     val userNgramWeight: Float = 0.25f,
+)
+
+/**
+ * Swipe (gesture) decoder, SHARK²-style (docs/PHASE5.md). Distances are in key widths unless noted;
+ * log-likelihoods are natural logs. Defaults are hand-set against the synthetic test dictionary;
+ * the swipe eval's dev split tunes them.
+ */
+data class GestureConfig(
+    /** Points both the gesture and every word template are resampled to. */
+    val resamplePoints: Int = 64,
+    /** Only the most frequent this many dictionary words (by id) take part, plus user words. */
+    val maxWords: Int = 60_000,
+    /** The first/last point must lie within this many key widths of the word's first/last key. */
+    val endRadius: Float = 1.2f,
+    /** Gesture / template path length must lie within [lengthRatioMin], [lengthRatioMax]. */
+    val lengthRatioMin: Float = 0.5f,
+    val lengthRatioMax: Float = 2.0f,
+    /** A gesture shorter than this (key widths, resampled length) decodes to nothing. */
+    val minPathKeyWidths: Float = 0.5f,
+    /** Words that sit on one key ("a", "I") take part only for gestures up to this long. */
+    val singleKeyMaxPathKeyWidths: Float = 1.5f,
+    /** Standard deviation of the location channel's mean point distance (key widths). */
+    val locationSigma: Float = 0.8f,
+    /** Standard deviation of the shape channel's mean distance (bounding box side = 1). */
+    val shapeSigma: Float = 0.12f,
+    /** Weight of the first and last points of the location channel, relative to 1 elsewhere. */
+    val endWeight: Float = 3f,
+    /** The end weight falls off linearly over this many points from each end. */
+    val endSpanPoints: Int = 4,
+    /** Candidates kept after the channel score (plus the unigram prior) for context re-scoring. */
+    val shortlistSize: Int = 32,
+    /** Weight of the unigram log-probability in the shortlist ranking. */
+    val unigramWeight: Float = 0.5f,
+    /** Weight of the contextual language model (and the personal n-gram) in the final score. */
+    val lmWeight: Float = 0.6f,
+    /** Weight of `ln P(next word | candidate)` when a right context is known. */
+    val rightContextWeight: Float = 0.3f,
+    /** Words are dropped when their channel cost (the negated channel log-likelihood) is above. */
+    val maxChannelCost: Float = 40f,
+    /** Word templates cached per layout (about 1 KB each). */
+    val templateCacheSize: Int = 6000,
 )

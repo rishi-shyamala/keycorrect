@@ -1,11 +1,16 @@
 package dev.keycorrect.core.decoder
 
+import dev.keycorrect.core.decoder.gesture.GestureDecoder
+import dev.keycorrect.core.decoder.gesture.GestureRescorer
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.dictionary.WordFlags
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.Capability
 import dev.keycorrect.core.engineapi.EngineInfo
+import dev.keycorrect.core.engineapi.GestureEngine
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.PredictiveEngine
@@ -72,7 +77,7 @@ class ClassicEngine(
     private val personalization: () -> Personalization = { Personalization.None },
     private val touchKey: () -> String? = { null },
     private val random: Random? = null,
-) : PredictiveEngine {
+) : PredictiveEngine, GestureEngine {
     /** The autocorrect policy; adjust [AutocorrectPolicy.threshold] to tune aggressiveness. */
     val autocorrectPolicy = AutocorrectPolicy(config.autocorrect)
 
@@ -80,7 +85,7 @@ class ClassicEngine(
         EngineInfo(
             id = ID,
             name = "Classic",
-            capabilities = setOf(Capability.Predict),
+            capabilities = setOf(Capability.Predict, Capability.Gesture),
             languages = setOf(dictionary.metadata.languageTag),
         )
 
@@ -109,6 +114,9 @@ class ClassicEngine(
     private val phraseIds = IntArray(1)
     private val phraseLogProbs = FloatArray(1)
 
+    private val gestures = GestureDecoder(dictionary, config.gesture, config.user.wordLogProb)
+    private val rescorer by lazy { GestureRescorer(dictionary, config, lm, lexicon, gestures) }
+
     private val lock = ReentrantLock()
 
     // Per-decode personalization state (set under the predictRanked lock).
@@ -131,6 +139,55 @@ class ClassicEngine(
     override suspend fun unload() = Unit
 
     override suspend fun predict(request: PredictRequest): PredictResult = predictNow(request)
+
+    override suspend fun decodeGesture(request: GestureRequest): PredictResult =
+        decodeGestureNow(request)
+
+    /**
+     * Builds the swipe word list and the template index of [layout] so the first gesture doesn't
+     * pay for them (tens of ms on a phone). Safe from any background thread; idempotent.
+     */
+    fun warmUpGestures(layout: KeyLayoutModel) {
+        lock.withLock { gestures.warmUp(layout) }
+    }
+
+    /**
+     * Synchronous swipe decode (decoder thread), the gesture counterpart of [predictNow]. Returns
+     * an empty result (no candidates) when [stale] fires, the path is too short, or no word fits
+     * the path. Candidates are in dictionary casing (lowercase unless the word is a proper noun,
+     * "I", or the user prefers another form): shift, caps lock and auto-capitalisation are left to
+     * the keyboard, which knows that state.
+     */
+    fun decodeGestureNow(request: GestureRequest, stale: () -> Boolean = isStale): PredictResult =
+        lock.withLock {
+            decodeGestureLocked(request, stale)
+        }
+
+    private fun decodeGestureLocked(request: GestureRequest, stale: () -> Boolean): PredictResult {
+        val count =
+            if (stale()) {
+                -1
+            } else {
+                lexicon.refresh()
+                gestures.run(request.layout, request.gesture, lexicon, stale)
+            }
+        val ranked =
+            if (count > 0) {
+                pers = personalization()
+                active = pers !== Personalization.None
+                lm.bindPersonalization(pers, config.user.userNgramWeight)
+                rescorer.rescore(count, request, pers.takeIf { active }, stale)
+            } else {
+                null
+            }
+        val top = ranked?.take(request.maxCandidates).orEmpty()
+        return PredictResult(
+            candidates = top,
+            literal = null,
+            autocorrect = top.firstOrNull(),
+            sequence = request.sequence,
+        )
+    }
 
     /**
      * Synchronous fast path (decoder thread). Returns an empty result when [stale] fires; the
