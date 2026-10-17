@@ -63,6 +63,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
             hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
             spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
+            gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
+            gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
             cursorSpeed =
                 CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
             backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
@@ -108,6 +110,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[HAPTIC_ON_AUTOCORRECT] = s.hapticOnAutocorrect
         this[HAPTIC_ON_UNKNOWN_WORD] = s.hapticOnUnknownWord
         this[SPACEBAR_CURSOR] = s.spacebarCursor
+        this[GESTURE_TYPING] = s.gestureTyping
+        this[GESTURE_TRAIL] = s.gestureTrail
         this[CURSOR_SPEED] = s.cursorSpeed.name
         this[BACKSPACE_SWIPE] = s.backspaceSwipe
         this[EMOJI_SUGGESTIONS] = s.emojiSuggestions
@@ -147,6 +151,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val HAPTIC_ON_AUTOCORRECT = booleanPreferencesKey("haptic_on_autocorrect")
         val HAPTIC_ON_UNKNOWN_WORD = booleanPreferencesKey("haptic_on_unknown_word")
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
+        val GESTURE_TYPING = booleanPreferencesKey("gesture_typing")
+        val GESTURE_TRAIL = booleanPreferencesKey("gesture_trail")
         val CURSOR_SPEED = stringPreferencesKey("cursor_speed")
         val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
         val EMOJI_SUGGESTIONS = booleanPreferencesKey("emoji_suggestions")
