@@ -15,10 +15,10 @@ Tab S9 (release); no typing regressions (the tap eval stays identical).
 | P5-2 | Backspace right after a swipe | **Deletes the whole swiped word (user).** After that, backspace deletes characters as usual. |
 | P5-3 | Swipe eval data | **Synthetic only (user).** Noisy gestures generated from the test sentences; no download. Real-world accuracy is judged on the device. |
 | P5-4 | Where the live preview shows | **In the strip's centre slot (user).** Nothing covers the keys. |
-| P5-5 | Where swipe is on | Recommended default: on in text, email, URL and name fields; off in password, numeric, phone, date and terminal fields, and where the app asks for no suggestions. |
-| P5-6 | Settings | Recommended: Gesture typing on/off (on), Show trail (on). Nothing else until daily use asks for it. |
-| P5-7 | Learning | Recommended: a swiped word is learned like a picked suggestion (n-grams, keep or replace via the strip). Gestures add no touch-offset statistics. |
-| P5-8 | Delivery | Recommended: two PRs. **A:** engine API + decoder + eval (pure JVM). **B:** keyboard integration (touch, trail, preview, commit, settings, learning), device test. |
+| P5-5 | Where swipe is on | **Decided (user, 2026-10-16):** on in text, email, URL and name fields; off in password, numeric, phone, date and terminal fields, and where the app asks for no suggestions. |
+| P5-6 | Settings | **Decided (user):** Gesture typing on/off (on), Show trail (on). Nothing else until daily use asks for it. |
+| P5-7 | Learning | **Decided (user):** a swiped word is learned like a picked suggestion (n-grams, keep or replace via the strip). Gestures add no touch-offset statistics. |
+| P5-8 | Delivery | **Decided (user):** two PRs. **A:** engine API + decoder + eval (pure JVM). **B:** keyboard integration (touch, trail, preview, commit, settings, learning), device test. |
 
 ## Design
 
