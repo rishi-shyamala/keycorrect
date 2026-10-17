@@ -185,7 +185,9 @@ class SwipeEvaluator(
         for ((k, token) in sentence.tokens.withIndex()) {
             committed.append(token.gap)
             truth.append(token.gap)
-            if (!token.evaluated || !generator.canSwipe(token.text)) {
+            // One-letter words ("I", "a") are tapped in real use, not swiped: typed as is.
+            val tapped = token.text.count { it.isLetter() } < 2
+            if (!token.evaluated || tapped || !generator.canSwipe(token.text)) {
                 committed.append(token.text)
                 truth.append(token.text)
                 continue

@@ -209,7 +209,7 @@ data class GestureConfig(
     /** Only the most frequent this many dictionary words (by id) take part, plus user words. */
     val maxWords: Int = 60_000,
     /** The first/last point must lie within this many key widths of the word's first/last key. */
-    val endRadius: Float = 1.2f,
+    val endRadius: Float = 1.5f,
     /** Gesture / template path length must lie within [lengthRatioMin], [lengthRatioMax]. */
     val lengthRatioMin: Float = 0.5f,
     val lengthRatioMax: Float = 2.0f,
@@ -218,9 +218,9 @@ data class GestureConfig(
     /** Words that sit on one key ("a", "I") take part only for gestures up to this long. */
     val singleKeyMaxPathKeyWidths: Float = 1.5f,
     /** Standard deviation of the location channel's mean point distance (key widths). */
-    val locationSigma: Float = 0.8f,
+    val locationSigma: Float = 0.6f,
     /** Standard deviation of the shape channel's mean distance (bounding box side = 1). */
-    val shapeSigma: Float = 0.12f,
+    val shapeSigma: Float = 0.08f,
     /** Weight of the first and last points of the location channel, relative to 1 elsewhere. */
     val endWeight: Float = 3f,
     /** The end weight falls off linearly over this many points from each end. */
@@ -230,7 +230,7 @@ data class GestureConfig(
     /** Weight of the unigram log-probability in the shortlist ranking. */
     val unigramWeight: Float = 0.5f,
     /** Weight of the contextual language model (and the personal n-gram) in the final score. */
-    val lmWeight: Float = 0.6f,
+    val lmWeight: Float = 0.3f,
     /** Weight of `ln P(next word | candidate)` when a right context is known. */
     val rightContextWeight: Float = 0.3f,
     /** Words are dropped when their channel cost (the negated channel log-likelihood) is above. */
