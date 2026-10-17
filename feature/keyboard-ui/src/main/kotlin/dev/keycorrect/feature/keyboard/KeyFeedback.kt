@@ -52,26 +52,43 @@ fun hapticWanted(kind: FeedbackKind, settings: KeyboardSettings): Boolean =
             else -> true
         }
 
+/** Number of short pulses in the autocorrect pattern. */
+internal const val AUTOCORRECT_PULSES = 2
+
+/** Silence between the pulses of the autocorrect pattern, ms. */
+internal const val AUTOCORRECT_GAP_MS = 43L
+
 /** Number of short pulses in the unknown-word buzz (the autocorrect pattern has two). */
 internal const val UNKNOWN_PULSES = 3
 
-/** Length of each pulse of the unknown-word buzz, ms. */
-internal const val UNKNOWN_PULSE_MS = 12L
-
-/** Start-to-start time between the pulses of the unknown-word buzz, ms. */
-internal const val UNKNOWN_PULSE_PERIOD_MS = 60
+/** Silence between the pulses of the unknown-word buzz, ms. */
+internal const val UNKNOWN_GAP_MS = 48L
 
 /**
- * Waveform timings (off, on, off, on, ...) of the unknown-word buzz, for motors without primitives.
+ * Waveform timings (off, on, off, on, ...) of [pulses] pulses of [pulseMs] each, [gapMs] of silence
+ * apart. The pulses are plain on/off waveform steps, not primitive ticks, because only a waveform
+ * has a settable length.
  */
-internal fun unknownWordTimings(): LongArray =
-    LongArray(2 * UNKNOWN_PULSES) { i ->
+internal fun pulseTimings(pulses: Int, pulseMs: Int, gapMs: Long): LongArray =
+    LongArray(2 * pulses) { i ->
         when {
             i == 0 -> 0L
-            i % 2 == 1 -> UNKNOWN_PULSE_MS
-            else -> UNKNOWN_PULSE_PERIOD_MS - UNKNOWN_PULSE_MS
+            i % 2 == 1 -> pulseMs.toLong()
+            else -> gapMs
         }
     }
+
+/**
+ * The autocorrect double pulse: two pulses of [pulseMs] ([KeyboardSettings.autocorrectPulseMs]).
+ */
+internal fun autocorrectTimings(pulseMs: Int): LongArray =
+    pulseTimings(AUTOCORRECT_PULSES, pulseMs, AUTOCORRECT_GAP_MS)
+
+/**
+ * The unknown-word triple buzz: three pulses of [pulseMs] ([KeyboardSettings.unknownWordPulseMs]).
+ */
+internal fun unknownWordTimings(pulseMs: Int): LongArray =
+    pulseTimings(UNKNOWN_PULSES, pulseMs, UNKNOWN_GAP_MS)
 
 /** Key-press haptics and sounds, driven by [KeyboardSettings]. */
 class KeyFeedback(context: Context) {
@@ -132,47 +149,23 @@ class KeyFeedback(context: Context) {
         vibrate(effect)
     }
 
-    /** A crisp double tick: two ticks about [DOUBLE_TICK_GAP_MS] apart. */
-    private fun autocorrectEffect(settings: KeyboardSettings): VibrationEffect {
-        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
-            val scale = primitiveScale(settings, full = 1f)
-            return VibrationEffect.startComposition()
-                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale)
-                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale, DOUBLE_TICK_GAP_MS)
-                .compose()
-        }
-        val on = if (hasAmplitudeControl) amplitude(settings, full = 255) else FALLBACK_ON
-        return VibrationEffect.createWaveform(
-            longArrayOf(0, TICK_MS, DOUBLE_TICK_GAP_MS.toLong() - TICK_MS, TICK_MS),
-            intArrayOf(0, on, 0, on),
-            NO_REPEAT,
-        )
-    }
+    /** A double pulse: two pulses of [KeyboardSettings.autocorrectPulseMs]. */
+    private fun autocorrectEffect(settings: KeyboardSettings): VibrationEffect =
+        pulseEffect(autocorrectTimings(settings.autocorrectPulseMs), settings)
 
-    /** A triple short buzz: three pulses [UNKNOWN_PULSE_PERIOD_MS] apart. */
-    private fun unknownWordEffect(settings: KeyboardSettings): VibrationEffect {
-        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
-            val scale = primitiveScale(settings, full = 1f)
-            val composition = VibrationEffect.startComposition()
-            repeat(UNKNOWN_PULSES) { i ->
-                val delay = if (i == 0) 0 else UNKNOWN_PULSE_PERIOD_MS - UNKNOWN_PULSE_MS.toInt()
-                composition.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale, delay)
-            }
-            return composition.compose()
-        }
+    /** A triple buzz: three pulses of [KeyboardSettings.unknownWordPulseMs]. */
+    private fun unknownWordEffect(settings: KeyboardSettings): VibrationEffect =
+        pulseEffect(unknownWordTimings(settings.unknownWordPulseMs), settings)
+
+    /** A waveform of [timings] (off first, then alternating on and off) at the key strength. */
+    private fun pulseEffect(timings: LongArray, settings: KeyboardSettings): VibrationEffect {
         val on = if (hasAmplitudeControl) amplitude(settings, full = 255) else FALLBACK_ON
-        val timings = unknownWordTimings()
         return VibrationEffect.createWaveform(
             timings,
             IntArray(timings.size) { if (it % 2 == 1) on else 0 },
             NO_REPEAT,
         )
     }
-
-    /** Composition scale: [full] by default, [full] times the strength setting when one is set. */
-    private fun primitiveScale(settings: KeyboardSettings, full: Float): Float =
-        if (settings.hapticStrength == 0) full
-        else (full * settings.hapticStrength / MAX_AMPLITUDE).coerceIn(MIN_SCALE, 1f)
 
     /** Amplitude 1..255: [full] by default, [full] times the strength setting when one is set. */
     private fun amplitude(settings: KeyboardSettings, full: Int): Int =
@@ -237,13 +230,6 @@ class KeyFeedback(context: Context) {
     }
 
     private companion object {
-        /** Gap between the two ticks of the autocorrect pattern, in ms. */
-        const val DOUBLE_TICK_GAP_MS = 55
-
-        /** Waveform fallback: length of one tick, ms. */
-        const val TICK_MS = 12L
-
-        const val MIN_SCALE = 0.2f
         const val MIN_AMPLITUDE = 20
         const val MAX_AMPLITUDE = 255
         const val NO_REPEAT = -1

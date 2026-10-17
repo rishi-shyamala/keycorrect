@@ -62,6 +62,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
             hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
             hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
+            autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
+            unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
             spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
             gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
             gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
@@ -109,6 +111,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NON_WORD_TIE_RULE] = s.nonWordTieRule
         this[HAPTIC_ON_AUTOCORRECT] = s.hapticOnAutocorrect
         this[HAPTIC_ON_UNKNOWN_WORD] = s.hapticOnUnknownWord
+        this[AUTOCORRECT_PULSE_MS] = s.autocorrectPulseMs
+        this[UNKNOWN_WORD_PULSE_MS] = s.unknownWordPulseMs
         this[SPACEBAR_CURSOR] = s.spacebarCursor
         this[GESTURE_TYPING] = s.gestureTyping
         this[GESTURE_TRAIL] = s.gestureTrail
@@ -150,6 +154,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NON_WORD_TIE_RULE = booleanPreferencesKey("non_word_tie_rule")
         val HAPTIC_ON_AUTOCORRECT = booleanPreferencesKey("haptic_on_autocorrect")
         val HAPTIC_ON_UNKNOWN_WORD = booleanPreferencesKey("haptic_on_unknown_word")
+        val AUTOCORRECT_PULSE_MS = intPreferencesKey("autocorrect_pulse_ms")
+        val UNKNOWN_WORD_PULSE_MS = intPreferencesKey("unknown_word_pulse_ms")
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
         val GESTURE_TYPING = booleanPreferencesKey("gesture_typing")
         val GESTURE_TRAIL = booleanPreferencesKey("gesture_trail")

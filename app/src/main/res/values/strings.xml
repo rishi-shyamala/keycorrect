@@ -120,6 +120,8 @@
     <string name="feedback_test_vibration">Test vibration</string>
     <string name="feedback_haptic_autocorrect">Vibrate when a word is auto-corrected</string>
     <string name="feedback_haptic_unknown_word">Vibrate for words not in the dictionary</string>
+    <string name="feedback_autocorrect_pulse">Autocorrect pulse length</string>
+    <string name="feedback_unknown_word_pulse">Unknown word pulse length</string>
     <string name="feedback_test_button">Test</string>
     <string name="feedback_sound">Sound on keypress</string>
     <string name="feedback_sound_summary">Follows the system touch sounds setting</string>
