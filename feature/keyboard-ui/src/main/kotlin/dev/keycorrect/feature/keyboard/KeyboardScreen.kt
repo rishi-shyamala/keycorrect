@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,19 +16,16 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.keycorrect.core.layout.KeyAction
@@ -169,11 +165,12 @@ private fun Keys(
 }
 
 /**
- * Fixed-height area above the keys: the edit button at the left (keys and editing panel only), then
- * autofill chips when there are any (they take priority), else the selection strip while a range is
- * selected, else the prediction strip, else the recent-clip chip, else the shortcut icon row. The
- * height never changes, so the keys below don't jump. The controller's strip is read inside
- * [PredictionStrip] only, so a new suggestion recomposes that and nothing else.
+ * Fixed-height area above the keys. While the keys or editing panel show, it is the tool strip
+ * ([StripTools]) around the content: autofill chips when there are any (they take priority), else
+ * the selection strip while a range is selected, else the prediction strip and recent-clip chip.
+ * The emoji and clipboard panels fill it with their own headers instead. The height never changes,
+ * so the keys below don't jump. The controller's strip is read inside [PredictionStrip] only, so a
+ * new suggestion recomposes that and nothing else.
  */
 @Composable
 private fun SuggestionArea(
@@ -183,47 +180,40 @@ private fun SuggestionArea(
     autofill: InlineAutofillController?,
     onOpenSettings: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (controller.editButtonVisible) {
-            val view = LocalView.current
-            ShortcutButton(
-                icon = ShortcutIcons.Editing,
-                description = stringResource(R.string.shortcut_editing),
-                modifier = Modifier.width(EditButtonWidth),
-                selected = controller.panel == KeyboardPanel.Editing,
-            ) {
-                feedback.haptic(view, settings)
-                controller.toggleEditingPanel()
+    val view = LocalView.current
+    val press = { feedback.haptic(view, settings) }
+    val modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)
+    when {
+        controller.panel == KeyboardPanel.Emoji ->
+            Box(modifier) {
+                if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
+                else EmojiTabStrip(controller, onPress = press)
             }
-        }
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            StripContent(controller, settings, feedback, autofill, onOpenSettings)
+        controller.panel == KeyboardPanel.Clipboard ->
+            Box(modifier) { ClipboardTitleStrip(controller, onPress = press) }
+        else -> {
+            val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
+            StripTools(
+                controller = controller,
+                onPress = press,
+                onOpenSettings = onOpenSettings,
+                autofillActive = items.isNotEmpty(),
+                modifier = modifier,
+            ) {
+                StripContent(controller, items, press)
+            }
         }
     }
 }
 
-/** Everything right of the edit button; see [SuggestionArea]. */
+/** What fills the strip between the tools; see [SuggestionArea]. */
 @Composable
 private fun StripContent(
     controller: KeyboardController,
-    settings: KeyboardSettings,
-    feedback: KeyFeedback,
-    autofill: InlineAutofillController?,
-    onOpenSettings: () -> Unit,
+    items: List<InlineSuggestionItem>,
+    onPress: () -> Unit,
 ) {
-    val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
-    if (controller.panel == KeyboardPanel.Emoji) {
-        val view = LocalView.current
-        val press = { feedback.haptic(view, settings) }
-        if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
-        else EmojiTabStrip(controller, onPress = press)
-    } else if (controller.panel == KeyboardPanel.Clipboard) {
-        val view = LocalView.current
-        ClipboardTitleStrip(controller, onPress = { feedback.haptic(view, settings) })
-    } else if (items.isNotEmpty()) {
+    if (items.isNotEmpty()) {
         InlineSuggestionRow(items)
     } else if (controller.selectionStripVisible) {
         SelectionStrip(controller.editing)
@@ -238,12 +228,7 @@ private fun StripContent(
             canBlock = { controller.canBlockSuggestions },
         )
         // Only when the strip above is empty (see KeyboardController.stripClip).
-        val view = LocalView.current
-        val press = { feedback.haptic(view, settings) }
-        ClipChip(controller, onPress = press)
-        // Only when the strip, the selection strip and the chip are all absent (see
-        // KeyboardController.shortcutRowVisible).
-        ShortcutRow(controller, onPress = press, onOpenSettings = onOpenSettings)
+        ClipChip(controller, onPress = onPress)
     }
 }
 
@@ -290,5 +275,4 @@ private fun InlineSuggestionView(view: InlineContentView) {
 }
 
 internal val SuggestionStripHeight = 40.dp
-private val EditButtonWidth = 48.dp
 private val SuggestionSpacing = 6.dp

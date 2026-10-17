@@ -333,20 +333,20 @@ class EditingControllerTest {
     }
 
     @Test
-    fun theEditButtonTogglesThePanel() {
+    fun theEditToolTogglesThePanel() {
         start("hello")
-        assertThat(controller.editButtonVisible).isTrue()
+        assertThat(controller.toolsVisible).isTrue()
         controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
-        assertThat(controller.editButtonVisible).isTrue()
+        assertThat(controller.toolsVisible).isTrue()
         controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
         controller.showPanel(KeyboardPanel.Emoji)
-        assertThat(controller.editButtonVisible).isFalse()
+        assertThat(controller.toolsVisible).isFalse()
     }
 
     @Test
-    fun theEditButtonOpensThePanelWithSelectModeOff() {
+    fun theEditToolOpensThePanelWithSelectModeOff() {
         start("hello")
         perform(EditingAction.SelectToggle)
         controller.toggleEditingPanel()

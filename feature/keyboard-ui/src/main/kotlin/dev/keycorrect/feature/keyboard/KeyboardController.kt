@@ -487,41 +487,41 @@ class KeyboardController(
         }
 
     /**
-     * Whether the strip area shows the shortcut row (see [stripContent]): keys showing, nothing
-     * being typed or selected, no suggestions or prompt, no fresh clip. Observable state only.
+     * Whether the strip has content besides the tools (see [stripBusy]), so they sit small at its
+     * edges. Observable state only; autofill chips are the UI's to add.
      */
-    val shortcutRowVisible: Boolean
+    val stripBusy: Boolean
         get() =
-            panel == KeyboardPanel.Keys &&
-                stripContent(
-                    stripEmpty = strip.isEmpty,
-                    composing = composingNow,
-                    selectionStrip = selectionStripVisible,
-                    hasClip = stripClip != null,
-                ) == StripContent.Shortcuts
+            stripBusy(
+                stripEmpty = strip.isEmpty,
+                composing = composingNow,
+                selectionStrip = selectionStripVisible,
+                hasClip = stripClip != null,
+            )
 
-    /** The shortcut buttons for the current field (see [shortcutsFor]). */
-    internal val shortcuts: List<Shortcut>
-        get() = shortcutsFor(profile.sensitive, clipboardAvailable)
+    /** The strip's tools for the current field (see [toolsFor]). */
+    internal val tools: List<StripTool>
+        get() = toolsFor(profile.sensitive, clipboardAvailable)
 
     /**
-     * Whether the strip shows the edit button at its left: while the keys or the editing panel are
-     * up (the emoji and clipboard panels use the strip for their own headers).
+     * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
+     * clipboard panels use the strip for their own headers).
      */
-    val editButtonVisible: Boolean
+    val toolsVisible: Boolean
         get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
 
-    /** The strip's edit button: opens the editing panel, or goes back to the keys from it. */
+    /** The Edit tool: opens the editing panel, or goes back to the keys from it. */
     fun toggleEditingPanel() {
         if (panel == KeyboardPanel.Editing) showPanel(KeyboardPanel.Keys) else editing.openPanel()
     }
 
-    /** Runs a shortcut button's action; [openSettings] is the host's way to open its settings. */
-    internal fun onShortcut(shortcut: Shortcut, openSettings: () -> Unit) {
-        when (shortcut) {
-            Shortcut.Emoji -> showPanel(KeyboardPanel.Emoji)
-            Shortcut.Clipboard -> openClipboard()
-            Shortcut.Settings -> openSettings()
+    /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
+    internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
+        when (tool) {
+            StripTool.Edit -> toggleEditingPanel()
+            StripTool.Emoji -> showPanel(KeyboardPanel.Emoji)
+            StripTool.Clipboard -> openClipboard()
+            StripTool.Settings -> openSettings()
         }
     }
 
