@@ -2,6 +2,7 @@ package dev.keycorrect.feature.keyboard
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,6 +12,7 @@ import androidx.compose.ui.geometry.Size
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.ResolvedKey
 import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -90,6 +92,39 @@ internal class PopupState(
 }
 
 /**
+ * A spacebar drag's joystick: a base ring of radius [radius] (see [JOYSTICK_RING_KEY_HEIGHTS]) at
+ * the touch-down point ([centerX], [centerY], surface pixels) and a knob that follows the finger,
+ * held on the ring. [keyHeight] is the height of the key row the drag started on. Drawn by
+ * [KeyOverlay]; the knob and [engaged] are read in the draw phase only.
+ */
+@Stable
+internal class JoystickState(val centerX: Float, val centerY: Float, val keyHeight: Float) {
+    val radius: Float
+        get() = keyHeight * JOYSTICK_RING_KEY_HEIGHTS
+
+    /** The knob, clamped to the ring. */
+    var knobX by mutableFloatStateOf(centerX)
+        private set
+
+    var knobY by mutableFloatStateOf(centerY)
+        private set
+
+    /** The finger is beyond the ring: the cursor moves at a rate rather than by position. */
+    var engaged by mutableStateOf(false)
+
+    /** How far ([x], [y]) is from the centre. */
+    fun distance(x: Float, y: Float): Float = hypot(x - centerX, y - centerY)
+
+    /** Moves the knob towards the finger at ([x], [y]), no further than the ring. */
+    fun moveKnob(x: Float, y: Float) {
+        val d = distance(x, y)
+        val scale = if (d > radius) radius / d else 1f
+        knobX = centerX + (x - centerX) * scale
+        knobY = centerY + (y - centerY) * scale
+    }
+}
+
+/**
  * Transient touch state shared by the key surface (which writes it from pointer events) and the
  * overlay (which only reads it while drawing). Everything here is read in draw phases, so changes
  * redraw without recomposing anything.
@@ -103,6 +138,9 @@ internal class KeyboardTouchState {
     var preview by mutableStateOf<KeySlot?>(null)
 
     var popup by mutableStateOf<PopupState?>(null)
+
+    /** The joystick of the spacebar drag in progress, if any. */
+    var joystick by mutableStateOf<JoystickState?>(null)
 
     /**
      * The swipe path to draw as a trail while a swipe is in progress (null otherwise). The path
@@ -127,6 +165,7 @@ internal class KeyboardTouchState {
         pressed = emptySet()
         preview = null
         popup = null
+        joystick = null
         trail = null
     }
 }

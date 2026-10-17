@@ -39,6 +39,16 @@ private const val SHADOW_ALPHA = 0.07f
 /** Swipe trail stroke width. */
 private val TrailWidth = 6.dp
 
+private val JoystickRimWidth = 2.dp
+private const val JOYSTICK_BASE_ALPHA = 0.10f
+private const val JOYSTICK_RIM_ALPHA = 0.30f
+private const val JOYSTICK_RIM_ENGAGED_ALPHA = 0.70f
+private const val JOYSTICK_KNOB_ALPHA = 0.55f
+private const val JOYSTICK_KNOB_ENGAGED_ALPHA = 0.90f
+
+/** The knob's radius as a share of the ring's. */
+private const val JOYSTICK_KNOB_RADIUS = 0.3f
+
 /** The newest part of the trail, in milliseconds of finger time, is drawn at full strength. */
 internal const val TRAIL_SOLID_MS = 400L
 
@@ -74,6 +84,7 @@ internal fun KeyOverlay(
             // Read so a new point redraws; the path grows in place.
             if (touch.trailVersion >= 0) drawTrail(it, origin, trailPath, colors.primary)
         }
+        touch.joystick?.let { drawJoystick(it, origin, colors.primary) }
         touch.popup?.let { drawPopup(it, origin, shiftState, colors, textMeasurer, popupStyle) }
         touch.preview?.let {
             drawPreview(
@@ -88,6 +99,28 @@ internal fun KeyOverlay(
             )
         }
     }
+}
+
+/**
+ * The spacebar drag's joystick: a faint base ring at the touch-down point and a knob following the
+ * finger (held on the ring), stronger once the finger is beyond the ring and the cursor is moving
+ * at a rate. Allocation-free.
+ */
+private fun DrawScope.drawJoystick(joystick: JoystickState, origin: Offset, color: Color) {
+    val center = Offset(joystick.centerX + origin.x, joystick.centerY + origin.y)
+    val engaged = joystick.engaged
+    drawCircle(color.copy(alpha = JOYSTICK_BASE_ALPHA), joystick.radius, center)
+    drawCircle(
+        color.copy(alpha = if (engaged) JOYSTICK_RIM_ENGAGED_ALPHA else JOYSTICK_RIM_ALPHA),
+        joystick.radius,
+        center,
+        style = Stroke(width = JoystickRimWidth.toPx()),
+    )
+    drawCircle(
+        color.copy(alpha = if (engaged) JOYSTICK_KNOB_ENGAGED_ALPHA else JOYSTICK_KNOB_ALPHA),
+        joystick.radius * JOYSTICK_KNOB_RADIUS,
+        Offset(joystick.knobX + origin.x, joystick.knobY + origin.y),
+    )
 }
 
 /**

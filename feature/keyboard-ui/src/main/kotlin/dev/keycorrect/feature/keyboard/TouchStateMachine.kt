@@ -6,7 +6,9 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
+import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.sign
 
 /**
  * Where the space bar splits, as a fraction of its width: a drag starting left of it selects, right
@@ -25,6 +27,29 @@ internal const val REPEAT_INTERVAL_MS = 50L
  * this share of that key's width from where it went down, and is over a different key.
  */
 internal const val SWIPE_START_KEY_WIDTHS = 0.6f
+
+/** The joystick ring's radius, in heights of the key row the spacebar drag started on. */
+internal const val JOYSTICK_RING_KEY_HEIGHTS = 1.2f
+
+/**
+ * Past the ring the cursor moves at a rate that grows with the distance past it, reaching its top
+ * value at this many key heights beyond the ring.
+ */
+internal const val JOYSTICK_FULL_SPEED_KEY_HEIGHTS = 2f
+
+/** Characters a second just past the ring, and at [JOYSTICK_FULL_SPEED_KEY_HEIGHTS] past it. */
+internal const val JOYSTICK_CHARS_MIN_PER_S = 8f
+internal const val JOYSTICK_CHARS_MAX_PER_S = 40f
+
+/** Lines a second just past the ring, and at full speed (vertical, the larger offset wins). */
+internal const val JOYSTICK_LINES_MIN_PER_S = 2f
+internal const val JOYSTICK_LINES_MAX_PER_S = 12f
+
+/** Time between cursor steps while the finger is held past the ring (the machine's timer). */
+internal const val JOYSTICK_TICK_MS = 25L
+
+/** A tick that arrives late counts at most this much time, so a stalled thread does not burst. */
+internal const val JOYSTICK_MAX_ELAPSED_MS = 100L
 
 /** What the touch handling needs from its surroundings. */
 internal interface TouchHost {
@@ -134,7 +159,11 @@ internal interface TouchHost {
  *   ([CursorDragTracker]) and no space is typed. A drag that went down on the left part of the key
  *   (before [SPACE_SELECT_SPLIT] of its width) selects; on the right part it moves the cursor.
  *   Without a drag, releasing types a space however long it was held (the editing panel has its own
- *   button in the strip).
+ *   button in the strip). A drag shows a joystick ([KeyboardTouchState.joystick]) centred on the
+ *   touch-down point: inside its ring the [CursorDragTracker] steps by position; once the finger is
+ *   past the ring (anywhere, even outside the keyboard) the cursor moves at a rate along the larger
+ *   of the two offsets, one tick every [JOYSTICK_TICK_MS] from [onTimer] so it goes on while the
+ *   finger is still; back inside the ring the tracker is re-anchored at the finger (no jump).
  * - Backspace (with [TouchHost.backspaceSwipe]): it still deletes on press. Moving left past the
  *   slop before the first repeat starts a swipe: the repeat stops, words = 1 + the extra leftward
  *   travel / [TouchHost.wordStepPx] (0 back within the slop), and release commits if words > 0. A
@@ -188,6 +217,17 @@ internal class TouchStateMachine(
         /** Space: set while the finger is dragging. */
         var drag: CursorDragTracker? = null
 
+        /** Space drag: the joystick drawn for it. */
+        var joystick: JoystickState? = null
+
+        /** Space drag: the finger is past the ring, so [deadline] is the next rate tick. */
+        var rate = false
+
+        /** Rate movement: the clock of the last tick, and the fractions of a step not yet sent. */
+        var rateTime = 0L
+        var rateX = 0f
+        var rateY = 0f
+
         /** Backspace swipe: the word count last reported. */
         var swipeWords = 0
 
@@ -238,6 +278,8 @@ internal class TouchStateMachine(
                 touch.preview = null
                 hostCall { host.onGestureTick() }
                 hostCall { host.onKeyLongPress(press.slot.key.action) }
+            } else if (press.rate) {
+                rateTick(press, now)
             } else if (press.repeating) {
                 press.repeatFired = true
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
@@ -374,11 +416,86 @@ internal class TouchStateMachine(
                     press.downY,
                     press.downTime,
                 )
+            val joystick = JoystickState(press.downX, press.downY, slot.bottom - slot.top)
+            press.joystick = joystick
+            touch.joystick = joystick
         }
+        if (steppedByPosition(press)) reportPositionSteps(press)
+    }
+
+    private fun reportPositionSteps(press: Press) {
         val steps = press.drag?.move(press.x, press.y, clock()) ?: return
         val select = press.gesture == Gesture.SelectDrag
         hostCall { host.gestures.onCursorDrag(steps.dx, steps.dy, select) }
         hostCall { host.onGestureTick() }
+    }
+
+    /**
+     * Follows the finger with the joystick's knob and switches between rate and position movement.
+     * True when the finger is inside the ring, so the drag steps by position.
+     */
+    private fun steppedByPosition(press: Press): Boolean {
+        val joystick = press.joystick ?: return true
+        joystick.moveKnob(press.x, press.y)
+        val beyond = joystick.distance(press.x, press.y) > joystick.radius
+        if (beyond && !press.rate) startRate(press, joystick)
+        if (!beyond && press.rate) endRate(press, joystick)
+        return !beyond
+    }
+
+    /** The finger crossed the ring: from now on [rateTick] moves the cursor. */
+    private fun startRate(press: Press, joystick: JoystickState) {
+        press.rate = true
+        press.rateX = 0f
+        press.rateY = 0f
+        press.rateTime = clock()
+        press.deadline = press.rateTime + JOYSTICK_TICK_MS
+        joystick.engaged = true
+        hostCall { host.onGestureTick() }
+    }
+
+    /** The finger is back inside the ring: position-based stepping again, anchored right here. */
+    private fun endRate(press: Press, joystick: JoystickState) {
+        press.rate = false
+        press.deadline = null
+        joystick.engaged = false
+        press.drag =
+            CursorDragTracker(host.cursorStepPx, host.lineStepPx, press.x, press.y, clock())
+    }
+
+    /**
+     * Moves the cursor by the steps due since the last tick: along the larger offset from the
+     * joystick's centre, at a rate that grows from the minimum just past the ring to the maximum at
+     * [JOYSTICK_FULL_SPEED_KEY_HEIGHTS] beyond it. Fractions of a step carry over to the next tick.
+     */
+    private fun rateTick(press: Press, now: Long) {
+        val joystick = press.joystick ?: return
+        val elapsed = (now - press.rateTime).coerceIn(0L, JOYSTICK_MAX_ELAPSED_MS)
+        press.rateTime = now
+        press.deadline = now + JOYSTICK_TICK_MS
+        val dx = press.x - joystick.centerX
+        val dy = press.y - joystick.centerY
+        val past = joystick.distance(press.x, press.y) - joystick.radius
+        val t = (past / (joystick.keyHeight * JOYSTICK_FULL_SPEED_KEY_HEIGHTS)).coerceIn(0f, 1f)
+        val seconds = elapsed / MS_PER_SECOND
+        if (abs(dx) >= abs(dy)) {
+            val perSecond =
+                JOYSTICK_CHARS_MIN_PER_S + (JOYSTICK_CHARS_MAX_PER_S - JOYSTICK_CHARS_MIN_PER_S) * t
+            press.rateX += sign(dx) * perSecond * seconds
+            press.rateY = 0f
+        } else {
+            val perSecond =
+                JOYSTICK_LINES_MIN_PER_S + (JOYSTICK_LINES_MAX_PER_S - JOYSTICK_LINES_MIN_PER_S) * t
+            press.rateY += sign(dy) * perSecond * seconds
+            press.rateX = 0f
+        }
+        val stepsX = press.rateX.toInt()
+        val stepsY = press.rateY.toInt()
+        if (stepsX == 0 && stepsY == 0) return
+        press.rateX -= stepsX
+        press.rateY -= stepsY
+        val select = press.gesture == Gesture.SelectDrag
+        hostCall { host.gestures.onCursorDrag(stepsX, stepsY, select) }
     }
 
     private fun moveBackspace(press: Press) {
@@ -472,6 +589,10 @@ internal class TouchStateMachine(
 
     private fun release(press: Press) {
         press.deadline = null
+        if (press.joystick != null) {
+            press.joystick = null
+            touch.joystick = null
+        }
         publishPressed()
         if (touch.preview?.index == press.slot.index) touch.preview = null
     }
@@ -497,5 +618,6 @@ internal class TouchStateMachine(
 
     private companion object {
         const val TAG = "TouchStateMachine"
+        const val MS_PER_SECOND = 1000f
     }
 }

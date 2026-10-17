@@ -5,13 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
@@ -38,11 +35,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The editing panel (docs/PHASE4.md): a joystick block on the left (Home / up / End, left / Select
- * / right, word-left / down / word-right, then ABC, backspace and delete) and, after a divider, the
- * selection and clipboard actions on the right. It takes the place of the keys, at the same height.
- * ABC (bottom left, like the other panels) returns to the keys. The select toggle is drawn on or
- * off, and the buttons that need the field's text are drawn disabled where it is not read
+ * The editing panel (docs/PHASE4.md), laid out like Gboard's: a big 3 x 3 pad in the middle
+ * (word-left / up / word-right, left / Select / right, Home / down / End), a helper column on the
+ * left (select all, copy, cut, ABC) and one on the right (paste, undo, redo, backspace). Selecting
+ * a word, sentence or line is in the selection strip. It takes the place of the keys, at the same
+ * height; ABC (bottom left, like the other panels) returns to them. The select toggle is drawn on
+ * or off, and the buttons that need the field's text are drawn disabled where it is not read
  * (sensitive fields). The caller sizes it ([modifier]); [onPress] is the key feedback.
  */
 @Composable
@@ -52,38 +50,41 @@ internal fun EditingPanel(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier) {
+        HelperColumn(LeftColumn, editing, onPress, Modifier.weight(SIDE_WEIGHT))
         Column(modifier = Modifier.weight(PAD_WEIGHT).fillMaxHeight()) {
-            for ((index, row) in PadRows.withIndex()) {
-                Row(modifier = Modifier.weight(RowWeights[index]).fillMaxWidth()) {
-                    for ((col, action) in row.withIndex()) {
-                        PanelButton(action, editing, onPress, PadColumnWeights[col])
+            for (row in PadRows) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    for (action in row) {
+                        PanelButton(action, editing, onPress, Modifier.weight(1f), PAD_ICON)
                     }
                 }
             }
         }
-        Box(
-            Modifier.fillMaxHeight()
-                .padding(vertical = DIVIDER_INSET)
-                .width(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant)
-        )
-        Column(modifier = Modifier.weight(ACTIONS_WEIGHT).fillMaxHeight()) {
-            for ((index, row) in ActionRows.withIndex()) {
-                Row(modifier = Modifier.weight(RowWeights[index]).fillMaxWidth()) {
-                    for (action in row) PanelButton(action, editing, onPress, 1f)
-                }
-            }
-            Spacer(Modifier.weight(RowWeights.last()))
+        HelperColumn(RightColumn, editing, onPress, Modifier.weight(SIDE_WEIGHT))
+    }
+}
+
+@Composable
+private fun HelperColumn(
+    actions: List<EditingAction>,
+    editing: EditingController,
+    onPress: () -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier = modifier.fillMaxHeight()) {
+        for (action in actions) {
+            PanelButton(action, editing, onPress, Modifier.weight(1f).fillMaxWidth(), HELPER_ICON)
         }
     }
 }
 
 @Composable
-private fun RowScope.PanelButton(
+private fun PanelButton(
     action: EditingAction,
     editing: EditingController,
     onPress: () -> Unit,
-    weight: Float,
+    modifier: Modifier,
+    iconSize: Int,
 ) {
     val colors = MaterialTheme.colorScheme
     val toggle = action == EditingAction.SelectToggle
@@ -104,7 +105,7 @@ private fun RowScope.PanelButton(
         )
     Box(
         modifier =
-            Modifier.weight(weight)
+            modifier
                 .fillMaxHeight()
                 .padding(KeyGap / 2)
                 .clip(RoundedCornerShape(KeyCornerRadius))
@@ -114,32 +115,36 @@ private fun RowScope.PanelButton(
                 .clearAndSetSemantics { semantics.apply(this) },
         contentAlignment = Alignment.Center,
     ) {
-        PanelContent(action, stringResource(action.label), panelContent(action, on, colors))
+        PanelContent(
+            action,
+            stringResource(action.label),
+            panelContent(action, on, colors),
+            iconSize,
+        )
     }
 }
 
-/** An icon for the pad's arrows and delete keys, text for the rest; Word keys have both. */
+/**
+ * Text for Select and ABC, an icon for the pad and backspace, and an icon over a small label for
+ * the helper columns (whose labels are the short action names).
+ */
 @Composable
-private fun PanelContent(action: EditingAction, label: String, color: Color) {
+private fun PanelContent(action: EditingAction, label: String, color: Color, iconSize: Int) {
     val icon = action.icon()
     when {
-        action == EditingAction.WordLeft || action == EditingAction.WordRight -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (action == EditingAction.WordLeft) PanelIcon(PanelIcons.Left, color, SMALL_ICON)
-                Text(label, color = color, fontSize = LABEL_SIZE.sp, maxLines = 1)
-                if (action == EditingAction.WordRight) {
-                    PanelIcon(PanelIcons.Right, color, SMALL_ICON)
-                }
-            }
-        }
-        icon != null -> PanelIcon(icon, color, if (action.isArrow()) ARROW_ICON else ICON)
-        else ->
+        icon == null ->
             Text(
                 label,
                 color = color,
                 fontSize = if (action == EditingAction.Close) ABC_SIZE.sp else LABEL_SIZE.sp,
                 maxLines = 1,
             )
+        action in LabelledActions ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                PanelIcon(icon, color, iconSize)
+                Text(label, color = color, fontSize = SMALL_LABEL_SIZE.sp, maxLines = 1)
+            }
+        else -> PanelIcon(icon, color, iconSize)
     }
 }
 
@@ -148,22 +153,27 @@ private fun PanelIcon(icon: ImageVector, color: Color, size: Int) {
     Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(size.dp))
 }
 
-private fun EditingAction.isArrow() =
-    this == EditingAction.Up ||
-        this == EditingAction.Down ||
-        this == EditingAction.Left ||
-        this == EditingAction.Right
+private fun EditingAction.icon(): ImageVector? = ActionIcons[this]
 
-private fun EditingAction.icon(): ImageVector? =
-    when (this) {
-        EditingAction.Up -> PanelIcons.Up
-        EditingAction.Down -> PanelIcons.Down
-        EditingAction.Left -> PanelIcons.Left
-        EditingAction.Right -> PanelIcons.Right
-        EditingAction.Backspace -> PanelIcons.Backspace
-        EditingAction.Delete -> PanelIcons.DeleteForward
-        else -> null
-    }
+private val ActionIcons =
+    mapOf(
+        EditingAction.Up to PanelIcons.Up,
+        EditingAction.Down to PanelIcons.Down,
+        EditingAction.Left to PanelIcons.Left,
+        EditingAction.Right to PanelIcons.Right,
+        EditingAction.WordLeft to PanelIcons.WordLeft,
+        EditingAction.WordRight to PanelIcons.WordRight,
+        EditingAction.Home to PanelIcons.Home,
+        EditingAction.End to PanelIcons.End,
+        EditingAction.SelectAll to PanelIcons.SelectAll,
+        EditingAction.Copy to PanelIcons.Copy,
+        EditingAction.Cut to PanelIcons.Cut,
+        EditingAction.Paste to PanelIcons.Paste,
+        EditingAction.Undo to PanelIcons.Undo,
+        EditingAction.Redo to PanelIcons.Redo,
+        EditingAction.Backspace to PanelIcons.Backspace,
+        EditingAction.Delete to PanelIcons.DeleteForward,
+    )
 
 /** What a panel button says to accessibility services; [toggle] ones also say their [state]. */
 private class PanelSemantics(
@@ -203,33 +213,49 @@ private fun panelContent(action: EditingAction, on: Boolean, colors: ColorScheme
         else -> colors.onSurface
     }
 
-/** The joystick block: moves around the Select toggle, then ABC, backspace and delete. */
-private val PadRows =
+/** The 3 x 3 pad: word and line moves on the corners, arrows on the cross, Select in the centre. */
+internal val PadRows =
     listOf(
-        listOf(EditingAction.Home, EditingAction.Up, EditingAction.End),
+        listOf(EditingAction.WordLeft, EditingAction.Up, EditingAction.WordRight),
         listOf(EditingAction.Left, EditingAction.SelectToggle, EditingAction.Right),
-        listOf(EditingAction.WordLeft, EditingAction.Down, EditingAction.WordRight),
-        listOf(EditingAction.Close, EditingAction.Backspace, EditingAction.Delete),
+        listOf(EditingAction.Home, EditingAction.Down, EditingAction.End),
     )
 
-/** The right block: select by unit, clipboard, history and select all; its fourth row is empty. */
-private val ActionRows =
+/** The left helper column, top to bottom; ABC is at the bottom like on the other panels. */
+internal val LeftColumn =
     listOf(
-        listOf(EditingAction.SelectWord, EditingAction.SelectSentence, EditingAction.SelectLine),
-        listOf(EditingAction.Cut, EditingAction.Copy, EditingAction.Paste),
-        listOf(EditingAction.Undo, EditingAction.Redo, EditingAction.SelectAll),
+        EditingAction.SelectAll,
+        EditingAction.Copy,
+        EditingAction.Cut,
+        EditingAction.Close,
     )
 
-/** The three D-pad rows are a little taller than the bottom one; the middle column is wider. */
-private val RowWeights = listOf(1.1f, 1.1f, 1.1f, 0.85f)
-private val PadColumnWeights = listOf(1f, 1.2f, 1f)
-private const val PAD_WEIGHT = 3.2f
-private const val ACTIONS_WEIGHT = 3f
-private val DIVIDER_INSET = 8.dp
+/** The right helper column; forward delete does not fit, backspace does. */
+internal val RightColumn =
+    listOf(
+        EditingAction.Paste,
+        EditingAction.Undo,
+        EditingAction.Redo,
+        EditingAction.Backspace,
+    )
+
+/** The helper buttons that carry a small label under their icon. */
+private val LabelledActions =
+    setOf(
+        EditingAction.SelectAll,
+        EditingAction.Copy,
+        EditingAction.Cut,
+        EditingAction.Paste,
+        EditingAction.Undo,
+        EditingAction.Redo,
+    )
+
+private const val PAD_WEIGHT = 3.4f
+private const val SIDE_WEIGHT = 1.3f
 
 private const val DISABLED_ALPHA = 0.38f
-private const val LABEL_SIZE = 14
+private const val LABEL_SIZE = 15
+private const val SMALL_LABEL_SIZE = 11
 private const val ABC_SIZE = 18
-private const val ARROW_ICON = 34
-private const val ICON = 26
-private const val SMALL_ICON = 16
+private const val PAD_ICON = 32
+private const val HELPER_ICON = 22
