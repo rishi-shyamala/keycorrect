@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -17,6 +18,7 @@ import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.ConfigRestartTracker
 import dev.keycorrect.feature.keyboard.EditorIdentity
 import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
@@ -100,7 +102,15 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
     }
 
+    /**
+     * Rotation and other configuration changes restart the input view of the same field; those
+     * restarts keep the layer (see [ConfigRestartTracker]). Every other start of the input view
+     * opens on the letters layer.
+     */
+    private val configRestarts = ConfigRestartTracker(SystemClock::uptimeMillis)
+
     override fun onConfigurationChanged(newConfig: Configuration) {
+        configRestarts.onConfigurationChanged(isInputViewShown)
         super.onConfigurationChanged(newConfig)
         updateDevice(newConfig)
     }
@@ -171,6 +181,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         controller.onFinishInput()
+        configRestarts.reset()
         learningHost.requestFlush(FlushReason.KeyboardHidden)
         super.onFinishInputView(finishingInput)
     }
@@ -184,8 +195,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         controller.onStartInput(
             FieldProfile.from(editorInfo),
             settingsFlow.value,
-            restarting,
-            EditorIdentity.from(editorInfo),
+            // The controller keeps the layer for a restart of the same field only: a rotation.
+            restarting = configRestarts.isConfigRestart(),
+            identity = EditorIdentity.from(editorInfo),
             initialSelStart = editorInfo.initialSelStart,
             initialSelEnd = editorInfo.initialSelEnd,
         )
