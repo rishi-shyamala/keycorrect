@@ -149,7 +149,8 @@ class EditorSession(
             ?.takeIf { readsAllowed() }
             ?.getSurroundingText(beforeLength, afterLength, 0)
             ?.takeIf {
-                it.offset >= 0 &&
+                // An offset of -1 is "unknown" (the platform default): the caller resolves it.
+                it.offset >= -1 &&
                     it.selectionStart in 0..it.selectionEnd &&
                     it.selectionEnd <= it.text.length
             }

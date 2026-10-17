@@ -414,7 +414,7 @@ class EditingControllerTest {
 
     @Test
     fun selectAroundDoesNothingWhereThereIsNothingToSelect() {
-        start("a  b", at = 2)
+        start("a   b", at = 3)
         perform(EditingAction.SelectWord)
         assertThat(editor.selections).isEmpty()
     }
@@ -646,11 +646,23 @@ class TextUnitsTest {
         assertThat(word("don't stop", 2)).isEqualTo("don't")
         assertThat(word("don't stop", 10)).isEqualTo("stop")
         assertThat(word("don't stop", 6)).isEqualTo("stop")
-        assertThat(word("a  b", 2)).isNull()
+        assertThat(word("a   b", 3)).isNull()
         assertThat(word("", 0)).isNull()
         assertThat(word("one two three", 5, 10)).isEqualTo("two three")
         assertThat(word("naïve café", 8)).isEqualTo("café")
         assertThat(word("x_1 y", 1)).isEqualTo("x_1")
+    }
+
+    @Test
+    fun wordAtAWordEndTakesTheWordBefore() {
+        assertThat(word("foo bar", 3)).isEqualTo("foo")
+        assertThat(word("foo bar", 4)).isEqualTo("bar")
+        assertThat(word("foo bar ", 8)).isEqualTo("bar")
+        assertThat(word("foo. ", 5)).isNull() // punctuation in between: not a word end
+        assertThat(word("foo\n", 4)).isNull() // only a space counts
+        assertThat(word(" ", 1)).isNull()
+        assertThat(word("a  b", 2)).isEqualTo("a")
+        assertThat(word("foo bar ", 8, 8)).isEqualTo("bar")
     }
 
     @Test

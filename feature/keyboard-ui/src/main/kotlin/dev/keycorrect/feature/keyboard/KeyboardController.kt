@@ -120,6 +120,8 @@ class KeyboardController(
             ::showPanel,
             { selection },
             { profile.sensitive },
+            ownEdits::settledSelection,
+            clock,
         )
 
     /**
@@ -382,7 +384,9 @@ class KeyboardController(
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
-        when (val verdict = ownEdits.onUpdate(update)) {
+        val verdict = ownEdits.onUpdate(update)
+        editing.onEditsSettled()
+        when (verdict) {
             is UpdateVerdict.Own -> {
                 val resync = verdict.composingLength
                 if (resync < 0 || input.resyncComposing(resync)) return

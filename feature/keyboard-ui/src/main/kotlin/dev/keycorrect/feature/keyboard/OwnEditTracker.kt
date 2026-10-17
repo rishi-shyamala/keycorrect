@@ -118,6 +118,19 @@ internal class OwnEditTracker(
     val pendingCount: Int
         get() = pending.size
 
+    /**
+     * The tracked selection, but only while it is trustworthy: no own edit in flight (expired
+     * expectations do not count) and a known selection. Null otherwise.
+     */
+    fun settledSelection(): EditorSelection? {
+        expire()
+        return if (pending.isEmpty() && selStart >= 0 && selEnd >= 0) {
+            EditorSelection(selStart, selEnd)
+        } else {
+            null
+        }
+    }
+
     // ------------------------------------------------------------------ recording our edits
 
     /** `setComposingText` of [length] chars: the region is replaced (or started at the cursor). */

@@ -2,7 +2,8 @@ package dev.keycorrect.core.input
 
 /**
  * Text around the selection ([TextEditor.surroundingText]): [text] starts at field offset [offset];
- * the selection is [selectionStart] until [selectionEnd] within [text].
+ * the selection is [selectionStart] until [selectionEnd] within [text]. An [offset] of -1 means the
+ * editor does not say where [text] begins; [fieldStart] and [fieldEnd] are then meaningless.
  */
 data class Surrounding(
     val text: CharSequence,

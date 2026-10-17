@@ -31,13 +31,22 @@ internal object TextUnits {
         return before.length - i
     }
 
-    /** The word(s) enclosing [start] until [end]: both ends grow to the edges of their words. */
+    /**
+     * The word(s) enclosing [start] until [end]: both ends grow to the edges of their words. A
+     * cursor touching no word, only a space after one ("foo |"), takes the word before it.
+     */
     fun expandWord(text: CharSequence, start: Int, end: Int): TextSpan? {
         var from = start
         var to = end
         while (from > 0 && isWordChar(text, from - 1)) from--
         while (to < text.length && isWordChar(text, to)) to++
-        return if (from < to) TextSpan(from, to) else null
+        if (from < to) return TextSpan(from, to)
+        if (start != end) return null
+        val back = start - 1
+        if (back <= 0 || text[back] != ' ' || !isWordChar(text, back - 1)) return null
+        from = back
+        while (from > 0 && isWordChar(text, from - 1)) from--
+        return TextSpan(from, back)
     }
 
     /** The sentence(s) enclosing [start] until [end], without the whitespace around them. */
