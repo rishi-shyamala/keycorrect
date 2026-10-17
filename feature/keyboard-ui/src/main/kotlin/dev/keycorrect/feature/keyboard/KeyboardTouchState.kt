@@ -37,12 +37,19 @@ internal data class PopupPanel(
 
     companion object {
         /**
-         * Places a panel of [count] cells above [slot]: cells are key-sized, the first one sits
-         * over the key, and the panel is shifted left as needed to stay inside [surfaceWidth].
+         * Places a panel of [count] cells above [slot]: cells are key-sized but at least
+         * [minCellWidth] (narrow keys such as the bottom row's still get letter-sized cells), the
+         * first one sits over the key, and the panel is shifted left as needed to stay inside
+         * [surfaceWidth].
          */
-        fun above(slot: KeySlot, count: Int, surfaceWidth: Float): PopupPanel {
+        fun above(
+            slot: KeySlot,
+            count: Int,
+            surfaceWidth: Float,
+            minCellWidth: Float = 0f,
+        ): PopupPanel {
             val cellHeight = slot.bottom - slot.top
-            val cellWidth = min(slot.right - slot.left, surfaceWidth / count)
+            val cellWidth = min(max(slot.right - slot.left, minCellWidth), surfaceWidth / count)
             val left = slot.left.coerceIn(0f, max(0f, surfaceWidth - cellWidth * count))
             return PopupPanel(left, slot.top - cellHeight, cellWidth, cellHeight, count)
         }

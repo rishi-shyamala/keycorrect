@@ -95,4 +95,12 @@ class KeyOverlayGeometryTest {
         assertThat(keyDescription(shift, ShiftState.Locked)).isEqualTo("Caps lock on")
         assertThat(keyDescription(a, null)).isEqualTo("a")
     }
+
+    @Test
+    fun narrowKeysGetCellsAtLeastTheMinimumWide() {
+        val narrow = KeySlot(0, ResolvedKey(".", KeyAction.Text(".")), 500f, 0f, 545f, 100f)
+        val panel = PopupPanel.above(narrow, count = 6, surfaceWidth = 1000f, minCellWidth = 100f)
+        assertThat(panel.cellWidth).isEqualTo(100f)
+        assertThat(panel.left + panel.width).isAtMost(1000f)
+    }
 }

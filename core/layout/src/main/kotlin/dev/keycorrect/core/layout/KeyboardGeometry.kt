@@ -26,10 +26,13 @@ class KeyboardGeometry(val layer: KeyboardLayer, val width: Float, val height: F
     /** Every key in row order, spacers included. */
     val slots: List<KeySlot>
 
+    /** The width of a standard (1.0) key, e.g. a letter key on the letters grid. */
+    val unit: Float
+
     init {
         val widest = layer.rows.maxOfOrNull { it.width } ?: 0f
         val unitsPerRow = maxOf(layer.gridUnits, widest).takeIf { it > 0f } ?: 1f
-        val unit = width / unitsPerRow
+        unit = width / unitsPerRow
         val totalWeight = layer.rows.sumOf { it.height.toDouble() }
         var index = 0
         var weightAbove = 0.0
