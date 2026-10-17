@@ -37,6 +37,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
+import dev.keycorrect.feature.keyboard.prediction.SwipeCase
 import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
 import kotlin.math.roundToInt
 
@@ -53,6 +54,7 @@ import kotlin.math.roundToInt
  * cached, and asked of the editor (a blocking call) only otherwise: when input starts, after an
  * external cursor move, or in fields where nothing is read.
  */
+@Suppress("LargeClass") // the keyboard's one coordinator; swipe logic lives in SwipeController
 class KeyboardController(
     private val editor: TextEditor,
     private val composer: KeyboardComposer,
@@ -107,6 +109,15 @@ class KeyboardController(
             },
         )
 
+    private val swipes =
+        SwipeController(
+            input,
+            clock,
+            { swipeTypingActive },
+            ::swipeCase,
+            ::onSwipeCommitted,
+        )
+
     /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */
     internal val terminalModifiers = TerminalModifiers(clock)
 
@@ -157,6 +168,18 @@ class KeyboardController(
         }
 
         override fun onBackspaceSwipeEnd(commit: Boolean) = editing.onBackspaceSwipeEnd(commit)
+
+        // While the emoji search owns the keys, a swipe is not started (swipeTypingActive is off
+        // then); one that started earlier is finished or cancelled like any other.
+        override fun onSwipeStart(path: SwipePath) {
+            if (!searching) swipes.onStart(path)
+        }
+
+        override fun onSwipeMove(path: SwipePath) = swipes.onMove(path)
+
+        override fun onSwipeEnd(path: SwipePath) = swipes.onEnd(path)
+
+        override fun onSwipeCancel() = swipes.onCancel()
     }
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
@@ -464,11 +487,42 @@ class KeyboardController(
     private var composingNow by mutableStateOf(false)
 
     /**
-     * Gesture typing is on for the current field: the setting is on and the field is a text field
-     * that takes suggestions (docs/PHASE5.md P5-5). Read by the touch layer.
+     * Gesture typing is on for the current field: the setting is on and the field is a text, email,
+     * URL, name or address field that takes suggestions and has an engine (docs/PHASE5.md P5-5),
+     * and the letters are showing (not a panel, not the symbols, not the emoji search). Off in
+     * password, number, phone, date and terminal fields, and where the app asks for no suggestions;
+     * also off while suggestions are switched off, as the swiped word is committed like a picked
+     * suggestion. Read by the touch layer.
      */
     val swipeTypingActive: Boolean
-        get() = false // Phase 5 PR B: the controller side fills this in.
+        get() =
+            settings.gestureTyping &&
+                panel == KeyboardPanel.Keys &&
+                state.layerId == KeyboardSet.LETTERS &&
+                profile.kind in SWIPE_KINDS &&
+                input.canSwipe()
+
+    /** The casing the shift state gives a word swiped now (docs/PHASE5.md). */
+    private fun swipeCase(): SwipeCase =
+        when (effectiveShift) {
+            ShiftState.Locked -> SwipeCase.All
+            ShiftState.Once -> SwipeCase.First
+            ShiftState.Auto ->
+                if (profile.autoCapitalize == AutoCapitalize.Characters) SwipeCase.All
+                else SwipeCase.First
+            ShiftState.Off -> SwipeCase.None
+        }
+
+    /** A swipe typed a word: like a typed letter, it consumes a one-shot shift. */
+    private fun onSwipeCommitted() {
+        markChord()
+        state = state.afterCharacter(shiftHeld)
+        composingNow = input.isComposing
+        sawText = true
+        zeroChecked = false
+        if (fieldEmpty) fieldEmpty = false
+        updateAutoCapitalize()
+    }
 
     /**
      * The clipboard panel is offered when history is on and the field is not sensitive (a password
@@ -853,6 +907,16 @@ class KeyboardController(
         const val PHONE = "phone"
         const val DATETIME = "datetime"
         const val DEFAULT_HEIGHT_UNITS = 4f
+
+        /** Fields where a swipe types a word (P5-5). */
+        val SWIPE_KINDS =
+            setOf(
+                FieldKind.Text,
+                FieldKind.Email,
+                FieldKind.Url,
+                FieldKind.PersonName,
+                FieldKind.PostalAddress,
+            )
 
         /** Before the first field is focused: plain text, no auto-caps. */
         val DEFAULT_PROFILE = FieldProfile.from(InputType.TYPE_CLASS_TEXT, 0)

@@ -1,6 +1,8 @@
 package dev.keycorrect.feature.keyboard.prediction
 
 import android.util.Log
+import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import java.util.concurrent.Executor
@@ -49,6 +51,9 @@ class DecoderLoop(
     /** Decode durations, for tuning. Holds numbers only. */
     val latency = LatencyStats()
 
+    /** Swipe decode durations (previews and the final decode on lift). */
+    val gestureLatency = LatencyStats()
+
     /** The sequence of the latest input event. */
     val sequence: Long
         get() = counter.get()
@@ -80,6 +85,79 @@ class DecoderLoop(
         } catch (e: RuntimeException) {
             outstanding.decrementAndGet()
             throw e
+        }
+    }
+
+    /**
+     * Decodes the swipe preview [request] on the decoder thread and delivers the result to
+     * [onResult] on the main thread, unless a newer event (the next preview, or anything else)
+     * arrived first; a decode that has not started yet is skipped and a running one gives up early.
+     * Does nothing without a predictor.
+     */
+    fun submitGesture(request: GestureRequest, onResult: (PredictResult) -> Unit) {
+        if (predictor() == null) return
+        val seq = request.sequence
+        outstanding.incrementAndGet()
+        try {
+            executor.execute {
+                try {
+                    if (counter.get() != seq) return@execute
+                    val result = decodeGesture(request) ?: return@execute
+                    if (counter.get() != seq) return@execute
+                    postToMain { onResult(result) }
+                } finally {
+                    outstanding.decrementAndGet()
+                    synchronized(monitor) { monitor.notifyAll() }
+                }
+            }
+        } catch (e: RuntimeException) {
+            outstanding.decrementAndGet()
+            throw e
+        }
+    }
+
+    /**
+     * The final decode when the finger lifts, under the separator policy: never blocks on the
+     * engine lock. The caller has advanced the sequence, so an outstanding preview gives up early;
+     * this waits at most [separatorWaitMs] for it, then decodes on the calling thread if the
+     * decoder is idle. Null means "no answer in time" (or no predictor, or a failure): the caller
+     * falls back to the latest preview.
+     */
+    @Suppress("ReturnCount") // each early exit is a "no answer in time" case
+    fun decodeGestureNow(request: GestureRequest): PredictResult? {
+        if (predictor() == null) return null
+        if (outstanding.get() > 0) {
+            val deadline = System.nanoTime() + separatorWaitMs * 1_000_000
+            try {
+                synchronized(monitor) {
+                    while (outstanding.get() > 0) {
+                        val remaining = deadline - System.nanoTime()
+                        if (remaining <= 0) break
+                        monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+                    }
+                }
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null
+            }
+            if (outstanding.get() > 0) return null
+        }
+        return decodeGesture(request)
+    }
+
+    /** Builds the swipe index of [layout] on the decoder thread, ahead of the first swipe. */
+    fun warmUpGestures(layout: KeyLayoutModel) {
+        if (predictor() == null) return
+        try {
+            executor.execute {
+                try {
+                    predictor()?.warmUpGestures(layout)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Gesture warm-up failed: ${e.javaClass.name}")
+                }
+            }
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Gesture warm-up rejected: ${e.javaClass.name}")
         }
     }
 
@@ -141,6 +219,23 @@ class DecoderLoop(
                 return null
             }
         latency.record((System.nanoTime() - start) / 1_000)
+        return result
+    }
+
+    @Suppress("ReturnCount") // no predictor / failure exits
+    private fun decodeGesture(request: GestureRequest): PredictResult? {
+        val p = predictor() ?: return null
+        val seq = request.sequence
+        val start = System.nanoTime()
+        val result =
+            try {
+                p.predictGesture(request) { counter.get() != seq }
+                    .let { if (it.sequence == seq) it else it.copy(sequence = seq) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gesture decode failed: ${e.javaClass.name}")
+                return null
+            }
+        gestureLatency.record((System.nanoTime() - start) / 1_000)
         return result
     }
 
