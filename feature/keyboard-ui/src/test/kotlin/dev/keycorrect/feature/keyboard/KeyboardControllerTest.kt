@@ -94,7 +94,8 @@ class KeyboardControllerTest {
         // A sensitive field forces the number row on, as the layout (and so the key) shows.
         controller.updateDevice(tablet = false, landscape = false, hardwareKeyboard = true)
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
-        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp/b75/g2")
+        assertThat(controller.currentTouchKey)
+            .isEqualTo("HardwareKeyboard/port/letters+nr@54dp/b75/g2")
     }
 
     @Test
