@@ -49,6 +49,7 @@ class StripToolTest {
     fun theStripIsBusyWithAnythingToShow() {
         assertThat(
                 stripBusy(
+                    fieldHasText = false,
                     stripEmpty = true,
                     composing = false,
                     selectionStrip = false,
@@ -58,6 +59,7 @@ class StripToolTest {
             .isFalse()
         assertThat(
                 stripBusy(
+                    fieldHasText = false,
                     stripEmpty = false,
                     composing = false,
                     selectionStrip = false,
@@ -67,6 +69,7 @@ class StripToolTest {
             .isTrue()
         assertThat(
                 stripBusy(
+                    fieldHasText = false,
                     stripEmpty = true,
                     composing = true,
                     selectionStrip = false,
@@ -76,6 +79,7 @@ class StripToolTest {
             .isTrue()
         assertThat(
                 stripBusy(
+                    fieldHasText = false,
                     stripEmpty = true,
                     composing = false,
                     selectionStrip = true,
@@ -85,10 +89,25 @@ class StripToolTest {
             .isTrue()
         assertThat(
                 stripBusy(
+                    fieldHasText = false,
                     stripEmpty = true,
                     composing = false,
                     selectionStrip = false,
                     hasClip = true,
+                )
+            )
+            .isTrue()
+    }
+
+    @Test
+    fun aFieldWithTextKeepsTheToolsAtTheEdgesEvenWithNothingElseToShow() {
+        assertThat(
+                stripBusy(
+                    fieldHasText = true,
+                    stripEmpty = true,
+                    composing = false,
+                    selectionStrip = false,
+                    hasClip = false,
                 )
             )
             .isTrue()
@@ -100,8 +119,8 @@ class StripToolTest {
             .containsExactly(
                 StripTool.Edit,
                 StripTool.Emoji,
-                StripTool.Clipboard,
                 StripTool.Settings,
+                StripTool.Clipboard,
             )
             .inOrder()
         assertThat(toolsFor(sensitive = true, clipboardAvailable = true))
@@ -117,7 +136,7 @@ class StripToolTest {
     }
 
     @Test
-    fun editAndEmojiGoLeftClipboardAndSettingsRight() {
+    fun editAndEmojiGoLeftSettingsAndClipboardRight() {
         val tools = toolsFor(sensitive = false, clipboardAvailable = true)
         assertThat(leftToolCount(tools)).isEqualTo(2)
         assertThat(leftToolCount(toolsFor(sensitive = true, clipboardAvailable = true)))
@@ -148,6 +167,28 @@ class StripToolTest {
         start()
         assertThat(controller.stripBusy).isFalse()
         controller.onKey(KeyAction.Text("h"))
+        assertThat(controller.stripBusy).isTrue()
+    }
+
+    @Test
+    fun theToolsStayCompactWhileTheFieldHasText() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Space)
+        // A separator ended the word and there are no suggestions, but the field has text.
+        assertThat(controller.stripBusy).isTrue()
+        controller.onKey(KeyAction.Backspace)
+        controller.onKey(KeyAction.Backspace)
+        assertThat(editor.text.toString()).isEmpty()
+        assertThat(controller.stripBusy).isFalse()
+    }
+
+    @Test
+    fun aCursorMovedBackToTheStartOfTextIsNotAnEmptyField() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Space)
+        editor.setSelection(0, 0)
         assertThat(controller.stripBusy).isTrue()
     }
 
@@ -214,5 +255,55 @@ class StripToolTest {
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
         controller.onTool(StripTool.Clipboard) {}
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+    }
+
+    // ------------------------------------------------------------------ editor reads
+
+    @Test
+    fun aSensitiveFieldIsNeverReadAndItsToolsStayCompactDownToZero() {
+        start(password)
+        controller.onKey(KeyAction.Text("a"))
+        controller.onKey(KeyAction.Text("b"))
+        assertThat(controller.stripBusy).isTrue()
+        controller.onKey(KeyAction.Backspace)
+        controller.onKey(KeyAction.Backspace)
+        assertThat(editor.text.toString()).isEmpty()
+        // Text was seen and can't be checked, so the field still counts as having text.
+        assertThat(controller.stripBusy).isTrue()
+        controller.onKey(KeyAction.Backspace)
+        assertThat(controller.stripBusy).isTrue()
+        assertThat(editor.afterCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun aNewFieldForgetsTheTextSeenInTheLastOne() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        assertThat(controller.stripBusy).isTrue()
+        start()
+        assertThat(controller.stripBusy).isFalse()
+    }
+
+    @Test
+    fun typingInANormalFieldAddsNoStripReads() {
+        start()
+        // The first letter makes the predictor read its context once; the strip never asks.
+        controller.onKey(KeyAction.Text("h"))
+        val before = editor.afterCalls
+        controller.onKey(KeyAction.Text("i"))
+        controller.onKey(KeyAction.Space)
+        controller.onKey(KeyAction.Text("a"))
+        assertThat(editor.afterCalls).isEqualTo(before)
+    }
+
+    @Test
+    fun aCursorSittingAtZeroIsReadOnlyOnce() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Backspace)
+        val afterFirst = editor.afterCalls
+        repeat(3) { controller.onKey(KeyAction.Backspace) }
+        assertThat(editor.afterCalls).isEqualTo(afterFirst)
+        assertThat(controller.stripBusy).isFalse()
     }
 }

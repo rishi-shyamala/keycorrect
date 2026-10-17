@@ -42,11 +42,11 @@ internal enum class StripTool(val atLeftEdge: Boolean) {
     /** Opens the emoji panel, as the emoji key does. Not in sensitive fields. */
     Emoji(atLeftEdge = true),
 
-    /** Opens the clipboard panel. Only when [KeyboardController.clipboardAvailable]. */
-    Clipboard(atLeftEdge = false),
-
     /** Opens the settings app. */
     Settings(atLeftEdge = false),
+
+    /** Opens the clipboard panel. Only when [KeyboardController.clipboardAvailable]. */
+    Clipboard(atLeftEdge = false),
 }
 
 /**
@@ -58,22 +58,24 @@ internal fun toolsFor(sensitive: Boolean, clipboardAvailable: Boolean): List<Str
     buildList {
         add(StripTool.Edit)
         if (!sensitive) add(StripTool.Emoji)
-        if (clipboardAvailable && !sensitive) add(StripTool.Clipboard)
         add(StripTool.Settings)
+        if (clipboardAvailable && !sensitive) add(StripTool.Clipboard)
     }
 
 /**
- * Whether the strip has anything besides the tools to show, so they sit small at the edges: a strip
- * model (suggestions or a prompt), a word being composed, the selection strip or a fresh clip chip.
- * Autofill chips count too but are known to the caller only. When this is false the tools are full
- * size and evenly spaced across the strip.
+ * Whether the tools sit small at the edges: the field has text ([fieldHasText]; they spread out
+ * only in an empty field), or the strip has anything else to show: a strip model (suggestions or a
+ * prompt), a word being composed, the selection strip or a fresh clip chip. Autofill chips count
+ * too but are known to the caller only. When this is false the tools are full size and evenly
+ * spaced across the strip.
  */
 internal fun stripBusy(
+    fieldHasText: Boolean,
     stripEmpty: Boolean,
     composing: Boolean,
     selectionStrip: Boolean,
     hasClip: Boolean,
-): Boolean = !stripEmpty || composing || selectionStrip || hasClip
+): Boolean = fieldHasText || !stripEmpty || composing || selectionStrip || hasClip
 
 /** Tools to pin to the left edge when busy; the rest go to the right. */
 internal fun leftToolCount(tools: List<StripTool>): Int = tools.count { it.atLeftEdge }
@@ -109,7 +111,7 @@ private const val BUSY_ICON_DP = 18f
 /**
  * The strip: [StripTool] buttons and [content] between them. Idle, the tools are full size and
  * evenly spaced across the strip and [content] is invisible (it has nothing to show); busy, they
- * shrink and move to the edges (Edit and Emoji left, Clipboard and Settings right) around
+ * shrink and move to the edges (Edit and Emoji left, Settings and Clipboard right) around
  * [content], which fades in. A 250 ms animation moves each tool between its two slots.
  *
  * The busy flag (see [stripBusy]; [autofillActive] adds autofill chips) is read only by the

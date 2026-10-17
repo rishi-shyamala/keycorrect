@@ -47,11 +47,11 @@ data class StripSlot(
 )
 
 /**
- * The suggestion strip's content: three equal slots, the centre one being the candidate that would
- * be applied. [addWord] is the transient "Add “word” to dictionary" prompt, which takes the strip
- * over while it is non-null; so does [neverSuggest], the inline confirmation shown after a long
- * press on a suggestion ("Never suggest “word”? Yes / Cancel"), which wins over [addWord].
- * Data-class equality is what keeps the strip from recomposing unless something visible changed.
+ * The suggestion strip's content: three slots, the centre one being the candidate that would be
+ * applied. [addWord] is the transient "Add “word” to dictionary" prompt, which takes the strip over
+ * while it is non-null; so does [neverSuggest], the inline confirmation shown after a long press on
+ * a suggestion ("Never suggest “word”? Yes / Cancel"), which wins over [addWord]. Data-class
+ * equality is what keeps the strip from recomposing unless something visible changed.
  */
 @Immutable
 data class StripModel(

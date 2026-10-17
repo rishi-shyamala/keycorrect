@@ -43,6 +43,9 @@ internal class SimEditor : TextEditor {
     var composeCalls = 0
     var readCalls = 0
 
+    /** How many of [readCalls] were [textAfterCursor]. */
+    var afterCalls = 0
+
     /**
      * When set, called after every mutating operation, even inside a batch: a non-coalescing editor
      * reporting each intermediate state (tests wire it to [echo]).
@@ -145,6 +148,7 @@ internal class SimEditor : TextEditor {
 
     override fun textAfterCursor(maxChars: Int): CharSequence? {
         readCalls++
+        afterCalls++
         return text.substring(selEnd, minOf(text.length, selEnd + maxChars))
     }
 

@@ -52,6 +52,27 @@ fun hapticWanted(kind: FeedbackKind, settings: KeyboardSettings): Boolean =
             else -> true
         }
 
+/** Number of short pulses in the unknown-word buzz (the autocorrect pattern has two). */
+internal const val UNKNOWN_PULSES = 3
+
+/** Length of each pulse of the unknown-word buzz, ms. */
+internal const val UNKNOWN_PULSE_MS = 12L
+
+/** Start-to-start time between the pulses of the unknown-word buzz, ms. */
+internal const val UNKNOWN_PULSE_PERIOD_MS = 60
+
+/**
+ * Waveform timings (off, on, off, on, ...) of the unknown-word buzz, for motors without primitives.
+ */
+internal fun unknownWordTimings(): LongArray =
+    LongArray(2 * UNKNOWN_PULSES) { i ->
+        when {
+            i == 0 -> 0L
+            i % 2 == 1 -> UNKNOWN_PULSE_MS
+            else -> UNKNOWN_PULSE_PERIOD_MS - UNKNOWN_PULSE_MS
+        }
+    }
+
 /** Key-press haptics and sounds, driven by [KeyboardSettings]. */
 class KeyFeedback(context: Context) {
     private val vibrator = context.getSystemService(VibratorManager::class.java).defaultVibrator
@@ -128,19 +149,24 @@ class KeyFeedback(context: Context) {
         )
     }
 
-    /** One longer, soft, low buzz. */
+    /** A triple short buzz: three pulses [UNKNOWN_PULSE_PERIOD_MS] apart. */
     private fun unknownWordEffect(settings: KeyboardSettings): VibrationEffect {
-        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)) {
-            return VibrationEffect.startComposition()
-                .addPrimitive(
-                    VibrationEffect.Composition.PRIMITIVE_LOW_TICK,
-                    primitiveScale(settings, full = SOFT_SCALE),
-                )
-                .compose()
+        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
+            val scale = primitiveScale(settings, full = 1f)
+            val composition = VibrationEffect.startComposition()
+            repeat(UNKNOWN_PULSES) { i ->
+                val delay = if (i == 0) 0 else UNKNOWN_PULSE_PERIOD_MS - UNKNOWN_PULSE_MS.toInt()
+                composition.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale, delay)
+            }
+            return composition.compose()
         }
-        val soft =
-            if (hasAmplitudeControl) amplitude(settings, full = SOFT_AMPLITUDE) else FALLBACK_ON
-        return VibrationEffect.createOneShot(SOFT_BUZZ_MS, soft)
+        val on = if (hasAmplitudeControl) amplitude(settings, full = 255) else FALLBACK_ON
+        val timings = unknownWordTimings()
+        return VibrationEffect.createWaveform(
+            timings,
+            IntArray(timings.size) { if (it % 2 == 1) on else 0 },
+            NO_REPEAT,
+        )
     }
 
     /** Composition scale: [full] by default, [full] times the strength setting when one is set. */
@@ -217,10 +243,6 @@ class KeyFeedback(context: Context) {
         /** Waveform fallback: length of one tick, ms. */
         const val TICK_MS = 12L
 
-        /** One-shot fallback for the unknown-word buzz: long and soft. */
-        const val SOFT_BUZZ_MS = 40L
-        const val SOFT_AMPLITUDE = 80
-        const val SOFT_SCALE = 0.7f
         const val MIN_SCALE = 0.2f
         const val MIN_AMPLITUDE = 20
         const val MAX_AMPLITUDE = 255

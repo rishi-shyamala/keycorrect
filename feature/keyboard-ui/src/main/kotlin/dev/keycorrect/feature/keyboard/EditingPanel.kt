@@ -6,11 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -29,12 +34,15 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The editing panel (docs/PHASE4.md, PR A): a grid of buttons that takes the place of the keys, at
- * the same height. Opened by a hold on space; ABC returns to the keys. The select toggle is drawn
- * on or off, and the buttons that need the field's text are drawn disabled where it is not read
+ * The editing panel (docs/PHASE4.md): a joystick block on the left (Home / up / End, left / Select
+ * / right, word-left / down / word-right, then ABC, backspace and delete) and, after a divider, the
+ * selection and clipboard actions on the right. It takes the place of the keys, at the same height.
+ * ABC (bottom left, like the other panels) returns to the keys. The select toggle is drawn on or
+ * off, and the buttons that need the field's text are drawn disabled where it is not read
  * (sensitive fields). The caller sizes it ([modifier]); [onPress] is the key feedback.
  */
 @Composable
@@ -43,11 +51,29 @@ internal fun EditingPanel(
     onPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        for (row in PanelRows) {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for (action in row) PanelButton(action, editing, onPress)
+    Row(modifier = modifier) {
+        Column(modifier = Modifier.weight(PAD_WEIGHT).fillMaxHeight()) {
+            for ((index, row) in PadRows.withIndex()) {
+                Row(modifier = Modifier.weight(RowWeights[index]).fillMaxWidth()) {
+                    for ((col, action) in row.withIndex()) {
+                        PanelButton(action, editing, onPress, PadColumnWeights[col])
+                    }
+                }
             }
+        }
+        Box(
+            Modifier.fillMaxHeight()
+                .padding(vertical = DIVIDER_INSET)
+                .width(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+        Column(modifier = Modifier.weight(ACTIONS_WEIGHT).fillMaxHeight()) {
+            for ((index, row) in ActionRows.withIndex()) {
+                Row(modifier = Modifier.weight(RowWeights[index]).fillMaxWidth()) {
+                    for (action in row) PanelButton(action, editing, onPress, 1f)
+                }
+            }
+            Spacer(Modifier.weight(RowWeights.last()))
         }
     }
 }
@@ -57,9 +83,9 @@ private fun RowScope.PanelButton(
     action: EditingAction,
     editing: EditingController,
     onPress: () -> Unit,
+    weight: Float,
 ) {
     val colors = MaterialTheme.colorScheme
-    val label = stringResource(action.label)
     val toggle = action == EditingAction.SelectToggle
     val on = toggle && editing.selectMode
     val enabled = editing.isAvailable(action)
@@ -78,7 +104,7 @@ private fun RowScope.PanelButton(
         )
     Box(
         modifier =
-            Modifier.weight(1f)
+            Modifier.weight(weight)
                 .fillMaxHeight()
                 .padding(KeyGap / 2)
                 .clip(RoundedCornerShape(KeyCornerRadius))
@@ -88,14 +114,56 @@ private fun RowScope.PanelButton(
                 .clearAndSetSemantics { semantics.apply(this) },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            color = panelContent(action, on, colors),
-            fontSize = if (label.length <= GLYPH_LENGTH) GLYPH_SIZE.sp else LABEL_SIZE.sp,
-            maxLines = 1,
-        )
+        PanelContent(action, stringResource(action.label), panelContent(action, on, colors))
     }
 }
+
+/** An icon for the pad's arrows and delete keys, text for the rest; Word keys have both. */
+@Composable
+private fun PanelContent(action: EditingAction, label: String, color: Color) {
+    val icon = action.icon()
+    when {
+        action == EditingAction.WordLeft || action == EditingAction.WordRight -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (action == EditingAction.WordLeft) PanelIcon(PanelIcons.Left, color, SMALL_ICON)
+                Text(label, color = color, fontSize = LABEL_SIZE.sp, maxLines = 1)
+                if (action == EditingAction.WordRight) {
+                    PanelIcon(PanelIcons.Right, color, SMALL_ICON)
+                }
+            }
+        }
+        icon != null -> PanelIcon(icon, color, if (action.isArrow()) ARROW_ICON else ICON)
+        else ->
+            Text(
+                label,
+                color = color,
+                fontSize = if (action == EditingAction.Close) ABC_SIZE.sp else LABEL_SIZE.sp,
+                maxLines = 1,
+            )
+    }
+}
+
+@Composable
+private fun PanelIcon(icon: ImageVector, color: Color, size: Int) {
+    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(size.dp))
+}
+
+private fun EditingAction.isArrow() =
+    this == EditingAction.Up ||
+        this == EditingAction.Down ||
+        this == EditingAction.Left ||
+        this == EditingAction.Right
+
+private fun EditingAction.icon(): ImageVector? =
+    when (this) {
+        EditingAction.Up -> PanelIcons.Up
+        EditingAction.Down -> PanelIcons.Down
+        EditingAction.Left -> PanelIcons.Left
+        EditingAction.Right -> PanelIcons.Right
+        EditingAction.Backspace -> PanelIcons.Backspace
+        EditingAction.Delete -> PanelIcons.DeleteForward
+        else -> null
+    }
 
 /** What a panel button says to accessibility services; [toggle] ones also say their [state]. */
 private class PanelSemantics(
@@ -135,37 +203,33 @@ private fun panelContent(action: EditingAction, on: Boolean, colors: ColorScheme
         else -> colors.onSurface
     }
 
-/** Rows of the grid: movement, cursor and delete keys, selection and history, clipboard. */
-private val PanelRows =
+/** The joystick block: moves around the Select toggle, then ABC, backspace and delete. */
+private val PadRows =
     listOf(
-        listOf(
-            EditingAction.Close,
-            EditingAction.Home,
-            EditingAction.Up,
-            EditingAction.End,
-            EditingAction.Backspace,
-            EditingAction.Delete,
-        ),
-        listOf(
-            EditingAction.SelectToggle,
-            EditingAction.Left,
-            EditingAction.Down,
-            EditingAction.Right,
-            EditingAction.WordLeft,
-            EditingAction.WordRight,
-        ),
-        listOf(
-            EditingAction.SelectWord,
-            EditingAction.SelectSentence,
-            EditingAction.SelectLine,
-            EditingAction.SelectAll,
-            EditingAction.Undo,
-            EditingAction.Redo,
-        ),
-        listOf(EditingAction.Cut, EditingAction.Copy, EditingAction.Paste),
+        listOf(EditingAction.Home, EditingAction.Up, EditingAction.End),
+        listOf(EditingAction.Left, EditingAction.SelectToggle, EditingAction.Right),
+        listOf(EditingAction.WordLeft, EditingAction.Down, EditingAction.WordRight),
+        listOf(EditingAction.Close, EditingAction.Backspace, EditingAction.Delete),
     )
 
+/** The right block: select by unit, clipboard, history and select all; its fourth row is empty. */
+private val ActionRows =
+    listOf(
+        listOf(EditingAction.SelectWord, EditingAction.SelectSentence, EditingAction.SelectLine),
+        listOf(EditingAction.Cut, EditingAction.Copy, EditingAction.Paste),
+        listOf(EditingAction.Undo, EditingAction.Redo, EditingAction.SelectAll),
+    )
+
+/** The three D-pad rows are a little taller than the bottom one; the middle column is wider. */
+private val RowWeights = listOf(1.1f, 1.1f, 1.1f, 0.85f)
+private val PadColumnWeights = listOf(1f, 1.2f, 1f)
+private const val PAD_WEIGHT = 3.2f
+private const val ACTIONS_WEIGHT = 3f
+private val DIVIDER_INSET = 8.dp
+
 private const val DISABLED_ALPHA = 0.38f
-private const val GLYPH_LENGTH = 1
-private const val GLYPH_SIZE = 22
 private const val LABEL_SIZE = 14
+private const val ABC_SIZE = 18
+private const val ARROW_ICON = 34
+private const val ICON = 26
+private const val SMALL_ICON = 16
