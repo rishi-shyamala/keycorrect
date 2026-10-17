@@ -464,6 +464,13 @@ class KeyboardController(
     private var composingNow by mutableStateOf(false)
 
     /**
+     * Gesture typing is on for the current field: the setting is on and the field is a text field
+     * that takes suggestions (docs/PHASE5.md P5-5). Read by the touch layer.
+     */
+    val swipeTypingActive: Boolean
+        get() = false // Phase 5 PR B: the controller side fills this in.
+
+    /**
      * The clipboard panel is offered when history is on and the field is not sensitive (a password
      * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
      * in any field, password fields included: pasting there is a normal use.
