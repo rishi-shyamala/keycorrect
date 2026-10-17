@@ -1258,7 +1258,7 @@ class LearningEventsTest {
         val p = committed().single().profile
         assertThat(p.device).isEqualTo(DeviceClass.Tablet)
         assertThat(p.landscape).isTrue()
-        assertThat(p.layoutKey).isEqualTo("letters@54dp")
+        assertThat(p.layoutKey).isEqualTo("letters@54dp/b75/g2")
         assertThat(p.field).isEqualTo(FieldClass.PersonName)
     }
 
@@ -1276,13 +1276,13 @@ class LearningEventsTest {
         start(settings = KeyboardSettings(keyHeightDp = 60))
         type("hello")
         space()
-        assertThat(committed().last().profile.layoutKey).isEqualTo("letters@60dp")
+        assertThat(committed().last().profile.layoutKey).isEqualTo("letters@60dp/b75/g2")
         controller.onKey(KeyAction.SwitchLayer("symbols"))
         controller.onKey(KeyAction.SwitchLayer("letters"))
         controller.updateSettings(KeyboardSettings(keyHeightDp = 48))
         type("world")
         space()
-        assertThat(committed().last().profile.layoutKey).isEqualTo("letters@48dp")
+        assertThat(committed().last().profile.layoutKey).isEqualTo("letters@48dp/b75/g2")
     }
 
     private companion object {

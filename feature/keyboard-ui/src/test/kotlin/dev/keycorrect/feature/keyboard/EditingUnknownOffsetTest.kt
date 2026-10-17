@@ -13,8 +13,13 @@ import org.junit.Test
 
 /** An editor whose `getSurroundingText` says nothing of where its text begins (offset -1). */
 private class UnknownOffsetEditor(private val sim: SimEditor) : TextEditor by sim {
-    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? =
-        sim.surroundingText(beforeLength, afterLength)?.copy(offset = -1)
+    /** How many times the text around the cursor was read. */
+    var reads = 0
+
+    override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? {
+        reads++
+        return sim.surroundingText(beforeLength, afterLength)?.copy(offset = -1)
+    }
 }
 
 /**
@@ -24,6 +29,7 @@ private class UnknownOffsetEditor(private val sim: SimEditor) : TextEditor by si
  */
 class EditingUnknownOffsetTest {
     private val sim = SimEditor()
+    private val editor = UnknownOffsetEditor(sim)
     private val backend = FakeBackend()
     private val controller: KeyboardController
 
@@ -31,7 +37,7 @@ class EditingUnknownOffsetTest {
         backend.predictor = ScriptedPredictor()
         controller =
             KeyboardController(
-                UnknownOffsetEditor(sim),
+                editor,
                 KeyboardComposer(BuiltInLayouts.repository()),
                 testEnv(backend),
             )
@@ -110,6 +116,37 @@ class EditingUnknownOffsetTest {
         perform(EditingAction.Left)
         reportPending()
         assertThat(sim.selections).isEmpty()
+    }
+
+    @Test
+    fun closingThePanelDropsADeferredAction() {
+        start("one two", at = 7)
+        typeUnreported(" x")
+        sim.selections.clear()
+        perform(EditingAction.SelectWord)
+        perform(EditingAction.Close)
+        reportPending()
+        assertThat(sim.selections).isEmpty()
+    }
+
+    @Test
+    fun aCursorMovedByTheUserDropsADeferredAction() {
+        start("one two", at = 7)
+        typeUnreported(" x")
+        sim.selections.clear()
+        perform(EditingAction.SelectWord)
+        controller.onSelectionChanged(0, 0) // the user tapped at the start of the field
+        reportPending()
+        assertThat(sim.selections).isEmpty()
+    }
+
+    @Test
+    fun anUnsettledSwipeReadsTheEditorOncePerWait() {
+        start("foo bar", at = 7)
+        typeUnreported(" ")
+        val before = editor.reads
+        repeat(5) { controller.gestures.onBackspaceSwipe(1) }
+        assertThat(editor.reads - before).isEqualTo(1)
     }
 
     @Test

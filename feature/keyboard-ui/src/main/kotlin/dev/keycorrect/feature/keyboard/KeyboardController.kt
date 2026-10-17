@@ -38,6 +38,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
+import kotlin.math.roundToInt
 
 /**
  * Translates key actions into editor operations and owns the keyboard's observable state: the
@@ -384,6 +385,8 @@ class KeyboardController(
         selection = update.normalised()
         if (update.known) input.noteSelection(update.collapsed)
         val verdict = ownEdits.onUpdate(update)
+        // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
+        if (verdict == UpdateVerdict.External) editing.dropDeferred()
         editing.onEditsSettled()
         when (verdict) {
             is UpdateVerdict.Own -> {
@@ -414,6 +417,7 @@ class KeyboardController(
         if (panel == KeyboardPanel.Clipboard && !clipboardAvailable) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         if (panel != KeyboardPanel.Clipboard) clipboardPanel.reset()
+        if (panel != KeyboardPanel.Editing) editing.dropDeferred()
         this.panel = panel
         // Typing in the emoji search used the letters' shift state: work it out again.
         if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
@@ -686,10 +690,17 @@ class KeyboardController(
     val currentTouchKey: String
         get() = input.touchKey
 
-    /** Layer (and number row) plus key height: touch offsets are only comparable within one. */
+    /**
+     * Layer (and number row), key height and bottom-row key width, plus a geometry version: touch
+     * offsets are only comparable within one. The version changes whenever the built-in key
+     * positions change (g2: shared key unit, Samsung-like bottom row and symbol pages).
+     */
     private fun updateLayoutKey() {
         val rows = (if (options.numberRow) "+nr" else "") + (if (options.terminalRow) "+tr" else "")
-        input.setLayoutKey("${state.layerId}$rows@${settings.keyHeightDp}dp")
+        val bottom = (options.bottomKeyWidth * PERCENT).roundToInt()
+        input.setLayoutKey(
+            "${state.layerId}$rows@${settings.keyHeightDp}dp/b$bottom/$GEOMETRY_VERSION"
+        )
     }
 
     /**
@@ -786,6 +797,9 @@ class KeyboardController(
     }
 
     private companion object {
+        /** Bumped when built-in key positions change, so old touch offsets aren't mixed in. */
+        const val GEOMETRY_VERSION = "g2"
+        const val PERCENT = 100f
         const val NUMPAD = "numpad"
         const val PHONE = "phone"
         const val DATETIME = "datetime"

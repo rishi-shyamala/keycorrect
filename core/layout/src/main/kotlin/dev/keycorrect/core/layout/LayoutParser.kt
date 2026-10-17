@@ -155,8 +155,7 @@ internal object LayoutParser {
         val path = "numberRowExtra"
         val problem =
             when {
-                kind == LayoutKind.Bottom || kind == LayoutKind.Extra ->
-                    path to "not valid on bottom or extra layouts"
+                kind != LayoutKind.Symbols -> path to "only valid on symbols layouts"
                 e.insertAt !in 0..file.rows.size ->
                     "$path.insertAt" to "must be between 0 and ${file.rows.size}, got ${e.insertAt}"
                 !(e.row.height > 0f) ->

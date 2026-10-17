@@ -158,6 +158,9 @@ constructor(
     /** Set by [readOrigin] when only an unsettled tracker kept it from the origin: try again. */
     private var originUnsettled = false
 
+    /** The swipe's origin was unsettled: no new read until [onEditsSettled] (one read per wait). */
+    private var awaitingSettle = false
+
     /** A selection action waiting for the tracker to settle, and when it was asked for. */
     private var deferred: ((CharSequence, Int, Int) -> TextSpan?)? = null
     private var deferredAt = 0L
@@ -186,6 +189,7 @@ constructor(
     /** Opens the editing panel (the strip's edit button), with select mode off. */
     fun openPanel() {
         selectMode = false
+        deferred = null
         showPanel(KeyboardPanel.Editing)
     }
 
@@ -201,6 +205,7 @@ constructor(
         val active = swipe
         swipe = null
         swipeTried = false
+        awaitingSettle = false
         swipeActive = false
         if (active == null) return
         if (commit && active.length > 0) {
@@ -224,11 +229,14 @@ constructor(
 
     /** Remembers where the swipe began; null (and nothing more tried) where it cannot work. */
     private fun startSwipe(): Swipe? {
-        if (swipeTried) return null
+        if (swipeTried || awaitingSettle) return null
         originUnsettled = false
         val origin = readOrigin()
-        // An unknown field offset with an own edit in flight is not final: the next move retries.
-        if (origin == null && !originUnsettled) swipeTried = true
+        // An unknown field offset with an own edit in flight is not final: the first move after
+        // the tracker settles retries (not every move, each of which would read the editor).
+        if (origin == null) {
+            if (originUnsettled) awaitingSettle = true else swipeTried = true
+        }
         return origin?.also {
             swipe = it
             swipeActive = true
@@ -292,6 +300,7 @@ constructor(
             EditingAction.SelectToggle -> selectMode = !selectMode
             EditingAction.Close -> {
                 selectMode = false
+                deferred = null
                 showPanel(KeyboardPanel.Keys)
             }
             else -> {
@@ -350,6 +359,7 @@ constructor(
         selectMode = false
         swipe = null
         swipeTried = false
+        awaitingSettle = false
         swipeActive = false
         deferred = null
     }
@@ -386,13 +396,17 @@ constructor(
      * Selects what [expand] makes of the selection (or the cursor) and the text around it (the text
      * before it, the selected text and the text after it). False where there is nothing to change.
      */
-    private fun selectAround(expand: (CharSequence, Int, Int) -> TextSpan?): Boolean {
+    private fun selectAround(
+        expand: (CharSequence, Int, Int) -> TextSpan?,
+        askedAt: Long = clock(),
+    ): Boolean {
         deferred = null
         val window = readWindow()
         if (window != null && window.base < 0) {
-            // The editor gave no offset and an own edit is in flight: ask again once it settles.
+            // The editor gave no offset and an own edit is in flight: ask again once it settles,
+            // still timed from when the user asked.
             deferred = expand
-            deferredAt = clock()
+            deferredAt = askedAt
             return false
         }
         val span = window?.let { w ->
@@ -410,12 +424,21 @@ constructor(
      * still wants.
      */
     fun onEditsSettled() {
+        awaitingSettle = false
         val waiting = deferred ?: return
         if (clock() - deferredAt > DEFERRED_MAX_MS) {
             deferred = null
             return
         }
-        if (settledSelection() != null) selectAround(waiting)
+        if (settledSelection() != null) selectAround(waiting, deferredAt)
+    }
+
+    /**
+     * Drops a selection action still waiting for the tracker: the user moved the cursor themselves
+     * or left the panel, so it would land somewhere they no longer mean.
+     */
+    fun dropDeferred() {
+        deferred = null
     }
 
     private companion object {

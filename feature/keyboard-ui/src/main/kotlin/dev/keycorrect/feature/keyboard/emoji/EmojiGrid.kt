@@ -137,6 +137,8 @@ private fun EmojiCellView(cell: EmojiCell, actions: CellActions, paint: Paint) {
         else controller.onEmojiTap(emoji)
     }
     val variantsLabel = stringResource(R.string.emoji_variants_action)
+    // Read once per paint, not per draw (fontMetrics allocates).
+    val centreShift = remember(paint) { paint.fontMetrics.let { -(it.descent + it.ascent) / 2f } }
     Box(
         modifier =
             Modifier.fillMaxWidth()
@@ -149,12 +151,10 @@ private fun EmojiCellView(cell: EmojiCell, actions: CellActions, paint: Paint) {
                     )
                 }
                 .drawBehind {
-                    val metrics = paint.fontMetrics
-                    val baseline = (size.height - (metrics.descent + metrics.ascent)) / 2f
                     drawContext.canvas.nativeCanvas.drawText(
                         value,
                         size.width / 2f,
-                        baseline,
+                        size.height / 2f + centreShift,
                         paint,
                     )
                 }

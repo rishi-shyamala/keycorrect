@@ -80,21 +80,21 @@ class KeyboardControllerTest {
     @Test
     fun currentTouchKeyTracksDeviceLayerNumberRowAndKeyHeight() {
         start()
-        assertThat(controller.currentTouchKey).isEqualTo("Phone/port/letters@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Phone/port/letters@54dp/b75/g2")
 
         controller.updateDevice(tablet = true, landscape = true)
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters@54dp/b75/g2")
 
         controller.updateSettings(KeyboardSettings(numberRow = true, keyHeightDp = 60))
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters+nr@60dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/letters+nr@60dp/b75/g2")
 
         controller.onKey(KeyAction.SwitchLayer("symbols"))
-        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/symbols+nr@60dp")
+        assertThat(controller.currentTouchKey).isEqualTo("Tablet/land/symbols+nr@60dp/b75/g2")
 
         // A sensitive field forces the number row on, as the layout (and so the key) shows.
         controller.updateDevice(tablet = false, landscape = false, hardwareKeyboard = true)
         start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
-        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp")
+        assertThat(controller.currentTouchKey).isEqualTo("HardwareKeyboard/port/letters+nr@54dp/b75/g2")
     }
 
     @Test
