@@ -20,6 +20,10 @@ class TouchStateMachineTest {
         override var cursorStepPx = 10f
         override var lineStepPx = 50f
         override var wordStepPx = 40f
+        override var swipeTyping = true
+        override var swipeTrail = true
+        val swipeEvents = mutableListOf<String>()
+        var swipePoints = emptyList<Triple<Float, Float, Long>>()
         val drags = mutableListOf<Triple<Int, Int, Boolean>>()
         val swipes = mutableListOf<Int>()
         val swipeEnds = mutableListOf<Boolean>()
@@ -44,6 +48,29 @@ class TouchStateMachineTest {
 
                 override fun onBackspaceSwipeEnd(commit: Boolean) {
                     swipeEnds += commit
+                }
+
+                override fun onSwipeStart(path: SwipePath) {
+                    swipeEvents += "start"
+                    snapshot(path)
+                }
+
+                override fun onSwipeMove(path: SwipePath) {
+                    swipeEvents += "move"
+                    snapshot(path)
+                }
+
+                override fun onSwipeEnd(path: SwipePath) {
+                    swipeEvents += "end"
+                    snapshot(path)
+                }
+
+                override fun onSwipeCancel() {
+                    swipeEvents += "cancel"
+                }
+
+                private fun snapshot(path: SwipePath) {
+                    swipePoints = List(path.size) { Triple(path.x(it), path.y(it), path.time(it)) }
                 }
             }
 
@@ -856,5 +883,183 @@ class TouchStateMachineTest {
         advance(1_000)
         machine.onUp(1)
         assertThat(host.keyLongPresses).isEmpty()
+    }
+
+    // Gesture typing.
+
+    private val s
+        get() = slot("s")
+
+    private val d
+        get() = slot("d")
+
+    private fun swipeFromAToD() {
+        down(1, a)
+        now += 10
+        machine.onMove(1, s.centerX, s.centerY)
+        now += 10
+        machine.onMove(1, d.centerX, d.centerY)
+    }
+
+    @Test
+    fun aSlowDragWithinOneKeyIsNotASwipe() {
+        down(1, a)
+        advance(100)
+        machine.onMove(1, a.centerX + 20f, a.centerY + 10f)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).isEmpty()
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun travelUnderTheThresholdOnAnotherKeyIsNotASwipe() {
+        down(1, a)
+        // Over the next key already, but only about half a key width from the down point.
+        val reach = (a.right - a.left) * SWIPE_START_KEY_WIDTHS
+        machine.onMove(1, a.centerX + reach - 1f, a.centerY)
+        assertThat(host.swipeEvents).isEmpty()
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun crossingToAnotherKeyPastTheThresholdStartsASwipe() {
+        swipeFromAToD()
+        assertThat(host.swipeEvents).containsExactly("start", "move").inOrder()
+        assertThat(touch.preview).isNull()
+        assertThat(touch.pressed).isEmpty()
+        assertThat(touch.trail).isNotNull()
+        now += 10
+        machine.onMove(1, d.centerX + 5f, d.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "move", "move", "end").inOrder()
+        assertThat(host.keys).isEmpty()
+        assertThat(host.swipePoints.first()).isEqualTo(Triple(a.centerX, a.centerY, 0L))
+        assertThat(host.swipePoints).hasSize(4)
+        assertThat(host.swipePoints.last().first).isEqualTo(d.centerX + 5f)
+        assertThat(touch.trail).isNull()
+    }
+
+    @Test
+    fun theTrailIsNotPublishedWhenItIsOff() {
+        host.swipeTrail = false
+        swipeFromAToD()
+        assertThat(touch.trail).isNull()
+        assertThat(host.swipeEvents).contains("start")
+    }
+
+    @Test
+    fun theLongPressPopupDoesNotOpenOnceSwiping() {
+        val withPopup = geometry.slots.first { it.key.popup.isNotEmpty() && it.key.label == "e" }
+        val next = geometry.slots.first { it.key.label == "r" }
+        down(1, withPopup)
+        machine.onMove(1, next.centerX, next.centerY)
+        assertThat(host.swipeEvents).contains("start")
+        assertThat(machine.nextDeadline()).isNull()
+        advance(1_000)
+        assertThat(touch.popup).isNull()
+        assertThat(host.popupOpened).isEqualTo(0)
+    }
+
+    @Test
+    fun anOpenPopupIsNotTurnedIntoASwipe() {
+        val withPopup = geometry.slots.first { it.key.popup.isNotEmpty() && it.key.label == "e" }
+        val next = geometry.slots.first { it.key.label == "r" }
+        down(1, withPopup)
+        advance(400)
+        assertThat(touch.popup).isNotNull()
+        machine.onMove(1, next.centerX, next.centerY)
+        assertThat(host.swipeEvents).isEmpty()
+    }
+
+    @Test
+    fun withSwipeTypingOffNothingChanges() {
+        host.swipeTyping = false
+        swipeFromAToD()
+        machine.onUp(1)
+        assertThat(host.swipeEvents).isEmpty()
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun spaceBackspaceAndShiftNeverSwipe() {
+        for (start in listOf(slot(KeyAction.Space), backspace, slot(KeyAction.Shift))) {
+            host.swipeEvents.clear()
+            down(1, start)
+            machine.onMove(1, a.centerX, a.centerY)
+            machine.onMove(1, d.centerX, d.centerY)
+            machine.onUp(1)
+            assertThat(host.swipeEvents).isEmpty()
+        }
+    }
+
+    @Test
+    fun aLostTouchCancelsTheSwipe() {
+        swipeFromAToD()
+        machine.cancel(1)
+        assertThat(host.swipeEvents.last()).isEqualTo("cancel")
+        assertThat(host.keys).isEmpty()
+        assertThat(touch.trail).isNull()
+    }
+
+    @Test
+    fun cancelAllCancelsTheSwipe() {
+        swipeFromAToD()
+        machine.cancelAll()
+        assertThat(host.swipeEvents.last()).isEqualTo("cancel")
+    }
+
+    @Test
+    fun aSecondFingerDuringASwipeIsIgnored() {
+        swipeFromAToD()
+        val before = host.events.toList()
+        down(2, slot("q"))
+        machine.onUp(2)
+        assertThat(host.events).isEqualTo(before)
+        assertThat(host.keys).isEmpty()
+        machine.onMove(1, d.centerX + 3f, d.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents.last()).isEqualTo("end")
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun thePathIsClearedAfterTheSwipeEnds() {
+        swipeFromAToD()
+        machine.onUp(1)
+        host.swipeEvents.clear()
+        // A second swipe starts again from just its own points.
+        swipeFromAToD()
+        assertThat(host.swipePoints).hasSize(3)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "move", "end").inOrder()
+    }
+
+    @Test
+    fun theSwipePathHoldsThePointsFromBeforeRecognition() {
+        down(1, a)
+        now += 10
+        machine.onMove(1, a.centerX + 10f, a.centerY + 1f)
+        now += 10
+        machine.onMove(1, a.centerX + 25f, a.centerY + 2f)
+        assertThat(host.swipeEvents).isEmpty()
+        now += 10
+        machine.onMove(1, s.centerX, s.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "end").inOrder()
+        assertThat(host.swipePoints.map { it.first })
+            .containsExactly(a.centerX, a.centerX + 10f, a.centerX + 25f, s.centerX)
+            .inOrder()
+        assertThat(host.swipePoints.map { it.third }).containsExactly(0L, 10L, 20L, 30L).inOrder()
+    }
+
+    @Test
+    fun aTapDoesNotLeaveBufferedPointsForTheNextSwipe() {
+        down(1, a)
+        machine.onMove(1, a.centerX + 10f, a.centerY)
+        machine.onUp(1)
+        host.swipeEvents.clear()
+        swipeFromAToD()
+        assertThat(host.swipePoints).hasSize(3)
     }
 }

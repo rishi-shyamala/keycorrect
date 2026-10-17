@@ -317,6 +317,10 @@
     <string name="editing_speed_slow">Slow</string>
     <string name="editing_speed_normal">Normal</string>
     <string name="editing_speed_fast">Fast</string>
+    <string name="editing_section_gesture">Gesture typing</string>
+    <string name="editing_gesture_typing">Gesture typing</string>
+    <string name="editing_gesture_typing_summary">Slide across the letters to type a word</string>
+    <string name="editing_gesture_trail">Show gesture trail</string>
     <string name="editing_section_backspace">Backspace</string>
     <string name="editing_backspace_swipe">Swipe backspace to delete words</string>
     <string name="editing_backspace_swipe_summary">Swipe left on backspace to select words; let go to delete them.</string>

@@ -11,6 +11,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -33,6 +36,18 @@ private val ShadowSpread = 1.5.dp
 private const val SHADOW_LAYERS = 3
 private const val SHADOW_ALPHA = 0.07f
 
+/** Swipe trail stroke width. */
+private val TrailWidth = 6.dp
+
+/** The newest part of the trail, in milliseconds of finger time, is drawn at full strength. */
+internal const val TRAIL_SOLID_MS = 400L
+
+/** Older than the solid part, the trail fades out over this long, thinning as it goes. */
+internal const val TRAIL_FADE_MS = 400L
+
+/** The thinnest the trail gets (share of its width) just before it disappears. */
+private const val TRAIL_MIN_WIDTH = 0.35f
+
 /**
  * Draws the key preview bubble and long-press popup panel above the key rows. It covers the whole
  * keyboard content area (suggestion strip included) so they can overlap the strip, and takes no
@@ -49,11 +64,16 @@ internal fun KeyOverlay(
 ) {
     val colors = MaterialTheme.colorScheme
     val textMeasurer = rememberTextMeasurer(cacheSize = 32)
+    val trailPath = remember { Path() }
     val previewStyle = remember { TextStyle(fontSize = 32.sp) }
     val popupStyle = remember { TextStyle(fontSize = 22.sp) }
     Canvas(modifier.onGloballyPositioned { touch.overlayOrigin = it.positionInWindow() }) {
         val origin = touch.surfaceInOverlay
         val shiftState = shift()
+        touch.trail?.let {
+            // Read so a new point redraws; the path grows in place.
+            if (touch.trailVersion >= 0) drawTrail(it, origin, trailPath, colors.primary)
+        }
         touch.popup?.let { drawPopup(it, origin, shiftState, colors, textMeasurer, popupStyle) }
         touch.preview?.let {
             drawPreview(
@@ -67,6 +87,49 @@ internal fun KeyOverlay(
                 previewStyle,
             )
         }
+    }
+}
+
+/**
+ * The swipe [path] as a smooth line: the last [TRAIL_SOLID_MS] as one stroked curve (through the
+ * midpoints of the points, so no corners), older points as short segments fading and thinning over
+ * [TRAIL_FADE_MS]. Ages are relative to the newest point, so a finger held still keeps its trail.
+ * Allocation-free: [curve] is reused and the segments are plain lines.
+ */
+private fun DrawScope.drawTrail(path: SwipePath, origin: Offset, curve: Path, color: Color) {
+    val n = path.size
+    if (n < 2) return
+    val width = TrailWidth.toPx()
+    val newest = path.time(n - 1)
+    // Walk back to where the solid part ends and where the fade ends.
+    var solidStart = n - 1
+    while (solidStart > 0 && newest - path.time(solidStart - 1) <= TRAIL_SOLID_MS) solidStart--
+    curve.rewind()
+    curve.moveTo(path.x(solidStart) + origin.x, path.y(solidStart) + origin.y)
+    for (i in solidStart + 1 until n - 1) {
+        val mx = (path.x(i) + path.x(i + 1)) / 2f + origin.x
+        val my = (path.y(i) + path.y(i + 1)) / 2f + origin.y
+        curve.quadraticTo(path.x(i) + origin.x, path.y(i) + origin.y, mx, my)
+    }
+    curve.lineTo(path.x(n - 1) + origin.x, path.y(n - 1) + origin.y)
+    drawPath(
+        curve,
+        color,
+        style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    var i = solidStart
+    while (i > 0) {
+        val age = newest - path.time(i - 1)
+        if (age >= TRAIL_SOLID_MS + TRAIL_FADE_MS) break
+        val fade = 1f - (age - TRAIL_SOLID_MS).toFloat() / TRAIL_FADE_MS
+        drawLine(
+            color = color.copy(alpha = fade),
+            start = Offset(path.x(i - 1) + origin.x, path.y(i - 1) + origin.y),
+            end = Offset(path.x(i) + origin.x, path.y(i) + origin.y),
+            strokeWidth = width * (TRAIL_MIN_WIDTH + (1f - TRAIL_MIN_WIDTH) * fade),
+            cap = StrokeCap.Round,
+        )
+        i--
     }
 }
 
