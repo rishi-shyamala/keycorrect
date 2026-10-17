@@ -21,6 +21,22 @@ interface KeyGestures {
     /** The backspace swipe ended: delete what it selected ([commit]), or put the cursor back. */
     fun onBackspaceSwipeEnd(commit: Boolean)
 
+    /**
+     * A press on a letter key turned into a swipe (gesture typing, docs/PHASE5.md). [path] is the
+     * touch layer's live path: it keeps growing until [onSwipeEnd] or [onSwipeCancel] and is
+     * cleared after them, so keep no reference beyond those calls.
+     */
+    fun onSwipeStart(path: SwipePath) = Unit
+
+    /** The swipe's [path] grew (at most once per touch event). */
+    fun onSwipeMove(path: SwipePath) = Unit
+
+    /** The finger lifted: decode [path] and commit the word. */
+    fun onSwipeEnd(path: SwipePath) = Unit
+
+    /** The swipe was abandoned (the touch was lost): nothing is typed. */
+    fun onSwipeCancel() = Unit
+
     companion object {
         val None =
             object : KeyGestures {
