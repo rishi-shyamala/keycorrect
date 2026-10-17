@@ -323,7 +323,7 @@ class EditingControllerTest {
     @Test
     fun closeReturnsToTheKeysAndClearsSelectMode() {
         start("hello")
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
         perform(EditingAction.SelectToggle)
         perform(EditingAction.Close)
@@ -333,17 +333,30 @@ class EditingControllerTest {
     }
 
     @Test
-    fun spaceHoldAfterCloseStartsWithSelectModeOff() {
+    fun theEditButtonTogglesThePanel() {
+        start("hello")
+        assertThat(controller.editButtonVisible).isTrue()
+        controller.toggleEditingPanel()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
+        assertThat(controller.editButtonVisible).isTrue()
+        controller.toggleEditingPanel()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+        controller.showPanel(KeyboardPanel.Emoji)
+        assertThat(controller.editButtonVisible).isFalse()
+    }
+
+    @Test
+    fun theEditButtonOpensThePanelWithSelectModeOff() {
         start("hello")
         perform(EditingAction.SelectToggle)
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         assertThat(controller.editing.selectMode).isFalse()
     }
 
     @Test
     fun panelClosesInANewFieldButNotWhenTheSameFieldRestarts() {
         start("one", fieldId = 1)
-        gestures.onSpaceHold()
+        controller.toggleEditingPanel()
         perform(EditingAction.SelectToggle)
         start("one", fieldId = 1, restarting = true)
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)

@@ -312,7 +312,7 @@
     <string name="editing_summary">Spacebar cursor and backspace swipe</string>
     <string name="editing_section_space">Spacebar</string>
     <string name="editing_spacebar_cursor">Move the cursor with the spacebar</string>
-    <string name="editing_spacebar_cursor_summary">Drag on the right half of the spacebar to move the cursor, on the left half to select. Hold and let go to open the editing panel.</string>
+    <string name="editing_spacebar_cursor_summary">Drag on the right half of the spacebar to move the cursor, on the left half to select.</string>
     <string name="editing_cursor_speed">Cursor speed</string>
     <string name="editing_speed_slow">Slow</string>
     <string name="editing_speed_normal">Normal</string>

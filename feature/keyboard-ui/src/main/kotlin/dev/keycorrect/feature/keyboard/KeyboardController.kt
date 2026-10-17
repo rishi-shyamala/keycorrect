@@ -151,10 +151,6 @@ class KeyboardController(
             if (!searching) editing.onCursorDrag(dx, dy, select)
         }
 
-        override fun onSpaceHold() {
-            if (!searching) editing.onSpaceHold()
-        }
-
         override fun onBackspaceSwipe(words: Int) {
             if (!searching) editing.onBackspaceSwipe(words)
         }
@@ -508,10 +504,21 @@ class KeyboardController(
     internal val shortcuts: List<Shortcut>
         get() = shortcutsFor(profile.sensitive, clipboardAvailable)
 
+    /**
+     * Whether the strip shows the edit button at its left: while the keys or the editing panel are
+     * up (the emoji and clipboard panels use the strip for their own headers).
+     */
+    val editButtonVisible: Boolean
+        get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
+
+    /** The strip's edit button: opens the editing panel, or goes back to the keys from it. */
+    fun toggleEditingPanel() {
+        if (panel == KeyboardPanel.Editing) showPanel(KeyboardPanel.Keys) else editing.openPanel()
+    }
+
     /** Runs a shortcut button's action; [openSettings] is the host's way to open its settings. */
     internal fun onShortcut(shortcut: Shortcut, openSettings: () -> Unit) {
         when (shortcut) {
-            Shortcut.Editing -> showPanel(KeyboardPanel.Editing)
             Shortcut.Emoji -> showPanel(KeyboardPanel.Emoji)
             Shortcut.Clipboard -> openClipboard()
             Shortcut.Settings -> openSettings()

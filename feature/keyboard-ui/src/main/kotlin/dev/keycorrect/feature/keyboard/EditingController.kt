@@ -183,7 +183,8 @@ constructor(
         }
     }
 
-    override fun onSpaceHold() {
+    /** Opens the editing panel (the strip's edit button), with select mode off. */
+    fun openPanel() {
         selectMode = false
         showPanel(KeyboardPanel.Editing)
     }

@@ -12,9 +12,6 @@ interface KeyGestures {
      */
     fun onCursorDrag(dx: Int, dy: Int, select: Boolean)
 
-    /** Space was held and released without moving: open the editing panel. */
-    fun onSpaceHold()
-
     /**
      * Backspace was swiped left: the [words] whole words before the cursor are selected as a
      * preview of what release deletes (0: back where the swipe started, nothing selected).
@@ -28,8 +25,6 @@ interface KeyGestures {
         val None =
             object : KeyGestures {
                 override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) = Unit
-
-                override fun onSpaceHold() = Unit
 
                 override fun onBackspaceSwipe(words: Int) = Unit
 

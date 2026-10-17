@@ -112,21 +112,20 @@ class ShortcutRowTest {
     fun sensitiveFieldsLoseEmojiAndClipboard() {
         assertThat(shortcutsFor(sensitive = false, clipboardAvailable = true))
             .containsExactly(
-                Shortcut.Editing,
                 Shortcut.Emoji,
                 Shortcut.Clipboard,
                 Shortcut.Settings,
             )
             .inOrder()
         assertThat(shortcutsFor(sensitive = true, clipboardAvailable = true))
-            .containsExactly(Shortcut.Editing, Shortcut.Settings)
+            .containsExactly(Shortcut.Settings)
             .inOrder()
     }
 
     @Test
     fun clipboardIsHiddenWhenUnavailable() {
         assertThat(shortcutsFor(sensitive = false, clipboardAvailable = false))
-            .containsExactly(Shortcut.Editing, Shortcut.Emoji, Shortcut.Settings)
+            .containsExactly(Shortcut.Emoji, Shortcut.Settings)
             .inOrder()
     }
 
@@ -152,7 +151,7 @@ class ShortcutRowTest {
     @Test
     fun theRowIsHiddenWhileAPanelIsOpen() {
         start()
-        controller.onShortcut(Shortcut.Editing) {}
+        controller.onShortcut(Shortcut.Emoji) {}
         assertThat(controller.shortcutRowVisible).isFalse()
     }
 
@@ -164,15 +163,12 @@ class ShortcutRowTest {
         assertThat(controller.shortcuts).doesNotContain(Shortcut.Clipboard)
         clipboard.enabled = true
         start(password)
-        assertThat(controller.shortcuts).containsExactly(Shortcut.Editing, Shortcut.Settings)
+        assertThat(controller.shortcuts).containsExactly(Shortcut.Settings)
     }
 
     @Test
     fun theButtonsOpenTheirPanels() {
         start()
-        controller.onShortcut(Shortcut.Editing) {}
-        assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
-        controller.showPanel(KeyboardPanel.Keys)
         controller.onShortcut(Shortcut.Emoji) {}
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Emoji)
         controller.showPanel(KeyboardPanel.Keys)

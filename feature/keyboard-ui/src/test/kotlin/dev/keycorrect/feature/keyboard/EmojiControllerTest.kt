@@ -242,7 +242,6 @@ class EmojiControllerTest {
         start("hello")
         openSearch()
         controller.gestures.onCursorDrag(-2, 0, select = false)
-        controller.gestures.onSpaceHold()
         controller.gestures.onBackspaceSwipe(1)
         controller.gestures.onBackspaceSwipeEnd(commit = true)
         assertThat(editor.keys.filter { it.first == KeyEvent.KEYCODE_DPAD_LEFT }).isEmpty()

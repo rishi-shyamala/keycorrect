@@ -21,9 +21,6 @@ import androidx.compose.ui.unit.dp
 
 /** The icon buttons of the shortcut row (docs/PHASE4.md, feedback round 1, #5). */
 internal enum class Shortcut {
-    /** Opens the editing panel, as hold-and-release on the space bar does. */
-    Editing,
-
     /** Opens the emoji panel, as the emoji key does. Not in sensitive fields. */
     Emoji,
 
@@ -71,7 +68,6 @@ internal fun stripContent(
  */
 internal fun shortcutsFor(sensitive: Boolean, clipboardAvailable: Boolean): List<Shortcut> =
     buildList {
-        add(Shortcut.Editing)
         if (!sensitive) add(Shortcut.Emoji)
         if (clipboardAvailable && !sensitive) add(Shortcut.Clipboard)
         add(Shortcut.Settings)
@@ -109,10 +105,11 @@ internal fun ShortcutRow(
  * is 40 dp tall, so the touch target is the strip's full height.
  */
 @Composable
-private fun ShortcutButton(
+internal fun ShortcutButton(
     icon: ImageVector,
     description: String,
     modifier: Modifier,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     Box(
@@ -126,7 +123,9 @@ private fun ShortcutButton(
         Icon(
             icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint =
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp),
         )
     }
@@ -134,7 +133,6 @@ private fun ShortcutButton(
 
 private fun Shortcut.icon(): ImageVector =
     when (this) {
-        Shortcut.Editing -> ShortcutIcons.Editing
         Shortcut.Emoji -> ShortcutIcons.Emoji
         Shortcut.Clipboard -> ShortcutIcons.Clipboard
         Shortcut.Settings -> ShortcutIcons.Settings
@@ -144,7 +142,6 @@ private fun Shortcut.icon(): ImageVector =
 private fun Shortcut.description(): String =
     stringResource(
         when (this) {
-            Shortcut.Editing -> R.string.shortcut_editing
             Shortcut.Emoji -> R.string.shortcut_emoji
             Shortcut.Clipboard -> R.string.shortcut_clipboard
             Shortcut.Settings -> R.string.shortcut_settings

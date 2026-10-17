@@ -108,9 +108,9 @@ internal interface TouchHost {
  *   nothing. Other fingers never affect a drag or swipe in progress.
  * - Space (with [TouchHost.spacebarCursor]): moving past [TouchHost.slopPx] is a drag
  *   ([CursorDragTracker]) and no space is typed. A drag that went down on the left part of the key
- *   (before [SPACE_SELECT_SPLIT] of its width) selects; on the right part it moves the cursor. Held
- *   still for the long-press delay it is armed (a tick): releasing without moving calls
- *   `onSpaceHold`, and moving still drags by the same rule. A plain tap types a space.
+ *   (before [SPACE_SELECT_SPLIT] of its width) selects; on the right part it moves the cursor.
+ *   Without a drag, releasing types a space however long it was held (the editing panel has its own
+ *   button in the strip).
  * - Backspace (with [TouchHost.backspaceSwipe]): it still deletes on press. Moving left past the
  *   slop before the first repeat starts a swipe: the repeat stops, words = 1 + the extra leftward
  *   travel / [TouchHost.wordStepPx] (0 back within the slop), and release commits if words > 0. A
@@ -155,9 +155,6 @@ internal class TouchStateMachine(
         /** Where a space or backspace press has got to; [Gesture.None] for a plain press. */
         var gesture = Gesture.None
 
-        /** Space: [deadline] is the hold arming rather than a popup. */
-        var holdPending = false
-
         /** Emoji key: [deadline] is its long press (the clipboard). */
         var keyLongPressPending = false
 
@@ -177,7 +174,6 @@ internal class TouchStateMachine(
     private enum class Gesture {
         None,
         CursorDrag,
-        HoldArmed,
         KeyLongPress,
         SelectDrag,
         BackspaceSwipe,
@@ -204,11 +200,6 @@ internal class TouchStateMachine(
                 touch.preview = null
                 hostCall { host.onGestureTick() }
                 hostCall { host.onKeyLongPress(press.slot.key.action) }
-            } else if (press.holdPending) {
-                press.deadline = null
-                press.holdPending = false
-                press.gesture = Gesture.HoldArmed
-                hostCall { host.onGestureTick() }
             } else if (press.repeating) {
                 press.repeatFired = true
                 // Fire once per wake-up, not once per missed interval, so a stalled main thread
@@ -240,10 +231,6 @@ internal class TouchStateMachine(
                 hostCall { host.onKey(key.action, null) }
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
-            }
-            key.action == KeyAction.Space && host.spacebarCursor -> {
-                press.holdPending = true
-                press.deadline = clock() + host.longPressDelayMs
             }
             key.action == KeyAction.Emoji && host.clipboardLongPress -> {
                 press.keyLongPressPending = true
@@ -281,7 +268,6 @@ internal class TouchStateMachine(
             press.isShift -> hostCall { host.onShiftUp() }
             press.gesture == Gesture.BackspaceSwipe ->
                 hostCall { host.gestures.onBackspaceSwipeEnd(press.swipeWords > 0) }
-            press.gesture == Gesture.HoldArmed -> hostCall { host.gestures.onSpaceHold() }
             press.gesture != Gesture.None -> Unit
             popup != null -> {
                 touch.popup = null
@@ -335,8 +321,6 @@ internal class TouchStateMachine(
             val slot = press.slot
             val split = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
             press.gesture = if (press.downX < split) Gesture.SelectDrag else Gesture.CursorDrag
-            press.deadline = null
-            press.holdPending = false
             press.drag =
                 CursorDragTracker(
                     host.cursorStepPx,
@@ -388,7 +372,7 @@ internal class TouchStateMachine(
 
     private fun openPopup(id: Long, press: Press) {
         val slot = press.slot
-        val panel = PopupPanel.above(slot, slot.key.popup.size, geometry.width)
+        val panel = PopupPanel.above(slot, slot.key.popup.size, geometry.width, geometry.unit)
         touch.preview = null
         touch.popup = PopupState(id, slot, panel, slot.key.popup, panel.indexAt(press.x))
         hostCall { host.onPopupOpened() }
