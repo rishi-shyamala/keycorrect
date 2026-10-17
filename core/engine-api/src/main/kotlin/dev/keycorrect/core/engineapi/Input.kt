@@ -20,6 +20,16 @@ data class ComposingInput(val text: String, val touches: List<TouchPoint?>) {
     }
 }
 
+/**
+ * A swipe: the finger's path from down to up, in drawing order, in the same pixel space as
+ * [KeySpec]s. Points are as sampled by the touch system (not resampled).
+ */
+data class GestureInput(val points: List<TouchPoint>) {
+    init {
+        require(points.size >= 2) { "a gesture needs at least two points" }
+    }
+}
+
 /** A character key's position, so engines can build a spatial (touch) model. */
 data class KeySpec(
     val char: Char,

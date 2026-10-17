@@ -133,6 +133,15 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
       mostly debug-build Compose.
     - The tool strip reads its animation progress only in the layout and draw phases, so typing
       doesn't recompose it.
+  - **2026-10-17, Phase 5 PR A (swipe decoder).** It is a new path; typing is unchanged.
+    - Tab S9 `GestureBenchmark`:
+      - `decodeOnLift`: 149 ms per 60 words (~2.5 ms per decode), 20k allocations. Before the
+        template pooling it was 418 ms and 461k.
+      - `decodeCold`: the first decode on a fresh index takes 3.2 ms median, 17.9 ms max, inside
+        the 30 ms budget.
+      - `warmUp`: 11.6 ms. It runs off the engine lock, so typed predictions never wait for it.
+    - Desktop swipe eval: p50/p95/p99 0.26/1.98/3.46 ms.
+    - A key-reach pre-filter avoids 44% of template builds on cold decodes.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.

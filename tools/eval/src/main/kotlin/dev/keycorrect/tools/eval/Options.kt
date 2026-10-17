@@ -65,11 +65,14 @@ data class Options(
     val modelConfig: Map<String, String> = emptyMap(),
     /** Learn mode: `field=value` overrides of `ClassifierConfig`. */
     val classifierConfig: Map<String, String> = emptyMap(),
+    /** Swipe mode: jitter of every letter's control point, in key widths. */
+    val swipeNoise: Float = 0.25f,
 ) {
     enum class Mode {
         Eval,
         Learn,
         Misspell,
+        Swipe,
     }
 
     companion object {
@@ -140,6 +143,10 @@ data class Options(
               --model k=v,...      PersonalModelConfig overrides (e.g. targetRevertRate=0.1,thresholdMaxUp=1)
               --classifier k=v,... ClassifierConfig overrides (e.g. typoMaxEditsLong=1)
               --tap-prob P         taps the target if it is on the strip but not applied (0.6)
+
+              --mode swipe         synthetic swipe typing (outputs under <out>/swipe/); single-threaded; options:
+              --swipe-noise F      jitter of each letter's control point in key widths (default 0.25)
+                                   (--sentences, --split, --offset, --seed, --config, --oracle-context, --failures apply)
 
             config keys: ${ConfigOverrides.KEYS.joinToString(", ")}
             """
@@ -241,7 +248,7 @@ data class Options(
                                 mode =
                                     Mode.entries.firstOrNull { it.name.equals(value, true) }
                                         ?: throw IllegalArgumentException(
-                                            "--mode: eval | learn | misspell"
+                                            "--mode: eval | learn | misspell | swipe"
                                         )
                             )
                     }
@@ -257,6 +264,7 @@ data class Options(
                             o.copy(
                                 classifierConfig = o.classifierConfig + ConfigOverrides.parse(v())
                             )
+                    "--swipe-noise" -> o = o.copy(swipeNoise = v().toFloat())
                     "--tap-prob" -> o = o.copy(tapProbability = v().toFloat())
                     "--help",
                     "-h" -> o = o.copy(help = true)

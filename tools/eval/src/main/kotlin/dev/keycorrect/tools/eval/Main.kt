@@ -25,6 +25,7 @@ fun main(args: Array<String>) {
         when (options.mode) {
             Options.Mode.Learn -> LearnMain(options).run()
             Options.Mode.Misspell -> MisspellMain(options).run()
+            Options.Mode.Swipe -> SwipeMain(options).run()
             Options.Mode.Eval -> EvalMain(options).run()
         }
     } catch (e: IllegalArgumentException) {

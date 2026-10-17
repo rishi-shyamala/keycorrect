@@ -67,7 +67,7 @@
     <ID>ReturnCount:TrieSearch.kt:TrieSearch$private fun push</ID>
     <ID>ReturnCount:WordAligner.kt:WordAligner$private fun transposition</ID>
     <ID>TooGenericExceptionCaught:ContractionIndex.kt:ContractionIndex$e: Exception</ID>
-    <ID>TooManyFunctions:ClassicEngine.kt:ClassicEngine : PredictiveEngine</ID>
+    <ID>TooManyFunctions:ClassicEngine.kt:ClassicEngine : PredictiveEngineGestureEngine</ID>
     <ID>TooManyFunctions:LanguageModel.kt:LanguageModel</ID>
     <ID>TooManyFunctions:TrieSearch.kt:TrieSearch</ID>
   </CurrentIssues>
