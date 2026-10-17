@@ -34,9 +34,9 @@
     <string name="edit_up_description">Move cursor up</string>
     <string name="edit_down">↓</string>
     <string name="edit_down_description">Move cursor down</string>
-    <string name="edit_word_left">Word ←</string>
+    <string name="edit_word_left">Word</string>
     <string name="edit_word_left_description">Move cursor one word left</string>
-    <string name="edit_word_right">Word →</string>
+    <string name="edit_word_right">Word</string>
     <string name="edit_word_right_description">Move cursor one word right</string>
     <string name="edit_home">Home</string>
     <string name="edit_home_description">Move cursor to start of line</string>
@@ -46,7 +46,7 @@
     <string name="edit_select_toggle_description">Select mode: moves extend the selection</string>
     <string name="edit_select_word">Word</string>
     <string name="edit_select_word_description">Select word</string>
-    <string name="edit_select_sentence">Sentence</string>
+    <string name="edit_select_sentence">Sent</string>
     <string name="edit_select_sentence_description">Select sentence</string>
     <string name="edit_select_line">Line</string>
     <string name="edit_select_line_description">Select line</string>
