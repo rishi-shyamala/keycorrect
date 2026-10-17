@@ -421,6 +421,63 @@ class BuiltInLayoutsTest {
         assertThat(rows[0].map { it.width }).isEqualTo(rows[1].map { it.width })
     }
 
+    private fun modeSwitchOf(layer: KeyboardLayer) = layer.rows.last().keys.first()
+
+    @Test
+    fun fieldModePopupIsOnTheModeSwitchOfEveryTextBottomRowOnlyWhenOffered() {
+        for (variant in BottomRowVariant.entries) {
+            val on =
+                composer.compose(
+                    KeyboardSet.Default,
+                    "letters",
+                    variant,
+                    ComposeOptions(fieldModes = true),
+                )
+            assertThat(modeSwitchOf(on).popup.map { it.action })
+                .containsExactly(
+                    KeyAction.SetFieldMode(FieldMode.Text),
+                    KeyAction.SetFieldMode(FieldMode.Email),
+                    KeyAction.SetFieldMode(FieldMode.Url),
+                    KeyAction.SetFieldMode(FieldMode.Number),
+                    KeyAction.SetFieldMode(FieldMode.Phone),
+                )
+                .inOrder()
+            assertThat(modeSwitchOf(on).hint).isNull()
+            val off = composer.compose(KeyboardSet.Default, "letters", variant)
+            assertThat(modeSwitchOf(off).popup).isEmpty()
+            // Nothing else about the row changes.
+            assertThat(off.rows.last().keys.map { it.width })
+                .isEqualTo(on.rows.last().keys.map { it.width })
+        }
+    }
+
+    @Test
+    fun numberAndPhonePadsGetAWayBackOnlyWhenFieldModesAreOffered() {
+        for (id in listOf("numpad", "phone")) {
+            val plain = composer.compose(KeyboardSet.Default, id)
+            val withBack =
+                composer.compose(
+                    KeyboardSet.Default,
+                    id,
+                    options = ComposeOptions(fieldModes = true),
+                )
+            assertThat(withBack.rows.dropLast(1)).isEqualTo(plain.rows)
+            val back = withBack.rows.last().keys.single()
+            assertThat(back.label).isEqualTo("ABC")
+            assertThat(back.action).isEqualTo(KeyAction.SetFieldMode(FieldMode.Text))
+            assertThat(back.width).isEqualTo(plain.rows.maxOf { it.width })
+            assertThat(back.popup).hasSize(5)
+        }
+        // The datetime pad is not a switch target: it never gets the row.
+        val datetime =
+            composer.compose(
+                KeyboardSet.Default,
+                "datetime",
+                options = ComposeOptions(fieldModes = true),
+            )
+        assertThat(datetime.rows).isEqualTo(composer.compose(KeyboardSet.Default, "datetime").rows)
+    }
+
     @Test
     fun theBottomRowsOfBothSymbolsPagesAreIdentical() {
         for (variant in BottomRowVariant.entries) {

@@ -330,6 +330,66 @@ class LayoutParserTest {
         assertThat(msg).contains("rows[1]")
     }
 
+    private fun bottomWith(key: String) =
+        parse(layout("[[$key]]", kind = "bottom", extra = """"bottomRow":"included","""))
+
+    private fun bottomError(key: String) =
+        errorOf(layout("[[$key]]", kind = "bottom", extra = """"bottomRow":"included","""))
+
+    // fieldMode
+
+    @Test
+    fun fieldModeEntriesInAModeSwitchPopupResolve() {
+        val switch =
+            bottomWith(
+                    """{"type":"modeSwitch","hint":null,"popup":[
+                        {"type":"fieldMode","mode":"text"},
+                        {"type":"fieldMode","mode":"email","label":"E"},
+                        {"type":"fieldMode","mode":"url"},
+                        {"type":"fieldMode","mode":"number"},
+                        {"type":"fieldMode","mode":"phone"}]}"""
+                )
+                .rows("letters")[0]
+                .keys[0]
+        assertThat(switch.action).isEqualTo(KeyAction.SwitchLayer("symbols"))
+        assertThat(switch.hint).isNull()
+        assertThat(switch.popup.map { it.action })
+            .containsExactly(
+                KeyAction.SetFieldMode(FieldMode.Text),
+                KeyAction.SetFieldMode(FieldMode.Email),
+                KeyAction.SetFieldMode(FieldMode.Url),
+                KeyAction.SetFieldMode(FieldMode.Number),
+                KeyAction.SetFieldMode(FieldMode.Phone),
+            )
+            .inOrder()
+        assertThat(switch.popup.map { it.label })
+            .containsExactly("Abc", "E", "/", "123", "\u260E")
+            .inOrder()
+        assertThat(switch.popup[1].description).isEqualTo("Email keyboard")
+    }
+
+    @Test
+    fun fieldModeNeedsAKnownMode() {
+        val missing = bottomError("""{"type":"modeSwitch","popup":[{"type":"fieldMode"}]}""")
+        assertThat(missing).contains("mode")
+        val unknown =
+            bottomError("""{"type":"modeSwitch","popup":[{"type":"fieldMode","mode":"fax"}]}""")
+        assertThat(unknown).contains("unknown mode 'fax'")
+    }
+
+    @Test
+    fun fieldModeIsOnlyAllowedInAModeSwitchPopup() {
+        assertThat(bottomError("""{"type":"fieldMode","mode":"text"}""")).contains("fieldMode")
+        assertThat(
+                errorOf(
+                    layout("""[[{"label":"a","popup":[{"type":"fieldMode","mode":"text"}]}]]""")
+                )
+            )
+            .contains("fieldMode")
+        assertThat(bottomError("""{"type":"modeSwitch","popup":["a"]}""")).contains("fieldMode")
+        assertThat(errorOf(layout("""[[{"label":"a","mode":"text"}]]"""))).contains("mode")
+    }
+
     @Test
     fun modeSwitchOutsideBottomLayout() {
         val msg = errorOf(layout("""[["a",{"type":"modeSwitch"}]]"""))

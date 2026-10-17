@@ -27,8 +27,26 @@ sealed interface KeyAction {
     /** Opens the emoji panel; a long-press opens the clipboard (Phase 4). */
     data object Emoji : KeyAction
 
+    /**
+     * Switches the keyboard to the layout and behaviour of a field of kind [mode], as if the field
+     * had declared it. Offered in the long-press popup of the mode-switch key (?123 / ABC), and
+     * only in plain text fields, which have no input type of their own to follow.
+     */
+    data class SetFieldMode(val mode: FieldMode) : KeyAction
+
     /** A non-interactive gap. */
     data object None : KeyAction
+}
+
+/**
+ * The field kinds a user can switch a plain text field to by hand (see [KeyAction.SetFieldMode]).
+ */
+enum class FieldMode(val json: String, val label: String, val description: String) {
+    Text("text", "Abc", "Text keyboard"),
+    Email("email", "@", "Email keyboard"),
+    Url("url", "/", "URL keyboard"),
+    Number("number", "123", "Number keyboard"),
+    Phone("phone", "\u260E", "Phone keyboard"),
 }
 
 enum class KeyModifier {

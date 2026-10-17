@@ -33,6 +33,7 @@ internal object LayoutParser {
         KeyCode("keycode", 1f, KeyStyle.Modifier),
         Modifier("modifier", 1f, KeyStyle.Modifier),
         Emoji("emoji", 1f, KeyStyle.Modifier),
+        FieldMode("fieldMode", 1f, KeyStyle.Character),
     }
 
     /** A `keycode` key's `code` names: the action code, default label and spoken description. */
@@ -188,9 +189,17 @@ internal object LayoutParser {
             Type.entries.firstOrNull { it.json == key.type }
                 ?: fail("$path.type", "unknown type '${key.type}'")
         val isTyped = type == Type.Char || type == Type.Text
-        val takesPopup = isTyped || type == Type.KeyCode
-        if (popup && !takesPopup)
-            fail("$path.type", "popup keys must be char, text or keycode, got '${key.type}'")
+        val takesPopup = isTyped || type == Type.KeyCode || type == Type.ModeSwitch
+        val popupEntry = isTyped || type == Type.KeyCode || type == Type.FieldMode
+        if (popup && !popupEntry) {
+            fail(
+                "$path.type",
+                "popup keys must be char, text, keycode or fieldMode, got '${key.type}'",
+            )
+        }
+        if (!popup && type == Type.FieldMode) {
+            fail("$path.type", "fieldMode keys are only allowed in a modeSwitch key's popup")
+        }
         if (popup) {
             // Popup entries are drawn as fixed-size cells in the popup panel, so these are no-ops.
             if (key.popup.isNotEmpty()) fail("$path.popup", "popups cannot be nested")
@@ -198,7 +207,10 @@ internal object LayoutParser {
             if (key.width != null) fail("$path.width", "not valid on popup entries")
             if (key.style != null) fail("$path.style", "not valid on popup entries")
         } else if (!takesPopup && key.popup.isNotEmpty()) {
-            fail("$path.popup", "only valid on char/text/keycode keys, got '${key.type}'")
+            fail(
+                "$path.popup",
+                "only valid on char/text/keycode/modeSwitch keys, got '${key.type}'",
+            )
         }
         if (type == Type.ModeSwitch && kind != LayoutKind.Bottom) {
             fail(path, "modeSwitch is only allowed in bottom layouts")
@@ -212,6 +224,8 @@ internal object LayoutParser {
             fail("$path.code", "only valid on keycode keys")
         if (type != Type.Modifier && key.modifier != null)
             fail("$path.modifier", "only valid on modifier keys")
+        if (type != Type.FieldMode && key.mode != null)
+            fail("$path.mode", "only valid on fieldMode keys")
 
         val width = key.width ?: type.width
         if (!(width > 0f)) fail("$path.width", "must be positive, got $width")
@@ -222,6 +236,13 @@ internal object LayoutParser {
             key.popup.mapIndexed { i, p ->
                 resolveKey(p, "$path.popup[$i]", kind, onLetters, popup = true, fail)
             }
+        val modeEntries = popups.count { it.action is KeyAction.SetFieldMode }
+        if (type == Type.ModeSwitch && modeEntries != popups.size) {
+            fail("$path.popup", "a modeSwitch key's popup entries must be fieldMode keys")
+        }
+        if (type != Type.ModeSwitch && modeEntries > 0) {
+            fail("$path.popup", "fieldMode entries are only allowed in a modeSwitch key's popup")
+        }
         val hint = if (key.hint == HINT_UNSET) popups.firstOrNull()?.label else key.hint
 
         fun build(
@@ -293,6 +314,17 @@ internal object LayoutParser {
                 build(key.label ?: label, KeyAction.Modifier(modifier), description)
             }
             Type.Emoji -> build(key.label ?: "☺", KeyAction.Emoji, "Emoji")
+            Type.FieldMode -> {
+                val name = key.mode ?: fail("$path.mode", "fieldMode key requires a mode")
+                val mode =
+                    FieldMode.entries.firstOrNull { it.json == name }
+                        ?: fail(
+                            "$path.mode",
+                            "unknown mode '$name', expected one of " +
+                                FieldMode.entries.joinToString { it.json },
+                        )
+                build(key.label ?: mode.label, KeyAction.SetFieldMode(mode), mode.description)
+            }
         }
     }
 

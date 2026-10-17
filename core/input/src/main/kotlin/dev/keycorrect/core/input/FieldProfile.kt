@@ -44,6 +44,35 @@ data class FieldProfile(
     val signedNumber: Boolean,
     val decimalNumber: Boolean,
 ) {
+    /**
+     * This profile as if the field had declared [asKind] instead (the user switched a plain text
+     * field by hand): the layout kind, and what follows from it for suggestions, autocorrect and
+     * learning, as [from] decides it. Enter action, multi-line and the `no suggestions` flag stay.
+     * Only email, URL, number and phone are supported; any other kind returns this profile.
+     */
+    fun withKind(asKind: FieldKind): FieldProfile =
+        when (asKind) {
+            FieldKind.Email,
+            FieldKind.Url ->
+                copy(
+                    kind = asKind,
+                    autoCapitalize = AutoCapitalize.None,
+                    autocorrectEnabled = false,
+                )
+            FieldKind.Number,
+            FieldKind.Phone ->
+                copy(
+                    kind = asKind,
+                    autoCapitalize = AutoCapitalize.None,
+                    suggestionsEnabled = false,
+                    autocorrectEnabled = false,
+                    learningEnabled = false,
+                    signedNumber = asKind == FieldKind.Number,
+                    decimalNumber = asKind == FieldKind.Number,
+                )
+            else -> this
+        }
+
     companion object {
         /** Derives a profile from the [EditorInfo] of the focused field. */
         fun from(info: EditorInfo): FieldProfile = from(info.inputType, info.imeOptions)
