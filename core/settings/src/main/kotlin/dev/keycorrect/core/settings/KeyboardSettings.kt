@@ -96,6 +96,12 @@ data class KeyboardSettings(
     /** Distinct vibration when a finished word is not in any dictionary and wasn't corrected. */
     val hapticOnUnknownWord: Boolean = true,
     /**
+     * Length of each of the two pulses of the autocorrect haptic in ms, [HAPTIC_PULSE_MS_RANGE].
+     */
+    val autocorrectPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
+    /** Length of each of the three pulses of the unknown-word haptic in ms, same range. */
+    val unknownWordPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
+    /**
      * Dragging on the spacebar moves the cursor (right half) or selects (left half);
      * docs/PHASE4.md.
      */
@@ -135,6 +141,8 @@ data class KeyboardSettings(
             longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
             hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
             hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
+            autocorrectPulseMs = autocorrectPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
+            unknownWordPulseMs = unknownWordPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
             implicitAddReverts = implicitAddReverts.coerceIn(REVERTS_RANGE),
             suppressCorrectionReverts =
                 suppressCorrectionReverts
@@ -156,6 +164,8 @@ data class KeyboardSettings(
         val LONG_PRESS_DELAY_MS_RANGE = 150..800
         val HAPTIC_DURATION_MS_RANGE = 0..100
         val HAPTIC_STRENGTH_RANGE = 0..255
+        val HAPTIC_PULSE_MS_RANGE = 5..60
+        const val DEFAULT_HAPTIC_PULSE_MS = 20
         val SOUND_VOLUME_RANGE = 0f..1f
         val REVERTS_RANGE = 1..5
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100

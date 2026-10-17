@@ -64,6 +64,8 @@ class SettingsRepositoryTest {
         assertThat(d.hapticsEnabled).isTrue()
         assertThat(d.hapticDurationMs).isEqualTo(0)
         assertThat(d.hapticStrength).isEqualTo(0)
+        assertThat(d.autocorrectPulseMs).isEqualTo(20)
+        assertThat(d.unknownWordPulseMs).isEqualTo(20)
         assertThat(d.soundEnabled).isFalse()
         assertThat(d.soundVolume).isEqualTo(0.5f)
         assertThat(d.inlineAutofill).isTrue()
@@ -92,6 +94,8 @@ class SettingsRepositoryTest {
                 hapticsEnabled = false,
                 hapticDurationMs = 25,
                 hapticStrength = 128,
+                autocorrectPulseMs = 35,
+                unknownWordPulseMs = 9,
                 soundEnabled = true,
                 soundVolume = 0.8f,
                 inlineAutofill = false,
@@ -174,6 +178,17 @@ class SettingsRepositoryTest {
         val raw = store.data.first()
         assertThat(raw[intPreferencesKey("key_height_dp")]).isEqualTo(80)
         assertThat(raw[floatPreferencesKey("sound_volume")]).isEqualTo(1f)
+    }
+
+    @Test
+    fun hapticPulseLengthsAreClampedToFiveToSixtyOnWriteAndRead() = runTest {
+        repo.update { it.copy(autocorrectPulseMs = 1, unknownWordPulseMs = 500) }
+        val s = repo.settings.first()
+        assertThat(s.autocorrectPulseMs).isEqualTo(5)
+        assertThat(s.unknownWordPulseMs).isEqualTo(60)
+        assertThat(store.data.first()[intPreferencesKey("autocorrect_pulse_ms")]).isEqualTo(5)
+        store.edit { it[intPreferencesKey("unknown_word_pulse_ms")] = -3 }
+        assertThat(repo.settings.first().unknownWordPulseMs).isEqualTo(5)
     }
 
     @Test

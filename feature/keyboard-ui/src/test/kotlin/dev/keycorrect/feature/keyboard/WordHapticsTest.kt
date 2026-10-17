@@ -255,12 +255,25 @@ class WordHapticsTest {
     }
 
     @Test
-    fun theUnknownWordBuzzIsThreeShortPulsesDistinctFromTheDoubleTick() {
-        val timings = unknownWordTimings()
-        // off, on, off, on, off, on: three ~12 ms pulses starting 60 ms apart.
-        assertThat(timings.toList()).containsExactly(0L, 12L, 48L, 12L, 48L, 12L).inOrder()
-        val starts = (1 until timings.size step 2).map { timings.take(it).sum() }
-        assertThat(starts.zipWithNext { a, b -> b - a }).containsExactly(60L, 60L)
-        assertThat(timings.size / 2).isGreaterThan(2) // the autocorrect pattern has two
+    fun theUnknownWordBuzzIsThreePulsesDistinctFromTheDoubleTick() {
+        val timings = unknownWordTimings(20)
+        // off, on, off, on, off, on: three 20 ms pulses starting 68 ms apart.
+        assertThat(timings.toList()).containsExactly(0L, 20L, 48L, 20L, 48L, 20L).inOrder()
+        assertThat(timings.size / 2).isEqualTo(3)
+        assertThat(autocorrectTimings(20).size / 2).isEqualTo(2)
+    }
+
+    @Test
+    fun theAutocorrectDoublePulseUsesItsOwnLength() {
+        assertThat(autocorrectTimings(20).toList()).containsExactly(0L, 20L, 43L, 20L).inOrder()
+        assertThat(autocorrectTimings(60).toList()).containsExactly(0L, 60L, 43L, 60L).inOrder()
+        assertThat(autocorrectTimings(5).toList()).containsExactly(0L, 5L, 43L, 5L).inOrder()
+    }
+
+    @Test
+    fun theSettingsDefaultToTwentyMillisecondPulses() {
+        val defaults = KeyboardSettings()
+        assertThat(autocorrectTimings(defaults.autocorrectPulseMs)[1]).isEqualTo(20L)
+        assertThat(unknownWordTimings(defaults.unknownWordPulseMs)[1]).isEqualTo(20L)
     }
 }
