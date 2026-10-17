@@ -40,11 +40,18 @@ internal object TextUnits {
         var to = end
         while (from > 0 && isWordChar(text, from - 1)) from--
         while (to < text.length && isWordChar(text, to)) to++
-        if (from < to) return TextSpan(from, to)
-        if (start != end) return null
-        val back = start - 1
+        return when {
+            from < to -> TextSpan(from, to)
+            start == end -> wordBeforeSpace(text, start)
+            else -> null
+        }
+    }
+
+    /** The word just before [cursor] when only one space separates them ("foo |"), else null. */
+    private fun wordBeforeSpace(text: CharSequence, cursor: Int): TextSpan? {
+        val back = cursor - 1
         if (back <= 0 || text[back] != ' ' || !isWordChar(text, back - 1)) return null
-        from = back
+        var from = back
         while (from > 0 && isWordChar(text, from - 1)) from--
         return TextSpan(from, back)
     }

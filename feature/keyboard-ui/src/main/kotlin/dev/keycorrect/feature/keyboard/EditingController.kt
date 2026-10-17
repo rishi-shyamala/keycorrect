@@ -125,7 +125,9 @@ private fun moves(code: Int, meta: Int = 0) = KeyPress(code, meta, moves = true)
  * is still in flight; until then the action is retried ([onEditsSettled]) rather than given up.
  */
 @Suppress("TooManyFunctions")
-internal class EditingController(
+internal class EditingController
+@Suppress("LongParameterList") // the editor, then read-only views of the controller's state
+constructor(
     private val editor: TextEditor,
     private val endComposing: () -> Unit,
     private val showPanel: (KeyboardPanel) -> Unit,
@@ -240,13 +242,13 @@ internal class EditingController(
         if (sensitive()) return null
         endComposing()
         val read = editor.surroundingText(SWIPE_CONTEXT_CHARS, 0)?.takeIf { it.collapsed }
-        read ?: return null
-        val base = fieldBase(read)
-        if (base < 0) {
-            originUnsettled = true
-            return null
+        val base = read?.let(::fieldBase) ?: -1
+        if (read != null && base < 0) originUnsettled = true
+        return if (read != null && base >= 0) {
+            Swipe(base + read.selectionStart, read.text.subSequence(0, read.selectionStart))
+        } else {
+            null
         }
-        return Swipe(base + read.selectionStart, read.text.subSequence(0, read.selectionStart))
     }
 
     /**
@@ -256,9 +258,11 @@ internal class EditingController(
      */
     private fun fieldBase(read: Surrounding): Int {
         if (read.offset >= 0) return read.offset
-        val tracked = settledSelection()?.takeIf { it.known } ?: return -1
-        if (tracked.selEnd - tracked.selStart != read.selectionEnd - read.selectionStart) return -1
-        return (tracked.selStart - read.selectionStart).coerceAtLeast(-1)
+        val tracked =
+            settledSelection()?.takeIf {
+                it.known && it.selEnd - it.selStart == read.selectionEnd - read.selectionStart
+            }
+        return tracked?.let { (it.selStart - read.selectionStart).coerceAtLeast(-1) } ?: -1
     }
 
     // ------------------------------------------------------------------ editing panel
