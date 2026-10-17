@@ -9,20 +9,37 @@ plugins {
 // Settings → About shows exactly which build is installed.
 val appVersion =
     Properties().apply { rootProject.file("version.properties").inputStream().use(::load) }
-val gitCommit: String =
+
+/** Output of a git command, or null if git is missing, the command fails or this isn't a repo. */
+fun git(vararg args: String): String? = runCatching {
     providers
         .exec {
-            commandLine("git", "rev-parse", "--short", "HEAD")
+            commandLine("git", *args)
             isIgnoreExitValue = true
         }
         .standardOutput
         .asText
-        .map { it.trim() }
-        .getOrElse("")
+        .get()
+        .trim()
+}
+    .getOrNull()
+
+// "<short sha>", plus "-dirty" when tracked files have uncommitted changes; empty without git.
+val gitCommit: String =
+    git("rev-parse", "--short", "HEAD").orEmpty().let { sha ->
+        val dirty =
+            sha.isNotEmpty() &&
+                git("status", "--porcelain", "--untracked-files=no")?.isNotEmpty() == true
+        if (dirty) "$sha-dirty" else sha
+    }
 
 // Release signing comes from Gradle properties outside the repo (~/.gradle/gradle.properties,
-// docs/INSTALL.md). Without them the release APK is built unsigned (as on CI).
-val releaseStoreFile = providers.gradleProperty("keycorrect.release.storeFile").orNull
+// docs/INSTALL.md). It is configured only when all four exist; otherwise the release APK is built
+// unsigned (as on CI).
+val releaseSigning =
+    listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        .associateWith { providers.gradleProperty("keycorrect.release.$it").orNull }
+        .takeIf { props -> props.values.all { it != null } }
 
 android {
     namespace = "dev.keycorrect"
@@ -46,12 +63,12 @@ android {
     }
 
     signingConfigs {
-        if (releaseStoreFile != null) {
+        releaseSigning?.let { props ->
             create("release") {
-                storeFile = file(releaseStoreFile)
-                storePassword = providers.gradleProperty("keycorrect.release.storePassword").get()
-                keyAlias = providers.gradleProperty("keycorrect.release.keyAlias").get()
-                keyPassword = providers.gradleProperty("keycorrect.release.keyPassword").get()
+                storeFile = file(props.getValue("storeFile")!!)
+                storePassword = props.getValue("storePassword")
+                keyAlias = props.getValue("keyAlias")
+                keyPassword = props.getValue("keyPassword")
             }
         }
     }

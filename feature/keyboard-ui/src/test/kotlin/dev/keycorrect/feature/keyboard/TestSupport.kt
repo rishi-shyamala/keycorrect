@@ -1,6 +1,9 @@
 package dev.keycorrect.feature.keyboard
 
 import android.view.KeyEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.GestureRequest
@@ -283,7 +286,8 @@ internal class SimEditor : TextEditor {
 
 /** A backend whose predictor, shortcuts and known words are set by the test. */
 internal class FakeBackend : PredictionBackend {
-    override var predictor: Predictor? = null
+    /** Snapshot state, like the app's backend: the keyboard recomposes when the engine arrives. */
+    override var predictor: Predictor? by mutableStateOf(null)
     val shortcuts = mutableMapOf<String, ShortcutRule>()
     val known = mutableSetOf<String>()
     val added = mutableListOf<String>()
@@ -338,8 +342,12 @@ internal fun testEnv(
     expander: ShortcutExpander = ShortcutExpander(),
     postToMain: (Runnable) -> Unit = { it.run() },
     separatorWaitMs: Long = DecoderLoop.SEPARATOR_WAIT_MS,
+    gestureWaitMs: Long = DecoderLoop.GESTURE_WAIT_MS,
 ): PredictionEnvironment {
-    val loop = DecoderLoop(executor, postToMain, separatorWaitMs) { backend.predictor }
+    val loop =
+        DecoderLoop(executor, postToMain, separatorWaitMs, gestureWaitMs) {
+            backend.predictor
+        }
     return PredictionEnvironment(backend, loop, scheduler, expander)
 }
 

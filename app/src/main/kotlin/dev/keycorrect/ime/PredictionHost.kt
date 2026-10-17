@@ -2,6 +2,9 @@ package dev.keycorrect.ime
 
 import android.content.res.AssetManager
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.keycorrect.core.data.ShortcutMode
 import dev.keycorrect.core.data.ShortcutSnapshot
 import dev.keycorrect.core.data.ShortcutStore
@@ -65,8 +68,12 @@ class PredictionHost(
     /** `InputProfile.touchKey` of the layout on screen; read on the decoder thread per decode. */
     private val touchKey: () -> String? = { null },
 ) : PredictionBackend {
-    @Volatile
-    override var predictor: Predictor? = null
+    /**
+     * Snapshot state: the keyboard reads it while composing (gesture typing is on only with an
+     * engine), and the engine arrives on a background thread, after the first composition. State
+     * writes are safe from any thread; the Compose runtime applies them and recomposes readers.
+     */
+    override var predictor: Predictor? by mutableStateOf(null)
         private set
 
     @Volatile private var dictionary: Dictionary? = null

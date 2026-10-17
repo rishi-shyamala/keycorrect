@@ -15,6 +15,7 @@ import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
 import dev.keycorrect.core.input.AutoCapitalize
+import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.TextEditor
@@ -86,6 +87,12 @@ internal class PredictiveInput(
     private val onEmojiUsed: (String, String) -> Unit = { _, _ -> },
     /** The form of a suggested emoji to show and insert (the user's skin tone or variant). */
     private val emojiForm: (Emoji) -> String = { it.value },
+    /**
+     * A swipe's word was typed after the lift (its decode was late, or a key arrived first and
+     * waited for it): the owner consumes shift and refreshes auto-capitalisation, as it does when
+     * [swipeEnd] returns true.
+     */
+    private val onLateSwipe: () -> Unit = {},
 ) {
     /** The touches of recently finished words, for Phase 3. In memory only. */
     val touchLog = WordTouchLog()
@@ -149,6 +156,12 @@ internal class PredictiveInput(
      * Cleared by any other key, a cursor move, an external change and a field change.
      */
     private var swipe: SwipedWord? = null
+
+    /**
+     * A swipe whose final decode was not ready on lift: nothing is typed until it arrives, and only
+     * if no other input came first (see [swipeEnd] and [settlePendingSwipe]).
+     */
+    private var pendingSwipe: PendingSwipe? = null
 
     /** The layout whose swipe index was last asked for, so a swipe only warms it up once. */
     private var warmedLayoutId = -1L
@@ -263,6 +276,7 @@ internal class PredictiveInput(
         if (!predictionOn) {
             swipe = null
             swiping = null
+            dropPendingSwipe()
         }
         if (was && !predictionOn) {
             finishAsTyped()
@@ -1009,21 +1023,37 @@ internal class PredictiveInput(
 
     // ------------------------------------------------------------------ swipe typing
 
-    /** A swipe in progress: the context it was started in and its latest preview result. */
+    /** A swipe in progress: the context it was started in and the casing at the latest preview. */
     private class SwipeSession(val context: TypingContext) {
-        var latest: PredictResult? = null
         var case = SwipeCase.None
     }
 
+    /** A lifted swipe waiting for its final decode, with the casing at the lift. */
+    private class PendingSwipe(val final: FinalGesture, val case: SwipeCase)
+
     private val onGestureResult: (PredictResult) -> Unit = ::gestureResult
+    private val onLateGesture: (PredictResult) -> Unit = ::lateGesture
+
+    /**
+     * Builds what swiping needs (the layout's gesture index) on the decoder thread, once per
+     * layout, so the first swipe doesn't wait for it. Does nothing where swiping is off, no engine
+     * is there yet or the layout is unknown; call again when that changes.
+     */
+    fun warmUpSwipe() {
+        if (!canSwipe() || layout.keys.isEmpty() || warmedLayoutId == layout.id) return
+        warmedLayoutId = layout.id
+        loop.warmUpGestures(layout)
+    }
 
     /**
      * A swipe starts (docs/PHASE5.md). Nothing is typed until it lifts and a word being composed is
      * left alone. Reads the text around the cursor once (the context of every preview). Returns
      * false, and the swipe is ignored, when nothing could decode it: suggestions are off for the
-     * field, there is no engine, or the layout is unknown.
+     * field, there is no engine, or the layout is unknown. A previous swipe still waiting for its
+     * decode is settled first ([settlePendingSwipe]).
      */
     fun swipeBegin(): Boolean {
+        settlePendingSwipe()
         if (!canPredict() || backend.predictor == null || layout.keys.isEmpty()) return false
         prompts.dismiss()
         ensureContext()
@@ -1033,10 +1063,7 @@ internal class PredictiveInput(
         if (composing.isNotEmpty()) before.append(composing).append(' ')
         else if (swipeNeedsSpace(swipe != null)) before.append(' ')
         swiping = SwipeSession(TypingContext(before.toString(), cache.after, fieldClass()))
-        if (warmedLayoutId != layout.id) {
-            warmedLayoutId = layout.id
-            loop.warmUpGestures(layout)
-        }
+        warmUpSwipe()
         return true
     }
 
@@ -1059,7 +1086,6 @@ internal class PredictiveInput(
     private fun gestureResult(result: PredictResult) {
         val s = swiping ?: return
         if (result.sequence != loop.sequence || !canPredict()) return
-        s.latest = result
         val top = result.candidates.firstOrNull { it.text.isNotEmpty() }?.text
         publishQuiet(
             if (top == null) StripModel.Empty
@@ -1068,9 +1094,14 @@ internal class PredictiveInput(
     }
 
     /**
-     * The finger lifted: decodes [gesture] for good (falling back to the latest preview if the
-     * decoder is busy) and commits the best word; returns whether a word was typed. [case] is the
-     * shift state at the lift.
+     * The finger lifted: decodes [gesture] for good on the decoder thread and commits the best
+     * word; returns whether a word was typed now. [case] is the shift state at the lift. Only a
+     * result decoded from this complete path is ever committed, never a preview.
+     *
+     * The main thread waits at most [DecoderLoop.gestureWaitMs] for the decode. If it is late the
+     * answer is typed when it arrives (the owner is told through `onLate`), provided no other input
+     * happened meanwhile; a key that comes first waits that long once more ([settlePendingSwipe])
+     * and otherwise the swipe is dropped.
      *
      * The word goes in as a picked suggestion would, without a trailing space: a space is put
      * before it if the text before the cursor ends in a letter, digit or sentence punctuation (or a
@@ -1078,19 +1109,54 @@ internal class PredictiveInput(
      * typed first (no autocorrect: the swipe, not a separator, ended it). The strip then offers the
      * alternatives, with the word marked as current.
      */
-    @Suppress("ReturnCount") // nothing-to-commit exits
+    @Suppress("ReturnCount") // each exit is a distinct outcome of the lift
     fun swipeEnd(gesture: GestureInput?, case: SwipeCase): Boolean {
         val s = swiping ?: return false
         swiping = null
         if (!canPredict()) return false
-        var result: PredictResult? = null
-        if (gesture != null) {
-            val seq = loop.advance()
-            result =
-                loop.decodeGestureNow(
-                    GestureRequest(s.context, gesture, layout, MAX_CANDIDATES, seq)
-                ) ?: s.latest
+        val final = gesture?.let {
+            val request = GestureRequest(s.context, it, layout, MAX_CANDIDATES, loop.advance())
+            loop.submitFinalGesture(request)
         }
+        if (final == null) return finishSwipe(null, case)
+        if (final.await(loop.gestureWaitMs)) return finishSwipe(final.result, case)
+        pendingSwipe = PendingSwipe(final, case)
+        if (final.whenDone(onLateGesture)) return false
+        pendingSwipe = null // it finished just now
+        return finishSwipe(final.result, case)
+    }
+
+    /** The late final decode arrived (main thread): types the word if nothing else happened. */
+    private fun lateGesture(result: PredictResult) {
+        val p = pendingSwipe ?: return
+        pendingSwipe = null
+        if (result.sequence != loop.sequence || !canPredict()) return
+        if (finishSwipe(result, p.case)) onLateSwipe()
+    }
+
+    /**
+     * Called before any other input is handled (a key, a strip tap, the next swipe): a swipe whose
+     * decode is still outstanding gets [DecoderLoop.gestureWaitMs] more; if the result comes it is
+     * typed first (the owner is told), if not the swipe is dropped and nothing is typed.
+     */
+    fun settlePendingSwipe() {
+        val p = pendingSwipe ?: return
+        pendingSwipe = null
+        p.final.cancel()
+        val result = if (p.final.await(loop.gestureWaitMs)) p.final.result else null
+        if (result != null && result.sequence == loop.sequence && canPredict()) {
+            if (finishSwipe(result, p.case)) onLateSwipe()
+        } else {
+            restoreStrip()
+        }
+    }
+
+    private fun dropPendingSwipe() {
+        pendingSwipe?.final?.cancel()
+        pendingSwipe = null
+    }
+
+    private fun finishSwipe(result: PredictResult?, case: SwipeCase): Boolean {
         val words = result?.let { swipeWords(it, case) }.orEmpty()
         if (words.isEmpty()) {
             restoreStrip()
@@ -1098,6 +1164,21 @@ internal class PredictiveInput(
         }
         commitSwipe(words)
         return true
+    }
+
+    /**
+     * Whether a capital is wanted for a word swiped now, judged on the text as it will be once the
+     * swipe has added its space (so "hello." then a swipe wants a capital). Null if the text can't
+     * be read.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    fun swipeCapsWanted(mode: AutoCapitalize): Boolean? {
+        if (mode == AutoCapitalize.Characters) return true
+        if (!canPredict() || !cache.beforeReadable) return null
+        val text = StringBuilder(cache.before)
+        if (composing.isNotEmpty()) text.append(composing).append(' ')
+        else if (swipeNeedsSpace(swipe != null)) text.append(' ')
+        return AutoCaps.shouldCapitalize(text, mode, startKnown = !cache.beforeTruncated)
     }
 
     /** The swipe was abandoned: nothing is typed and the strip is as it was. */
@@ -1387,6 +1468,7 @@ internal class PredictiveInput(
     private fun resetWordState() {
         swipe = null
         swiping = null
+        dropPendingSwipe()
         retypeGuard = null
         restoredWord = null
         composing.setLength(0)

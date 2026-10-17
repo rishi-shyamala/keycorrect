@@ -36,6 +36,8 @@ class DecoderLoop(
     private val executor: Executor,
     private val postToMain: (Runnable) -> Unit,
     private val separatorWaitMs: Long = SEPARATOR_WAIT_MS,
+    /** How long the main thread waits for the final decode of a swipe on lift. */
+    val gestureWaitMs: Long = GESTURE_WAIT_MS,
     private val predictor: () -> Predictor?,
 ) {
     private val counter = AtomicLong()
@@ -117,32 +119,35 @@ class DecoderLoop(
     }
 
     /**
-     * The final decode when the finger lifts, under the separator policy: never blocks on the
-     * engine lock. The caller has advanced the sequence, so an outstanding preview gives up early;
-     * this waits at most [separatorWaitMs] for it, then decodes on the calling thread if the
-     * decoder is idle. Null means "no answer in time" (or no predictor, or a failure): the caller
-     * falls back to the latest preview.
+     * The final decode when the finger lifts, on the decoder thread: the main thread never touches
+     * the engine lock (or builds the swipe index). The caller has advanced the sequence, so an
+     * outstanding preview gives up early. Returns a handle to wait on ([FinalGesture.await], at
+     * most [gestureWaitMs]) or to take the answer late ([FinalGesture.whenDone]); null without a
+     * predictor. The result is only ever one decoded from [request], the complete path.
      */
-    @Suppress("ReturnCount") // each early exit is a "no answer in time" case
-    fun decodeGestureNow(request: GestureRequest): PredictResult? {
+    fun submitFinalGesture(request: GestureRequest): FinalGesture? {
         if (predictor() == null) return null
-        if (outstanding.get() > 0) {
-            val deadline = System.nanoTime() + separatorWaitMs * 1_000_000
-            try {
-                synchronized(monitor) {
-                    while (outstanding.get() > 0) {
-                        val remaining = deadline - System.nanoTime()
-                        if (remaining <= 0) break
-                        monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+        val seq = request.sequence
+        val pending = FinalGesture(seq)
+        outstanding.incrementAndGet()
+        try {
+            executor.execute {
+                try {
+                    val result = if (counter.get() == seq) decodeGesture(request) else null
+                    pending.complete(result) { cb, r ->
+                        if (counter.get() == seq) postToMain { cb(r) }
                     }
+                } finally {
+                    outstanding.decrementAndGet()
+                    synchronized(monitor) { monitor.notifyAll() }
                 }
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return null
             }
-            if (outstanding.get() > 0) return null
+        } catch (e: RuntimeException) {
+            outstanding.decrementAndGet()
+            Log.w(TAG, "Gesture decode rejected: ${e.javaClass.name}")
+            pending.complete(null) { _, _ -> }
         }
-        return decodeGesture(request)
+        return pending
     }
 
     /** Builds the swipe index of [layout] on the decoder thread, ahead of the first swipe. */
@@ -242,7 +247,81 @@ class DecoderLoop(
     companion object {
         /** How long a separator may wait for an outstanding decode. */
         const val SEPARATOR_WAIT_MS = 30L
+
+        /**
+         * How long the main thread waits for a swipe's final decode (on lift, and again at a key).
+         */
+        const val GESTURE_WAIT_MS = 50L
         private const val TAG = "DecoderLoop"
+    }
+}
+
+private const val NANOS_PER_MS = 1_000_000L
+
+/**
+ * The final decode of a swipe in flight (see [DecoderLoop.submitFinalGesture]). The main thread
+ * waits for it a little ([await]); if it is late it either registers to be told ([whenDone], the
+ * callback runs on the main thread, and only if no other input happened meanwhile) or drops it
+ * ([cancel]).
+ */
+class FinalGesture
+internal constructor(
+    /** The decoder sequence of the request: the answer is only good while it is current. */
+    val sequence: Long
+) {
+    private val lock = Object()
+    private var done = false
+    private var answer: PredictResult? = null
+    private var callback: ((PredictResult) -> Unit)? = null
+
+    /** The decoded result once finished; null if it failed or has not finished. */
+    val result: PredictResult?
+        get() = synchronized(lock) { answer }
+
+    /** Waits at most [waitMs] for the decode; true if it has finished (see [result]). */
+    fun await(waitMs: Long): Boolean {
+        val deadline = System.nanoTime() + waitMs * NANOS_PER_MS
+        synchronized(lock) {
+            try {
+                while (!done) {
+                    val remaining = deadline - System.nanoTime()
+                    if (remaining <= 0) break
+                    lock.wait(remaining / NANOS_PER_MS, (remaining % NANOS_PER_MS).toInt())
+                }
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            return done
+        }
+    }
+
+    /**
+     * Asks to be told on the main thread when the decode finishes with a result. False, with no
+     * callback registered, if it has finished already (read [result]).
+     */
+    fun whenDone(onResult: (PredictResult) -> Unit): Boolean =
+        synchronized(lock) {
+            if (done) return false
+            callback = onResult
+            true
+        }
+
+    /** Nobody wants the answer any more. */
+    fun cancel() = synchronized(lock) { callback = null }
+
+    internal fun complete(
+        result: PredictResult?,
+        deliver: (((PredictResult) -> Unit), PredictResult) -> Unit,
+    ) {
+        val cb: ((PredictResult) -> Unit)?
+        synchronized(lock) {
+            answer = result
+            done = true
+            cb = callback
+            callback = null
+            lock.notifyAll()
+        }
+        if (cb != null && result != null) deliver(cb, result)
     }
 }
 

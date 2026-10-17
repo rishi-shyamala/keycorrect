@@ -41,13 +41,29 @@ case "${1:-}" in
         fi
         name=$(prop versionName)
         tag="v$name"
-        if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag exists: run '$0 bump', commit and push first." >&2
+        if gh release view "$tag" >/dev/null 2>&1 || [[ -n $(git ls-remote --tags origin "refs/tags/$tag") ]]; then
+            echo "Tag $tag exists (release or bare tag): run '$0 bump', commit and push first." >&2
             exit 1
         fi
+        # The SDK: local.properties, else the environment (as Gradle itself resolves it).
+        sdk=$(sed -n 's/^sdk.dir=//p' local.properties 2>/dev/null || true)
+        sdk=${sdk:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}}
+        if [[ -z $sdk || ! -d $sdk/build-tools ]]; then
+            echo "No Android SDK: set sdk.dir in local.properties, or ANDROID_HOME / ANDROID_SDK_ROOT." >&2
+            exit 1
+        fi
+        rm -f app/build/outputs/apk/release/app-release.apk
         ./gradlew --console=plain -q :app:assembleRelease
         apk=app/build/outputs/apk/release/app-release.apk
-        sdk=$(sed -n 's/^sdk.dir=//p' local.properties)
+        if [[ ! -f $apk ]]; then
+            if [[ -f app/build/outputs/apk/release/app-release-unsigned.apk ]]; then
+                echo "The APK is unsigned: set the keycorrect.release.* properties" \
+                    "(storeFile, storePassword, keyAlias, keyPassword) in ~/.gradle/gradle.properties." >&2
+            else
+                echo "No release APK was produced." >&2
+            fi
+            exit 1
+        fi
         "$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner" verify "$apk"
         out=build/release/keycorrect-$name+$short.apk
         mkdir -p build/release
