@@ -84,6 +84,7 @@ internal fun KeyboardSurface(
     terminalModifiers: TerminalModifiers? = null,
     clipboardLongPress: Boolean = false,
     onKeyLongPress: (KeyAction) -> Unit = {},
+    swipeTyping: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val view = LocalView.current
@@ -101,6 +102,7 @@ internal fun KeyboardSurface(
     val currentFeedback by rememberUpdatedState(feedback)
     val currentClipboardLongPress by rememberUpdatedState(clipboardLongPress)
     val currentOnKeyLongPress by rememberUpdatedState(onKeyLongPress)
+    val currentSwipeTyping by rememberUpdatedState(swipeTyping)
     var size by remember { mutableStateOf(IntSize.Zero) }
     val geometry =
         remember(layer, size) {
@@ -146,6 +148,12 @@ internal fun KeyboardSurface(
 
                 override val gestures: KeyGestures
                     get() = currentGestures
+
+                override val swipeTyping: Boolean
+                    get() = currentSwipeTyping && currentSettings.gestureTyping
+
+                override val swipeTrail: Boolean
+                    get() = currentSettings.gestureTrail
 
                 override val spacebarCursor: Boolean
                     get() = currentSettings.spacebarCursor
