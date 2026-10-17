@@ -24,6 +24,8 @@ enum class Capability {
     Score,
     /** Full decoding from touches and context ([PredictiveEngine]). */
     Predict,
+    /** Decoding a swipe into words ([GestureEngine], Phase 5). */
+    Gesture,
     /** Accepts learning events (Phase 3). */
     Learn,
     /** Accepts personal-vocabulary hints (Phase 3). */
@@ -67,6 +69,30 @@ interface ScoringEngine : TextEngine {
 interface PredictiveEngine : TextEngine {
     suspend fun predict(request: PredictRequest): PredictResult
 }
+
+/**
+ * Tier 2b (Phase 5, docs/PHASE5.md): decodes a swipe into ranked words. The built-in engine is one.
+ */
+interface GestureEngine : TextEngine {
+    /**
+     * In the result, [PredictResult.candidates] are the words ranked best first (the keyboard
+     * commits the first and offers the rest), [PredictResult.literal] is null, and
+     * [PredictResult.autocorrect] is the first candidate, or null when nothing plausible was found.
+     */
+    suspend fun decodeGesture(request: GestureRequest): PredictResult
+}
+
+/**
+ * A swipe across [layout]'s keys, after [context]. [sequence] works as in [PredictRequest]: the
+ * keyboard sends previews while the finger moves and drops results older than the latest.
+ */
+data class GestureRequest(
+    val context: TypingContext,
+    val gesture: GestureInput,
+    val layout: KeyLayoutModel,
+    val maxCandidates: Int = 3,
+    val sequence: Long = 0,
+)
 
 /**
  * [sequence] increases with every input event; results for an older sequence are stale and the
