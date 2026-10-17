@@ -31,22 +31,23 @@ A plain string is shorthand for a character key: `"q"` means `{ "label": "q" }`.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` · `keycode` · `modifier` · `emoji` |
+| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` · `keycode` · `modifier` · `emoji` · `fieldMode` |
 | `label` | string | per type | Text drawn on the key. Required for `char`/`text` unless `text` is set, and for `layer`. Ignored for `modeSwitch` |
 | `text` | string | `label` | What gets typed (`char`/`text`) |
 | `shifted` | string | upper-cased `text` | What gets typed while shift is on (`char` only). Labels follow it |
-| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys only; setting it on any other type is an error). See "Popup entries" |
+| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys, and `modeSwitch` keys with `fieldMode` entries only; setting it on any other type is an error). See "Popup entries" |
 | `hint` | string or `null` | first `popup` entry | Small corner label. `null` hides it |
 | `width` | number | `1.0` (`space` 5.0, `shift`/`backspace`/`enter`/`layer`/`modeSwitch` 1.5) | Width in standard-key units |
 | `target` | string | — | Layer id to switch to (`layer` only, required) |
 | `code` | string | — | Key to send (`keycode` only, required): `escape` · `tab` · `left` · `right` · `up` · `down` · `home` · `end` · `pageUp` · `pageDown` · `forwardDelete` |
 | `modifier` | string | — | `ctrl` or `alt` (`modifier` only, required) |
+| `mode` | string | — | `text` · `email` · `url` · `number` · `phone` (`fieldMode` only, required) |
 | `style` | string | per type | `character` · `modifier` · `space` · `action` (visual class) |
 | `description` | string | per type | Accessibility label (TalkBack) |
 
 Setting `text`, `shifted`, `target`, `code` or `modifier` on a type that doesn't use it is an error. Default `description` is the label, `Shift`, the code's name (`keycode`: `Escape`, `Tab`, `Left`, ..., `Page up`), `Control`/`Alt` (`modifier`), `Emoji`, `Delete`, `Space`, `Enter`, `Switch to <target>` (`layer`), or `Switch to symbols`/`Switch to letters` (`modeSwitch`). A single cased letter gets an upper-case `shifted` by default; anything else is unchanged.
 
-Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `code`, `description` and `type` (`char`/`text`/`keycode` only), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
+Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `code`, `description` and `type` (`char`/`text`/`keycode`/`fieldMode`), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
 
 Type semantics:
 - `char`: types `text` (or `shifted` while shift is on) and consumes a one-shot shift.
@@ -54,6 +55,7 @@ Type semantics:
 - `shift`, `backspace`, `space`, `enter`: the usual. Enter adapts to the field's IME action at runtime.
 - `layer`: switches to `target`, which is a layer id from the keyboard set (below).
 - `modeSwitch`: only used in bottom rows. It is resolved at runtime to `?123 → symbols` when on the letters layer, and `ABC → letters` otherwise.
+- `fieldMode`: only as an entry in the popup of a `modeSwitch` key (and a `modeSwitch` popup holds nothing else). Tapping it is `KeyAction.SetFieldMode(mode)`: the keyboard becomes that field kind's (layout, bottom row, suggestion and autocorrect rules) until the field changes; `text` goes back. Default labels `Abc`, `@`, `/`, `123`, `☎`; descriptions `Text keyboard`, `Email keyboard`, ... The built-in bottom rows offer all five on `modeSwitch` (long-press `?123`) with `"hint": null`. The composer keeps the popup only with `ComposeOptions.fieldModes`, which the keyboard sets in plain text fields (`FieldKind.Text`); elsewhere the popup is dropped. With `fieldModes` on, the number and phone pads get a thin full-width `ABC` key under them (tap: text; long-press: the same popup), since they have no mode-switch key.
 - `keycode`: sends a raw key event (down and up) with the named Android key code, not text. The default label is `Esc`, `Tab`, `←`, `→`, `↑`, `↓`, `Home`, `End`, `PgUp`, `PgDn` or `Del`. Style `modifier`, width 1.0.
 - `modifier`: Ctrl or Alt. A tap applies it to the next key (one-shot); a second tap within 400 ms locks it; the next tap unlocks. While it is on, a letter, digit, punctuation key, Space, Enter, Backspace or `keycode` key is sent as a key event with the Ctrl/Alt meta state (terminal fields only). The key is drawn highlighted when on, and differently when locked. Style `modifier`, width 1.0.
 - `emoji`: opens the emoji panel (a long-press opens the clipboard). Parsed now, acted on from PR B. Style `modifier`, width 1.0.
@@ -76,7 +78,7 @@ Layouts with `"bottomRow": "auto"` get a bottom row appended at runtime, chosen 
 | URL | `bottom_url` |
 
 Composer sizing (all layers except `numpad`/`phone`/`datetime`):
-- One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched.
+- One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched. Row 3 of both symbols pages has the same shape (1u layer key, eight 1u character keys, 1u backspace) so the controls do not move when switching pages, and both get the same appended bottom row.
 - Keys with style `modifier` or `action` (shift, backspace, layer, enter, keycode, modifier) are capped at 1.5u.
 - In the bottom row (the row with the space key) every key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.75; Enter at least 1.25) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, comma (@ for email, / for URL), space, period, enter`.
 
