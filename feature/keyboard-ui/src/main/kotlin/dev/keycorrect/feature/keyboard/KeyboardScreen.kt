@@ -49,6 +49,7 @@ fun KeyboardScreen(
     feedback: KeyFeedback,
     modifier: Modifier = Modifier,
     autofill: InlineAutofillController? = null,
+    onOpenSettings: () -> Unit = {},
 ) {
     // Shift is a lambda read only in draw and semantics phases, so neither typing nor a shift
     // change recomposes anything here. It is the effective shift: keys draw shifted while the
@@ -71,7 +72,7 @@ fun KeyboardScreen(
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionArea(controller, settings, feedback, autofill)
+                SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
                 KeyArea(controller, settings, feedback, touch)
             }
             KeyOverlay(
@@ -164,9 +165,10 @@ private fun Keys(
 
 /**
  * Fixed-height area above the keys: autofill chips when there are any (they take priority), else
- * the selection strip while a range is selected, else the prediction strip, else nothing. The
- * height never changes, so the keys below don't jump. The controller's strip is read inside
- * [PredictionStrip] only, so a new suggestion recomposes that and nothing else.
+ * the selection strip while a range is selected, else the prediction strip, else the recent-clip
+ * chip, else the shortcut icon row. The height never changes, so the keys below don't jump. The
+ * controller's strip is read inside [PredictionStrip] only, so a new suggestion recomposes that and
+ * nothing else.
  */
 @Composable
 private fun SuggestionArea(
@@ -174,6 +176,7 @@ private fun SuggestionArea(
     settings: KeyboardSettings,
     feedback: KeyFeedback,
     autofill: InlineAutofillController?,
+    onOpenSettings: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)) {
         val items = autofill?.suggestions?.collectAsState()?.value.orEmpty()
@@ -201,7 +204,11 @@ private fun SuggestionArea(
             )
             // Only when the strip above is empty (see KeyboardController.stripClip).
             val view = LocalView.current
-            ClipChip(controller, onPress = { feedback.haptic(view, settings) })
+            val press = { feedback.haptic(view, settings) }
+            ClipChip(controller, onPress = press)
+            // Only when the strip, the selection strip and the chip are all absent (see
+            // KeyboardController.shortcutRowVisible).
+            ShortcutRow(controller, onPress = press, onOpenSettings = onOpenSettings)
         }
     }
 }

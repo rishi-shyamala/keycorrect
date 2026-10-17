@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Suggestion strip: accessibility labels of the slots (see StripSlot.labelRes). -->
+    <string name="shortcut_editing">Editing panel</string>
+    <string name="shortcut_emoji">Emoji</string>
+    <string name="shortcut_clipboard">Clipboard</string>
+    <string name="shortcut_settings">Settings</string>
     <string name="strip_suggestion">Suggestion: %1$s</string>
     <string name="strip_autocorrect">Autocorrect to %1$s</string>
     <string name="strip_literal">Keep %1$s as typed</string>

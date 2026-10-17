@@ -487,6 +487,34 @@ class KeyboardController(
             return clipboard.freshClip()?.takeIf { it.id != chipDismissedFor }
         }
 
+    /**
+     * Whether the strip area shows the shortcut row (see [stripContent]): keys showing, nothing
+     * being typed or selected, no suggestions or prompt, no fresh clip. Observable state only.
+     */
+    val shortcutRowVisible: Boolean
+        get() =
+            panel == KeyboardPanel.Keys &&
+                stripContent(
+                    stripEmpty = strip.isEmpty,
+                    composing = composingNow,
+                    selectionStrip = selectionStripVisible,
+                    hasClip = stripClip != null,
+                ) == StripContent.Shortcuts
+
+    /** The shortcut buttons for the current field (see [shortcutsFor]). */
+    internal val shortcuts: List<Shortcut>
+        get() = shortcutsFor(profile.sensitive, clipboardAvailable)
+
+    /** Runs a shortcut button's action; [openSettings] is the host's way to open its settings. */
+    internal fun onShortcut(shortcut: Shortcut, openSettings: () -> Unit) {
+        when (shortcut) {
+            Shortcut.Editing -> showPanel(KeyboardPanel.Editing)
+            Shortcut.Emoji -> showPanel(KeyboardPanel.Emoji)
+            Shortcut.Clipboard -> openClipboard()
+            Shortcut.Settings -> openSettings()
+        }
+    }
+
     /** The chip's ✕: hides it for [id] (the clip stays in the history). */
     fun dismissClipChip(id: Long) {
         chipDismissedFor = id
