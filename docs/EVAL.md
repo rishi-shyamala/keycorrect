@@ -279,6 +279,58 @@ the 2-edit cap and multi-edit penalty deliberately do not chase; "other substitu
 misspellings are almost never corrected (0-4%, abstain 92-96%) because the typed word is valid.
 At sigma 0.25 abstains rise to 40% because noise lowers the margin.
 
+## Swipe mode (`--mode swipe`)
+
+Phase 5 (docs/PHASE5.md): synthetic swipes for the words of test-split
+sentences, decoded by the engine's gesture decoder (`decodeGestureNow`). It
+shares the corpus, split, `--sentences`, `--offset`, `--seed`, `--names`,
+`--config`, `--oracle-context` and `--failures` with the tap eval, and leaves
+the tap eval untouched.
+
+```
+./gradlew :tools:eval:run --args="--mode swipe --sentences 300 --seed 7"
+./gradlew :tools:eval:run --args="--mode swipe --sentences 300 --swipe-noise 0.35"
+```
+
+| flag | meaning |
+|---|---|
+| `--swipe-noise F` | Gaussian jitter of every letter's control point, in key widths/heights (default 0.25) |
+
+There is no `--threads` here: the pass is single-threaded so that the latency
+numbers are not distorted by contention. 300 sentences is a quick check; 5000
+(the tap default) takes minutes. Output goes to `<out>/swipe/`: `report.txt`,
+`results.json`, `swipe_misses.csv` (target, top-1..3 returned, whether the
+target was in the top 3; capped by `--failures`).
+
+**Which words.** Every token that is all letters (apostrophes allowed) and
+whose letters all have a key on the letters layer. Numbers, hyphenated or
+accented tokens and skipped names are not swiped; they go into the context
+as written. Each word is swiped with a request of `maxCandidates = 3` and the
+text so far as `TypingContext.before` (what was committed, or the true text
+with `--oracle-context`). If the engine returns nothing, the true word is
+committed, as the user would retype it.
+
+**Gesture generator** (`SwipeGenerator`, deterministic per seed, sentence and
+word; independent of what the engine returns):
+
+1. Control points are the key centres of the word's letters on the same
+   `EvalKeyboard` the tap typist uses; consecutive duplicate keys collapse
+   ("hello" is h-e-l-o), apostrophes are skipped.
+2. Each point gets Gaussian noise of `--swipe-noise` key widths (x) and key
+   heights (y). At noise 0 the points are exactly the key centres.
+3. A uniform Catmull-Rom spline runs through the points, and on past the last
+   one for 0.25 key widths in the direction of the last segment (overshoot).
+4. The spline is sampled by time every 10 ms (100 Hz). The finger moves at
+   about 14 key widths per second (per-word factor `exp(N(0, 0.2))`, at least
+   40 ms per segment), faster in the middle of a segment than at its ends.
+5. A word with one distinct key ("a", "ss") is a 100 ms drag of half a key
+   width in a random direction, starting at the (jittered) key centre.
+
+**Metrics.** Top-1 and top-3 word accuracy (case-insensitive), wrong commits
+(top-1 returned and wrong), no-candidate rate, decode latency per call
+(p50/p95/p99/max; a 30-sentence untimed warm-up first), and a breakdown by word
+length. The latency is `decodeGestureNow` only, not the key-centre generation.
+
 ## Caveats
 
 The typist is a model, not data. Real users make correlated errors (thumb
