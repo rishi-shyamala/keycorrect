@@ -1,6 +1,7 @@
 package dev.keycorrect.feature.keyboard
 
 import android.text.InputType
+import androidx.compose.runtime.snapshots.Snapshot
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.input.FieldProfile
@@ -39,7 +40,7 @@ class SwipeTypingTest {
             KeyboardController(
                 editor,
                 KeyboardComposer(BuiltInLayouts.repository()),
-                testEnv(backend, executor = loopExecutor),
+                testEnv(backend, executor = loopExecutor, gestureWaitMs = 1),
                 clock = { now },
                 learning = sink,
             )
@@ -621,5 +622,185 @@ class SwipeTypingTest {
     private companion object {
         const val GEO_W = 1000f
         const val GEO_H = 400f
+    }
+
+    // ------------------------------------------------------------------ engine readiness
+
+    @Test
+    fun swipeComesOnAsSoonAsTheEngineLoadsWithoutANewStartInput() {
+        backend.predictor = null
+        start()
+        val read = HashSet<Any>()
+        val snapshot = Snapshot.takeSnapshot(readObserver = { read += it })
+        val before =
+            try {
+                snapshot.enter { controller.swipeTypingActive }
+            } finally {
+                snapshot.dispose()
+            }
+        assertThat(before).isFalse()
+        val changed = HashSet<Any>()
+        val handle = Snapshot.registerApplyObserver { objects, _ -> changed.addAll(objects) }
+        backend.predictor = predictor
+        Snapshot.sendApplyNotifications()
+        handle.dispose()
+        // What the keyboard composition read was invalidated by the engine arriving.
+        assertThat(changed.any { it in read }).isTrue()
+        assertThat(controller.swipeTypingActive).isTrue()
+    }
+
+    // ------------------------------------------------------------------ late final decode
+
+    /** A whole swipe whose decoder thread has not run yet: the lift finds no answer in time. */
+    private fun liftWithoutAnAnswer(vararg words: String) {
+        inline = false
+        predictor.swipeWords = words.toList()
+        val p = path()
+        controller.gestures.onSwipeStart(p)
+        controller.gestures.onSwipeEnd(p)
+    }
+
+    @Test
+    fun aLateFinalDecodeIsTypedWhenItArrives() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+                0,
+            )
+        )
+        liftWithoutAnAnswer("hello", "hallo")
+        assertThat(text()).isEmpty()
+        executor.runAll()
+        assertThat(text()).isEqualTo("Hello")
+        assertThat(controller.state.shift).isEqualTo(ShiftState.Off) // consumed like a typed letter
+        assertThat(controller.strip.centre?.text).isEqualTo("Hello")
+        assertThat(controller.strip.centre?.bold).isTrue()
+        // Only the final request was decoded (the preview was stale); nothing came from a preview.
+        assertThat(predictor.gestureRequests).hasSize(1)
+    }
+
+    @Test
+    fun aKeyBeforeTheLateResultDropsTheSwipeAndTypesNothingStale() {
+        start()
+        liftWithoutAnAnswer("hello")
+        type("w") // waits a little more, still nothing: the swipe is dropped
+        assertThat(text()).isEqualTo("w")
+        executor.runAll()
+        assertThat(text()).isEqualTo("w")
+        assertThat(committed().map { it.committed }).doesNotContain("hello")
+        assertThat(controller.strip.centre?.text).isNotEqualTo("hello")
+    }
+
+    @Test
+    fun aLateResultIsDroppedWhenTheCursorMovedMeanwhile() {
+        start(text = "ab")
+        liftWithoutAnAnswer("hello")
+        editor.moveCursor(0)
+        editor.echo(controller)
+        executor.runAll()
+        assertThat(text()).isEqualTo("ab")
+    }
+
+    // ------------------------------------------------------------------ auto-cap before a swipe
+
+    @Test
+    fun aWordSwipedAfterASentenceEndIsCapitalised() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+                0,
+            ),
+            text = "hello.",
+        )
+        swipe("there")
+        assertThat(text()).isEqualTo("hello. There")
+        swipe("world") // not a sentence start
+        assertThat(text()).isEqualTo("hello. There world")
+    }
+
+    @Test
+    fun aWordSwipedAfterAWordIsCapitalisedInWordsMode() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS,
+                0,
+            ),
+            text = "hello",
+        )
+        swipe("world")
+        assertThat(text()).isEqualTo("hello World")
+    }
+
+    @Test
+    fun noCapitalAfterAWordMidSentence() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+                0,
+            ),
+            text = "hello",
+        )
+        swipe("world")
+        assertThat(text()).isEqualTo("hello world")
+    }
+
+    // ------------------------------------------------------------------ other fingers
+
+    @Test
+    fun aKeyFromAnotherFingerDuringASwipeCancelsTheSwipe() {
+        start()
+        predictor.swipeWords = listOf("hello")
+        val p = path()
+        controller.gestures.onSwipeStart(p)
+        type("a")
+        controller.gestures.onSwipeEnd(p)
+        assertThat(text()).isEqualTo("a")
+        assertThat(predictor.gestureRequests.map { it.context.before }).containsExactly("")
+    }
+
+    @Test
+    fun aBackspaceDuringASwipeCancelsItAndDeletesAsUsual() {
+        start(text = "hi")
+        predictor.swipeWords = listOf("hello")
+        val p = path()
+        controller.gestures.onSwipeStart(p)
+        backspace()
+        controller.gestures.onSwipeEnd(p)
+        assertThat(text()).isEqualTo("h")
+    }
+
+    @Test
+    fun shiftDuringASwipeDoesNotCancelIt() {
+        start()
+        predictor.swipeWords = listOf("hello")
+        val p = path()
+        controller.gestures.onSwipeStart(p)
+        controller.onKey(KeyAction.Shift)
+        controller.gestures.onSwipeEnd(p)
+        assertThat(text()).isEqualTo("Hello")
+    }
+
+    // ------------------------------------------------------------------ composing and the strip
+
+    @Test
+    fun aComposingWordIsFinishedAsTypedBeforeTheSwipedWord() {
+        start()
+        type("hel")
+        swipe("world")
+        assertThat(text()).isEqualTo("hel world")
+        assertThat(predictor.gestureRequests.last().context.before).isEqualTo("hel ")
+    }
+
+    @Test
+    fun theAlternativesAreGoneOnceTheCursorMoved() {
+        start()
+        swipe("hello", "hallo")
+        assertThat(controller.strip.left ?: controller.strip.right).isNotNull()
+        editor.moveCursor(0)
+        editor.echo(controller)
+        // Nothing offers a replacement of the swiped word any more, and the text is untouched.
+        assertThat(controller.strip.left).isNull()
+        assertThat(controller.strip.right).isNull()
+        assertThat(text()).isEqualTo("hello")
     }
 }

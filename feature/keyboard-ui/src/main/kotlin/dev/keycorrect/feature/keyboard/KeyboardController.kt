@@ -107,6 +107,7 @@ class KeyboardController(
             { e ->
                 EmojiChoice.resolve(e, emoji.preferredVariant(e.value), settings.emojiSkinTone)
             },
+            ::onSwipeCommitted,
         )
 
     private val swipes =
@@ -251,6 +252,7 @@ class KeyboardController(
             applyOptions(newOptions)
             updateLayoutKey()
             updateAutoCapitalize()
+            warmUpSwipe()
             return
         }
         panel = KeyboardPanel.Keys
@@ -279,6 +281,7 @@ class KeyboardController(
         heightUnits = referenceHeightUnits()
         updateLayoutKey()
         updateAutoCapitalize()
+        warmUpSwipe()
     }
 
     /**
@@ -312,6 +315,10 @@ class KeyboardController(
     }
 
     private fun onTypingKey(action: KeyAction, touch: TouchPoint?) {
+        // A swipe lifted earlier whose decode is late is typed first or dropped; a swipe still
+        // under another finger is cancelled by any key (see [SwipeController.onKey]).
+        input.settlePendingSwipe()
+        swipes.onKey(action)
         cancelSwipeFor(action)
         when (action) {
             is KeyAction.Text -> onTextKey(action, touch)
@@ -510,8 +517,14 @@ class KeyboardController(
             ShiftState.Auto ->
                 if (profile.autoCapitalize == AutoCapitalize.Characters) SwipeCase.All
                 else SwipeCase.First
-            ShiftState.Off -> SwipeCase.None
+            // The shift state describes the text now; the word goes in after the swipe's space.
+            ShiftState.Off -> if (swipeCapsAfterSpace()) SwipeCase.First else SwipeCase.None
         }
+
+    private fun swipeCapsAfterSpace(): Boolean =
+        settings.autoCapitalize &&
+            profile.autoCapitalize != AutoCapitalize.None &&
+            input.swipeCapsWanted(profile.autoCapitalize) == true
 
     /** A swipe typed a word: like a typed letter, it consumes a one-shot shift. */
     private fun onSwipeCommitted() {
@@ -742,10 +755,18 @@ class KeyboardController(
     fun onGeometry(geometry: KeyboardGeometry) {
         if (geometry.width <= 0f || geometry.height <= 0f) return
         input.layout = KeyLayoutModels.from(geometry, ++layoutId)
+        warmUpSwipe()
+    }
+
+    /** Builds the swipe index off the main thread as soon as swiping can be used in this field. */
+    private fun warmUpSwipe() {
+        if (swipeTypingActive) input.warmUpSwipe()
     }
 
     /** A strip slot was tapped. */
     fun onSuggestionTap(slot: StripSlot) {
+        input.settlePendingSwipe()
+        swipes.onCancel()
         input.onStripTap(slot)
         composingNow = input.isComposing
         updateAutoCapitalize()

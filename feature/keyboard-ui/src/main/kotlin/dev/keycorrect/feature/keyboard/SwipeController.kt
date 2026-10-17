@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
 
@@ -48,6 +49,15 @@ internal class SwipeController(
         if (!active) return
         active = false
         if (input.swipeEnd(path.toGestureInput(), case())) onCommitted()
+    }
+
+    /**
+     * Any key (another finger's, or a held key repeating) cancels a swipe in progress, except
+     * Shift, which changes no text: the swipe's context would be stale, and "keys win" is the
+     * simplest safe rule. The swipe's own lift then does nothing.
+     */
+    fun onKey(action: KeyAction) {
+        if (action != KeyAction.Shift) onCancel()
     }
 
     fun onCancel() {
