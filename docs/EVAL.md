@@ -281,6 +281,19 @@ At sigma 0.25 abstains rise to 40% because noise lowers the margin.
 
 ## Swipe mode (`--mode swipe`)
 
+**Current results** (2026-10-17; tuned on the dev split; test split, 2000 sentences, seed 7,
+14,085 swiped words; one-letter words are tapped, not swiped):
+
+| Gesture noise (key widths) | Top-1 | Top-3 | Decode p50 / p95 / p99 (desktop) |
+|---|---|---|---|
+| 0.25 | 89.5% | 95.5% | 0.26 / 1.98 / 3.46 ms |
+| 0.4 | 78.5% | 87.5% | 0.24 / 1.92 / 3.29 ms |
+
+The tuned defaults are location sigma 0.6, shape sigma 0.08, LM weight 0.3 and end radius 1.5.
+Tuning swept them at both noise levels. The wider end radius costs about 1 point on clean
+gestures and gains about 6 on messy ones, so it was preferred because real fingers are messier
+than the generator.
+
 Phase 5 (docs/PHASE5.md): synthetic swipes for the words of test-split
 sentences, decoded by the engine's gesture decoder (`decodeGestureNow`). It
 shares the corpus, split, `--sentences`, `--offset`, `--seed`, `--names`,
