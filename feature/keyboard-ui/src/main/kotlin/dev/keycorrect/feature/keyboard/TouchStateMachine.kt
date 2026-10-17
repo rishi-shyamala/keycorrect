@@ -65,7 +65,6 @@ internal interface TouchHost {
     val gestures: KeyGestures
         get() = KeyGestures.None
 
-    /** Spacebar drag/hold gestures are on; off, space is a plain key. */
     /**
      * Gesture typing is on for this field (setting and field type, docs/PHASE5.md): a press on a
      * letter key that travels far enough becomes a swipe ([KeyGestures.onSwipeStart]).
@@ -73,6 +72,7 @@ internal interface TouchHost {
     val swipeTyping: Boolean
         get() = false
 
+    /** Spacebar drag gestures are on; off, space is a plain key. */
     val spacebarCursor: Boolean
         get() = false
 
