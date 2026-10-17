@@ -123,7 +123,7 @@
     <string name="clipboard_delete">Delete</string>
     <string name="clipboard_clean">Clean link</string>
     <string name="clipboard_menu_close">Close</string>
-    <string name="clipboard_chip">\uD83D\uDCCB %1$s</string>
+    <string name="clipboard_chip">%1$s</string>
     <string name="clipboard_chip_description">Paste copied text: %1$s</string>
     <string name="clipboard_chip_image_description">Paste copied image</string>
     <string name="clipboard_chip_dismiss">\u2715</string>
