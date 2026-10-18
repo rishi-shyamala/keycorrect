@@ -964,6 +964,8 @@ class KeyboardController(
                 numberRow = settings.numberRow || profile.sensitive,
                 terminalRow = profile.kind == FieldKind.Terminal,
                 bottomKeyWidth = settings.bottomKeyWidth,
+                modeEnterKeyWidth = settings.modeEnterKeyWidth,
+                symbolHints = settings.symbolHints,
                 // No emoji (nor, from PR C, clipboard) in password fields.
                 emojiKey = !profile.sensitive,
                 fieldModes = declaredProfile.kind == FieldKind.Text,
@@ -975,8 +977,6 @@ class KeyboardController(
         if (newOptions == options) return
         options = newOptions
         layer = composer.compose(keyboardSet, state.layerId, variant, options)
-                modeEnterKeyWidth = settings.modeEnterKeyWidth,
-                symbolHints = settings.symbolHints,
         heightUnits = referenceHeightUnits()
     }
 
