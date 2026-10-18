@@ -16,10 +16,10 @@ import dev.keycorrect.core.voice.SttSession
 
 /**
  * The built-in speech engine: Silero VAD cuts the audio into speech segments, and the Moonshine v2
- * offline model recognises each one on a background thread. Not a streaming model, so the partial
- * text grows one finished segment at a time; the final text follows [SttSession.finish]. The models
- * are read in place from the voice pack's assets ([pack]) and loaded when a session starts, and
- * freed when it ends.
+ * offline model recognises each one on a background thread. Not a streaming model: while a phrase
+ * is spoken it is decoded again every second or so for the live words; a finished segment is
+ * committed for good, and the final text follows [SttSession.finish]. The models are read in place
+ * from the voice pack's assets ([pack]) and loaded when a session starts, and freed when it ends.
  *
  * Moonshine takes no hotwords; [SttConfig.hotwords] are ignored here.
  */
@@ -39,7 +39,14 @@ class SherpaMoonshineEngine internal constructor(private val factory: Components
     @Synchronized
     override fun startSession(config: SttConfig, listener: SttListener): SttSession {
         active?.cancel()
-        return SegmentedDictation(listener, create = factory::create).also { active = it }
+        val tuning = SessionTuning.from(config)
+        return SegmentedDictation(
+                listener,
+                create = { factory.create(tuning) },
+                phraseLimitMillis = tuning.phraseLimitMillis,
+                liveUpdateMillis = tuning.liveUpdateMillis,
+            )
+            .also { active = it }
     }
 
     @Synchronized
@@ -51,24 +58,74 @@ class SherpaMoonshineEngine internal constructor(private val factory: Components
 
 /** Creates the VAD and the recognizer for one session (on its worker thread). */
 internal fun interface ComponentsFactory {
-    fun create(): SpeechComponents
+    fun create(tuning: SessionTuning): SpeechComponents
 }
 
-/** Segments are cut at 0.5 s of silence, and at 15 s of speech so long dictation is split. */
+/** The per-dictation settings of [SttConfig], clamped to what Moonshine and the VAD can do. */
+internal data class SessionTuning(
+    val phraseLimitMillis: Long,
+    val pauseSeconds: Float,
+    val liveUpdateMillis: Long,
+) {
+    companion object {
+        fun from(config: SttConfig) =
+            SessionTuning(
+                phraseLimitMillis =
+                    config.phraseLimitMillis.coerceIn(
+                        SherpaTuning.MIN_PHRASE_MILLIS,
+                        SherpaTuning.MAX_PHRASE_MILLIS,
+                    ),
+                pauseSeconds =
+                    (config.pauseMillis / MILLIS).coerceIn(
+                        SherpaTuning.MIN_PAUSE_SECONDS,
+                        SherpaTuning.MAX_PAUSE_SECONDS,
+                    ),
+                liveUpdateMillis =
+                    when {
+                        config.liveUpdateMillis < 0 -> SttConfig.LIVE_OFF
+                        config.liveUpdateMillis == SttConfig.LIVE_AUTO -> SttConfig.LIVE_AUTO
+                        else ->
+                            config.liveUpdateMillis.coerceIn(
+                                LiveTuning.MIN_INTERVAL_MS,
+                                LIVE_MAX_FIXED,
+                            )
+                    },
+            )
+
+        private const val MILLIS = 1000f
+        private const val LIVE_MAX_FIXED = 2000L
+    }
+}
+
+/**
+ * Segments are cut at a pause (0.5 s by default) and at the phrase limit (7 s by default).
+ *
+ * Moonshine v2 tiny fails outright on audio longer than about 9.25 s (the decoder's cross-attention
+ * shapes don't broadcast; sherpa-onnx then returns an empty result): measured in docs/PHASE6.md.
+ * The default limit is 7 s, about 75% of that, and the most the user can set is
+ * [MAX_PHRASE_MILLIS]. The VAD's own maximum is only a hint (it cuts at a quiet moment and waits
+ * for one: segments of 12 s and more were seen with it set to 3 s), so [SegmentedDictation] cuts a
+ * phrase at the limit itself.
+ */
 internal object SherpaTuning {
     const val SAMPLE_RATE = 16_000
     const val NUM_THREADS = 2
     const val VAD_THRESHOLD = 0.5f
-    const val MIN_SILENCE_SECONDS = 0.5f
+    const val MIN_PAUSE_SECONDS = 0.3f
+    const val MAX_PAUSE_SECONDS = 1.5f
     const val MIN_SPEECH_SECONDS = 0.25f
-    const val MAX_SEGMENT_SECONDS = 15f
+    const val MIN_PHRASE_MILLIS = 3_000L
+
+    /** The most the user can ask for: 92% of the 9.25 s where Moonshine fails. */
+    const val MAX_PHRASE_MILLIS = 8_500L
+    const val DEFAULT_PHRASE_MILLIS = 7_000L
     const val VAD_WINDOW = 512
 }
 
 internal class SherpaComponentsFactory(private val assets: AssetManager) : ComponentsFactory {
-    override fun create(): SpeechComponents {
+    override fun create(tuning: SessionTuning): SpeechComponents {
         val recognizer = SherpaRecognizer(createRecognizer())
-        return runCatching { SpeechComponents(SherpaDetector(createVad()), recognizer) }
+        return runCatching { SpeechComponents(SherpaDetector(createVad(tuning)), recognizer) }
             .getOrElse {
                 recognizer.release()
                 throw it
@@ -93,7 +150,7 @@ internal class SherpaComponentsFactory(private val assets: AssetManager) : Compo
                 ),
         )
 
-    private fun createVad() =
+    private fun createVad(tuning: SessionTuning) =
         Vad(
             assetManager = assets,
             config =
@@ -102,10 +159,10 @@ internal class SherpaComponentsFactory(private val assets: AssetManager) : Compo
                         SileroVadModelConfig(
                             model = VoicePackLayout.SILERO_VAD,
                             threshold = SherpaTuning.VAD_THRESHOLD,
-                            minSilenceDuration = SherpaTuning.MIN_SILENCE_SECONDS,
+                            minSilenceDuration = tuning.pauseSeconds,
                             minSpeechDuration = SherpaTuning.MIN_SPEECH_SECONDS,
                             windowSize = SherpaTuning.VAD_WINDOW,
-                            maxSpeechDuration = SherpaTuning.MAX_SEGMENT_SECONDS,
+                            maxSpeechDuration = tuning.phraseLimitMillis / MILLIS_PER_SECOND,
                         ),
                     sampleRate = SherpaTuning.SAMPLE_RATE,
                     numThreads = 1,
@@ -117,6 +174,11 @@ private class SherpaDetector(private val vad: Vad) : SpeechDetector {
     override fun accept(samples: FloatArray) = vad.acceptWaveform(samples)
 
     override fun flush() = vad.flush()
+
+    override fun reset() = vad.reset()
+
+    override val speechDetected: Boolean
+        get() = vad.isSpeechDetected()
 
     override fun nextSegment(): FloatArray? {
         if (vad.empty()) return null
@@ -142,3 +204,5 @@ private class SherpaRecognizer(private val recognizer: OfflineRecognizer) : Segm
 
     override fun release() = recognizer.release()
 }
+
+private const val MILLIS_PER_SECOND = 1000f

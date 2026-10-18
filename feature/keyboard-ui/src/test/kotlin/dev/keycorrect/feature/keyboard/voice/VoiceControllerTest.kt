@@ -102,6 +102,8 @@ class VoiceControllerTest {
     private var private = false
     private var settles = 0
     private val timers = mutableListOf<Pair<Long, () -> Unit>>()
+    private var now = 0L
+    private var tickBlock: (() -> Unit)? = null
     private val voice =
         VoiceController(
             editor as TextEditor,
@@ -118,7 +120,22 @@ class VoiceControllerTest {
                 val cancel: () -> Unit = { timers.remove(entry) }
                 cancel
             },
+            { _, block ->
+                tickBlock = block
+                val cancel: () -> Unit = { tickBlock = null }
+                cancel
+            },
+            { now },
         )
+
+    /** Moves the clock to [ms] and runs the tick that is due. */
+    private fun tickAt(ms: Long) {
+        now = ms
+        tickBlock?.invoke()
+    }
+
+    private fun progress(phrase: Long, limit: Long = 7000, speaking: Boolean = true) =
+        env.engine!!.listener!!.onResult(SttResult.Progress(phrase, limit, speaking))
 
     private fun partial(text: String, stable: Int = 0) =
         env.engine!!.listener!!.onResult(SttResult.Partial(text, stable))
@@ -134,7 +151,8 @@ class VoiceControllerTest {
         env.onAudio!!(ShortArray(480), 480)
         assertThat(engine.session.audio).isEqualTo(480)
         partial("hello wor")
-        assertThat(voice.state).isEqualTo(VoiceState.Listening(partial = "hello wor"))
+        assertThat(voice.state)
+            .isEqualTo(VoiceState.Listening(partial = "hello wor", stableLength = 0))
         assertThat(editor.text.toString()).isEqualTo("Hello wor")
         voice.finish()
         final("hello world")
@@ -410,5 +428,122 @@ class VoiceControllerTest {
         assertThat(voice.dictating).isTrue()
         voice.toggle()
         assertThat(env.engine!!.session.finished).isTrue()
+    }
+
+    @Test
+    fun theLimitsGoToTheEngine() {
+        settings =
+            KeyboardSettings(
+                voicePhraseMs = 5000,
+                voicePauseMs = 900,
+                voiceLiveMs = KeyboardSettings.VOICE_LIVE_OFF,
+            )
+        voice.start()
+        val c = env.engine!!.config!!
+        assertThat(c.phraseLimitMillis).isEqualTo(5000)
+        assertThat(c.pauseMillis).isEqualTo(900)
+        assertThat(c.liveUpdateMillis).isEqualTo(SttConfig.LIVE_OFF)
+    }
+
+    @Test
+    fun partialsKeepTheirStableLengthForTheGreyedTail() {
+        voice.start()
+        partial("hello world", stable = 5)
+        assertThat((voice.state as VoiceState.Listening).stableLength).isEqualTo(5)
+        partial("hello there", stable = 99)
+        assertThat((voice.state as VoiceState.Listening).stableLength).isEqualTo(11)
+    }
+
+    @Test
+    fun theTimerCountsWholeSecondsAndFormatsAsMinutesAndSeconds() {
+        voice.start()
+        assertThat(voice.elapsedSeconds).isEqualTo(0)
+        tickAt(1500)
+        assertThat(voice.elapsedSeconds).isEqualTo(1)
+        tickAt(65_000)
+        assertThat(voice.elapsedSeconds).isEqualTo(65)
+        assertThat(VoiceController.formatElapsed(65)).isEqualTo("1:05")
+        assertThat(VoiceController.formatElapsed(7)).isEqualTo("0:07")
+        voice.stopNow()
+        assertThat(voice.elapsedSeconds).isEqualTo(0)
+        assertThat(tickBlock).isNull()
+    }
+
+    @Test
+    fun theRingFollowsTheProgressAndTheHintAppearsAtSixtyPercent() {
+        voice.start()
+        progress(0)
+        assertThat(voice.phraseFraction).isEqualTo(0f)
+        assertThat(voice.phraseHint).isFalse()
+        progress(3500)
+        assertThat(voice.phraseFraction).isEqualTo(0.5f)
+        assertThat(voice.phraseHint).isFalse()
+        progress(4200)
+        assertThat(voice.phraseHint).isTrue()
+        assertThat(voice.phraseFraction).isLessThan(VoiceController.AMBER_FROM)
+        progress(5600)
+        assertThat(voice.phraseFraction).isAtLeast(VoiceController.AMBER_FROM)
+        progress(9000) // never past a full ring
+        assertThat(voice.phraseFraction).isEqualTo(1f)
+        progress(100, speaking = false)
+        assertThat(voice.speaking).isFalse()
+        assertThat(voice.phraseHint).isFalse()
+        assertThat(VoiceController.fractionOf(100, 0)).isEqualTo(0f)
+    }
+
+    @Test
+    fun progressDoesNotTouchTheEditorOrTheText() {
+        voice.start()
+        progress(2000)
+        assertThat(editor.text.toString()).isEmpty()
+        assertThat(voice.state).isEqualTo(VoiceState.Listening())
+    }
+
+    @Test
+    fun dictationStopsAfterTheSilenceLimitWithACountdownInTheLastSeconds() {
+        settings = KeyboardSettings(voiceAutoStopSeconds = 10)
+        voice.start()
+        partial("hi there")
+        now = 0
+        progress(0, speaking = false)
+        tickAt(6000)
+        assertThat(voice.silenceCountdown).isEqualTo(0)
+        tickAt(7500)
+        assertThat(voice.silenceCountdown).isEqualTo(3)
+        tickAt(9000)
+        assertThat(voice.silenceCountdown).isEqualTo(1)
+        // Speaking again starts the count from zero.
+        now = 9500
+        progress(500, speaking = true)
+        tickAt(10_000)
+        assertThat(voice.silenceCountdown).isEqualTo(0)
+        assertThat(env.engine!!.session.finished).isFalse()
+        tickAt(19_500)
+        assertThat(env.engine!!.session.finished).isTrue()
+        assertThat((voice.state as VoiceState.Listening).finishing).isTrue()
+    }
+
+    @Test
+    fun autoStopOffOrAnEngineWithoutProgressNeverStops() {
+        settings = KeyboardSettings(voiceAutoStopSeconds = KeyboardSettings.VOICE_AUTO_STOP_OFF)
+        voice.start()
+        progress(0, speaking = false)
+        tickAt(600_000)
+        assertThat(env.engine!!.session.finished).isFalse()
+        voice.stopNow()
+
+        settings = KeyboardSettings(voiceAutoStopSeconds = 5)
+        env.engine = FakeEngine()
+        voice.start()
+        tickAt(1_200_000) // no progress was ever reported (the phone recognizer)
+        assertThat(env.engine!!.session.finished).isFalse()
+    }
+
+    @Test
+    fun unclearShowsItsOwnMessage() {
+        assertThat(errorMessage(SttError.Unclear)).isNotEqualTo(errorMessage(SttError.NoMatch))
+        voice.start()
+        env.engine!!.listener!!.onResult(SttResult.Error(SttError.Unclear))
+        assertThat(voice.state).isEqualTo(VoiceState.Failed(SttError.Unclear))
     }
 }

@@ -144,6 +144,9 @@
     <string name="voice_error_audio">The microphone could not be used</string>
     <string name="voice_error_engine">The speech recognizer failed</string>
     <string name="voice_error_no_match">Didn\'t catch that</string>
+    <string name="voice_error_unclear">Couldn\'t make that out \u2014 try shorter phrases</string>
+    <string name="voice_pause_hint">pause briefly to keep going</string>
+    <string name="voice_auto_stop_countdown">Stopping in %1$d</string>
     <string name="voice_error_busy">The speech recognizer is busy</string>
     <string name="voice_error_no_voice_pack">Install the KeyCorrect voice pack to dictate</string>
     <string name="voice_error_voice_pack_untrusted">Voice pack isn\'t trusted (signature)</string>
