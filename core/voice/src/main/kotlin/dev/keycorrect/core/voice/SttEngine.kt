@@ -37,12 +37,30 @@ data class SttEngineInfo(
 /**
  * One dictation's settings. [hotwords] are the user's own words, used for contextual biasing where
  * the engine supports it (sherpa-onnx transducer hotwords, a Whisper prompt).
+ *
+ * The last three tune the built-in engine, which decodes speech phrase by phrase; other engines
+ * ignore them. The engine clamps them to what its model can do ([phraseLimitMillis] never goes
+ * above what the model survives).
  */
 data class SttConfig(
     val language: String = "en",
     val hotwords: List<String> = emptyList(),
     val punctuate: Boolean = true,
-)
+    /** The longest phrase decoded in one go; a longer one is cut (and the user asked to pause). */
+    val phraseLimitMillis: Long = 7_000,
+    /** How long a pause must last before the phrase before it is decoded for good. */
+    val pauseMillis: Long = 500,
+    /** Live words: [LIVE_AUTO], [LIVE_OFF], or a fixed interval in ms (raised if too fast). */
+    val liveUpdateMillis: Long = LIVE_AUTO,
+) {
+    companion object {
+        /** As often as decoding allows: twice the time a decode took, from 0.5 s to 3 s. */
+        const val LIVE_AUTO = 0L
+
+        /** No words while speaking; a phrase appears after its pause. */
+        const val LIVE_OFF = -1L
+    }
+}
 
 /** A running recognition. Every method may be called from any thread. */
 interface SttSession {
@@ -88,6 +106,20 @@ sealed interface SttResult {
 
     /** The session ended without text. */
     data class Error(val kind: SttError) : SttResult
+
+    /**
+     * How far the current phrase is, a few times a second while listening, for the keyboard's
+     * progress ring. [phraseMillis] is the length of the speech in progress (0 between phrases),
+     * [phraseLimitMillis] the longest phrase the engine decodes in one go (it cuts the phrase
+     * there, so the user should pause before), [speaking] whether speech is being heard right now.
+     * An engine without a phrase limit never sends it (the system recognizer), or sends 0 as the
+     * limit. Carries no text; the keyboard ignores it for editing.
+     */
+    data class Progress(
+        val phraseMillis: Long,
+        val phraseLimitMillis: Long,
+        val speaking: Boolean,
+    ) : SttResult
 }
 
 /** Why a session ended without text. Never carries audio or user text. */
@@ -104,8 +136,23 @@ enum class SttError {
     /** The voice pack is signed with a different key than the keyboard, so it isn't used. */
     VoicePackUntrusted,
 
-    /** The voice pack is installed but incomplete or unusable. */
-    VoicePackBroken,
+    /** The voice pack is installed but its native libraries aren't on disk. */
+    VoicePackLibrariesMissing,
+
+    /** The voice pack's native libraries are there but couldn't be loaded. */
+    VoicePackLoadFailed,
+
+    /** The voice pack's speech models are missing or unreadable. */
+    VoicePackModelsMissing,
+
+    /** The voice pack was updated while it was being checked. */
+    VoicePackChanged,
+
+    /**
+     * The voice pack was updated or reinstalled with different libraries; the keyboard must restart
+     * before it can be used (the bar offers a tap to do so).
+     */
+    VoicePackNeedsRestart,
 
     /** The phone recognizer is chosen, but this field is private (incognito or no learning). */
     PrivateField,
@@ -121,6 +168,9 @@ enum class SttError {
 
     /** Nothing was recognised (silence or noise). */
     NoMatch,
+
+    /** Speech was heard but no words could be made out; shorter phrases may help. */
+    Unclear,
 
     /** The recognizer is in use by something else. */
     Busy,

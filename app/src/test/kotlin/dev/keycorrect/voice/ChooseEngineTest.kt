@@ -11,6 +11,7 @@ import dev.keycorrect.core.voice.SttListener
 import dev.keycorrect.core.voice.SttSession
 import dev.keycorrect.feature.keyboard.voice.EngineOpening
 import dev.keycorrect.feature.voicesherpa.VoicePackProblem
+import dev.keycorrect.settings.packProblemMessage
 import org.junit.Test
 
 class ChooseEngineTest {
@@ -59,7 +60,11 @@ class ChooseEngineTest {
             mapOf(
                 VoicePackProblem.NotInstalled to SttError.NoVoicePack,
                 VoicePackProblem.SignatureMismatch to SttError.VoicePackUntrusted,
-                VoicePackProblem.Broken to SttError.VoicePackBroken,
+                VoicePackProblem.LibrariesMissing to SttError.VoicePackLibrariesMissing,
+                VoicePackProblem.LibraryLoadFailed to SttError.VoicePackLoadFailed,
+                VoicePackProblem.ModelsMissing to SttError.VoicePackModelsMissing,
+                VoicePackProblem.ChangedDuringLoad to SttError.VoicePackChanged,
+                VoicePackProblem.NeedsRestart to SttError.VoicePackNeedsRestart,
             )
         for ((problem, error) in cases) {
             val opened =
@@ -69,6 +74,18 @@ class ChooseEngineTest {
         assertThat(choose(VoiceEngineChoice.BuiltIn, null))
             .isEqualTo(EngineOpening.Unavailable(SttError.NoVoicePack))
         assertThat(phoneOpens).isEqualTo(0)
+    }
+
+    @Test
+    fun everyPackProblemHasItsOwnErrorAndItsOwnSettingsMessage() {
+        val problems = VoicePackProblem.entries
+        val errors = problems.map {
+            (choose(VoiceEngineChoice.BuiltIn, builtIn(BuiltInOpening.Unavailable(it)))
+                    as EngineOpening.Unavailable)
+                .error
+        }
+        assertThat(errors.toSet()).hasSize(problems.size)
+        assertThat(problems.map(::packProblemMessage).toSet()).hasSize(problems.size)
     }
 
     @Test

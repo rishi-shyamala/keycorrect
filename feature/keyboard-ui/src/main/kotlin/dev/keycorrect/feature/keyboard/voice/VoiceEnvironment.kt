@@ -46,6 +46,24 @@ interface VoiceEnvironment {
     ): EngineOpening
 
     /**
+     * [openEngine], for an engine whose opening may take a moment (the voice pack hashes and loads
+     * native libraries): it may do the work on a background thread and then calls [onOpened] from
+     * any thread, exactly once. The default opens at once, on the calling (main) thread.
+     */
+    fun openEngineAsync(
+        settings: KeyboardSettings,
+        privateField: Boolean,
+        onLevel: (Float) -> Unit,
+        onOpened: (EngineOpening) -> Unit,
+    ) = onOpened(openEngine(settings, privateField, onLevel))
+
+    /**
+     * Restarts the keyboard's process once its window is hidden, so that an updated voice pack can
+     * be loaded (the "tap to restart" message). Nothing by default.
+     */
+    fun restartKeyboard() = Unit
+
+    /**
      * Records 16-bit mono PCM at [sampleRate] on its own thread, passing about 30 ms chunks to
      * [onAudio] and their loudness (0 to 1) to [onLevel]; [onFailure] if the microphone breaks.
      * Null when it cannot be opened.

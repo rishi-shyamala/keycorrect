@@ -13,7 +13,7 @@ learned substitutions. Stacked on Phase 5 (#11).
 | P6-2 | Runtime and downloads | **sherpa-onnx** (Apache-2.0) for on-device models. Its Android native libraries and the candidate models are downloaded from the official releases, with checksums recorded like the dictionary sources. Only what ships is committed or packed. |
 | P6-3 | Mic button | **Long-press the comma**, as on Samsung, with a small **mic icon** on the comma key as its hint. Not offered in password fields. |
 | P6-4 | Delivery | **One PR.** |
-| P6-5 | Phone recognizer | **Never a fallback.** The engine setting is `BuiltIn` (default: the voice pack only) or `PhoneRecognizer` (an explicit opt-in; the settings text says the phone's recognizer may send audio to its provider's servers). With `BuiltIn` and no, untrusted or damaged pack, dictation shows a message ("Install the KeyCorrect voice pack to dictate", "Voice pack isn't trusted (signature)", "Voice pack is damaged") instead of switching. In incognito and in fields with `IME_FLAG_NO_PERSONALIZED_LEARNING` the phone recognizer is not used even when selected (a message is shown). Stored `Automatic` becomes `BuiltIn`, `System` becomes `PhoneRecognizer`. |
+| P6-5 | Phone recognizer | **Never a fallback.** The engine setting is `BuiltIn` (default: the voice pack only) or `PhoneRecognizer` (an explicit opt-in; the settings text says the phone's recognizer may send audio to its provider's servers). With `BuiltIn` and no, untrusted or damaged pack, dictation shows a message ("Install the KeyCorrect voice pack to dictate", "Voice pack isn't trusted (signature)", a specific reason (libraries missing / failed to load, models missing, changed during load, or "updated — tap to restart")) instead of switching. In incognito and in fields with `IME_FLAG_NO_PERSONALIZED_LEARNING` the phone recognizer is not used even when selected (a message is shown). Stored `Automatic` becomes `BuiltIn`, `System` becomes `PhoneRecognizer`. |
 
 ## Scope
 - **Speech API:** `SttEngine` / `SttSession` (PLAN §5.1), in a JVM module.
@@ -57,16 +57,30 @@ learned substitutions. Stacked on Phase 5 (#11).
   `com.k2fsa.sherpa.onnx`, which the JNI symbols need; `System.loadLibrary` removed, presets
   dropped), `VoicePackLocator` and `SherpaMoonshineEngine`.
 - **Loading.** `VoicePackLocator(context).locate()` returns `Available(VoicePack)` or
-  `Unavailable(NotInstalled | SignatureMismatch | Broken)`. It reads both packages' signing
+  `Unavailable(problem, detail)` with `problem` one of `NotInstalled`, `SignatureMismatch`,
+  `LibrariesMissing`, `LibraryLoadFailed` (detail: the error class name only), `ModelsMissing`,
+  `ChangedDuringLoad`, `NeedsRestart` (each has its own message in the listening bar and in
+  Settings → Voice). It reads both packages' signing
   certificates (`GET_SIGNING_CERTIFICATES`), compares the SHA-256 sets for equality (the pure
   `checkPackSigners`; unreadable or empty means refused), and only then `System.load()`s
   `libonnxruntime.so` then `libsherpa-onnx-jni.so` from the pack's `nativeLibraryDir`, once per
   process. The models are read in place through `createPackageContext(...).assets` (checked with
   `openFd`, so they must be stored uncompressed). The assets are taken before the signature check
   and the pack's version code and update time are compared again after loading (a pack replaced
-  meanwhile gives `Broken`); a verified result is cached per (version code, update time). Missing
-  libraries or assets give `Broken`; so does
-  a pack updated while the keyboard process lives (a new path), until the process restarts.
+  meanwhile gives `ChangedDuringLoad`); a verified result is cached per (version code, update time).
+  `locate()` reads and hashes files, so it never runs on the main thread: `VoiceHost` opens the
+  built-in engine on a background thread (the bar shows "Starting..." and Stop/cross cancel it) and
+  the warm-up and the pack-change check run on their own threads.
+- **Reinstall and update.** Libraries load once per process and can't be unloaded, and a reinstall
+  puts the pack in a new directory. The SHA-256 of each loaded library is recorded; a later
+  `locate()` from a new directory with identical libraries reuses the loaded ones (models are read
+  from the new pack's assets), with different ones gives `NeedsRestart` ("The voice pack was
+  updated — tap to restart the keyboard"; the tap hides the keyboard and restarts). The IME
+  service registers (dynamically) a receiver for `PACKAGE_ADDED/REPLACED/REMOVED` of
+  `dev.keycorrect.voice`; when libraries are loaded and the installed ones differ or are gone, a
+  restart is marked pending (`PackRestartPolicy`) and the process is killed the next time the
+  keyboard window is hidden and no dictation is running (learned data is flushed first); the system
+  starts the keyboard again when it is next shown.
 - **Engine.** `SherpaMoonshineEngine(pack)`: not streaming. A session's worker thread loads the VAD
   and recognizer (2 threads), feeds 16 kHz audio to Silero VAD (0.5 s silence ends a segment, speech
   is cut at 15 s), decodes each finished segment with Moonshine, and emits
@@ -90,3 +104,74 @@ learned substitutions. Stacked on Phase 5 (#11).
   text stands and a message says the last words may be missing.
 - **Release.** `tools/release/release.sh publish` checks that the voice pack and the keyboard APK
   have the same signing certificate (SHA-256) and stops otherwise.
+
+## Long dictation & live words
+
+**The bug.** Speaking for a long time ended with "Didn't catch that": Moonshine v2 tiny fails
+outright on audio longer than about 9.25 s (ONNX Runtime: the decoder's cross-attention shapes don't
+broadcast), sherpa-onnx catches that and returns an empty result, so a long segment decoded to
+nothing. The VAD's own maximum didn't help: Silero cuts only at a quiet moment and with a 3 s maximum
+segments of 12 s were still produced (desktop, `sherpa-onnx-vad-with-offline-asr`).
+
+**Experiment** (desktop, sherpa-onnx 1.13.8 Linux CLI, Moonshine v2 tiny quantized, 2 threads;
+clips cut from the bundled test wavs, A = 6.6 s clip then the 16.7 s clip, B = the reverse):
+
+| Clip length | A | B |
+|---|---|---|
+| 4 s | ok | ok |
+| 6 s | ok (cut mid-word: repeated "the brothel") | ok |
+| 8 s | ok | ok |
+| 9.24 s | ok | ok |
+| 9.28 s and longer (9.4, 10, 12, 15, 17 s) | empty (exception) | empty (exception) |
+
+Decoding takes 30 to 90 ms per clip on the desktop (RTF about 0.006), so the live re-decode is
+cheap there; the phone is to be measured. Failure is a hard, sharp threshold at about 9.25 s, not a
+gradual loss of quality.
+
+**Limits.** Phrase limit default **7 s** (76% of the first failure); the user can set 3 s to
+**8 s** (86%: the 9.25 s failure counts the 0.3 s pre-roll and the VAD's padding too, so the margin
+is kept; the session also never hands the recognizer more than 9.0 s, longer stretches are split at
+their quietest point first). The session cuts a
+phrase itself when its copy of the speech reaches the limit: at the quietest 30 ms frame of the
+second half, committing the part before, resetting the VAD and feeding the rest back. Settings
+(Settings, Voice, "Long dictation", all clamped on read and write): longest phrase 3 to 8 s
+(default 7); pause before a phrase is final 0.3 to 1.5 s (0.5), never more than half the longest
+phrase; live update interval Auto, 0.5 to 2.0 s or Off (Auto); stop after silence 3 to 30 s or Off (10 s).
+
+**Robustness.** A segment longer than 4 s that decodes to nothing, or to fewer than one word per
+2.5 s, is cut at its quietest point near the middle and the halves are decoded (again when still
+long); the result with more words wins (a word that both halves say because the cut fell in the
+middle of it is counted once). If the whole session heard at least 1 s of speech and made
+no text, the error is `SttError.Unclear` ("Couldn't make that out - try shorter phrases"), not
+`NoMatch`.
+
+**Live words.** `SegmentedDictation` keeps its own copy of the phrase in progress (from the VAD's
+speech start, with 0.3 s of pre-roll) and, while speech goes on, decodes it on the worker about
+every 0.7 s: the wait to the next decode is twice the last one's duration, within 0.5 to 3 s
+(Auto), or a fixed interval that is raised to twice the decode time when the phone is slower. A live
+decode runs inline on the one worker, so none ever queues behind another; none is started while
+live decoding used more than 40% of the last 6 s, and none after Stop, so a pause or Stop waits
+behind one live decode at most. `Partial(committed +
+live, stablePrefixLength = committed.length)`; at the pause the segment is decoded once more and
+committed (if that decode is empty the live words are kept, but only when they are not longer than
+1.5 x the characters speech of that length has, and never after a forced cut: the live words cover
+the whole phrase while the rest is decoded again; those cases count as unclear, not as text). Output that is clearly a decoder loop
+(more than 6 words per second) is not shown. Buffers are freed per segment; after a segment the
+last 0.3 s stay as the pre-roll of the next phrase.
+
+**Noise.** A click can make the VAD report speech and then none without a segment (shorter than its
+minimum speech). Once that has lasted one pause, the session stops collecting and keeps only the
+pre-roll; nothing is live-decoded or force-cut without speech detected, so a silent "phrase" can
+not be hallucinated into text ("Thank you").
+
+**Progress.** `SttResult.Progress(phraseMillis, phraseLimitMillis, speaking)` about every 200 ms of
+audio; the phone recognizer sends none.
+
+**Listening bar.** Total time (m:ss), a ring around the mic that fills with
+`phraseMillis / phraseLimitMillis` (amber from 75%), a pulsing dot while speech is heard, the hint
+"pause briefly to keep going" from 60%, live words greyed until stable, and (with auto-stop on) a
+"Stopping in N" countdown in the last 3 s of silence. The ring and level are read in draw scopes
+only (the hint and its amber colour are threshold flags, so the words don't recompose five times a
+second) and the pulse animates only while speech is heard. "Starting..." shows until the engine's
+first progress report; the silence clock starts then, and only progress (not partial text) counts
+as speech. Auto-stop applies only to engines that report progress.

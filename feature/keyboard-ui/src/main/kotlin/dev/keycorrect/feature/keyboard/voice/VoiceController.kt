@@ -2,8 +2,10 @@ package dev.keycorrect.feature.keyboard.voice
 
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.keycorrect.core.input.TextEditor
@@ -23,10 +25,15 @@ sealed interface VoiceState {
     data object Idle : VoiceState
 
     /**
-     * The mic is on. [partial] is the text heard so far; [finishing] after Stop, while the last
-     * result is awaited.
+     * The mic is on. [partial] is the text heard so far, of which the first [stableLength] chars
+     * are final and the rest may still change; [finishing] after Stop, while the last result is
+     * awaited.
      */
-    data class Listening(val partial: String = "", val finishing: Boolean = false) : VoiceState
+    data class Listening(
+        val partial: String = "",
+        val finishing: Boolean = false,
+        val stableLength: Int = 0,
+    ) : VoiceState
 
     /** Dictation could not start or ended without text; shown briefly, for [error]. */
     data class Failed(val error: SttError) : VoiceState
@@ -85,12 +92,51 @@ internal constructor(
     private val settle: () -> Unit,
     private val post: (() -> Unit) -> Unit = MainThread::post,
     private val scheduler: Scheduler = MainThread.scheduler,
+    /** Drives the timer and the auto-stop; separate so that a test can step it on its own. */
+    private val ticker: Scheduler = scheduler,
+    /** Milliseconds from a monotonic clock. */
+    private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) {
     var state: VoiceState by mutableStateOf(VoiceState.Idle)
         private set
 
     /** Loudness of the voice, 0 to 1, for the level meter. */
     var level: Float by mutableFloatStateOf(0f)
+        private set
+
+    /** Whole seconds since dictation started, for the m:ss timer. */
+    var elapsedSeconds: Int by mutableIntStateOf(0)
+        private set
+
+    /**
+     * How far the current phrase is towards the engine's phrase limit, 0 to 1 (the ring around the
+     * mic). Read in a draw scope only: it changes about five times a second.
+     */
+    var phraseFraction: Float by mutableFloatStateOf(0f)
+        private set
+
+    /** Speech is being heard right now (the mic pulses). */
+    var speaking: Boolean by mutableStateOf(false)
+        private set
+
+    /**
+     * The phrase is long: the bar asks to pause briefly. Changes only when crossing the line, so
+     * composition reading it doesn't follow the five updates a second of [phraseFraction].
+     */
+    val phraseHint: Boolean by derivedStateOf { phraseFraction >= HINT_FROM }
+
+    /** The phrase is nearly at the limit (the hint turns amber); changes only at the line. */
+    val phraseAmber: Boolean by derivedStateOf { phraseFraction >= AMBER_FROM }
+
+    /**
+     * The engine is still loading: no progress has come yet from an engine that reports it (the
+     * built-in one). The bar says "Starting..." and the auto-stop clock hasn't started.
+     */
+    var starting: Boolean by mutableStateOf(false)
+        private set
+
+    /** Seconds until dictation stops by itself for lack of speech, in the last few; else 0. */
+    var silenceCountdown: Int by mutableIntStateOf(0)
         private set
 
     /** The strip shows the voice bar (listening, or a failure message). */
@@ -108,6 +154,13 @@ internal constructor(
     private var assembler: DictationAssembler? = null
     private var cancelTimeout: (() -> Unit)? = null
     private var cancelFailure: (() -> Unit)? = null
+    private var cancelTick: (() -> Unit)? = null
+    private var startedAt = 0L
+    private var lastSpeechAt = 0L
+    private var progressSeen = false
+
+    /** The engine is being opened (see [start]); Stop and the cross cancel it. */
+    private var opening = false
 
     /**
      * What the last dictation committed and kept, so a "delete that" said at the start of the next
@@ -134,15 +187,37 @@ internal constructor(
             return
         }
         val gen = ++generation
-        val opening =
-            env.openEngine(s, privateField()) { v ->
-                post { if (gen == generation) level = v.coerceIn(0f, 1f) }
+        // The bar says "Starting..." while the engine opens (the voice pack's libraries are
+        // loaded off the main thread); Stop or the cross during that cancels the opening.
+        opening = true
+        starting = true
+        state = VoiceState.Listening()
+        env.openEngineAsync(
+            s,
+            privateField(),
+            { v -> post { if (gen == generation) level = v.coerceIn(0f, 1f) } },
+        ) { result ->
+            post {
+                if (gen != generation) {
+                    // Cancelled while opening: nobody will use this engine.
+                    (result as? EngineOpening.Ready)?.engine?.release()
+                } else {
+                    opening = false
+                    onEngineOpened(gen, s, result)
+                }
             }
+        }
+    }
+
+    @Suppress("ReturnCount") // guard clauses
+    private fun onEngineOpened(gen: Int, s: KeyboardSettings, result: EngineOpening) {
         val opened =
-            when (opening) {
-                is EngineOpening.Ready -> opening.engine
+            when (result) {
+                is EngineOpening.Ready -> result.engine
                 is EngineOpening.Unavailable -> {
-                    fail(opening.error)
+                    starting = false
+                    state = VoiceState.Idle
+                    fail(result.error)
                     return
                 }
             }
@@ -156,7 +231,7 @@ internal constructor(
             )
         val listener = SttListener { r -> post { if (gen == generation) onResult(r) } }
         val started = runCatching {
-            opened.startSession(SttConfig(punctuate = s.voiceAutoPunctuation), listener)
+            opened.startSession(configFor(s), listener)
         }
         val newSession = started.getOrNull()
         if (newSession == null) {
@@ -172,7 +247,49 @@ internal constructor(
             return
         }
         state = VoiceState.Listening()
+        startedAt = clock()
+        lastSpeechAt = startedAt
+        progressSeen = false
+        starting = !opened.info.capturesOwnAudio
+        tick(gen)
     }
+
+    /**
+     * Twice a second: the timer, and the auto-stop. Dictation stops (as with Stop, keeping the
+     * text) after [KeyboardSettings.voiceAutoStopSeconds] without speech, counting down in the last
+     * [COUNTDOWN_SECONDS]. Only for an engine that reports progress: the phone recognizer ends by
+     * itself.
+     */
+    private fun tick(gen: Int) {
+        cancelTick =
+            ticker.postDelayed(TICK_MS) {
+                if (gen != generation) return@postDelayed
+                val now = clock()
+                elapsedSeconds = ((now - startedAt) / MILLIS_PER_SECOND).toInt()
+                val limit = settings().voiceAutoStopSeconds
+                val finishing = (state as? VoiceState.Listening)?.finishing != false
+                if (limit > 0 && progressSeen && !finishing) {
+                    val left = limit - (now - lastSpeechAt) / MILLIS_PER_SECOND
+                    silenceCountdown = if (left in 1..COUNTDOWN_SECONDS) left.toInt() else 0
+                    if (now - lastSpeechAt >= limit * MILLIS_PER_SECOND) {
+                        silenceCountdown = 0
+                        finish()
+                        return@postDelayed
+                    }
+                } else {
+                    silenceCountdown = 0
+                }
+                tick(gen)
+            }
+    }
+
+    private fun configFor(s: KeyboardSettings) =
+        SttConfig(
+            punctuate = s.voiceAutoPunctuation,
+            phraseLimitMillis = s.voicePhraseMs.toLong(),
+            pauseMillis = s.voicePauseMs.toLong(),
+            liveUpdateMillis = s.voiceLiveMs.toLong(),
+        )
 
     private fun startCapture(gen: Int, opened: SttEngine, target: SttSession): Boolean {
         capture =
@@ -188,12 +305,15 @@ internal constructor(
     /** Stop: the recognizer delivers what it has, and dictation ends with it. */
     fun finish() {
         val current = state as? VoiceState.Listening ?: return
-        if (current.finishing) return
-        state = current.copy(finishing = true)
-        capture?.stop()
-        capture = null
-        awaitFinal(FINISH_TIMEOUT_MS, FINISH_TIMEOUT_MS)
-        session?.finish()
+        if (opening) {
+            cancel()
+        } else if (!current.finishing) {
+            state = current.copy(finishing = true)
+            capture?.stop()
+            capture = null
+            awaitFinal(FINISH_TIMEOUT_MS, FINISH_TIMEOUT_MS)
+            session?.finish()
+        }
     }
 
     /**
@@ -237,6 +357,16 @@ internal constructor(
     /** The selection moved by something other than dictation. */
     fun onExternalChange() = stopNow()
 
+    /**
+     * The strip's message was tapped. Most messages are just dismissed; "the voice pack was
+     * updated" restarts the keyboard instead (once its window is hidden).
+     */
+    fun onFailureTapped() {
+        val failed = state as? VoiceState.Failed
+        clearFailure()
+        if (failed?.error == SttError.VoicePackNeedsRestart) env.restartKeyboard()
+    }
+
     /** The strip's message was dismissed or timed out. */
     fun clearFailure() {
         cancelFailure?.invoke()
@@ -249,8 +379,25 @@ internal constructor(
         val current = assembler ?: return
         when (result) {
             is SttResult.Partial -> {
+                // Not a sign of speech for the auto-stop: only the engine's progress says so.
                 apply(current.onPartial(result.text, result.stablePrefixLength, result.endsSegment))
-                state = (state as VoiceState.Listening).copy(partial = result.text)
+                state =
+                    (state as VoiceState.Listening).copy(
+                        partial = result.text,
+                        stableLength = result.stablePrefixLength.coerceIn(0, result.text.length),
+                    )
+            }
+            is SttResult.Progress -> {
+                if (!progressSeen) {
+                    // The engine is ready: the silence clock starts now, not when the models
+                    // began to load.
+                    progressSeen = true
+                    starting = false
+                    lastSpeechAt = clock()
+                }
+                speaking = result.speaking
+                phraseFraction = fractionOf(result.phraseMillis, result.phraseLimitMillis)
+                if (result.speaking) lastSpeechAt = clock()
             }
             is SttResult.Final -> {
                 apply(current.onFinal(result.text))
@@ -282,6 +429,14 @@ internal constructor(
         generation++
         cancelTimeout?.invoke()
         cancelTimeout = null
+        cancelTick?.invoke()
+        cancelTick = null
+        elapsedSeconds = 0
+        phraseFraction = 0f
+        starting = false
+        opening = false
+        speaking = false
+        silenceCountdown = 0
         capture?.stop()
         capture = null
         session = null
@@ -295,7 +450,9 @@ internal constructor(
 
     private fun fail(error: SttError) {
         state = VoiceState.Failed(error)
-        cancelFailure = scheduler.postDelayed(FAILURE_MS) { clearFailure() }
+        // The restart offer stays longer: it asks for a tap.
+        val ms = if (error == SttError.VoicePackNeedsRestart) RESTART_OFFER_MS else FAILURE_MS
+        cancelFailure = scheduler.postDelayed(ms) { clearFailure() }
     }
 
     private fun apply(edits: List<DictationEdit>) {
@@ -325,7 +482,27 @@ internal constructor(
         }
     }
 
-    private companion object {
+    internal companion object {
+        /** The ring turns amber from here, and the hint asks for a pause from [HINT_FROM]. */
+        const val AMBER_FROM = 0.75f
+        const val HINT_FROM = 0.6f
+
+        /** The silence countdown shows in the last this many seconds. */
+        const val COUNTDOWN_SECONDS = 3L
+        const val TICK_MS = 500L
+        const val MILLIS_PER_SECOND = 1000L
+        const val NANOS_PER_MILLI = 1_000_000L
+
+        /** [millis] of the phrase out of its [limit]; 0 when the engine has no limit. */
+        fun fractionOf(millis: Long, limit: Long): Float =
+            if (limit <= 0) 0f else (millis.toFloat() / limit).coerceIn(0f, 1f)
+
+        /** Seconds as the timer shows them: 0:07, 1:05, 12:00. */
+        fun formatElapsed(seconds: Int): String =
+            "${seconds / SECONDS_PER_MINUTE}:${(seconds % SECONDS_PER_MINUTE).toString().padStart(2, '0')}"
+
+        private const val SECONDS_PER_MINUTE = 60
+
         /** The text before the cursor the assembler needs for spacing and capitals. */
         const val CONTEXT_CHARS = 64
 
@@ -338,5 +515,6 @@ internal constructor(
 
         /** How long a failure message stays in the strip. */
         const val FAILURE_MS = 3_000L
+        const val RESTART_OFFER_MS = 8_000L
     }
 }

@@ -147,6 +147,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
             voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
             voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
+            voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
+            voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
+            voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
+            voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
         )
     }
 
@@ -196,6 +200,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[VOICE_ENABLED] = s.voiceEnabled
         this[VOICE_ENGINE] = s.voiceEngine.name
         this[VOICE_AUTO_PUNCTUATION] = s.voiceAutoPunctuation
+        this[VOICE_PHRASE_MS] = s.voicePhraseMs
+        this[VOICE_PAUSE_MS] = s.voicePauseMs
+        this[VOICE_LIVE_MS] = s.voiceLiveMs
+        this[VOICE_AUTO_STOP_SECONDS] = s.voiceAutoStopSeconds
     }
 
     private companion object {
@@ -244,6 +252,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val VOICE_ENABLED = booleanPreferencesKey("voice_enabled")
         val VOICE_ENGINE = stringPreferencesKey("voice_engine")
         val VOICE_AUTO_PUNCTUATION = booleanPreferencesKey("voice_auto_punctuation")
+        val VOICE_PHRASE_MS = intPreferencesKey("voice_phrase_ms")
+        val VOICE_PAUSE_MS = intPreferencesKey("voice_pause_ms")
+        val VOICE_LIVE_MS = intPreferencesKey("voice_live_ms")
+        val VOICE_AUTO_STOP_SECONDS = intPreferencesKey("voice_auto_stop_seconds")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -287,6 +299,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 AUTOCORRECT_PULSE_MS.name,
                 UNKNOWN_WORD_PULSE_MS.name,
                 CLIPBOARD_MAX_ITEMS.name,
+                VOICE_PHRASE_MS.name,
+                VOICE_PAUSE_MS.name,
+                VOICE_LIVE_MS.name,
+                VOICE_AUTO_STOP_SECONDS.name,
             )
         val FLOAT_KEYS = setOf(BOTTOM_KEY_WIDTH.name, MODE_ENTER_KEY_WIDTH.name, SOUND_VOLUME.name)
         val STRING_KEYS =

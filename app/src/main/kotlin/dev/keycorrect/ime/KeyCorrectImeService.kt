@@ -26,9 +26,14 @@ import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardScreen
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.settings.SettingsActivity
+import dev.keycorrect.voice.PackChangeWatcher
+import dev.keycorrect.voice.PackRestartPolicy
+import dev.keycorrect.voice.Restarter
+import dev.keycorrect.voice.killProcess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** The system-facing keyboard service. */
 class KeyCorrectImeService : ComposeInputMethodService() {
@@ -86,9 +91,47 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     /** The field the last [onStartInput] was for; see [EditorIdentity.continues]. */
     private var inputIdentity: EditorIdentity? = null
 
+    /**
+     * An updated or removed voice pack can't replace the native libraries this process loaded, so
+     * the process is restarted (the system starts the keyboard again when it is next shown) once
+     * the keyboard is hidden and nothing is being dictated. See [PackRestartPolicy].
+     */
+    private val packRestart =
+        PackRestartPolicy(
+            restarter = Restarter { restartAfterFlush() },
+            dictating = { controller.voice.dictating },
+        )
+
+    private val packWatcher by lazy {
+        PackChangeWatcher(this, packRestart) { appContainer.voiceHost.voicePackLibrariesStale() }
+    }
+
+    /** Saves the learned data first, then ends the process if the keyboard is still hidden. */
+    private fun restartAfterFlush() {
+        appContainer.applicationScope.launch(Dispatchers.Main) {
+            withTimeoutOrNull(RESTART_FLUSH_MS) { learningHost.flush() }
+            if (!isInputViewShown && !controller.voice.dictating) {
+                killProcess.restart()
+            } else {
+                packRestart.requestRestart() // shown again meanwhile: wait for the next hide
+            }
+        }
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        packRestart.onKeyboardHidden()
+    }
+
     override fun onCreate() {
         super.onCreate()
         updateDevice(resources.configuration)
+        packWatcher.register()
+        appContainer.voiceHost.restarter = {
+            // "Tap to restart": hide the keyboard; the restart happens when its window is hidden.
+            packRestart.requestRestart()
+            requestHideSelf(0)
+        }
         // Dictionary and user data load in the background; suggestions appear once they're ready.
         predictionHost.start()
         clipboardCapture.register()
@@ -133,6 +176,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     override fun onDestroy() {
         // The microphone and the recognizer are closed with the service.
         controller.voice.stopNow()
+        packWatcher.unregister()
+        appContainer.voiceHost.restarter = null
         clipboardCapture.unregister()
         with(appContainer.clipboardEnvironment) {
             if (imagePaster === this@KeyCorrectImeService.imagePaster) imagePaster = null
@@ -237,5 +282,10 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             candidatesEnd,
         )
         controller.onSelectionChanged(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+    }
+
+    private companion object {
+        /** How long to wait for the learned data to be saved before restarting the process. */
+        const val RESTART_FLUSH_MS = 2_000L
     }
 }

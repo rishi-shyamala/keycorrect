@@ -5,6 +5,8 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
 import java.io.File
+import java.io.IOException
+import java.security.MessageDigest
 
 /** Why the voice pack can't be used. */
 enum class VoicePackProblem {
@@ -15,9 +17,26 @@ enum class VoicePackProblem {
     SignatureMismatch,
 
     /**
-     * The pack is installed but unusable: missing libraries or models, or an unloadable library.
+     * The pack is installed but its native libraries aren't on disk (wrong ABI, damaged install).
      */
-    Broken,
+    LibrariesMissing,
+
+    /**
+     * A native library is there but couldn't be loaded (the result's detail is the error class).
+     */
+    LibraryLoadFailed,
+
+    /** The pack's speech model files are missing or compressed (not readable in place). */
+    ModelsMissing,
+
+    /** The pack was updated or replaced while it was being checked; the next try checks again. */
+    ChangedDuringLoad,
+
+    /**
+     * The pack was updated or reinstalled with different native libraries after this process loaded
+     * the old ones; a library can't be unloaded, so the keyboard's process has to restart.
+     */
+    NeedsRestart,
 }
 
 /** An installed, verified voice pack whose native libraries are loaded. */
@@ -50,7 +69,9 @@ internal fun interface NativeLoader {
 sealed interface VoicePackResult {
     data class Available(val pack: VoicePack) : VoicePackResult
 
-    data class Unavailable(val problem: VoicePackProblem) : VoicePackResult
+    /** [detail] is the class name of the error behind [VoicePackProblem.LibraryLoadFailed]. */
+    data class Unavailable(val problem: VoicePackProblem, val detail: String? = null) :
+        VoicePackResult
 }
 
 /** What identifies one install of the pack: it changes with every update. */
@@ -142,9 +163,15 @@ private class AndroidPackSource(private val context: Context) : PackSource {
  * The pack's assets are taken first, then the signature is checked, the libraries are loaded, and
  * the pack's version and update time are read again: a pack replaced meanwhile is refused. An
  * [Available][VoicePackResult.Available] result is kept per install (version code and update time),
- * so later calls only look the stamp up. Libraries are loaded once per process, from the first
- * verified install path. If the pack is updated afterwards (a new path), the loaded copy stays and
- * [VoicePackProblem.Broken] is reported until the keyboard's process restarts.
+ * so later calls only look the stamp up.
+ *
+ * Libraries are loaded once per process and can't be unloaded. A reinstall or update puts the pack
+ * in a new directory, so the SHA-256 of each loaded library is recorded: a new install whose
+ * libraries are identical is used as it is (its models are read from its own assets), a different
+ * one gives [VoicePackProblem.NeedsRestart] until the keyboard's process restarts.
+ *
+ * **Threading:** [locate] and [loadedLibrariesStale] read files (hashing ~27 MB the first time and
+ * after an update) and call the package manager, so they must never run on the main thread.
  */
 class VoicePackLocator
 internal constructor(
@@ -163,12 +190,34 @@ internal constructor(
             VoicePackResult.Available(cachedPack() ?: open())
         } catch (e: PackException) {
             cached = null
-            VoicePackResult.Unavailable(e.problem)
+            VoicePackResult.Unavailable(e.problem, e.detail)
         }
 
-    private class PackException(val problem: VoicePackProblem) : Exception(problem.name)
+    /**
+     * Whether libraries are loaded in this process that the installed pack no longer provides (the
+     * pack was removed, or replaced with different libraries): the process should restart when it
+     * is idle. False when nothing is loaded or the installed libraries are the loaded ones.
+     */
+    @Synchronized
+    fun loadedLibrariesStale(): Boolean =
+        synchronized(lock) {
+            val from = loadedDir ?: return false
+            val libDir = source.pack(withSigners = false)?.nativeLibraryDir ?: return true
+            if (libDir == from) return false
+            val files = VoicePackLayout.LIBRARIES.map { File(libDir, it) }
+            if (!files.all { it.isFile }) return true
+            return try {
+                hashes(files) != loadedHashes
+            } catch (_: IOException) {
+                true
+            }
+        }
 
-    private fun fail(problem: VoicePackProblem): Nothing = throw PackException(problem)
+    private class PackException(val problem: VoicePackProblem, val detail: String? = null) :
+        Exception(problem.name)
+
+    private fun fail(problem: VoicePackProblem, detail: String? = null): Nothing =
+        throw PackException(problem, detail)
 
     private fun cachedPack(): VoicePack? {
         val (stamp, pack) = cached ?: return null
@@ -182,35 +231,68 @@ internal constructor(
         // (the stamp is compared again at the end).
         val assets = source.assets() ?: fail(VoicePackProblem.NotInstalled)
         checkPackSigners(before.signers, source.ownSigners())?.let { fail(it) }
-        val libDir = before.nativeLibraryDir ?: fail(VoicePackProblem.Broken)
-        if (!loadLibraries(libDir)) fail(VoicePackProblem.Broken)
-        if (!assets.hasModels()) fail(VoicePackProblem.Broken)
+        loadLibraries(before.nativeLibraryDir ?: fail(VoicePackProblem.LibrariesMissing))
+        if (!assets.hasModels()) fail(VoicePackProblem.ModelsMissing)
         val after = source.pack(withSigners = false) ?: fail(VoicePackProblem.NotInstalled)
-        if (after.stamp != before.stamp) fail(VoicePackProblem.Broken)
+        if (after.stamp != before.stamp) fail(VoicePackProblem.ChangedDuringLoad)
         return VoicePack(assets, before.versionName).also { cached = before.stamp to it }
     }
 
-    private fun loadLibraries(libDir: String): Boolean =
+    private fun loadLibraries(libDir: String) {
         synchronized(lock) {
-            val loadedFrom = loadedDir
-            if (loadedFrom != null) return loadedFrom == libDir
             val files = VoicePackLayout.LIBRARIES.map { File(libDir, it) }
-            if (!files.all { it.isFile }) return false
-            return try {
+            val from = loadedDir
+            if (from == libDir) return
+            if (!files.all { it.isFile }) fail(VoicePackProblem.LibrariesMissing)
+            val digests =
+                try {
+                    hashes(files)
+                } catch (_: IOException) {
+                    fail(VoicePackProblem.LibrariesMissing)
+                }
+            if (from != null) {
+                // A new install path: the loaded copy can only be used if the files are the same.
+                if (digests == loadedHashes) return
+                fail(VoicePackProblem.NeedsRestart)
+            }
+            try {
                 // libsherpa-onnx-jni.so needs libonnxruntime.so, so that one goes first.
                 files.forEach { loader.load(it.absolutePath) }
-                loadedDir = libDir
-                true
-            } catch (_: UnsatisfiedLinkError) {
-                false
+            } catch (e: UnsatisfiedLinkError) {
+                fail(VoicePackProblem.LibraryLoadFailed, e.javaClass.simpleName)
             }
+            loadedDir = libDir
+            loadedHashes = digests
         }
+    }
 
     internal companion object {
         private val lock = Any()
         private var loadedDir: String? = null
+        private var loadedHashes: List<String> = emptyList()
 
         /** Forgets the loaded libraries, for tests that load through a fake loader. */
-        internal fun resetLoadedForTest() = synchronized(lock) { loadedDir = null }
+        internal fun resetLoadedForTest() =
+            synchronized(lock) {
+                loadedDir = null
+                loadedHashes = emptyList()
+            }
+
+        private fun hashes(files: List<File>): List<String> = files.map(::sha256)
+
+        private fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(HASH_BUFFER)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    digest.update(buffer, 0, n)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
+        }
+
+        private const val HASH_BUFFER = 64 * 1024
     }
 }
