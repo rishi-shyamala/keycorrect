@@ -1,0 +1,19 @@
+# SHA-256 of the voice (Phase 6) sources in data/raw/voice/. Verified by tools/data/fetch-voice.sh.
+# sherpa-onnx 1.13.8 (Apache-2.0): Android jniLibs, Linux x86_64 CLI, Kotlin API sources.
+# Models come from the rolling sherpa-onnx 'asr-models' release; recorded on 2026-10-18.
+# Moonshine tiny-en (v2, offline) MIT; streaming Zipformer en-20M Apache-2.0; Whisper tiny.en MIT;
+# silero_vad.onnx MIT.
+2ff63469a71cb6009aa2e3ed5f4a670f8abdcbe4bb9ffd23776afc792a6b4f44  sherpa-onnx-v1.13.8-android.tar.bz2
+d0f96c8b65c6cd0974fada22737e337de81bc8cd2abbec2e39caf358b1eec5fc  sherpa-onnx-v1.13.8-linux-x64-shared-no-tts.tar.bz2
+9ec31b342d8fa3240c3b81b8f82e1cf7e3ac467c93ca5a999b741d5887164f8d  sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27.tar.bz2
+9c559283e8498d3fe95913c79ca1cb454bb26281ac2b102b41306c7d752765d9  sherpa-onnx-streaming-zipformer-en-20M-2023-02-17.tar.bz2
+2bd6cf965c8bb3e068ef9fa2191387ee63a9dfa2a4e37582a8109641c20005dd  sherpa-onnx-whisper-tiny.en.tar.bz2
+9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  silero_vad.onnx
+829c7adc4db1324f21b9a9cbf5bf10eacf759714fe50956f48317c1ffef044f6  kotlin-api-v1.13.8/FeatureConfig.kt
+fe926b6413f4d87e67c41feb21b8363923a67cbd3a5eb687b76390a5f1f7db60  kotlin-api-v1.13.8/HomophoneReplacerConfig.kt
+85054fa9722913bce96c94c5c7eaaa7fd99606b79fbfbeac6cfb60040eae2164  kotlin-api-v1.13.8/OfflineRecognizer.kt
+5c90b7c060cdd0a2222cc935b54f69465a4a7544de29240bafe4d3a8d86dbb6e  kotlin-api-v1.13.8/OfflineStream.kt
+3204ff816361d99d94dda1e8c26681f6d4a5ad749a68d8fee93b4e8bb2b21d17  kotlin-api-v1.13.8/OnlineRecognizer.kt
+6b9f8de317e6a0bb51f0f29d940617b781cb31b190e1c725dd438231836c06ab  kotlin-api-v1.13.8/OnlineStream.kt
+86c963f27677f690eb0d6639735052eba5e60d9f81ccd4c1df0aa831fd680d6f  kotlin-api-v1.13.8/QnnConfig.kt
+dc3fe3b63cea2becd4780a9cc8ef2aaee552eed9533d4c0f178db1172a53662c  kotlin-api-v1.13.8/Vad.kt
