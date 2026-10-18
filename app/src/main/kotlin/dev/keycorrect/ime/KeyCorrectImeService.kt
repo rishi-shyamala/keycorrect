@@ -99,6 +99,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
                 predictionHost.applySettings(it)
+                appContainer.voiceHost.applySettings(it)
             }
         }
     }
@@ -130,6 +131,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onDestroy() {
+        // The microphone and the recognizer are closed with the service.
+        controller.voice.stopNow()
         clipboardCapture.unregister()
         with(appContainer.clipboardEnvironment) {
             if (imagePaster === this@KeyCorrectImeService.imagePaster) imagePaster = null

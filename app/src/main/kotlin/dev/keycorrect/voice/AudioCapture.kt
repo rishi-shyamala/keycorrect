@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Process
 import dev.keycorrect.feature.keyboard.voice.CaptureHandle
 import kotlin.math.log10
 import kotlin.math.sqrt
@@ -20,7 +21,8 @@ class AudioCapture(private val context: Context) {
     /**
      * Starts recording; null when the microphone is not permitted or cannot be opened. [onAudio]
      * gets each chunk (the array is reused: copy to keep), [onLevel] its loudness from 0 to 1, and
-     * [onFailure] is called once if a read fails afterwards. All three run on the capture thread.
+     * [onFailure] is called once if a read fails or [onAudio] throws. All three run on the capture
+     * thread.
      */
     @SuppressLint("MissingPermission") // checked just above
     @Suppress("ReturnCount") // each early return is one reason the microphone is not available
@@ -87,6 +89,7 @@ class AudioCapture(private val context: Context) {
         }
 
         override fun run() {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
             val buffer = ShortArray(chunk)
             try {
                 var read = if (stopped) 0 else record.read(buffer, 0, chunk)
@@ -96,6 +99,10 @@ class AudioCapture(private val context: Context) {
                     read = record.read(buffer, 0, chunk)
                 }
                 if (read <= 0 && !stopped) onFailure()
+            } catch (_: Exception) {
+                // A consumer that throws must not leave the strip on "Listening": report it (the
+                // message never holds audio or text).
+                if (!stopped) onFailure()
             } finally {
                 runCatching { record.stop() }
                 record.release()
