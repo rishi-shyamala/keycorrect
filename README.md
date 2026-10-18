@@ -17,4 +17,6 @@ speech-to-text engines, and learning that never leaves the device.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0-or-later. See [LICENSE](LICENSE). The dictionary data has its own licence
+([LICENSE-DATA.md](LICENSE-DATA.md)), and so do the components of the optional voice pack
+([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).

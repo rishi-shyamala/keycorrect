@@ -4,7 +4,9 @@
 #   tools/release/release.sh bump      next test number in version.properties (0.5.0-test.1 -> .2)
 #                                      and versionCode + 1; commit the change yourself
 #   tools/release/release.sh publish   build the signed release APK from HEAD and publish it as a
-#                                      GitHub pre-release tagged v<versionName>
+#                                      GitHub pre-release tagged v<versionName>, with the voice
+#                                      pack APK as a second asset when its files are downloaded
+#                                      (tools/data/fetch-voice.sh; otherwise it is skipped)
 #
 # publish needs a clean, pushed HEAD (the release points at that exact commit) and the signing
 # properties in ~/.gradle/gradle.properties.
@@ -68,6 +70,29 @@ case "${1:-}" in
         out=build/release/keycorrect-$name+$short.apk
         mkdir -p build/release
         cp "$apk" "$out"
+        assets=("$out")
+        # The optional voice pack (package dev.keycorrect.voice, same key): only if its inputs exist.
+        voice_note=""
+        if ./gradlew --console=plain -q :voicepack:verifyVoiceFiles >/dev/null 2>&1; then
+            rm -f voicepack/build/outputs/apk/release/voicepack-release.apk
+            ./gradlew --console=plain -q :voicepack:assembleRelease
+            vapk=voicepack/build/outputs/apk/release/voicepack-release.apk
+            if [[ ! -f $vapk ]]; then
+                echo "The voice pack APK is unsigned or missing: see above." >&2
+                exit 1
+            fi
+            "$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner" verify "$vapk"
+            vout=build/release/keycorrect-voice-$name.apk
+            cp "$vapk" "$vout"
+            assets+=("$vout")
+            voice_size=$(du -h "$vout" | cut -f1)
+            voice_note="
+- Optional voice pack \`keycorrect-voice-$name.apk\` ($voice_size, package \`dev.keycorrect.voice\`):
+  the offline speech model for voice typing. Install it too, from the same page; it needs the
+  keyboard installed from the same key. Updates install over it."
+        else
+            echo "Voice files not downloaded (tools/data/fetch-voice.sh): publishing without the voice pack." >&2
+        fi
         branch=$(git rev-parse --abbrev-ref HEAD)
         notes="Test build **$name+$short** (Settings → About shows this version).
 
@@ -75,12 +100,12 @@ case "${1:-}" in
 - Package \`dev.keycorrect\`, signed with the KeyCorrect release key; updates install over it.
 - Install: open this page on the phone, download the APK, allow your browser to install unknown
   apps when asked, then enable KeyCorrect in Settings → Keyboard list and default
-  (docs/INSTALL.md)."
-        gh release create "$tag" "$out" --target "$sha" --prerelease \
+  (docs/INSTALL.md).$voice_note"
+        gh release create "$tag" "${assets[@]}" --target "$sha" --prerelease \
             --title "KeyCorrect $name (test build)" --notes "$notes"
         ;;
     *)
-        sed -n '2,10p' "$0"
+        sed -n '2,13p' "$0"
         exit 1
         ;;
 esac
