@@ -12,59 +12,84 @@ Read this first when resuming. Other docs:
 
 ---
 
-## 0. Resume here (2026-10-16)
+## 0. Resume here (2026-10-18, end of session 2)
 
-**PR C, the clipboard history (plus the planning for feedback round 1), is open as
-[rishi-shyamala/keycorrect#6](https://github.com/rishi-shyamala/keycorrect/pull/6) from branch
-`phase-4-clipboard`, waiting for CI and the user's merge.** Its working
-tree is clean except the user's own untracked `user-feedback.md`: never commit that file.
+**Current branch: `phase-7-neural`.** It is based on `voice-live` (#17) and holds only
+`docs/PHASE7.md` so far. It is pushed with this handoff.
 
-**PR C: done**
-- **Built:** core:clipboard (retention policy, URL cleaner), encrypted clip store (schema v5), Keystore-encrypted image blobs, the clipboard panel (long-press on the emoji key), the strip chip, capture and paste wiring (`ClipImageProvider`, not exported), Settings → Clipboard, and the security instrumented test.
-- **Simplified per the user (2026-10-12):** everything copied is captured; there is NO detection of passwords, cards, tokens or OTPs and no masking. The user deletes items. The privacy goal is only that **other apps can't read the stored data**.
-- **Reviewed:** a full review, then fixes (ba9aa1e), then a follow-up review, then fixes (e1e839d).
-- **Instrumented tests on the Tab S9 (2026-10-16, final code):** core:data 48/48 and app `ClipboardSecurityTest` 5/5.
-- **Device test on the Tab S9 (2026-10-16): all pass.** Copy → chip → paste; long-press emoji = clipboard, tap = emoji; pin/delete/clear (pinned stays); image paste into the field lab's image field (`received image/png (235 bytes)`) and the text-field fallback to the system clipboard; the chip in the password field; history off → nothing captured (the panel is then unavailable and the long-press acts as a tap, by design); data at rest (no test text in the DB/WAL; the blob starts `01 0c…`, not the PNG magic); no crashes. Samsung keyboard restored.
-  - Note: in a password field Bitwarden's inline suggestion takes the strip over the chip (autofill outranks the chip by design).
-- **Performance check:** no hot-path changes (docs/PERF.md findings log, 2026-10-16).
-- **CI set run locally:** `spotlessCheck detektMain testDebugUnitTest test lintDebug assembleDebug` all pass (~1400 unit tests).
-- **Release manifest checked:** only the launcher, the IME (BIND_INPUT_METHOD) and the profileinstaller receiver (DUMP) are exported; providers aren't.
-- **Bottom row reordered (user request):** ?123, emoji, comma (@ or / in email/URL), space, period, enter.
-- **History rewritten before the first push (user decision, 2026-10-16):** GitHub push protection blocked a since-deleted test fixture (`ClipSensitivityTest.kt`, commit c0a57cc) holding documentation-example tokens (Stripe, GitHub, Slack, AWS, Google, OpenAI). Every token-shaped literal there is now split in half (`"ghp_16C7…" + "…"`); the final tree is unchanged. **Never put realistic token strings in test fixtures:** split them.
+### State of `main` and the open PRs
+- `main` has Phases 0–6 and the settings transfer (#16): swipe, feedback rounds 1–4, the
+  performance sweep, voice (Moonshine via the voice pack), and backup & transfer.
+- **#17 `voice-live` → `main`:** long-dictation fix, live words, phrase timer, bounded voice
+  settings, and the voice pack reinstall fix. CI is green. **The user must merge it.** After it
+  merges, retarget `phase-7-neural`'s PR (when opened) to `main`.
+- **#8** is redundant (its fix is already in `main`). The user can close it.
+- **Stacked PRs (memory `stacked-prs.md`):** they kept landing in stale bases. After every merge,
+  retarget the open PRs to `main` and verify with `git merge-base --is-ancestor <head> origin/main`.
 
-**PR D status (2026-10-16):** open as
-[rishi-shyamala/keycorrect#7](https://github.com/rishi-shyamala/keycorrect/pull/7) (branch
-`phase-4-feedback`). It holds every feedback-round-1 item plus the user's later changes:
-- the animated tool strip (edit and emoji at the left, clipboard and settings at the right);
-- no hold on space;
-- bottom-row keys at 75% of a letter key; ?123 and Enter at 115% (own slider).
+### Test builds (the user installs them on the phone)
+- The latest is **v0.5.0-test.13**: keyboard APK plus voice-pack APK.
+- Make a build with `tools/release/release.sh bump`, commit and push, then
+  `tools/release/release.sh publish`. That creates a public GitHub pre-release and attaches the
+  voice pack when `data/raw/voice` exists. The procedure is in `docs/INSTALL.md`.
+- The release key is `~/.android/keycorrect-release.jks`, with its passwords in
+  `~/.gradle/gradle.properties`.
+- Every release gets "What's new" notes. Mark the previous one superseded, and add a ⚠️ known-issue
+  note to a published build when a review finds a bug in it.
 
-Device-tested on the Tab S9, reviewed, review fixes in, and the perf check done. Not run: the frame
-check of typing on a release build (the tablet was locked). Next, after the user merges: Phase 5,
-swipe typing. The build/install guide is docs/INSTALL.md.
+### Phase 7 (neural & plugin engines) — IN PROGRESS
+- **Decisions:** in `docs/PHASE7.md`.
+  - P7-1: a neural-pack APK `dev.keycorrect.neural`, signature-checked like the voice pack, plus
+    importing any GGUF through SAF.
+  - P7-2: downloads approved. These are llama.cpp (MIT) built with the NDK, and SmolLM2-135M/360M,
+    Qwen3-0.6B and small Gemma models for testing. Research newer small models too; the default
+    comes from the data. Note that Gemma's licence matters for shipping it.
+  - P7-3: the reranker is **on** when a model is available and phrase completion is off. Settings →
+    Engines has both switches and an LM-strength slider.
+  - P7-4: **one PR.**
+- **A research/fetch/benchmark subagent was running when this session ended.** It writes
+  `tools/data/fetch-neural.sh` and `tools/data/neural-sources.sha256`, downloads into
+  `data/raw/neural/` (git-ignored) and builds llama.cpp for the desktop under the old session's
+  scratchpad. Check `git log` for its commit. If it's missing, re-run that step: web research for
+  small LMs ≤ 600M (licences, GGUF), fetch with checksums, then a desktop benchmark (size, RSS,
+  prompt t/s, perplexity on test-split sentences, ms to score 16 candidates).
+- **Not done yet; this was about to start:**
+  - Add the settings to `core/settings` KeyboardSettings and SettingsRepository:
+    - `neuralRerank` (default true);
+    - `neuralPhrases` (default false);
+    - `lmStrength`, a Float 0..1 with default 0.5, clamped, in FLOAT_KEYS and BOOLEAN_KEYS.
 
-**After PR C: PR D, feedback round 1**
-- The full plan and the user's decisions are in **docs/PHASE4.md, "Feedback round 1"**. Stack the branch on `phase-4-clipboard` (e.g. `phase-4-feedback`).
-- The items:
-  1. Equal key sizes on every layer.
-  2. Emoji scroll lag: measure on a RELEASE build first.
-  3. and 4. A Samsung-like symbols layout, shift+digit order, without the rare symbols. **Photograph the Samsung keyboard's letter, symbol and number pages on the Tab S9 first.**
-  5. A Samsung-style shared shortcut row: edit panel, emoji, clipboard and settings icons when not typing; suggestions while typing.
-  6. Two sliders: edge padding and key gap.
-  7. Spacebar: **left half selects, right half moves**, with a faint split line; hold+release still opens the panel.
-  8. Bigger vector key icons.
-  9. **Bug:** Word/Line/Sentence do nothing when `getSurroundingText` reports offset −1. The fix is designed in PHASE4.md: fall back to the tracked cursor when `OwnEditTracker.pendingCount == 0`; the backspace swipe retries instead of setting `swipeTried`; at a word end, Word selects the previous word.
-  10. Swipe typing: Phase 5.
-  11. Separate the emoji tabs from the grid: own surface, divider, outline icons.
-- The user also asked to keep the overall layout as close as possible to the Samsung keyboard.
+    An attempt was interrupted, and nothing was written.
+  - **Then:**
+    - (a) the `:engine` process bound service with llama.cpp JNI (SCORE with KV reuse,
+      GENERATE);
+    - (b) async reranking with a deadline in the keyboard pipeline (the classic result first; the
+      reranked result replaces it if in time), plus the privacy gates (none in
+      password/incognito/no-learning fields);
+    - (c) the neural-pack APK module and its locator, modelled on `:voicepack` and
+      `VoicePackLocator` (copy the signature check, the identical-library reuse and the
+      NeedsRestart logic);
+    - (d) GGUF import;
+    - (e) the plugin AIDL SDK `dev.keycorrect.TEXT_ENGINE`, a sample plugin APK, and an approval UI
+      with a pinned certificate;
+    - (f) a reranker arm in `tools/eval`;
+    - (g) device benchmark and perf check, review, test build, PR.
 
-**After PR D: Phase 5, swipe typing** (PLAN §7, D7: own SHARK² decoder).
-
-**User preferences learned this phase (follow them)**
-- **Keep things simple.** The user rejected heuristic sensitivity detection as over-complicated. Prefer simple behaviour with user control over clever automation.
-- **Match the Samsung keyboard's layout and feel** where reasonable.
-- The user decides UX questions; ask with AskUserQuestion and recommend an option.
-- The weekly model limits were hit during this phase. Keep subagent briefs tight, and resume workers with SendMessage when they stop.
+### User preferences learned this session (follow them; also in memory)
+- **Decisions:** ask with AskUserQuestion and recommend an option. For an ambiguous feedback item,
+  ask with concrete previews.
+- **Privacy:**
+  - Never silently fall back to anything that may use the network; voice never falls back to the
+    phone recognizer.
+  - No INTERNET permission ever. Optional packs must be signature-checked.
+- **Every change set:** device test when the tablet is available, the perf check
+  (`tools/profile/profile.sh`), a separate reviewer subagent, fixes, then push and PR. Perf fixes
+  must keep eval outputs byte-identical.
+- **Release builds minify:** JNI-bound classes need keep rules. Check the mapping and smoke-test
+  the release APK.
+- **No tablet** was connected on 2026-10-17/18. Every PR since #10 still needs its device pass;
+  the checklists are in each PR description.
+- **Subagents** often hit the 40-turn limit; resume them with SendMessage and a priority order.
 
 ## 1. Status
 
