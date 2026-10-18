@@ -55,6 +55,8 @@ include(":core:voice")
 
 include(":feature:keyboard-ui")
 
+include(":feature:voice-sherpa")
+
 include(":tools:dictbuild")
 
 include(":tools:emojibuild")
