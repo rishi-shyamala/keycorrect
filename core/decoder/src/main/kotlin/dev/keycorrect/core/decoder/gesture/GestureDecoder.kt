@@ -5,7 +5,6 @@ import dev.keycorrect.core.decoder.UserLexicon
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.GestureInput
 import dev.keycorrect.core.engineapi.KeyLayoutModel
-import kotlin.math.hypot
 import kotlin.math.sqrt
 
 /**
@@ -132,8 +131,8 @@ internal class GestureDecoder(
         var anyEnd = false
         for (i in 0 until index.keyCount) {
             val r = config.endRadius * index.keyWidth[i]
-            startOk[i] = hypot(index.keyX[i] - gx0, index.keyY[i] - gy0) <= r
-            endOk[i] = hypot(index.keyX[i] - gx1, index.keyY[i] - gy1) <= r
+            startOk[i] = PathMath.dist(index.keyX[i] - gx0, index.keyY[i] - gy0) <= r
+            endOk[i] = PathMath.dist(index.keyX[i] - gx1, index.keyY[i] - gy1) <= r
             anyStart = anyStart || startOk[i]
             anyEnd = anyEnd || endOk[i]
         }
@@ -157,8 +156,10 @@ internal class GestureDecoder(
             for (s in 0 until samples) {
                 val p = s * (n - 1) / (samples - 1)
                 if (
-                    hypot(index.keyX[i] - gesture[2 * p], index.keyY[i] - gesture[2 * p + 1]) <=
-                        reach
+                    PathMath.dist(
+                        index.keyX[i] - gesture[2 * p],
+                        index.keyY[i] - gesture[2 * p + 1],
+                    ) <= reach
                 )
                     mask = mask or (1 shl s)
             }
@@ -223,7 +224,7 @@ internal class GestureDecoder(
         // Location channel: weighted mean point distance in key widths (weights sum to 1/unit).
         var sum = 0f
         for (i in 0 until n) {
-            sum += weights[i] * hypot(g[2 * i] - tp[2 * i], g[2 * i + 1] - tp[2 * i + 1])
+            sum += weights[i] * PathMath.dist(g[2 * i] - tp[2 * i], g[2 * i + 1] - tp[2 * i + 1])
             if ((i and CHECK_MASK) == CHECK_MASK && prior - sum * sum * locInv < bound) return
         }
         val locCost = sum * sum * locInv
