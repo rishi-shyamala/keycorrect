@@ -8,11 +8,13 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Reads and writes [KeyboardSettings] in a Preferences [DataStore]. */
@@ -28,6 +30,66 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun update(transform: (KeyboardSettings) -> KeyboardSettings) {
         dataStore.edit { prefs ->
             prefs.write(transform(prefs.toSettings().sanitized()).sanitized())
+        }
+    }
+
+    /**
+     * Every setting by its stored key, with its current (sanitized) value: Boolean, Int, Float or
+     * String. Settings that were never changed are included at their defaults, so a backup does not
+     * depend on this build's defaults.
+     */
+    suspend fun exportValues(): Map<String, Any> {
+        val prefs =
+            dataStore.data
+                .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+                .first()
+        return prefs.toSettings().sanitized().toValues()
+    }
+
+    /**
+     * Writes [values] (as produced by [exportValues], possibly by another build) in one atomic
+     * edit. Keys this build does not know and values of the wrong type are ignored; the rest is
+     * sanitized. With [replace] every setting not in [values] returns to its default, otherwise it
+     * keeps its current value. The keys in [keepLocal] always keep this device's current value (the
+     * screen-tied sizes an import skips).
+     */
+    suspend fun applyValues(
+        values: Map<String, Any>,
+        replace: Boolean = false,
+        keepLocal: Set<String> = emptySet(),
+    ) {
+        dataStore.edit { prefs ->
+            val current = prefs.toSettings().sanitized()
+            val target = mutablePreferencesOf()
+            target.write(if (replace) KeyboardSettings() else current)
+            for ((name, value) in values) {
+                if (name !in keepLocal) target.setIfKnown(name, value)
+            }
+            val merged = target.toSettings().sanitized().toValues().toMutableMap()
+            val local = current.toValues()
+            for (name in keepLocal) local[name]?.let { merged[name] = it }
+            val result = mutablePreferencesOf()
+            result.write(KeyboardSettings())
+            for ((name, value) in merged) result.setIfKnown(name, value)
+            prefs.clear()
+            prefs.write(result.toSettings().sanitized())
+        }
+    }
+
+    private fun KeyboardSettings.toValues(): MutableMap<String, Any> {
+        val p = mutablePreferencesOf()
+        p.write(this)
+        return p.asMap().entries.associateTo(HashMap()) { it.key.name to it.value }
+    }
+
+    /** Sets [name] to [value] when it is a key of this build and the value has the right type. */
+    private fun MutablePreferences.setIfKnown(name: String, value: Any) {
+        when {
+            name in BOOLEAN_KEYS && value is Boolean -> this[booleanPreferencesKey(name)] = value
+            name in INT_KEYS && value is Int -> this[intPreferencesKey(name)] = value
+            name in FLOAT_KEYS && value is Float -> this[floatPreferencesKey(name)] = value
+            name in FLOAT_KEYS && value is Int -> this[floatPreferencesKey(name)] = value.toFloat()
+            name in STRING_KEYS && value is String -> this[stringPreferencesKey(name)] = value
         }
     }
 
@@ -182,5 +244,57 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val VOICE_ENABLED = booleanPreferencesKey("voice_enabled")
         val VOICE_ENGINE = stringPreferencesKey("voice_engine")
         val VOICE_AUTO_PUNCTUATION = booleanPreferencesKey("voice_auto_punctuation")
+        val BOOLEAN_KEYS =
+            setOf(
+                SYMBOL_HINTS.name,
+                NUMBER_ROW.name,
+                KEY_PREVIEW.name,
+                AUTO_CAPITALIZE.name,
+                HAPTICS_ENABLED.name,
+                SOUND_ENABLED.name,
+                INLINE_AUTOFILL.name,
+                SUGGESTIONS_ENABLED.name,
+                AUTOCORRECT_ENABLED.name,
+                NEXT_WORD_PREDICTIONS.name,
+                PHRASE_COMPLETION.name,
+                AUTO_SPACE_AFTER_PICK.name,
+                LEARNING_ENABLED.name,
+                SENTENCE_BUFFER_ENABLED.name,
+                INCOGNITO.name,
+                NON_WORD_TIE_RULE.name,
+                HAPTIC_ON_AUTOCORRECT.name,
+                HAPTIC_ON_UNKNOWN_WORD.name,
+                SPACEBAR_CURSOR.name,
+                GESTURE_TYPING.name,
+                GESTURE_TRAIL.name,
+                BACKSPACE_SWIPE.name,
+                EMOJI_SUGGESTIONS.name,
+                CLIPBOARD_HISTORY.name,
+                CLIPBOARD_IMAGES.name,
+                VOICE_ENABLED.name,
+                VOICE_AUTO_PUNCTUATION.name,
+            )
+        val INT_KEYS =
+            setOf(
+                KEY_HEIGHT_DP.name,
+                EDGE_PADDING_DP.name,
+                KEY_GAP_DP.name,
+                LONG_PRESS_DELAY_MS.name,
+                HAPTIC_DURATION_MS.name,
+                HAPTIC_STRENGTH.name,
+                IMPLICIT_ADD_REVERTS.name,
+                SUPPRESS_CORRECTION_REVERTS.name,
+                AUTOCORRECT_PULSE_MS.name,
+                UNKNOWN_WORD_PULSE_MS.name,
+                CLIPBOARD_MAX_ITEMS.name,
+            )
+        val FLOAT_KEYS = setOf(BOTTOM_KEY_WIDTH.name, MODE_ENTER_KEY_WIDTH.name, SOUND_VOLUME.name)
+        val STRING_KEYS =
+            setOf(
+                CURSOR_SPEED.name,
+                EMOJI_SKIN_TONE.name,
+                CLIPBOARD_RETENTION.name,
+                VOICE_ENGINE.name,
+            )
     }
 }

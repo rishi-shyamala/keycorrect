@@ -46,6 +46,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Feedback : SettingsDestination("feedback", R.string.feedback_title)
 
+    data object Backup : SettingsDestination("backup", R.string.backup_title)
+
     data object Advanced : SettingsDestination("advanced", R.string.advanced_title)
 
     data object About : SettingsDestination("about", R.string.about_title)
@@ -74,6 +76,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 NeverCorrected,
                 NeverSuggested,
                 Feedback,
+                Backup,
                 Advanced,
                 About,
                 Licenses,

@@ -79,6 +79,8 @@ class SqlEmojiHistoryStore(
         }
     }
 
+    override suspend fun dump(): EmojiHistoryDump = database.read { db -> readDump(db) }
+
     override suspend fun clearSince(sinceMillis: Long) {
         writeLock.withLock {
             database.transaction { db ->
@@ -107,4 +109,45 @@ class SqlEmojiHistoryStore(
             // MAX over no rows is NULL (getLong then returns 0, which is fine as a floor).
             if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else Long.MIN_VALUE / 2
         }
+
+    internal companion object {
+        @Suppress("MagicNumber") // Column positions of the two queries.
+        fun readDump(db: SupportSQLiteDatabase): EmojiHistoryDump =
+            EmojiHistoryDump(
+                recents =
+                    db.query(
+                            "SELECT emoji, base, last_used, use_count FROM emoji_recents " +
+                                "ORDER BY last_used DESC"
+                        )
+                        .use { c ->
+                            buildList(c.count) {
+                                while (c.moveToNext()) {
+                                    add(
+                                        EmojiRecentRow(
+                                            c.getString(0),
+                                            c.getString(1),
+                                            c.getLong(2),
+                                            c.getInt(3),
+                                        )
+                                    )
+                                }
+                            }
+                        },
+                variants =
+                    db.query("SELECT base, variant, updated_at FROM emoji_variants ORDER BY base")
+                        .use { c ->
+                            buildList(c.count) {
+                                while (c.moveToNext()) {
+                                    add(
+                                        EmojiVariantRow(
+                                            c.getString(0),
+                                            c.getString(1),
+                                            c.getLong(2),
+                                        )
+                                    )
+                                }
+                            }
+                        },
+            )
+    }
 }

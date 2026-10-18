@@ -12,6 +12,23 @@ data class UserWord(
     val updatedAt: Long,
 )
 
+/** One emoji recent with its bookkeeping, for backup and restore. */
+data class EmojiRecentRow(
+    val emoji: String,
+    val base: String,
+    val lastUsed: Long,
+    val useCount: Int,
+)
+
+/** A remembered variant choice with the time it was set. */
+data class EmojiVariantRow(val base: String, val variant: String, val updatedAt: Long)
+
+/** The whole emoji history (recents and variant choices) as plain rows. */
+data class EmojiHistoryDump(
+    val recents: List<EmojiRecentRow> = emptyList(),
+    val variants: List<EmojiVariantRow> = emptyList(),
+)
+
 enum class ShortcutMode {
     /** The expansion appears as a chip on the suggestion strip. */
     SUGGEST,
