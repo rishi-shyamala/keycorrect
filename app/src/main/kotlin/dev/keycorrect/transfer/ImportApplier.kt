@@ -6,6 +6,8 @@ import dev.keycorrect.core.data.Shortcut
 import dev.keycorrect.core.data.UserWord
 import dev.keycorrect.core.data.Validation
 import dev.keycorrect.core.learning.model.PersistedLearning
+import dev.keycorrect.core.learning.model.PersonalModelConfig
+import dev.keycorrect.core.learning.model.decayFactor
 import dev.keycorrect.core.transfer.DictionarySection
 import dev.keycorrect.core.transfer.ImportMode
 import dev.keycorrect.core.transfer.ImportPlan
@@ -82,12 +84,12 @@ internal object ImportApplier {
 
         val replace = plan.mode == ImportMode.Replace
         val dict = if (replace) dictionary else Merge.dictionary(localDict, dictionary)
-        val learn = if (replace) learning else Merge.learning(localLearning, learning)
+        val learn = if (replace) learning else Merge.learning(localLearning, learning, aging)
         val mergedTouch =
             when {
                 touch == null -> null
                 replace -> touch
-                else -> Merge.touch(TransferMapper.touch(current.learning), touch)
+                else -> Merge.touch(TransferMapper.touch(current.learning), touch, aging)
             }
         // Replace starts the rows from the clocks only; Merge keeps the rest of this device's.
         val base =
@@ -105,8 +107,12 @@ internal object ImportApplier {
             }
         val rows = TransferMapper.toRows(base, dict, learn, mergedTouch, keepAuxiliary = !replace)
         val settings = TransferMapper.settingValues(plan.settingsToApply(bundle.settings))
-        val skipTied = !plan.includesScreenTied
-        val keep = if (skipTied) SettingsSection.SCREEN_TIED_KEYS else emptySet()
+        // Settings this device keeps whatever the file says: the ones a backup never carries
+        // (incognito) always, and the screen-tied sizes when they are skipped. Without this,
+        // Replace would reset them to their defaults.
+        val keep =
+            if (plan.includesScreenTied) UNTRANSFERRED_SETTINGS
+            else UNTRANSFERRED_SETTINGS + SettingsSection.SCREEN_TIED_KEYS
         return ImportOutcome(
             words = TransferMapper.userWords(dict).sortedBy { it.word },
             shortcuts = TransferMapper.shortcuts(dict).sortedBy { it.trigger },
@@ -120,6 +126,15 @@ internal object ImportApplier {
                     .copy(settings = settings.size),
         )
     }
+
+    /** Merged weights decay as the learning model's own do (half-lives from its config). */
+    private val aging =
+        PersonalModelConfig().let { cfg ->
+            Merge.Aging(
+                evidence = { decayFactor(cfg.halfLifeMillis, it) },
+                touch = { decayFactor(cfg.touchHalfLifeMillis, it) },
+            )
+        }
 
     // ------------------------------------------------------------------ clock rebase
 

@@ -30,6 +30,7 @@ import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
 import dev.keycorrect.transfer.AppTransferStores
 import dev.keycorrect.transfer.CurrentDevice
+import dev.keycorrect.transfer.PrefsImportHistory
 import dev.keycorrect.transfer.TransferService
 import dev.keycorrect.voice.VoiceHost
 import java.io.File
@@ -151,6 +152,7 @@ class AppContainer(private val context: Context) {
             currentDevice = { CurrentDevice.profile(context, settingsRepository) },
             appVersion = BuildConfig.VERSION_NAME,
             clock = wallClock,
+            history = PrefsImportHistory(context),
         )
     }
 

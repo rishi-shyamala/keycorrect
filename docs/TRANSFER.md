@@ -24,6 +24,12 @@ user-initiated file export.
   - `touch.json`, keyed by the existing touch-statistics buckets.
 - **Encrypted variant:** a small header (magic, version, KDF parameters, salt, nonce) followed by
   the encrypted zip. The importer detects which variant it is and asks for the passphrase.
+- **Passphrase:** it is normalised to Unicode NFC before the key derivation (export and import
+  alike), so the same typed passphrase works however the keyboard composed its accents. The
+  passphrase array is zeroed on every path.
+- **Limits:** a backup file is read up to the size the system reports and at most 48 MB; its
+  contents may inflate to at most 64 MB. Larger files are refused as too large (also when memory
+  runs out).
 - Import is versioned: newer formats are refused with a clear message, and older formats are
   migrated.
 
@@ -36,11 +42,25 @@ user-initiated file export.
   1. Pick the file (`ACTION_OPEN_DOCUMENT`).
   2. Enter the passphrase, if it's encrypted.
   3. A summary shows the source device, the date and the counts of each kind.
-  4. Choose Merge or Replace.
+  4. Choose Merge or Replace. If this very backup (same creation time, source device and app
+     version) was imported here before, the screen says so: "You already merged this backup on
+     <date>; merging again adds its counts twice". Merge stays off until "Merge anyway" is ticked;
+     Replace is always allowed. The app remembers only a hash of those fields and the import date
+     (a small preferences file, 32 newest), never any content.
   5. If the screen differs, a warning explains that touch patterns depend on screen size and
      hand position; touch data and screen-tied sizes are left out unless "import anyway" is
      ticked.
   6. Apply, then show a result summary.
+- Export fails closed: if an encrypted export was requested but the passphrase is gone when the
+  file picker answers (the activity or process was recreated), nothing is written and the user is
+  asked to enter the passphrase again. Only the fact that encryption was requested is kept in saved
+  state, never the passphrase.
+- Merge decays both entries' weights (n-grams, corrections, touch) to the later of their times, with
+  the learning model's own half-lives, before adding them, so older evidence counts for less.
+  Words match by word alone (this device's locale wins).
+- Settings the backup never carries (incognito) keep this device's value in both modes.
+- The settings are written after the database commit; a failure in a step after the commit is
+  reported ("restart the keyboard to finish"), not as a failed import.
 - The data is read and written through the existing encrypted stores (SQLCipher, settings), in
   one transaction where possible. A failed import leaves the device unchanged.
 - **Privacy:**

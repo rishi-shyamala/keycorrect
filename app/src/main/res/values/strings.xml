@@ -402,6 +402,7 @@
     <string name="backup_working">Working…</string>
     <string name="backup_export_done">Exported.</string>
     <string name="backup_export_failed">Couldn\'t export. The file was not written.</string>
+    <string name="backup_export_passphrase_lost">Export cancelled \u2014 please enter the passphrase again. Nothing was written.</string>
     <string name="backup_export_unavailable">Your learned data isn\'t available right now, so nothing was exported.</string>
     <string name="backup_import_header">Import</string>
     <string name="backup_import_intro">Reads a backup made by KeyCorrect. You choose what happens to the data already on this device.</string>
@@ -424,6 +425,9 @@
     <string name="backup_count_sentences">Recent sentences: %1$d</string>
     <string name="backup_count_emoji">Emoji recents: %1$d</string>
     <string name="backup_count_touch">Touch data (keys): %1$d</string>
+    <string name="backup_count_touch_skipped">Touch data: skipped (different screen)</string>
+    <string name="backup_already_merged">You already merged this backup on %1$s. Merging it again adds its counts twice.</string>
+    <string name="backup_merge_anyway">Merge anyway</string>
     <string name="backup_mode_header">What to do with the data on this device</string>
     <string name="backup_mode_merge">Merge</string>
     <string name="backup_mode_merge_summary">Adds the backup\'s words, shortcuts and learning to what is here. This device\'s data is kept. Settings from the backup replace the current ones.</string>
@@ -437,6 +441,8 @@
     <string name="backup_replace_confirm_action">Erase and import</string>
     <string name="backup_import_done">Imported.</string>
     <string name="backup_import_done_skipped">Touch data and key sizes were skipped because the screen is different.</string>
+    <string name="backup_import_done_restart">The data was imported, but this screen couldn\'t refresh everything. Restart the keyboard to finish.</string>
+    <string name="backup_import_done_settings_failed">The data was imported, but the settings couldn\'t be written.</string>
     <string name="backup_import_failed">Couldn\'t import. Nothing on this device was changed.</string>
     <string name="backup_error_not_a_backup">That file is not a KeyCorrect backup.</string>
     <string name="backup_error_newer">This backup was made by a newer version of KeyCorrect. Update the app and try again.</string>

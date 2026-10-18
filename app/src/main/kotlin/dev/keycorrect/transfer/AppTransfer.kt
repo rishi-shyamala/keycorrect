@@ -53,3 +53,27 @@ internal object CurrentDevice {
         )
     }
 }
+
+/**
+ * [ImportHistory] in a small preferences file of its own (not the settings store: Replace resets
+ * that). Holds only backup ids (hashes) and the day they were imported; the newest [MAX] are kept.
+ */
+class PrefsImportHistory(context: Context) : ImportHistory {
+    private val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    override fun importedAt(id: String): Long? = prefs.getLong(id, 0L).takeIf { it > 0L }
+
+    override fun record(id: String, atMillis: Long) {
+        val edit = prefs.edit().putLong(id, atMillis)
+        val all = prefs.all.mapNotNull { (k, v) -> (v as? Long)?.let { k to it } }
+        if (all.size >= MAX) {
+            all.sortedBy { it.second }.take(all.size - MAX + 1).forEach { edit.remove(it.first) }
+        }
+        edit.apply()
+    }
+
+    private companion object {
+        const val FILE = "transfer_history"
+        const val MAX = 32
+    }
+}

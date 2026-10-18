@@ -472,11 +472,13 @@ class LearningHost(
      * writes stay consistent: [commit] receives the new state and journal and must persist them
      * atomically (together with whatever else the import changes); the in-memory model is replaced
      * only after it returned. If [prepare] or [commit] throws, nothing has changed. The queued
-     * events are ordered with this (all run on the learning thread).
+     * events are ordered with this (all run on the learning thread). [prepare] runs on that thread
+     * in the same step as [commit], so whatever it reads from other stores cannot change between
+     * reading and writing (a word promoted by the learning thread is either in it or after it).
      */
     suspend fun replaceState(
         keepJournal: Boolean,
-        prepare: (current: PersistedLearning) -> PersistedLearning,
+        prepare: suspend (current: PersistedLearning) -> PersistedLearning,
         commit: suspend (state: PersistedLearning, journal: List<JournalEntry>) -> Unit,
     ) = onLearningThread {
         requireReady()
