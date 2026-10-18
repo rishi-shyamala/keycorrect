@@ -49,9 +49,11 @@ internal class EngineRankingFeatures(
             )
         return try {
             // Never waits for the engine lock: a typing decode holding it makes this null (busy),
-            // and the model retries later. A candidate outside the decode's pool comes back as
-            // NOT_DECODABLE, passed through as is so the model drops the preference at once.
-            val f = engine.tryFeaturesFor(request, candidate)
+            // and the model retries later. Typing that starts mid-decode abandons it the same way,
+            // so a keystroke never waits behind it. A candidate outside the decode's pool comes
+            // back as NOT_DECODABLE, passed through as is so the model drops the preference at
+            // once.
+            val f = engine.tryFeaturesFor(request, candidate) { activity.busy() }
             if (f == null) onDeferred()
             f
         } catch (e: Exception) {

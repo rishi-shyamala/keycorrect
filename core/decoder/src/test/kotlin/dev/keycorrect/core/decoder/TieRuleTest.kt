@@ -258,6 +258,17 @@ class TieRuleTest {
     }
 
     @Test
+    fun tryFeaturesForReportsBusyWhenTypingInterruptsIt() {
+        val engine = ClassicEngine(tied)
+        val request =
+            PredictRequest(TypingContext(), TestKeyboard.typed("tset"), TestKeyboard.layout)
+        // Typing started: busy (retry later), never "not decodable".
+        assertThat(engine.tryFeaturesFor(request, "zzzzzz") { true }).isNull()
+        assertThat(engine.tryFeaturesFor(request, "zzzzzz") { false })
+            .isSameInstanceAs(RankingFeatures.NOT_DECODABLE)
+    }
+
+    @Test
     fun tryFeaturesForDistinguishesNotInPoolFromBusy() {
         val engine = ClassicEngine(tied)
         val request =
