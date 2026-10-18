@@ -15,6 +15,7 @@ import org.junit.Test
 
 class VoiceControllerTest {
     private class FakeSession : SttSession {
+        override var busy = false
         var audio = 0
         var finished = false
         var cancelled = false
@@ -52,6 +53,8 @@ class VoiceControllerTest {
     }
 
     private class FakeEnv(var engine: FakeEngine? = FakeEngine()) : VoiceEnvironment {
+        var unavailable: SttError? = null
+        var privateSeen: Boolean? = null
         var granted = true
         var requested = 0
         var captureOpen = false
@@ -65,7 +68,18 @@ class VoiceControllerTest {
             requested++
         }
 
-        override fun openEngine(settings: KeyboardSettings, onLevel: (Float) -> Unit) = engine
+        override fun openEngine(
+            settings: KeyboardSettings,
+            privateField: Boolean,
+            onLevel: (Float) -> Unit,
+        ): EngineOpening {
+            privateSeen = privateField
+            unavailable?.let {
+                return EngineOpening.Unavailable(it)
+            }
+            return engine?.let { EngineOpening.Ready(it) }
+                ?: EngineOpening.Unavailable(SttError.NoEngine)
+        }
 
         override fun startCapture(
             sampleRate: Int,
@@ -85,6 +99,7 @@ class VoiceControllerTest {
     private val env = FakeEnv()
     private var settings = KeyboardSettings()
     private var sensitive = false
+    private var private = false
     private var settles = 0
     private val timers = mutableListOf<Pair<Long, () -> Unit>>()
     private val voice =
@@ -93,6 +108,7 @@ class VoiceControllerTest {
             env,
             { settings },
             { sensitive },
+            { private },
             { true },
             { settles++ },
             { it() },
@@ -169,9 +185,45 @@ class VoiceControllerTest {
         partial("good morning")
         voice.finish()
         timers.single { it.first == 4_000L }.second()
-        assertThat(voice.state).isEqualTo(VoiceState.Idle)
+        assertThat(voice.state).isEqualTo(VoiceState.Failed(SttError.Timeout))
         assertThat(editor.text.toString()).isEqualTo("Good morning")
         assertThat(editor.compStart).isEqualTo(-1)
+    }
+
+    @Test
+    fun aBusyEngineGetsMoreTimeThenAMessageReplacesTheSilentDrop() {
+        voice.start()
+        partial("good morning")
+        env.engine!!.session.busy = true
+        voice.finish()
+        // 4 s: still decoding, so it waits again (1 s at a time) up to 15 s in all.
+        var waited = 4_000L
+        timers.single { it.first == 4_000L }.second()
+        assertThat(voice.dictating).isTrue()
+        timers.removeAll { it.first == 4_000L }
+        while (waited < 15_000L) {
+            val (delay, block) = timers.single()
+            assertThat(delay).isEqualTo(1_000L)
+            timers.clear()
+            waited += delay
+            block()
+            if (waited < 15_000L) assertThat(voice.dictating).isTrue()
+        }
+        assertThat(voice.state).isEqualTo(VoiceState.Failed(SttError.Timeout))
+        assertThat(editor.text.toString()).isEqualTo("Good morning")
+    }
+
+    @Test
+    fun theFinalArrivingDuringTheExtraWaitStillCountsAndCancelsTheTimer() {
+        voice.start()
+        partial("good morning")
+        env.engine!!.session.busy = true
+        voice.finish()
+        timers.single { it.first == 4_000L }.second()
+        final("good morning everyone")
+        assertThat(editor.text.toString()).isEqualTo("Good morning everyone")
+        assertThat(voice.state).isEqualTo(VoiceState.Idle)
+        assertThat(timers.none { it.first == 1_000L }).isTrue()
     }
 
     @Test
@@ -230,6 +282,33 @@ class VoiceControllerTest {
     }
 
     @Test
+    fun voicePackProblemsAreShownAsTheyAre() {
+        for (error in
+            listOf(
+                SttError.NoVoicePack,
+                SttError.VoicePackUntrusted,
+                SttError.VoicePackBroken,
+                SttError.PrivateField,
+            )) {
+            env.unavailable = error
+            voice.start()
+            assertThat(voice.state).isEqualTo(VoiceState.Failed(error))
+            voice.clearFailure()
+            assertThat(env.engine!!.listener).isNull()
+        }
+    }
+
+    @Test
+    fun theEnvironmentIsToldWhenTheFieldIsPrivate() {
+        voice.start()
+        assertThat(env.privateSeen).isFalse()
+        voice.stopNow()
+        private = true
+        voice.start()
+        assertThat(env.privateSeen).isTrue()
+    }
+
+    @Test
     fun withoutPermissionItAsksAndReportsIt() {
         env.granted = false
         voice.start()
@@ -281,6 +360,48 @@ class VoiceControllerTest {
         final("hello world")
         final("delete that")
         assertThat(editor.text.toString()).isEmpty()
+    }
+
+    @Test
+    fun deleteThatInTheNextSessionRemovesThePreviousDictationIfItIsStillThere() {
+        voice.start()
+        final("hello world")
+        voice.finish()
+        final("")
+        assertThat(editor.text.toString()).isEqualTo("Hello world")
+        env.engine = FakeEngine()
+        voice.start()
+        final("delete that")
+        assertThat(editor.text.toString()).isEmpty()
+    }
+
+    @Test
+    fun deleteThatInTheNextSessionLeavesTextTheUserChangedAlone() {
+        voice.start()
+        final("hello world")
+        voice.finish()
+        final("")
+        editor.commitText(" more", 1) // typed since: the dictation is no longer at the cursor
+        env.engine = FakeEngine()
+        voice.start()
+        final("delete that")
+        assertThat(editor.text.toString()).isEqualTo("Hello world more")
+    }
+
+    @Test
+    fun moonshineStyleDeleteThatRemovesTheSegmentBeforeIt() {
+        voice.start()
+        env.engine!!.listener!!.onResult(SttResult.Partial("Hello there.", 12, endsSegment = true))
+        env.engine!!
+            .listener!!
+            .onResult(SttResult.Partial("Hello there. Second thing.", 26, endsSegment = true))
+        assertThat(editor.text.toString()).isEqualTo("Hello there. Second thing.")
+        env.engine!!
+            .listener!!
+            .onResult(
+                SttResult.Partial("Hello there. Second thing. Delete that.", 39, endsSegment = true)
+            )
+        assertThat(editor.text.toString()).isEqualTo("Hello there.")
     }
 
     @Test

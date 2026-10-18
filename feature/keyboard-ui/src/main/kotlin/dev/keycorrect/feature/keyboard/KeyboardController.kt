@@ -167,6 +167,7 @@ class KeyboardController(
             voiceEnvironment,
             { settings },
             { profile.sensitive },
+            { settings.incognito || !profile.learningEnabled },
             { settings.autoCapitalize && profile.autoCapitalize != AutoCapitalize.None },
             ::settleForVoice,
             voicePost,

@@ -27,11 +27,27 @@ enum class ClipRetention(val millis: Long) {
 
 /** Which speech recognizer voice typing uses (docs/PHASE6.md). */
 enum class VoiceEngineChoice {
-    /** The built-in model from the voice pack when it is installed, else the system recognizer. */
-    Automatic,
+    /**
+     * The built-in model from the KeyCorrect voice pack, on this device. Never falls back to the
+     * phone's recognizer: without a usable pack dictation says so.
+     */
+    BuiltIn,
 
-    /** Always the installed system recognizer (Google, FUTO Voice Input, ...). */
-    System,
+    /**
+     * The phone's own speech recognizer (Google, FUTO Voice Input, ...), an explicit opt-in: it may
+     * send audio to its provider's servers. Never used in private fields (incognito, no learning).
+     */
+    PhoneRecognizer;
+
+    companion object {
+        /** The stored name; the old names (before the engine choice was made explicit) migrate. */
+        fun parse(name: String?): VoiceEngineChoice? =
+            when (name) {
+                "Automatic" -> BuiltIn
+                "System" -> PhoneRecognizer
+                else -> entries.firstOrNull { it.name == name }
+            }
+    }
 }
 
 private const val HOUR_MS = 3_600_000L
@@ -144,7 +160,7 @@ data class KeyboardSettings(
     val clipboardImages: Boolean = true,
     /** Voice typing: long-press the comma (docs/PHASE6.md). Never offered in password fields. */
     val voiceEnabled: Boolean = true,
-    val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.Automatic,
+    val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.BuiltIn,
     /** Ask the recognizer for punctuation and capitalisation. */
     val voiceAutoPunctuation: Boolean = true,
 ) {

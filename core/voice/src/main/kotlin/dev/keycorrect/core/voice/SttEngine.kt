@@ -52,6 +52,14 @@ interface SttSession {
     /** No more audio: emit the [SttResult.Final] and stop. */
     fun finish()
 
+    /**
+     * True while the engine is still decoding audio it already has. After [finish] the keyboard
+     * keeps waiting for the last result while this is true (up to a cap), so a slow device doesn't
+     * lose the last words.
+     */
+    val busy: Boolean
+        get() = false
+
     /** Stop without a result. */
     fun cancel()
 }
@@ -65,9 +73,15 @@ fun interface SttListener {
 sealed interface SttResult {
     /**
      * The text so far; its first [stablePrefixLength] chars won't change any more, so the keyboard
-     * can commit them and keep only the rest as composing text.
+     * can commit them and keep only the rest as composing text. [endsSegment] is true when [text]
+     * ends with a finished segment (a pause in the speech), so a command that is the whole of the
+     * last segment ("delete that") can be told from the start of a longer sentence.
      */
-    data class Partial(val text: String, val stablePrefixLength: Int = 0) : SttResult
+    data class Partial(
+        val text: String,
+        val stablePrefixLength: Int = 0,
+        val endsSegment: Boolean = false,
+    ) : SttResult
 
     /** The utterance's text, best first in [alternatives] (n-best, may hold only [text]). */
     data class Final(val text: String, val alternatives: List<String> = listOf(text)) : SttResult
@@ -81,8 +95,23 @@ enum class SttError {
     /** RECORD_AUDIO isn't granted. */
     NoPermission,
 
-    /** No engine is available (no voice pack, no system recognizer). */
+    /** No engine is available (the phone has no speech recognizer). */
     NoEngine,
+
+    /** The built-in engine is chosen, but the KeyCorrect voice pack isn't installed. */
+    NoVoicePack,
+
+    /** The voice pack is signed with a different key than the keyboard, so it isn't used. */
+    VoicePackUntrusted,
+
+    /** The voice pack is installed but incomplete or unusable. */
+    VoicePackBroken,
+
+    /** The phone recognizer is chosen, but this field is private (incognito or no learning). */
+    PrivateField,
+
+    /** Stop was pressed and the last result never arrived. */
+    Timeout,
 
     /** The microphone couldn't be opened or failed. */
     Audio,

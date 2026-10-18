@@ -60,8 +60,8 @@ fun VoiceSettingsScreen(
                     Text(
                         stringResource(
                             when (choice) {
-                                VoiceEngineChoice.Automatic -> R.string.voice_engine_automatic
-                                VoiceEngineChoice.System -> R.string.voice_engine_system
+                                VoiceEngineChoice.BuiltIn -> R.string.voice_engine_built_in
+                                VoiceEngineChoice.PhoneRecognizer -> R.string.voice_engine_phone
                             }
                         )
                     )
@@ -69,7 +69,14 @@ fun VoiceSettingsScreen(
             }
         }
 
-        PackStatus()
+        if (settings.voiceEngine == VoiceEngineChoice.PhoneRecognizer) {
+            Text(
+                stringResource(R.string.voice_engine_phone_warning),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else {
+            PackStatus()
+        }
 
         SwitchRow(
             title = stringResource(R.string.voice_auto_punctuation),

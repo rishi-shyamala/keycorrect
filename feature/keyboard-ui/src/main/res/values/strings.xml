@@ -145,5 +145,10 @@
     <string name="voice_error_engine">The speech recognizer failed</string>
     <string name="voice_error_no_match">Didn\'t catch that</string>
     <string name="voice_error_busy">The speech recognizer is busy</string>
+    <string name="voice_error_no_voice_pack">Install the KeyCorrect voice pack to dictate</string>
+    <string name="voice_error_voice_pack_untrusted">Voice pack isn\'t trusted (signature)</string>
+    <string name="voice_error_voice_pack_broken">Voice pack is damaged</string>
+    <string name="voice_error_private_field">The phone recognizer isn\'t used in private fields</string>
+    <string name="voice_error_timeout">The last words may be missing</string>
     <string name="voice_error_dismiss_description">Dismiss message</string>
 </resources>

@@ -7,6 +7,7 @@ import dev.keycorrect.core.voice.SttSession
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Voice-activity detection: turns a stream of audio into finished speech segments. The real one is
@@ -55,6 +56,8 @@ internal class SegmentedDictation(
     private val text = StringBuilder()
     private var failed = false
 
+    private val pending = AtomicInteger()
+
     @Volatile private var cancelled = false
     @Volatile private var finished = false
 
@@ -71,6 +74,9 @@ internal class SegmentedDictation(
             drain(c)
         }
     }
+
+    override val busy: Boolean
+        get() = !cancelled && pending.get() > 0
 
     @Synchronized
     override fun finish() {
@@ -109,7 +115,13 @@ internal class SegmentedDictation(
             if (piece.isEmpty()) continue
             if (text.isNotEmpty()) text.append(' ')
             text.append(piece)
-            emit(SttResult.Partial(text.toString(), stablePrefixLength = text.length))
+            emit(
+                SttResult.Partial(
+                    text.toString(),
+                    stablePrefixLength = text.length,
+                    endsSegment = true,
+                )
+            )
         }
     }
 
@@ -130,18 +142,24 @@ internal class SegmentedDictation(
      * regardless: the clean-up). A failure ends the session with [SttError.Engine].
      */
     private fun post(always: Boolean = false, block: () -> Unit) {
+        pending.incrementAndGet()
         try {
             executor.execute {
-                if (!always && (cancelled || failed)) return@execute
-                // Deliberately neither logged nor wrapped: a message could hold user text.
-                runCatching(block).onFailure {
-                    failed = true
-                    emit(SttResult.Error(SttError.Engine))
-                    close()
+                try {
+                    if (!always && (cancelled || failed)) return@execute
+                    // Deliberately neither logged nor wrapped: a message could hold user text.
+                    runCatching(block).onFailure {
+                        failed = true
+                        emit(SttResult.Error(SttError.Engine))
+                        close()
+                    }
+                } finally {
+                    pending.decrementAndGet()
                 }
             }
         } catch (_: RejectedExecutionException) {
             // Cancelled or finished already.
+            pending.decrementAndGet()
         }
     }
 

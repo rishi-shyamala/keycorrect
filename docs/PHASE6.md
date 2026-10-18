@@ -13,6 +13,7 @@ learned substitutions. Stacked on Phase 5 (#11).
 | P6-2 | Runtime and downloads | **sherpa-onnx** (Apache-2.0) for on-device models. Its Android native libraries and the candidate models are downloaded from the official releases, with checksums recorded like the dictionary sources. Only what ships is committed or packed. |
 | P6-3 | Mic button | **Long-press the comma**, as on Samsung, with a small **mic icon** on the comma key as its hint. Not offered in password fields. |
 | P6-4 | Delivery | **One PR.** |
+| P6-5 | Phone recognizer | **Never a fallback.** The engine setting is `BuiltIn` (default: the voice pack only) or `PhoneRecognizer` (an explicit opt-in; the settings text says the phone's recognizer may send audio to its provider's servers). With `BuiltIn` and no, untrusted or damaged pack, dictation shows a message ("Install the KeyCorrect voice pack to dictate", "Voice pack isn't trusted (signature)", "Voice pack is damaged") instead of switching. In incognito and in fields with `IME_FLAG_NO_PERSONALIZED_LEARNING` the phone recognizer is not used even when selected (a message is shown). Stored `Automatic` becomes `BuiltIn`, `System` becomes `PhoneRecognizer`. |
 
 ## Scope
 - **Speech API:** `SttEngine` / `SttSession` (PLAN §5.1), in a JVM module.
@@ -20,8 +21,8 @@ learned substitutions. Stacked on Phase 5 (#11).
   voice-activity detection.
 - **Engines:**
   - sherpa-onnx (streaming and offline), with the model loaded from the voice pack;
-  - an adapter for any installed `RecognitionService` (Google, FUTO Voice Input, …), used as a
-    fallback when no pack is installed.
+  - an adapter for any installed `RecognitionService` (Google, FUTO Voice Input, …), used only
+    when the user chooses it (P6-5), never as a fallback.
 - **Dictation UX:**
   - a listening panel with a level meter and partial text;
   - partial results as composing text, with the stable prefix committed;
@@ -61,7 +62,10 @@ learned substitutions. Stacked on Phase 5 (#11).
   `checkPackSigners`; unreadable or empty means refused), and only then `System.load()`s
   `libonnxruntime.so` then `libsherpa-onnx-jni.so` from the pack's `nativeLibraryDir`, once per
   process. The models are read in place through `createPackageContext(...).assets` (checked with
-  `openFd`, so they must be stored uncompressed). Missing libraries or assets give `Broken`; so does
+  `openFd`, so they must be stored uncompressed). The assets are taken before the signature check
+  and the pack's version code and update time are compared again after loading (a pack replaced
+  meanwhile gives `Broken`); a verified result is cached per (version code, update time). Missing
+  libraries or assets give `Broken`; so does
   a pack updated while the keyboard process lives (a new path), until the process restarts.
 - **Engine.** `SherpaMoonshineEngine(pack)`: not streaming. A session's worker thread loads the VAD
   and recognizer (2 threads), feeds 16 kHz audio to Silero VAD (0.5 s silence ends a segment, speech
@@ -73,7 +77,16 @@ learned substitutions. Stacked on Phase 5 (#11).
 - **For the app side:** add `<queries><package android:name="dev.keycorrect.voice"/></queries>` to
   the app manifest (package visibility), and have `VoiceHost` call
   `VoicePackLocator(context).locate()` and build `SherpaMoonshineEngine(pack)` on `Available`
-  (falling back to the system recognizer otherwise); `acceptAudio` may be called from the capture
+  (no fallback: P6-5; the libraries are only warmed up in the background when voice is on and the
+  engine is `BuiltIn`); `acceptAudio` may be called from the capture
   thread, results arrive on the worker thread. Third-party licences: `THIRD_PARTY_NOTICES.md`; the
   in-app licence screen (app strings) should list sherpa-onnx (Apache-2.0), ONNX Runtime (MIT),
   Moonshine (MIT) and Silero VAD (MIT).
+- **R8.** The app minifies release builds, and the JNI library looks the vendored
+  `com.k2fsa.sherpa.onnx` classes up by name: `:feature:voice-sherpa` ships `consumer-rules.pro`
+  keeping that package and native method names.
+- **Stop.** After Stop the controller waits 4 s for the final result, then keeps waiting (checking
+  every second, 15 s in all) while the session reports `busy` (still decoding); on timeout the
+  text stands and a message says the last words may be missing.
+- **Release.** `tools/release/release.sh publish` checks that the voice pack and the keyboard APK
+  have the same signing certificate (SHA-256) and stops otherwise.

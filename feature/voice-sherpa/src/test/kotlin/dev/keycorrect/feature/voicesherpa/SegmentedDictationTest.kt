@@ -77,9 +77,9 @@ class SegmentedDictationTest {
         h.await()
         assertThat(h.results)
             .containsExactly(
-                SttResult.Partial("hello", 5),
-                SttResult.Partial("hello world", 11),
-                SttResult.Partial("hello world again", 17),
+                SttResult.Partial("hello", 5, endsSegment = true),
+                SttResult.Partial("hello world", 11, endsSegment = true),
+                SttResult.Partial("hello world again", 17, endsSegment = true),
                 SttResult.Final("hello world again"),
             )
             .inOrder()
@@ -92,7 +92,7 @@ class SegmentedDictationTest {
         h.session.finish()
         h.await()
         assertThat(h.results)
-            .containsExactly(SttResult.Partial("hi", 2), SttResult.Final("hi"))
+            .containsExactly(SttResult.Partial("hi", 2, endsSegment = true), SttResult.Final("hi"))
             .inOrder()
     }
 
@@ -177,5 +177,37 @@ class SegmentedDictationTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (!condition() && System.nanoTime() < deadline) Thread.sleep(5)
         assertThat(condition()).isTrue()
+    }
+
+    @Test
+    fun isBusyWhileItStillDecodesAndNotAfterwards() {
+        val gate = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val recognizer =
+            object : SegmentRecognizer {
+                override fun recognize(segment: FloatArray): String {
+                    started.countDown()
+                    gate.await(5, TimeUnit.SECONDS)
+                    return "slow"
+                }
+
+                override fun release() = Unit
+            }
+        val done = CountDownLatch(1)
+        val session =
+            SegmentedDictation(
+                listener = { if (it is SttResult.Final) done.countDown() },
+                create = { SpeechComponents(FakeDetector(cutEvery = 4), recognizer) },
+            )
+        assertThat(session.busy).isTrue() // still loading the models
+        session.acceptAudio(ShortArray(4))
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue()
+        session.finish()
+        assertThat(session.busy).isTrue()
+        gate.countDown()
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (session.busy && System.nanoTime() < deadline) Thread.sleep(5)
+        assertThat(session.busy).isFalse()
     }
 }

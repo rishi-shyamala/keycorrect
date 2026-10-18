@@ -83,9 +83,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                     ?: d.clipboardRetention,
             clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
             voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
-            voiceEngine =
-                VoiceEngineChoice.entries.firstOrNull { it.name == this[VOICE_ENGINE] }
-                    ?: d.voiceEngine,
+            voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
             voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
         )
     }

@@ -77,6 +77,8 @@ internal constructor(
     private val env: VoiceEnvironment,
     private val settings: () -> KeyboardSettings,
     private val sensitive: () -> Boolean,
+    /** Incognito, or a field that asks for no personalised learning: no phone recognizer. */
+    private val privateField: () -> Boolean,
     /** Whether the dictation should capitalise at the start of a sentence. */
     private val capitalize: () -> Boolean,
     /** Called before dictation edits the field and after it ended: the typing side settles. */
@@ -107,6 +109,13 @@ internal constructor(
     private var cancelTimeout: (() -> Unit)? = null
     private var cancelFailure: (() -> Unit)? = null
 
+    /**
+     * What the last dictation committed and kept, so a "delete that" said at the start of the next
+     * one (the system recognizer has one result per dictation) can remove it if it is still right
+     * before the cursor.
+     */
+    private var lastSessionText = ""
+
     /** Long-press on the voice key: starts dictation, or stops it when it is already running. */
     fun toggle() {
         if (dictating) finish() else start()
@@ -125,18 +134,25 @@ internal constructor(
             return
         }
         val gen = ++generation
+        val opening =
+            env.openEngine(s, privateField()) { v ->
+                post { if (gen == generation) level = v.coerceIn(0f, 1f) }
+            }
         val opened =
-            env.openEngine(s) { v -> post { if (gen == generation) level = v.coerceIn(0f, 1f) } }
-        if (opened == null) {
-            fail(SttError.NoEngine)
-            return
-        }
+            when (opening) {
+                is EngineOpening.Ready -> opening.engine
+                is EngineOpening.Unavailable -> {
+                    fail(opening.error)
+                    return
+                }
+            }
         engine = opened
         settle()
         assembler =
             DictationAssembler(
                 textBefore = editor.textBeforeCursor(CONTEXT_CHARS)?.toString(),
                 autoCapitalize = capitalize(),
+                previousSession = lastSessionText,
             )
         val listener = SttListener { r -> post { if (gen == generation) onResult(r) } }
         val started = runCatching {
@@ -176,8 +192,26 @@ internal constructor(
         state = current.copy(finishing = true)
         capture?.stop()
         capture = null
-        cancelTimeout = scheduler.postDelayed(FINISH_TIMEOUT_MS) { if (dictating) stopNow() }
+        awaitFinal(FINISH_TIMEOUT_MS, FINISH_TIMEOUT_MS)
         session?.finish()
+    }
+
+    /**
+     * Waits [delayMs] for the last result. When it hasn't come, an engine that is still decoding (a
+     * slow device) gets more time, up to [FINISH_MAX_MS] in all; then the text stands as it is and
+     * a message says the end may be missing.
+     */
+    private fun awaitFinal(delayMs: Long, waited: Long) {
+        cancelTimeout =
+            scheduler.postDelayed(delayMs) {
+                if (!dictating) return@postDelayed
+                if (session?.busy == true && waited < FINISH_MAX_MS) {
+                    awaitFinal(FINISH_POLL_MS, waited + FINISH_POLL_MS)
+                } else {
+                    stopNow()
+                    fail(SttError.Timeout)
+                }
+            }
     }
 
     /** The cross: the composing text is cleared, what was committed stays. */
@@ -197,7 +231,7 @@ internal constructor(
         if (!dictating) return
         session?.cancel()
         editor.finishComposingText()
-        teardown()
+        teardown(remember = false)
     }
 
     /** The selection moved by something other than dictation. */
@@ -215,7 +249,7 @@ internal constructor(
         val current = assembler ?: return
         when (result) {
             is SttResult.Partial -> {
-                apply(current.onPartial(result.text, result.stablePrefixLength))
+                apply(current.onPartial(result.text, result.stablePrefixLength, result.endsSegment))
                 state = (state as VoiceState.Listening).copy(partial = result.text)
             }
             is SttResult.Final -> {
@@ -236,7 +270,15 @@ internal constructor(
     }
 
     /** Releases the engine and the microphone and returns to idle. */
-    private fun teardown() {
+    private fun teardown(remember: Boolean = true) {
+        assembler?.let { a ->
+            lastSessionText =
+                when {
+                    !remember -> ""
+                    a.committedText.isNotEmpty() -> a.committedText
+                    else -> a.carryOverText
+                }
+        }
         generation++
         cancelTimeout?.invoke()
         cancelTimeout = null
@@ -287,8 +329,12 @@ internal constructor(
         /** The text before the cursor the assembler needs for spacing and capitals. */
         const val CONTEXT_CHARS = 64
 
-        /** How long Stop waits for the last result. */
+        /** How long Stop waits for the last result before checking whether the engine is busy. */
         const val FINISH_TIMEOUT_MS = 4_000L
+
+        /** While the engine is still decoding, how often to look again, and the longest wait. */
+        const val FINISH_POLL_MS = 1_000L
+        const val FINISH_MAX_MS = 15_000L
 
         /** How long a failure message stays in the strip. */
         const val FAILURE_MS = 3_000L

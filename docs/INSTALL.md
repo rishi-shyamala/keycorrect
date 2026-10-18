@@ -94,8 +94,10 @@ too.
   4. Later builds install over it.
   - **Voice pack (optional):** the release also has `keycorrect-voice-<version>.apk`
     (`dev.keycorrect.voice`, about 65 MB). It holds the offline speech model and its native
-    libraries, has no code and no permissions, and is only needed for voice typing with the
-    built-in recognizer. Install it the same way as the keyboard, in any order. It must be signed
+    libraries, has no code and no permissions, and is needed for voice typing: without it,
+    dictation says "Install the KeyCorrect voice pack" and never switches to the phone's
+    recognizer (Settings -> Voice typing -> Phone recognizer is a separate opt-in that may send
+    audio to the phone's speech provider, and is never used in incognito). Install it the same way as the keyboard, in any order. It must be signed
     with the same key as the keyboard: the keyboard checks that and ignores a pack that isn't.
     That is also why a debug keyboard needs a debug-signed pack (`./gradlew :voicepack:installDebug`
     after `tools/data/fetch-voice.sh`) and a release keyboard the release pack. Updates install

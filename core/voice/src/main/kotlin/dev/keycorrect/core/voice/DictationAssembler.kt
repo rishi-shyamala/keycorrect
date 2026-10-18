@@ -31,17 +31,25 @@ sealed interface DictationEdit {
  * utterances (a final ends one). Engines that already punctuate and capitalise their text get only
  * the leading capital and space fixed.
  */
+@Suppress("TooManyFunctions") // one small state machine
 class DictationAssembler(
     textBefore: String?,
     private val autoCapitalize: Boolean = true,
     private val autoSpace: Boolean = true,
     private val commands: SpokenCommands = SpokenCommands.DEFAULT,
+    /**
+     * What the previous dictation committed, if it may still be right before the cursor. "Delete
+     * that" removes it when this session has nothing of its own to delete (an engine with one final
+     * per session, like the system recognizer, can only say it in the next session).
+     */
+    previousSession: String = "",
 ) {
     private class Cursor(var lastChar: Char?, var capNext: Boolean, var emitted: Boolean = false) {
         fun copy() = Cursor(lastChar, capNext, emitted)
     }
 
-    private val before = textBefore.orEmpty().takeLast(TAIL)
+    private var before = textBefore.orEmpty().takeLast(TAIL)
+    private var carryOver = previousSession
     private val committed = StringBuilder()
     private val utteranceStarts = ArrayList<Int>()
     private var utteranceStart = 0
@@ -57,6 +65,10 @@ class DictationAssembler(
     val committedText: String
         get() = committed.toString()
 
+    /** What is left of the previous session's text (see the constructor), for the next one. */
+    val carryOverText: String
+        get() = carryOver
+
     /**
      * The text removed by the last [DictationEdit.DeleteLastDictation], so the keyboard knows how
      * much to delete.
@@ -64,18 +76,35 @@ class DictationAssembler(
     var lastDeletedText: String = ""
         private set
 
-    fun onPartial(text: String, stablePrefixLength: Int): List<DictationEdit> {
+    /**
+     * [endsSegment]: [text] ends with a finished segment (see [SttResult.Partial]). A stretch of
+     * stable text that is nothing but "delete that" is never committed: as a finished segment it is
+     * the command (removing the segment before it); otherwise it waits, as it may still grow into a
+     * sentence, for the final.
+     */
+    fun onPartial(
+        text: String,
+        stablePrefixLength: Int,
+        endsSegment: Boolean = false,
+    ): List<DictationEdit> {
         styled = styled || isStyled(text)
         val edits = ArrayList<DictationEdit>()
         val end = commitBoundary(text, stablePrefixLength)
         if (end > rawCommitted) {
-            val committedNow =
-                record(
-                    format(text.substring(rawCommitted, end), cursor, applyCommands = true),
-                    edits,
-                )
-            rawCommitted = end
-            if (committedNow) composingShown = false // a commit replaces the composing text
+            val chunk = text.substring(rawCommitted, end)
+            when {
+                !commands.isDeleteThat(chunk) -> {
+                    val committedNow = record(format(chunk, cursor, applyCommands = true), edits)
+                    rawCommitted = end
+                    if (committedNow) composingShown = false // a commit replaces the composing text
+                    if (endsSegment) endSegment()
+                }
+                endsSegment -> {
+                    if (composingShown) edits += clearComposing()
+                    deleteLast(edits)
+                    rawCommitted = end
+                }
+            }
         }
         val preview =
             format(
@@ -98,7 +127,7 @@ class DictationAssembler(
     fun onFinal(text: String): List<DictationEdit> {
         val edits = ArrayList<DictationEdit>()
         if (composingShown) edits += clearComposing()
-        if (rawCommitted == 0 && commands.isDeleteThat(text)) {
+        if (commands.isDeleteThat(text.substring(minOf(rawCommitted, text.length)))) {
             deleteLast(edits)
         } else {
             styled = styled || isStyled(text)
@@ -127,9 +156,14 @@ class DictationAssembler(
         return DictationEdit.ClearComposing
     }
 
-    private fun endUtterance() {
+    /** A finished segment inside a running utterance is one unit for "delete that". */
+    private fun endSegment() {
         if (committed.length > utteranceStart) utteranceStarts += utteranceStart
         utteranceStart = committed.length
+    }
+
+    private fun endUtterance() {
+        endSegment()
         rawCommitted = 0
         styled = false
         composingShown = false
@@ -139,10 +173,18 @@ class DictationAssembler(
     }
 
     private fun deleteLast(edits: MutableList<DictationEdit>) {
-        val start = utteranceStarts.removeLastOrNull() ?: return
-        lastDeletedText = committed.substring(start)
-        committed.setLength(start)
-        utteranceStart = start
+        val start = utteranceStarts.removeLastOrNull()
+        if (start != null) {
+            lastDeletedText = committed.substring(start)
+            committed.setLength(start)
+            utteranceStart = start
+        } else if (carryOver.isNotEmpty()) {
+            lastDeletedText = carryOver
+            before = before.removeSuffix(carryOver)
+            carryOver = ""
+        } else {
+            return
+        }
         cursor = cursorFor(before + committed.takeLast(TAIL))
         edits += DictationEdit.DeleteLastDictation
     }

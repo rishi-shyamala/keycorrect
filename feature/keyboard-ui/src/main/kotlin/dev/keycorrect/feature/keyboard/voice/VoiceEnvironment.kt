@@ -2,10 +2,20 @@ package dev.keycorrect.feature.keyboard.voice
 
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.voice.SttEngine
+import dev.keycorrect.core.voice.SttError
 
 /** A running microphone capture; [stop] ends it (idempotent). */
 fun interface CaptureHandle {
     fun stop()
+}
+
+/** The result of [VoiceEnvironment.openEngine]. */
+sealed interface EngineOpening {
+    /** The recognizer to use; the caller [SttEngine.release]s it when dictation ends. */
+    data class Ready(val engine: SttEngine) : EngineOpening
+
+    /** There is none, and why: the message the strip shows. Nothing else is tried instead. */
+    data class Unavailable(val error: SttError) : EngineOpening
 }
 
 /**
@@ -24,11 +34,16 @@ interface VoiceEnvironment {
     fun requestMicPermission()
 
     /**
-     * The recognizer to use under [settings], or null when there is none. [onLevel] (0 to 1) is
-     * called by engines that record the microphone themselves; others get a level from
-     * [startCapture]. The caller [SttEngine.release]s it when dictation ends.
+     * The recognizer chosen in [settings], or why there is none; it never substitutes another one.
+     * [privateField]: incognito or a field that asks for no personalised learning, where the phone
+     * recognizer (which may use the network) is never used. [onLevel] (0 to 1) is called by engines
+     * that record the microphone themselves; others get a level from [startCapture].
      */
-    fun openEngine(settings: KeyboardSettings, onLevel: (Float) -> Unit): SttEngine?
+    fun openEngine(
+        settings: KeyboardSettings,
+        privateField: Boolean,
+        onLevel: (Float) -> Unit,
+    ): EngineOpening
 
     /**
      * Records 16-bit mono PCM at [sampleRate] on its own thread, passing about 30 ms chunks to
@@ -48,8 +63,11 @@ interface VoiceEnvironment {
 
         override fun requestMicPermission() = Unit
 
-        override fun openEngine(settings: KeyboardSettings, onLevel: (Float) -> Unit): SttEngine? =
-            null
+        override fun openEngine(
+            settings: KeyboardSettings,
+            privateField: Boolean,
+            onLevel: (Float) -> Unit,
+        ): EngineOpening = EngineOpening.Unavailable(SttError.NoEngine)
 
         override fun startCapture(
             sampleRate: Int,

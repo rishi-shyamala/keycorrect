@@ -53,8 +53,8 @@ internal fun ListeningBar(
                 MicMeter(level = { voice.level }, tint = color.primary)
                 val text =
                     when {
-                        state.partial.isNotEmpty() -> state.partial
                         state.finishing -> stringResource(R.string.voice_finishing)
+                        state.partial.isNotEmpty() -> state.partial
                         else -> stringResource(R.string.voice_listening)
                     }
                 Text(
@@ -107,6 +107,11 @@ internal fun errorMessage(error: SttError): Int =
         SttError.Engine -> R.string.voice_error_engine
         SttError.NoMatch -> R.string.voice_error_no_match
         SttError.Busy -> R.string.voice_error_busy
+        SttError.NoVoicePack -> R.string.voice_error_no_voice_pack
+        SttError.VoicePackUntrusted -> R.string.voice_error_voice_pack_untrusted
+        SttError.VoicePackBroken -> R.string.voice_error_voice_pack_broken
+        SttError.PrivateField -> R.string.voice_error_private_field
+        SttError.Timeout -> R.string.voice_error_timeout
     }
 
 /** A pulsing mic dot with five bars that follow [level] (read in the draw phase only). */

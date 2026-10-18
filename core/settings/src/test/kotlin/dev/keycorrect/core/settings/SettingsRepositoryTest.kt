@@ -137,22 +137,31 @@ class SettingsRepositoryTest {
     fun voiceSettingsDefaultOnAndRoundTrip() = runTest {
         val d = repo.settings.first()
         assertThat(d.voiceEnabled).isTrue()
-        assertThat(d.voiceEngine).isEqualTo(VoiceEngineChoice.Automatic)
+        assertThat(d.voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
         assertThat(d.voiceAutoPunctuation).isTrue()
         repo.update {
             it.copy(
                 voiceEnabled = false,
-                voiceEngine = VoiceEngineChoice.System,
+                voiceEngine = VoiceEngineChoice.PhoneRecognizer,
                 voiceAutoPunctuation = false,
             )
         }
         val s = repo.settings.first()
         assertThat(s.voiceEnabled).isFalse()
-        assertThat(s.voiceEngine).isEqualTo(VoiceEngineChoice.System)
+        assertThat(s.voiceEngine).isEqualTo(VoiceEngineChoice.PhoneRecognizer)
         assertThat(s.voiceAutoPunctuation).isFalse()
-        assertThat(store.data.first()[stringPreferencesKey("voice_engine")]).isEqualTo("System")
+        assertThat(store.data.first()[stringPreferencesKey("voice_engine")])
+            .isEqualTo("PhoneRecognizer")
         store.edit { it[stringPreferencesKey("voice_engine")] = "Cloud" }
-        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.Automatic)
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
+    }
+
+    @Test
+    fun oldVoiceEngineNamesMigrate() = runTest {
+        store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
+        store.edit { it[stringPreferencesKey("voice_engine")] = "System" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.PhoneRecognizer)
     }
 
     @Test
