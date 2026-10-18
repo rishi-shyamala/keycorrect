@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The KeyCorrect voice pack: speech models (assets) and the sherpa-onnx native libraries, nothing
+  else. No code, no activity, no permissions (not even INTERNET). The keyboard (dev.keycorrect)
+  loads the libraries and reads the models from this package, after checking that both APKs are
+  signed with the same key (docs/PHASE6.md).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:hasCode="false"
+        android:label="KeyCorrect voice pack" />
+</manifest>

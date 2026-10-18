@@ -62,3 +62,5 @@ include(":tools:dictbuild")
 include(":tools:emojibuild")
 
 include(":tools:eval")
+
+include(":voicepack")
