@@ -32,7 +32,7 @@
       "÷",
     ],
     [
-      { "type": "layer", "label": "2/2", "target": "symbols", "width": 1, "style": "modifier", "description": "Switch to symbols" },
+      { "type": "layer", "label": "2/2", "target": "symbols", "style": "modifier", "description": "Switch to symbols" },
       "¡",
       "¿",
       { "label": "«", "popup": ["‹"] },
@@ -40,8 +40,7 @@
       "…",
       "§",
       "©",
-      "®",
-      { "type": "backspace", "width": 1 },
+      { "type": "backspace" },
     ],
   ],
   "numberRowExtra": {

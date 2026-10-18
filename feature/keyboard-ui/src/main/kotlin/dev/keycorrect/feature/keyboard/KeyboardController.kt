@@ -964,6 +964,8 @@ class KeyboardController(
         if (newOptions == options) return
         options = newOptions
         layer = composer.compose(keyboardSet, state.layerId, variant, options)
+                modeEnterKeyWidth = settings.modeEnterKeyWidth,
+                symbolHints = settings.symbolHints,
         heightUnits = referenceHeightUnits()
     }
 
