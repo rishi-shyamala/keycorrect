@@ -179,6 +179,16 @@ class EditingUnknownOffsetTest {
     }
 
     @Test
+    fun theJoystickUsesKeysWhereTheEditorReportsNoOffset() {
+        start("hello world", at = 8)
+        controller.gestures.onCursorDrag(-2, 0, select = false)
+        controller.gestures.onCursorDrag(-1, 0, select = false)
+        assertThat(sim.selections).isEmpty()
+        assertThat(sim.keys).hasSize(3)
+        assertThat(sim.cursor).isEqualTo(5)
+    }
+
+    @Test
     fun theBackspaceSwipeWorksWithAnUnknownOffsetWhenSettled() {
         start("foo bar baz ")
         controller.gestures.onBackspaceSwipe(2)

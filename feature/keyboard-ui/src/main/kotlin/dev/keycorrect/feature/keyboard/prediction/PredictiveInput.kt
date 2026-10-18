@@ -121,7 +121,17 @@ internal class PredictiveInput(
     private val touches = ArrayList<TouchPoint?>()
 
     private val cache = TextContextCache(editor)
-    private var selectionIsRange = false
+    private var selection = SelectionState.Unknown
+
+    /**
+     * A delete sized from the cache was sent and the editor's matching echo (the cursor where that
+     * delete leaves it) has not arrived yet. Until it does the cache may differ from the editor (a
+     * rejected or truncated delete), so the next backspace asks the editor.
+     */
+    private var deletesUnconfirmed = false
+
+    private val selectionIsRange: Boolean
+        get() = selection == SelectionState.Range
 
     private var latest: PredictResult? = null
 
@@ -252,7 +262,12 @@ internal class PredictiveInput(
      * A field was focused, or the keyboard re-shown on it. Forgets all word state (the caches are
      * re-read when needed); [newField] also forgets the words the user reverted.
      */
-    fun onStartInput(profile: FieldProfile, settings: KeyboardSettings, newField: Boolean) {
+    fun onStartInput(
+        profile: FieldProfile,
+        settings: KeyboardSettings,
+        newField: Boolean,
+        selection: SelectionState = SelectionState.Unknown,
+    ) {
         // What the previous input left open is settled against the previous field's gate.
         settleAll()
         this.profile = profile
@@ -268,7 +283,8 @@ internal class PredictiveInput(
         learn.setField(fieldClass())
         syncGate()
         resetWordState()
-        selectionIsRange = false
+        this.selection = selection
+        deletesUnconfirmed = false
         refreshContext()
     }
 
@@ -409,19 +425,32 @@ internal class PredictiveInput(
     }
 
     /**
-     * Deletes the selection or the grapheme before the cursor. Where the cache holds the text
-     * before the cursor the grapheme is sized from it and deleted directly, with no editor read
-     * (this runs on every repeat of a held backspace); otherwise the editor looks.
+     * Deletes the selection or the grapheme before the cursor. Where the selection is known to be
+     * collapsed, the cache holds the text before the cursor and the previous cache-sized delete was
+     * confirmed by the editor, the grapheme is sized from the cache and deleted directly, with no
+     * editor read (this runs on every repeat of a held backspace; the echo of one repeat normally
+     * arrives before the next, 50 ms later). In every other case (a range, a selection never
+     * reported, a delete not yet confirmed) the editor decides what goes, and the cache is dropped
+     * to be read afresh.
+     *
+     * Remaining limitation: an app that silently rewrites the text around the cursor without moving
+     * it (same length, no selection change) is not noticed until the next external update.
      */
     private fun deleteBeforeCursor() {
-        if (selectionIsRange) {
+        if (selection != SelectionState.Collapsed || deletesUnconfirmed) {
             editor.deleteBackward(false)
-            cache.invalidate()
+            cache.invalidate() // a re-read is the truth again
+            deletesUnconfirmed = false
             return
         }
         if (backend.predictor != null) ensureContext() // read once, not on every press
         val length = cachedGraphemeLength()
-        if (length > 0) editor.deleteSurroundingText(length, 0) else editor.deleteBackward(false)
+        if (length > 0) {
+            deletesUnconfirmed = true // before the call: a synchronous echo confirms it
+            editor.deleteSurroundingText(length, 0)
+        } else {
+            editor.deleteBackward(false)
+        }
         if (cache.beforeKnown) cache.dropLastCluster()
     }
 
@@ -465,9 +494,25 @@ internal class PredictiveInput(
 
     // ------------------------------------------------------------------ selection changes
 
-    /** Records whether the latest reported selection is a range. */
-    fun noteSelection(collapsed: Boolean) {
-        selectionIsRange = !collapsed
+    /**
+     * Records the latest reported selection: collapsed, a range, or (null) not reported. Only a
+     * collapsed one allows a delete without reading the editor.
+     */
+    fun noteSelection(collapsed: Boolean?) {
+        selection =
+            when (collapsed) {
+                null -> SelectionState.Unknown
+                true -> SelectionState.Collapsed
+                false -> SelectionState.Range
+            }
+    }
+
+    /**
+     * The editor's echo of our latest edits arrived with the cursor where they leave it: a delete
+     * sized from the cache did what it was meant to.
+     */
+    fun confirmEdits() {
+        deletesUnconfirmed = false
     }
 
     /**
@@ -515,6 +560,7 @@ internal class PredictiveInput(
      * decoded so far applies any more. The text before the cursor is read afresh when [collapsed].
      */
     fun onExternalChange(collapsed: Boolean) {
+        deletesUnconfirmed = false // the cache is read afresh
         settleAll()
         resetWordState()
         publish(StripModel.Empty)
@@ -2235,4 +2281,12 @@ internal class PredictiveInput(
         /** A swiped word after one of these gets a space first. */
         const val SENTENCE_PUNCTUATION = ".,!?;:)]}"
     }
+}
+
+/** What is known of the editor's selection: it decides whether a delete may skip reading. */
+internal enum class SelectionState {
+    /** Never reported (a field opened without an initial selection, say). */
+    Unknown,
+    Collapsed,
+    Range,
 }

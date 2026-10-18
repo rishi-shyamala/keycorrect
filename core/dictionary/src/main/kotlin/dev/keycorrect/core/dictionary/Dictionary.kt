@@ -10,8 +10,11 @@ data class Successor(val id: Int, val logProb: Float)
 /**
  * Read-only view over a compiled KCD1 dictionary (see FORMAT.md).
  *
- * [open] validates the small header structures only; bulk data is read lazily from the buffer with
- * absolute little-endian gets, so a memory-mapped buffer is never copied. Instances are safe for
+ * [open] validates the header structures and copies the trie node records and block samples to the
+ * heap (the trie is walked thousands of times per keystroke, where a buffer's per-access checks
+ * dominated the profile). The other sections (n-grams, word info, terminal values, case pool) are
+ * read lazily from the buffer with absolute little-endian gets, so a memory-mapped buffer is never
+ * copied wholesale; [prefetch] faults in the pages every prediction reads. Instances are safe for
  * concurrent readers; the only mutable state is the [word] cache, whose entries are immutable.
  *
  * Word ids: 0 = `<s>` ([BOS_ID]), 1 = `</s>` ([EOS_ID]), real words from [FIRST_WORD_ID], ordered
