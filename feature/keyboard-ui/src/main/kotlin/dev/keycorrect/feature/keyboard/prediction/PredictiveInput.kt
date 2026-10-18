@@ -18,6 +18,7 @@ import dev.keycorrect.core.input.AutoCapitalize
 import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
+import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
@@ -399,7 +400,9 @@ internal class PredictiveInput(
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
         val hadRange = selectionIsRange
-        editor.deleteBackward(false)
+        if (!hadRange && backend.predictor != null) ensureContext() // read once, not on every press
+        val fromCache = !hadRange && deleteFromCache()
+        if (!fromCache) editor.deleteBackward(false)
         if (hadRange) {
             cache.invalidate()
         } else if (cache.beforeKnown) {
@@ -411,6 +414,22 @@ internal class PredictiveInput(
             dropPendingRevert() // the restored word can't be followed any more
             publish(StripModel.Empty)
         }
+    }
+
+    /**
+     * Deletes the grapheme before the cursor sized from the cached text, with no editor read. False
+     * (nothing done) when the cache doesn't hold at least a grapheme's worth of text before the
+     * cursor reliably: the caller then lets the editor look. The selection is known not to be a
+     * range here.
+     */
+    private fun deleteFromCache(): Boolean {
+        if (!cache.beforeReadable) return false
+        val before = cache.before
+        if (cache.beforeTruncated && before.length < MIN_CACHED_LOOKBEHIND) return false
+        val length = Graphemes.lastClusterLength(before)
+        if (length <= 0) return false // the start of the field, or doubt: let the editor decide
+        editor.deleteSurroundingText(length, 0)
+        return true
     }
 
     /**
@@ -1515,7 +1534,7 @@ internal class PredictiveInput(
 
     private fun request(seq: Long, typed: String, touchList: List<TouchPoint?>): PredictRequest =
         PredictRequest(
-            context = TypingContext(cache.before.toString(), cache.after, fieldClass()),
+            context = TypingContext(cache.beforeSnapshot(), cache.after, fieldClass()),
             composing = ComposingInput(typed, touchList),
             layout = layout,
             maxCandidates = MAX_CANDIDATES,
@@ -2195,6 +2214,8 @@ internal class PredictiveInput(
     }
 
     private companion object {
+        /** A truncated cache shorter than this may cut a long grapheme cluster short. */
+        const val MIN_CACHED_LOOKBEHIND = 32
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
