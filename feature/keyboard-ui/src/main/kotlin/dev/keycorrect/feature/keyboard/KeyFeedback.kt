@@ -107,9 +107,16 @@ class KeyFeedback(context: Context) {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
-    /** Whether custom strength (amplitude) is supported on this device. */
-    val hasAmplitudeControl: Boolean
-        get() = vibrator.hasAmplitudeControl()
+    /** Whether custom strength (amplitude) is supported on this device (asked once). */
+    val hasAmplitudeControl: Boolean by
+        lazy(LazyThreadSafetyMode.NONE) {
+            vibrator.hasAmplitudeControl()
+        }
+
+    /** The key-press effect for [keyEffectMs] and [keyEffectStrength]: built once, not per key. */
+    private var keyEffect: VibrationEffect? = null
+    private var keyEffectMs = 0
+    private var keyEffectStrength = 0
 
     fun onKeyPress(view: View?, kind: FeedbackKind, settings: KeyboardSettings) {
         haptic(view, settings)
@@ -185,13 +192,29 @@ class KeyFeedback(context: Context) {
             view?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             return
         }
+        vibrate(keyPressEffect(settings))
+    }
+
+    private fun keyPressEffect(settings: KeyboardSettings): VibrationEffect {
+        val cached = keyEffect
+        if (
+            cached != null &&
+                keyEffectMs == settings.hapticDurationMs &&
+                keyEffectStrength == settings.hapticStrength
+        ) {
+            return cached
+        }
         val amplitude =
             if (settings.hapticStrength == 0 || !hasAmplitudeControl) {
                 VibrationEffect.DEFAULT_AMPLITUDE
             } else {
                 settings.hapticStrength
             }
-        vibrate(VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude))
+        return VibrationEffect.createOneShot(settings.hapticDurationMs.toLong(), amplitude).also {
+            keyEffect = it
+            keyEffectMs = settings.hapticDurationMs
+            keyEffectStrength = settings.hapticStrength
+        }
     }
 
     // VIBRATE is declared in the app manifest.

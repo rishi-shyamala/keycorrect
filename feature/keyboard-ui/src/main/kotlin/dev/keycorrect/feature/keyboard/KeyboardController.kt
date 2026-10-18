@@ -298,7 +298,7 @@ class KeyboardController(
         val layerId = homeLayerFor(effective.kind)
         state = KeyboardState(layerId)
         layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits()
+        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
         updateLayoutKey()
         updateAutoCapitalize()
         warmUpSwipe()
@@ -440,7 +440,7 @@ class KeyboardController(
         val layerId = homeLayerFor(effective.kind)
         state = KeyboardState(layerId)
         layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits()
+        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
         updateLayoutKey()
         updateAutoCapitalize()
         warmUpSwipe()
@@ -977,28 +977,31 @@ class KeyboardController(
         if (newOptions == options) return
         options = newOptions
         layer = composer.compose(keyboardSet, state.layerId, variant, options)
-        heightUnits = referenceHeightUnits()
+        heightUnits = referenceHeightUnits(layer.takeIf { state.layerId == KeyboardSet.LETTERS })
     }
 
     /**
      * Total row weight of the letters layer for the current field. The number row is left out for
      * numeric fields: their pads already have the digits, so it would only make them taller.
      */
-    private fun referenceHeightUnits(): Float {
+    private fun referenceHeightUnits(composedLetters: KeyboardLayer? = null): Float {
         val numeric =
             profile.kind == FieldKind.Number ||
                 profile.kind == FieldKind.Phone ||
                 profile.kind == FieldKind.DateTime
+        // The letters layer just composed with these options is the reference: compose it once.
         val reference =
-            runCatching {
-                composer.compose(
-                    keyboardSet,
-                    KeyboardSet.LETTERS,
-                    variant,
-                    if (numeric) options.copy(numberRow = false) else options,
-                )
-            }
-                .getOrNull() ?: return heightUnits
+            composedLetters?.takeIf { !numeric }
+                ?: runCatching {
+                    composer.compose(
+                        keyboardSet,
+                        KeyboardSet.LETTERS,
+                        variant,
+                        if (numeric) options.copy(numberRow = false) else options,
+                    )
+                }
+                    .getOrNull()
+                ?: return heightUnits
         return reference.rows.sumOf { it.height.toDouble() }.toFloat()
     }
 
