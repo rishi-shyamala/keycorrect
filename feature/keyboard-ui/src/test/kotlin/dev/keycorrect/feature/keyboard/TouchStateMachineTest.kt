@@ -1151,6 +1151,27 @@ class TouchStateMachineTest {
     }
 
     @Test
+    fun holdingTheCommaStartsVoiceTypingWithoutTypingIt() {
+        down(1, slot(","))
+        assertThat(machine.nextDeadline()).isNotNull()
+        advance(300)
+        assertThat(host.keyLongPresses).containsExactly(KeyAction.Voice)
+        assertThat(host.ticks).isEqualTo(1)
+        assertThat(host.popupOpened).isEqualTo(0)
+        machine.onUp(1)
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun aShortTapOnTheCommaTypesIt() {
+        down(1, slot(","))
+        advance(299)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Text(","))
+        assertThat(host.keyLongPresses).isEmpty()
+    }
+
+    @Test
     fun otherKeysHaveNoKeyLongPress() {
         down(1, a)
         advance(1_000)

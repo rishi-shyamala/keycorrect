@@ -36,8 +36,10 @@ internal fun KeySemantics(
     modifier: Modifier = Modifier,
     terminalModifiers: TerminalModifiers? = null,
     onClipboard: (() -> Unit)? = null,
+    onVoice: (() -> Unit)? = null,
 ) {
     val clipboardLabel = stringResource(R.string.clipboard_key_action)
+    val voiceLabel = stringResource(R.string.voice_key_action)
     Layout(
         content = {
             for (row in layer.rows) {
@@ -57,6 +59,8 @@ internal fun KeySemantics(
                             if (key.action == KeyAction.Emoji && onClipboard != null) {
                                 // The long press has no gesture for a screen reader.
                                 customActions = clipboardActions(clipboardLabel, onClipboard)
+                            } else if (key.longPress == KeyAction.Voice && onVoice != null) {
+                                customActions = clipboardActions(voiceLabel, onVoice)
                             }
                             onClick {
                                 // A failing host (e.g. a dead input connection) must not take

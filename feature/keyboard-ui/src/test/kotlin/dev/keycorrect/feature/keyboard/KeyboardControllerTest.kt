@@ -10,6 +10,7 @@ import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.voice.VoiceState
 import org.junit.Test
 
 class KeyboardControllerTest {
@@ -771,5 +772,32 @@ class KeyboardControllerTest {
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
         assertThat(controller.layer.rows.flatMap { it.keys }.map { it.action })
             .doesNotContain(KeyAction.Emoji)
+    }
+
+    private fun voiceKeys() =
+        controller.layer.rows
+            .last()
+            .keys
+            .filter { it.longPress == KeyAction.Voice }
+            .map { it.label }
+
+    @Test
+    fun theVoiceKeyIsOnTheCommaExceptInPasswordFieldsAndWithVoiceOff() {
+        start(textProfile)
+        assertThat(voiceKeys()).containsExactly(",")
+        start(textProfile, KeyboardSettings(numberRow = false, voiceEnabled = false))
+        assertThat(voiceKeys()).isEmpty()
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertThat(voiceKeys()).isEmpty()
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+        assertThat(voiceKeys()).containsExactly(".")
+    }
+
+    @Test
+    fun theVoiceLongPressNeverStartsInAPasswordField() {
+        start(profile(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        controller.onKeyLongPress(KeyAction.Voice)
+        assertThat(controller.voice.state).isEqualTo(VoiceState.Idle)
+        assertThat(editor.readCalls).isEqualTo(0)
     }
 }

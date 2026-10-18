@@ -35,6 +35,8 @@ internal enum class KeyIcon(val path: String, val filled: Boolean = false) {
     ArrowUp("M12 19V5M6 11l6-6 6 6"),
     ArrowDown("M12 5v14M6 13l6 6 6-6"),
     Emoji("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M9 10h.01M15 10h.01M8.5 14.5q3.5 3.5 7 0"),
+    /** A microphone: the hint on a key that starts voice typing, and the listening bar's icon. */
+    Mic("M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3M6 11a6 6 0 0 0 12 0M12 17v4"),
 }
 
 /**

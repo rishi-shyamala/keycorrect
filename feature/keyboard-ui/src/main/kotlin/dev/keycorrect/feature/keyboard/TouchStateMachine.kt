@@ -98,9 +98,10 @@ internal interface TouchHost {
         get() = false
 
     /**
-     * A key with a long press of its own (the emoji key, see [clipboardLongPress]) was held for
-     * [longPressDelayMs]: releasing then does not also tap it. The haptic is played first, by the
-     * machine, through [onGestureTick].
+     * A key with a long press of its own (the emoji key, see [clipboardLongPress]; a key with a
+     * [ResolvedKey.longPress], like the comma's voice typing) was held for [longPressDelayMs]:
+     * releasing then does not also tap it. [action] is the key's long-press action, or its own for
+     * the emoji key. The haptic is played first, by the machine, through [onGestureTick].
      */
     fun onKeyLongPress(action: KeyAction) = Unit
 
@@ -165,8 +166,9 @@ internal interface TouchHost {
  *   press and auto-repeats; shift is reported on press and release without committing anything.
  * - A key with popup entries opens its popup after [TouchHost.longPressDelayMs]; releasing over a
  *   cell commits that entry, and moving far below the key cancels it.
- * - The emoji key (with [TouchHost.clipboardLongPress]) is long-pressed after the same delay: a
- *   haptic tick and [TouchHost.onKeyLongPress]; the release then types nothing.
+ * - The emoji key (with [TouchHost.clipboardLongPress]) and a key with a [ResolvedKey.longPress]
+ *   (voice typing on the comma) are long-pressed after the same delay, with no popup: a haptic tick
+ *   and [TouchHost.onKeyLongPress]; the release then types nothing.
  * - A second finger going down dismisses an open popup; the first finger's release then types
  *   nothing. Other fingers never affect a drag or swipe in progress.
  * - Swipe (with [TouchHost.swipeTyping]): a press on a letter key that travels more than
@@ -295,7 +297,7 @@ internal class TouchStateMachine(
                 press.gesture = Gesture.KeyLongPress
                 touch.preview = null
                 hostCall { host.onGestureTick() }
-                hostCall { host.onKeyLongPress(press.slot.key.action) }
+                hostCall { host.onKeyLongPress(press.slot.key.longPress ?: press.slot.key.action) }
             } else if (press.rate) {
                 rateTick(press, now)
             } else if (press.repeating) {
@@ -333,7 +335,7 @@ internal class TouchStateMachine(
                 press.repeating = true
                 press.deadline = clock() + REPEAT_START_DELAY_MS
             }
-            key.action == KeyAction.Emoji && host.clipboardLongPress -> {
+            (key.action == KeyAction.Emoji && host.clipboardLongPress) || key.longPress != null -> {
                 press.keyLongPressPending = true
                 press.deadline = clock() + host.longPressDelayMs
             }
