@@ -1,7 +1,14 @@
 package dev.keycorrect.core.transfer
 
 import com.google.common.truth.Truth.assertThat
+import kotlin.math.pow
 import org.junit.Test
+
+/** No decay at all, so sums are plain sums. */
+private val noAging = Merge.Aging(evidence = { 1.0 }, touch = { 1.0 })
+
+/** Halves every [halfLife] ms, like the learning model's decay. */
+private fun halving(halfLife: Long) = { elapsed: Long -> 0.5.pow(elapsed.toDouble() / halfLife) }
 
 class MergeTest {
     @Test
@@ -13,6 +20,19 @@ class MergeTest {
             )
         assertThat(r.map { it.word }).containsExactly("a", "b", "c").inOrder()
         assertThat(r[0]).isEqualTo(DictWord("a", 255, null, 2, 9))
+    }
+
+    @Test
+    fun wordsMatchByWordAloneAndKeepThisDevicesLocale() {
+        // user_words has the word as its primary key: one row per word, whatever the locale.
+        val r =
+            Merge.words(
+                listOf(DictWord("café", 10, "en", 5, 5)),
+                listOf(DictWord("café", 20, "fr", 2, 9), DictWord("zorp", 7, "fr")),
+            )
+        assertThat(r.map { it.word }).containsExactly("café", "zorp").inOrder()
+        assertThat(r[0]).isEqualTo(DictWord("café", 30, "en", 2, 9))
+        assertThat(r[1].locale).isEqualTo("fr")
     }
 
     @Test
@@ -69,7 +89,7 @@ class MergeTest {
                 rankerWeights = listOf(9.0),
                 sentences = listOf(a.sentences[0], SentenceEntry(2, "other", 60)),
             )
-        val m = Merge.learning(a, b)
+        val m = Merge.learning(a, b, noAging)
         assertThat(m.ngrams.first { it.key == "of the" })
             .isEqualTo(NgramEntry(2, "of the", 5.0, 120))
         assertThat(m.ngrams).hasSize(2)
@@ -122,12 +142,73 @@ class MergeTest {
                     TouchBucket("other"),
                 )
             )
-        val m = Merge.touch(a, b)
+        val m = Merge.touch(a, b, noAging)
         assertThat(m.buckets.map { it.touchKey }).containsExactly("k", "other")
         val k = m.buckets.first { it.touchKey == "k" }
         assertThat(k.words).isEqualTo(15)
         assertThat(k.keys.first { it.char == 97 })
             .isEqualTo(TouchKeyStats(97, 7, 5.0, 2.0, 3.0, 4.0, 5.0, 9))
         assertThat(k.keys).hasSize(2)
+    }
+
+    // ------------------------------------------------------------- decay before adding
+
+    @Test
+    fun olderIncomingNgramCountsForLess() {
+        val aging = Merge.Aging(evidence = halving(100), touch = { 1.0 })
+        // This device's entry is 100 ms newer: the incoming 4.0 has halved by then.
+        val m =
+            Merge.ngrams(
+                listOf(NgramEntry(1, "a", 4.0, 200)),
+                listOf(NgramEntry(1, "a", 4.0, 100)),
+                aging,
+            )
+        assertThat(m.single().weight).isWithin(1e-9).of(6.0)
+        assertThat(m.single().lastActiveMillis).isEqualTo(200)
+        // And the other way round: the existing one is the older.
+        val n =
+            Merge.ngrams(
+                listOf(NgramEntry(1, "a", 4.0, 100)),
+                listOf(NgramEntry(1, "a", 4.0, 300)),
+                aging,
+            )
+        assertThat(n.single().weight).isWithin(1e-9).of(4.0 + 4.0 * 0.25)
+        assertThat(n.single().lastActiveMillis).isEqualTo(300)
+    }
+
+    @Test
+    fun olderCorrectionScoresDecayToo() {
+        val aging = Merge.Aging(evidence = halving(100), touch = { 1.0 })
+        val m =
+            Merge.corrections(
+                listOf(CorrectionEntry("teh", "the", "", 2.0, 100)),
+                listOf(CorrectionEntry("teh", "the", "", 2.0, 200)),
+                aging,
+            )
+        assertThat(m.single().score).isWithin(1e-9).of(3.0)
+        assertThat(m.single().lastActiveMillis).isEqualTo(200)
+    }
+
+    @Test
+    fun touchSumsDecayButSampleCountsAdd() {
+        val aging = Merge.Aging(evidence = { 1.0 }, touch = halving(100))
+        val a =
+            TouchSection(
+                listOf(
+                    TouchBucket("k", 1, listOf(TouchKeyStats(97, 5, 4.0, 8.0, 8.0, 8.0, 8.0, 100)))
+                )
+            )
+        val b =
+            TouchSection(
+                listOf(
+                    TouchBucket("k", 1, listOf(TouchKeyStats(97, 2, 4.0, 4.0, 4.0, 4.0, 4.0, 200)))
+                )
+            )
+        val key = Merge.touch(a, b, aging).buckets.single().keys.single()
+        assertThat(key.samples).isEqualTo(7)
+        assertThat(key.weight).isWithin(1e-9).of(6.0)
+        assertThat(key.sumX).isWithin(1e-9).of(8.0)
+        assertThat(key.sumYY).isWithin(1e-9).of(8.0)
+        assertThat(key.lastActiveMillis).isEqualTo(200)
     }
 }

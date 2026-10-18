@@ -115,3 +115,27 @@ data class ImportPlan(
         ): ImportPlan = create(manifest.device, current, mode, importTouchAnyway)
     }
 }
+
+/**
+ * A short, stable id of one backup (its creation time, source device and app version), so the app
+ * can tell that a file was already imported. Not secret and not reversible; it identifies no
+ * content.
+ */
+fun TransferManifest.backupId(): String {
+    val text =
+        listOf(
+                createdAtMillis,
+                device.model,
+                device.screenWidthPx,
+                device.screenHeightPx,
+                device.densityDpi,
+                appVersion,
+            )
+            .joinToString("|")
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(text.toByteArray())
+    return digest.take(BACKUP_ID_BYTES).joinToString("") {
+        "%02x".format(java.util.Locale.ROOT, it)
+    }
+}
+
+private const val BACKUP_ID_BYTES = 12

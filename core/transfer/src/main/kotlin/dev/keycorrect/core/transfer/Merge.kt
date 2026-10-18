@@ -16,9 +16,17 @@ object Merge {
     private fun lower(s: String) = s.lowercase(Locale.ROOT)
 
     /**
-     * Union of the dictionaries. Words match by exact text and locale; frequencies add (capped at
-     * 255), the earliest creation and latest update are kept, this device's locale wins. Words that
-     * are blocked on either side (case-insensitively) are dropped; shortcuts keep this device's
+     * How much of a decayed value is left after an elapsed active-clock time (1.0 for none). The
+     * app passes the learning model's own decay, so merged weights age exactly as they would have
+     * on one device: [evidence] for n-grams and corrections, [touch] for touch statistics.
+     */
+    class Aging(val evidence: (elapsedMillis: Long) -> Double, val touch: (Long) -> Double)
+
+    /**
+     * Union of the dictionaries. Words match by exact text only (the store's primary key is the
+     * word, so one word cannot exist twice in two locales); frequencies add (capped at 255), the
+     * earliest creation and latest update are kept, this device's locale wins. Words that are
+     * blocked on either side (case-insensitively) are dropped; shortcuts keep this device's
      * expansion on a conflicting trigger.
      */
     fun dictionary(existing: DictionarySection, incoming: DictionarySection): DictionarySection {
@@ -33,12 +41,11 @@ object Merge {
     }
 
     fun words(existing: List<DictWord>, incoming: List<DictWord>): List<DictWord> {
-        val out = LinkedHashMap<Pair<String, String?>, DictWord>()
-        for (w in existing) out[w.word to w.locale] = w
+        val out = LinkedHashMap<String, DictWord>()
+        for (w in existing) out[w.word] = w
         for (w in incoming) {
-            val k = w.word to w.locale
-            val e = out[k]
-            out[k] =
+            val e = out[w.word]
+            out[w.word] =
                 if (e == null) w
                 else
                     e.copy(
@@ -98,14 +105,19 @@ object Merge {
     /**
      * Learned typing data. N-gram weights, correction scores, keeps, casing and candidate weights
      * add; suppressions, outcomes and sentences union; the ranker keeps whichever side learned
-     * more. Times are max/min as fits. Note n-gram and correction times are on each device's own
-     * active clock; the app rebases the incoming ones (or accepts the approximation).
+     * more. Times are max/min as fits. N-gram and correction times are on each device's own active
+     * clock (the app rebases the incoming ones first); two entries are first decayed to the later
+     * of their times by [aging], so older evidence counts for less before the weights are added.
      */
-    fun learning(existing: LearningSection, incoming: LearningSection): LearningSection =
+    fun learning(
+        existing: LearningSection,
+        incoming: LearningSection,
+        aging: Aging,
+    ): LearningSection =
         LearningSection(
             activeClockMillis = maxOf(existing.activeClockMillis, incoming.activeClockMillis),
-            ngrams = ngrams(existing.ngrams, incoming.ngrams),
-            corrections = corrections(existing.corrections, incoming.corrections),
+            ngrams = ngrams(existing.ngrams, incoming.ngrams, aging),
+            corrections = corrections(existing.corrections, incoming.corrections, aging),
             suppressions =
                 (existing.suppressions + incoming.suppressions).distinctBy {
                     lower(it.typed) to lower(it.target)
@@ -124,22 +136,33 @@ object Merge {
             emojiVariants = emojiVariants(existing.emojiVariants, incoming.emojiVariants),
         )
 
-    fun ngrams(existing: List<NgramEntry>, incoming: List<NgramEntry>): List<NgramEntry> =
+    fun ngrams(
+        existing: List<NgramEntry>,
+        incoming: List<NgramEntry>,
+        aging: Aging,
+    ): List<NgramEntry> =
         combine(existing, incoming, { it.order to it.key }) { a, b ->
+            val last = maxOf(a.lastActiveMillis, b.lastActiveMillis)
             a.copy(
-                weight = a.weight + b.weight,
-                lastActiveMillis = maxOf(a.lastActiveMillis, b.lastActiveMillis),
+                weight =
+                    a.weight * aging.evidence(last - a.lastActiveMillis) +
+                        b.weight * aging.evidence(last - b.lastActiveMillis),
+                lastActiveMillis = last,
             )
         }
 
     fun corrections(
         existing: List<CorrectionEntry>,
         incoming: List<CorrectionEntry>,
+        aging: Aging,
     ): List<CorrectionEntry> =
         combine(existing, incoming, { Triple(it.typed, it.target, it.bucket) }) { a, b ->
+            val last = maxOf(a.lastActiveMillis, b.lastActiveMillis)
             a.copy(
-                score = a.score + b.score,
-                lastActiveMillis = maxOf(a.lastActiveMillis, b.lastActiveMillis),
+                score =
+                    a.score * aging.evidence(last - a.lastActiveMillis) +
+                        b.score * aging.evidence(last - b.lastActiveMillis),
+                lastActiveMillis = last,
             )
         }
 
@@ -189,8 +212,11 @@ object Merge {
         incoming: List<EmojiVariant>,
     ): List<EmojiVariant> = combine(existing, incoming, { it.base }) { a, _ -> a }
 
-    /** Touch statistics add per bucket and key (the sums are additive by construction). */
-    fun touch(existing: TouchSection, incoming: TouchSection): TouchSection {
+    /**
+     * Touch statistics add per bucket and key. The weighted sums are decayed to the later of the
+     * two times by [Aging.touch] first (the sample count does not decay).
+     */
+    fun touch(existing: TouchSection, incoming: TouchSection, aging: Aging): TouchSection {
         val out = LinkedHashMap<String, TouchBucket>()
         for (b in existing.buckets) out[b.touchKey] = b
         for (b in incoming.buckets) {
@@ -201,20 +227,25 @@ object Merge {
                     TouchBucket(
                         b.touchKey,
                         e.words + b.words,
-                        combine(e.keys, b.keys, { it.char }) { x, y ->
-                            x.copy(
-                                samples = x.samples + y.samples,
-                                weight = x.weight + y.weight,
-                                sumX = x.sumX + y.sumX,
-                                sumY = x.sumY + y.sumY,
-                                sumXX = x.sumXX + y.sumXX,
-                                sumYY = x.sumYY + y.sumYY,
-                                lastActiveMillis = maxOf(x.lastActiveMillis, y.lastActiveMillis),
-                            )
-                        },
+                        combine(e.keys, b.keys, { it.char }) { x, y -> addKeys(x, y, aging) },
                     )
         }
         return TouchSection(out.values.toList())
+    }
+
+    private fun addKeys(x: TouchKeyStats, y: TouchKeyStats, aging: Aging): TouchKeyStats {
+        val last = maxOf(x.lastActiveMillis, y.lastActiveMillis)
+        val fx = aging.touch(last - x.lastActiveMillis)
+        val fy = aging.touch(last - y.lastActiveMillis)
+        return x.copy(
+            samples = x.samples + y.samples,
+            weight = x.weight * fx + y.weight * fy,
+            sumX = x.sumX * fx + y.sumX * fy,
+            sumY = x.sumY * fx + y.sumY * fy,
+            sumXX = x.sumXX * fx + y.sumXX * fy,
+            sumYY = x.sumYY * fx + y.sumYY * fy,
+            lastActiveMillis = last,
+        )
     }
 
     /** 0 means "unknown", so it never wins the earliest. */

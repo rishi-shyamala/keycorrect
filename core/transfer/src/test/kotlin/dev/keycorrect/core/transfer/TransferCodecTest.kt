@@ -212,4 +212,95 @@ class TransferCodecTest {
             TransferCodec.read(s.toByteArray(Charsets.ISO_8859_1))
         }
     }
+
+    // ------------------------------------------------------------- passphrase handling
+
+    @Test
+    fun theSameTypedPassphraseOpensTheFileWhateverItsUnicodeForm() {
+        val composed = "caf\u00e9"
+        val decomposed = "cafe\u0301"
+        assertThat(composed).isNotEqualTo(decomposed)
+        val bytes = TransferCodec.write(sampleBundle(), composed.toCharArray(), fastIterations)
+        assertThat(TransferCodec.read(bytes) { decomposed.toCharArray() }).isEqualTo(sampleBundle())
+        val other = TransferCodec.write(sampleBundle(), decomposed.toCharArray(), fastIterations)
+        assertThat(TransferCodec.read(other) { composed.toCharArray() }).isEqualTo(sampleBundle())
+    }
+
+    @Test
+    fun theDecodePassphraseIsZeroedEvenWhenItIsWrong() {
+        val pass = "nope".toCharArray()
+        assertThrows(TransferException.WrongPassphrase::class.java) {
+            TransferCodec.read(encrypted()) { pass }
+        }
+        assertThat(pass.all { it == '\u0000' }).isTrue()
+    }
+
+    @Test
+    fun theNormalisedCopyDoesNotChangeTheCallersArray() {
+        val pass = "cafe\u0301".toCharArray()
+        TransferCodec.write(sampleBundle(), pass.copyOf(), fastIterations)
+        // write() zeroes only the array it was given; ours is a separate copy here.
+        assertThat(String(pass)).isEqualTo("cafe\u0301")
+    }
+
+    // ------------------------------------------------------------- reading a file safely
+
+    private val small = TransferLimits(maxFileBytes = 1000)
+
+    @Test
+    fun readFileReadsExactlyTheReportedSize() {
+        val data = ByteArray(500) { it.toByte() }
+        assertThat(TransferCodec.readFile(data.inputStream(), 500, small)).isEqualTo(data)
+        assertThat(TransferCodec.readFile(data.inputStream(), null, small)).isEqualTo(data)
+    }
+
+    @Test
+    fun readFileRefusesAReportedSizeOverTheLimitWithoutReading() {
+        val input =
+            object : java.io.InputStream() {
+                override fun read(): Int = error("must not read")
+            }
+        assertThrows(TransferException.TooLarge::class.java) {
+            TransferCodec.readFile(input, 1001, small)
+        }
+    }
+
+    @Test
+    fun readFileRefusesAStreamLongerThanReported() {
+        assertThrows(TransferException.TooLarge::class.java) {
+            TransferCodec.readFile(ByteArray(600).inputStream(), 500, small)
+        }
+        assertThrows(TransferException.TooLarge::class.java) {
+            TransferCodec.readFile(ByteArray(1001).inputStream(), null, small)
+        }
+    }
+
+    @Test
+    fun readFileToleratesAStreamShorterThanReported() {
+        val data = ByteArray(300) { 7 }
+        assertThat(TransferCodec.readFile(data.inputStream(), 500, small)).isEqualTo(data)
+        assertThat(TransferCodec.readFile(ByteArray(1000).inputStream(), null, small))
+            .hasLength(1000)
+    }
+
+    @Test
+    fun defaultLimitsAreSizedForAPhone() {
+        val l = TransferLimits()
+        assertThat(l.maxFileBytes).isEqualTo(48L * 1024 * 1024)
+        assertThat(l.maxUncompressedBytes).isEqualTo(64L * 1024 * 1024)
+    }
+
+    // ------------------------------------------------------------- backup id
+
+    @Test
+    fun backupIdIsStableAndTellsBackupsApart() {
+        val m = sampleBundle().manifest
+        assertThat(m.backupId()).isEqualTo(m.copy().backupId())
+        assertThat(m.backupId()).hasLength(24)
+        assertThat(m.backupId())
+            .isNotEqualTo(m.copy(createdAtMillis = m.createdAtMillis + 1).backupId())
+        assertThat(m.backupId())
+            .isNotEqualTo(m.copy(device = m.device.copy(model = "x")).backupId())
+        assertThat(m.backupId()).isNotEqualTo(m.copy(appVersion = "0.6.0").backupId())
+    }
 }

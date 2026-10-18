@@ -3,9 +3,12 @@ package dev.keycorrect.core.transfer
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
+import java.text.Normalizer
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -43,12 +46,17 @@ sealed class TransferException(message: String, cause: Throwable? = null) :
     class TooLarge : TransferException("Backup contents are too large")
 }
 
-private const val DEFAULT_MAX_UNCOMPRESSED_BYTES = 200L * 1024 * 1024
+private const val MIB = 1024L * 1024
+private const val DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * MIB
+private const val DEFAULT_MAX_FILE_BYTES = 48 * MIB
 
-/** Guards against hostile files. */
+/** Guards against hostile files and out-of-memory on a phone. */
 data class TransferLimits(
+    /** Total inflated size of all zip entries. */
     val maxUncompressedBytes: Long = DEFAULT_MAX_UNCOMPRESSED_BYTES,
     val maxEntries: Int = 32,
+    /** The largest backup file [TransferCodec.readFile] reads into memory. */
+    val maxFileBytes: Long = DEFAULT_MAX_FILE_BYTES,
 )
 
 /**
@@ -114,20 +122,62 @@ object TransferCodec {
 
     /**
      * Parses a backup. [passphrase] is asked for only when the file is encrypted; the array it
-     * returns is zeroed after use. Throws [TransferException].
+     * returns is zeroed after use. Throws [TransferException]; running out of memory on a huge file
+     * is reported as [TransferException.TooLarge].
      */
     fun read(
         bytes: ByteArray,
         limits: TransferLimits = TransferLimits(),
         passphrase: () -> CharArray? = { null },
-    ): TransferBundle {
-        val zip =
-            when {
-                isEncrypted(bytes) -> decrypt(bytes, passphrase)
-                bytes.size >= 2 && bytes[0] == ZIP_MAGIC_0 && bytes[1] == ZIP_MAGIC_1 -> bytes
-                else -> throw TransferException.NotABackup()
+    ): TransferBundle =
+        try {
+            val zip =
+                when {
+                    isEncrypted(bytes) -> decrypt(bytes, passphrase)
+                    bytes.size >= 2 && bytes[0] == ZIP_MAGIC_0 && bytes[1] == ZIP_MAGIC_1 -> bytes
+                    else -> throw TransferException.NotABackup()
+                }
+            unzip(zip, limits)
+        } catch (@Suppress("SwallowedException") e: OutOfMemoryError) {
+            throw TransferException.TooLarge()
+        }
+
+    /**
+     * Reads a backup file into memory without copying it more than needed. [sizeHint] is the size
+     * the file system reports (null when unknown): the file is read up to that size and no further,
+     * and anything over [TransferLimits.maxFileBytes] is refused before reading. Throws
+     * [TransferException.TooLarge], or an [IOException] from [input].
+     */
+    fun readFile(
+        input: InputStream,
+        sizeHint: Long?,
+        limits: TransferLimits = TransferLimits(),
+    ): ByteArray {
+        val known = sizeHint?.takeIf { it > 0 }
+        if ((known ?: 0L) > limits.maxFileBytes) throw TransferException.TooLarge()
+        val cap = (known ?: limits.maxFileBytes).toInt()
+        return try {
+            readUpTo(input, cap, if (known != null) cap else minOf(cap, BUFFER))
+        } catch (@Suppress("SwallowedException") e: OutOfMemoryError) {
+            throw TransferException.TooLarge()
+        }
+    }
+
+    /** Reads [input] into an array that starts at [start] bytes and never grows past [cap]. */
+    private fun readUpTo(input: InputStream, cap: Int, start: Int): ByteArray {
+        var buf = ByteArray(maxOf(1, start))
+        var n = 0
+        while (true) {
+            if (n == buf.size && buf.size >= cap) {
+                // Full: anything more is too much.
+                if (input.read() >= 0) throw TransferException.TooLarge()
+                return buf
             }
-        return unzip(zip, limits)
+            if (n == buf.size) buf = buf.copyOf(minOf(cap.toLong(), buf.size * 2L).toInt())
+            val r = input.read(buf, n, buf.size - n)
+            if (r < 0) return if (n == buf.size) buf else buf.copyOf(n)
+            n += r
+        }
     }
 
     // ------------------------------------------------------------------ zip
@@ -273,8 +323,12 @@ object TransferCodec {
         val salt = ByteArray(SALT_BYTES).also(buf::get)
         val nonce = ByteArray(NONCE_BYTES).also(buf::get)
         val pass = passphrase() ?: throw TransferException.PassphraseRequired()
-        val key = deriveKey(pass, salt, iterations)
-        pass.fill('\u0000')
+        val key =
+            try {
+                deriveKey(pass, salt, iterations)
+            } finally {
+                pass.fill('\u0000')
+            }
         try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(
@@ -293,12 +347,24 @@ object TransferCodec {
         }
     }
 
+    /**
+     * The key for [passphrase] after Unicode NFC normalisation, so the same typed passphrase works
+     * whichever way the keyboard composed its accents. The caller's array is left as it was (the
+     * caller zeroes it); the normalised copy, when one is needed, is zeroed here.
+     */
     private fun deriveKey(passphrase: CharArray, salt: ByteArray, iterations: Int): ByteArray {
-        val spec = PBEKeySpec(passphrase, salt, iterations, KEY_BITS)
+        val normalized =
+            if (Normalizer.isNormalized(CharBuffer.wrap(passphrase), Normalizer.Form.NFC)) {
+                null
+            } else {
+                Normalizer.normalize(CharBuffer.wrap(passphrase), Normalizer.Form.NFC).toCharArray()
+            }
+        val spec = PBEKeySpec(normalized ?: passphrase, salt, iterations, KEY_BITS)
         try {
             return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         } finally {
             spec.clearPassword()
+            normalized?.fill('\u0000')
         }
     }
 }
