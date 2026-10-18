@@ -103,6 +103,8 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
     implementation(project(":core:settings"))
+    implementation(project(":core:voice"))
+    implementation(project(":feature:voice-sherpa"))
     implementation(project(":feature:keyboard-ui"))
     implementation(libs.androidx.autofill)
     implementation(libs.androidx.core.ktx)

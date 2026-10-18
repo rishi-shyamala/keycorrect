@@ -66,6 +66,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
             emoji = appContainer.emojiEnvironment,
             clipboard = appContainer.clipboardEnvironment,
+            voiceEnvironment = appContainer.voiceHost,
         )
     }
 
