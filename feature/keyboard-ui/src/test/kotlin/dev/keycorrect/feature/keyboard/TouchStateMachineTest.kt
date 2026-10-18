@@ -592,51 +592,7 @@ class TouchStateMachineTest {
         assertThat(host.drags).isEmpty()
     }
 
-    @Test
-    fun spaceDragMovesTheCursorAndTypesNoSpace() {
-        slowSpace()
-        move(1, space, 40f)
-        machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(4, 0, false))
-        assertThat(host.ticks).isEqualTo(1)
-        assertThat(host.keys).isEmpty()
-    }
-
-    @Test
-    fun spaceDragEmitsOnlyWhenTheStepCountChanges() {
-        slowSpace()
-        move(1, space, 15f)
-        now += 1_000
-        move(1, space, 18f) // 1.8 steps: still 1
-        now += 1_000
-        move(1, space, -25f) // back past the start: from +1 to -2
-        assertThat(host.drags).containsExactly(Triple(1, 0, false), Triple(-3, 0, false))
-        assertThat(host.ticks).isEqualTo(2)
-    }
-
-    @Test
-    fun aFasterSpaceDragMovesMoreStepsPerPixel() {
-        host.longPressDelayMs = 100_000L
-        down(1, space)
-        now += 100
-        move(1, space, 40f) // 40 steps/s: gain 1 + (40 - 20) / 40 = 1.5
-        assertThat(host.drags).containsExactly(Triple(6, 0, false))
-        now += 10
-        move(1, space, 100f) // inside the ring; beyond the cap of 2.5x: 6 steps * 2.5
-        assertThat(host.drags.last()).isEqualTo(Triple(15, 0, false))
-    }
-
-    @Test
-    fun spaceDragVerticallyMovesOneLinePerLineStep() {
-        slowSpace()
-        move(1, space, 0f, -120f)
-        assertThat(host.drags).containsExactly(Triple(0, -2, false))
-        now += 1_000
-        move(1, space, 0f, -20f)
-        assertThat(host.drags).containsExactly(Triple(0, -2, false), Triple(0, 2, false))
-    }
-
-    // --- Spacebar joystick ---
+    // --- Spacebar joystick: pure rate control from the centre ---
 
     private val keyHeight
         get() = space.bottom - space.top
@@ -644,15 +600,30 @@ class TouchStateMachineTest {
     private val ring
         get() = keyHeight * JOYSTICK_RING_KEY_HEIGHTS
 
+    private val deadZone
+        get() = ring * JOYSTICK_DEAD_ZONE_FRACTION
+
+    /** Offset at which the rate has reached its maximum (far from every edge when sideways/up). */
+    private val farOut
+        get() = ring + keyHeight * JOYSTICK_FAST_KEY_HEIGHTS
+
     /** Total characters and lines reported so far. */
     private fun movedChars() = host.drags.sumOf { it.first }
 
-    private fun assertBetween(value: Int, low: Int, high: Int) {
-        assertThat(value).isAtLeast(low)
-        assertThat(value).isAtMost(high)
+    private fun movedLines() = host.drags.sumOf { it.second }
+
+    /** Holds the finger still for [seconds] of timer ticks and returns the characters moved. */
+    private fun charsOver(seconds: Int = 1): Int {
+        val before = movedChars()
+        repeat(seconds * 40) { advance(JOYSTICK_TICK_MS) }
+        return movedChars() - before
     }
 
-    private fun movedLines() = host.drags.sumOf { it.second }
+    private fun linesOver(seconds: Int = 1): Int {
+        val before = movedLines()
+        repeat(seconds * 40) { advance(JOYSTICK_TICK_MS) }
+        return movedLines() - before
+    }
 
     @Test
     fun theJoystickAppearsWhenTheDragStartsAndGoesOnRelease() {
@@ -664,6 +635,7 @@ class TouchStateMachineTest {
         assertThat(joystick.centerX).isEqualTo(space.centerX)
         assertThat(joystick.centerY).isEqualTo(space.centerY)
         assertThat(joystick.radius).isWithin(0.01f).of(ring)
+        assertThat(joystick.deadZone).isWithin(0.01f).of(ring * 0.25f)
         assertThat(joystick.knobX).isWithin(0.01f).of(space.centerX + 30f)
         machine.onUp(1)
         assertThat(touch.joystick).isNull()
@@ -696,72 +668,124 @@ class TouchStateMachineTest {
     }
 
     @Test
-    fun insideTheRingStepsByPositionAsBefore() {
+    fun aDragThatStaysInTheDeadZoneMovesNothing() {
         slowSpace()
-        move(1, space, ring * 0.9f)
-        assertThat(touch.joystick!!.engaged).isFalse()
+        move(1, space, host.slopPx + 2f) // past the slop, inside the dead zone
+        assertThat(deadZone).isGreaterThan(host.slopPx + 2f)
+        assertThat(touch.joystick).isNotNull()
         assertThat(machine.nextDeadline()).isNull()
-        assertThat(movedChars()).isEqualTo((ring * 0.9f / 10f).toInt())
+        assertThat(charsOver(2)).isEqualTo(0)
+        move(1, space, 0f, -deadZone * 0.9f)
+        assertThat(linesOver(2)).isEqualTo(0)
+        machine.onUp(1)
+        assertThat(host.drags).isEmpty()
+        assertThat(host.keys).isEmpty()
+        assertThat(host.ticks).isEqualTo(0)
     }
 
     @Test
-    fun heldBeyondTheRingTheCursorKeepsMovingOnTimerTicks() {
+    fun justOutsideTheDeadZoneInchesAlongSlowly() {
         slowSpace()
-        move(1, space, ring + 2f * keyHeight) // top speed: 40 chars/s
+        move(1, space, deadZone + 1f) // about 3 chars/s
+        assertThat(machine.nextDeadline()).isEqualTo(now + JOYSTICK_TICK_MS)
+        assertThat(host.drags).isEmpty()
+        assertThat(charsOver()).isIn(2..4)
+        assertThat(movedLines()).isEqualTo(0)
+        assertThat(host.ticks).isEqualTo(0) // no haptic until the ring
+    }
+
+    @Test
+    fun theRateEasesInFromTheDeadZoneToTheRingThenGrowsBeyondIt() {
+        slowSpace()
+        move(1, space, deadZone + 1f)
+        val slow = charsOver()
+        move(1, space, (deadZone + ring) / 2f) // halfway: 3 + 12 / 4 = 6 chars/s
+        val half = charsOver()
+        assertThat(half).isIn(5..7)
+        move(1, space, ring - 1f) // about 15 chars/s
+        val near = charsOver()
+        assertThat(near).isIn(13..16)
+        move(1, space, ring + keyHeight * 0.75f) // halfway to full: about 27 chars/s
+        val past = charsOver()
+        assertThat(past).isIn(25..29)
+        move(1, space, farOut)
+        val fast = charsOver()
+        assertThat(fast).isIn(39..41)
+        assertThat(listOf(slow, half, near, past, fast)).isInStrictOrder()
+        move(1, space, farOut + 5 * keyHeight) // no faster than the maximum
+        assertThat(charsOver()).isIn(39..41)
+    }
+
+    @Test
+    fun heldStillTheCursorKeepsMovingOnTimerTicks() {
+        slowSpace()
+        move(1, space, farOut) // 40 chars/s
         assertThat(touch.joystick!!.engaged).isTrue()
         assertThat(machine.nextDeadline()).isEqualTo(now + JOYSTICK_TICK_MS)
         assertThat(host.drags).isEmpty()
         repeat(10) { advance(JOYSTICK_TICK_MS) } // 250 ms, finger still
-        assertBetween(movedChars(), 9, 10)
+        assertThat(movedChars()).isIn(9..10)
         assertThat(movedLines()).isEqualTo(0)
         assertThat(host.drags.all { !it.third }).isTrue()
         assertThat(machine.nextDeadline()).isNotNull()
-    }
-
-    @Test
-    fun theRateGrowsWithTheDistancePastTheRing() {
-        slowSpace()
-        move(1, space, ring + 1f) // just past: about 8 chars/s
-        repeat(40) { advance(JOYSTICK_TICK_MS) } // one second
-        val slowChars = movedChars()
-        assertBetween(slowChars, 7, 9)
-        move(1, space, ring + 2f * keyHeight) // full speed
-        repeat(40) { advance(JOYSTICK_TICK_MS) }
-        assertBetween(movedChars() - slowChars, 39, 41)
+        assertThat(charsOver()).isIn(39..41) // and on, as long as it is held
     }
 
     @Test
     fun beyondTheRingToTheLeftMovesLeft() {
         slowSpace()
-        move(1, space, -(ring + 2f * keyHeight))
-        repeat(10) { advance(JOYSTICK_TICK_MS) }
-        assertBetween(movedChars(), -10, -9)
+        move(1, space, -farOut)
+        assertThat(charsOver()).isIn(-41..-39)
     }
 
     @Test
-    fun beyondTheRingAboveAndBelowMovesLines() {
+    fun onlyTheLargerOffsetMoves() {
         slowSpace()
-        // Above the keyboard, well outside the surface: pointer events keep coming.
-        move(1, space, 0f, -(ring + 2f * keyHeight)) // 12 lines/s
+        move(1, space, farOut, -(deadZone + 5f)) // mostly sideways
         repeat(40) { advance(JOYSTICK_TICK_MS) }
-        assertBetween(movedLines(), -12, -11)
-        assertThat(movedChars()).isEqualTo(0)
+        assertThat(movedChars()).isIn(39..41)
+        assertThat(movedLines()).isEqualTo(0)
         host.drags.clear()
-        move(1, space, 0f, ring + 2f * keyHeight)
+        move(1, space, deadZone + 5f, -farOut) // mostly up: 12 lines/s
         repeat(40) { advance(JOYSTICK_TICK_MS) }
-        assertBetween(movedLines(), 11, 12)
+        assertThat(movedLines()).isIn(-12..-11)
+        assertThat(movedChars()).isEqualTo(0)
     }
 
     @Test
-    fun theSelectFlagIsKeptWhileMovingByRate() {
+    fun verticalRatesAreSlowerThanHorizontalOnes() {
+        slowSpace()
+        move(1, space, 0f, -(deadZone + 1f)) // about 1 line/s
+        assertThat(linesOver(2)).isIn(-3..-1)
+        move(1, space, 0f, -(ring - 1f)) // about 4 lines/s
+        assertThat(linesOver()).isIn(-4..-3)
+    }
+
+    @Test
+    fun theHapticTickComesOnceWhenTheFingerCrossesTheRing() {
+        slowSpace()
+        move(1, space, ring - 2f)
+        assertThat(host.ticks).isEqualTo(0)
+        move(1, space, ring + 2f)
+        assertThat(host.ticks).isEqualTo(1)
+        move(1, space, farOut)
+        assertThat(host.ticks).isEqualTo(1)
+        move(1, space, ring - 2f)
+        assertThat(touch.joystick!!.engaged).isFalse()
+        move(1, space, ring + 2f)
+        assertThat(host.ticks).isEqualTo(2)
+    }
+
+    @Test
+    fun theSelectFlagIsKeptWhileMoving() {
         host.longPressDelayMs = 100_000L
         downLeft(1)
         now += 1_000
-        moveLeft(1, ring + 2f * keyHeight)
+        moveLeft(1, farOut)
         repeat(10) { advance(JOYSTICK_TICK_MS) }
         assertThat(host.drags).isNotEmpty()
         assertThat(host.drags.all { it.third }).isTrue()
-        moveLeft(1, -(ring + 2f * keyHeight))
+        moveLeft(1, -farOut)
         host.drags.clear()
         repeat(10) { advance(JOYSTICK_TICK_MS) }
         assertThat(host.drags).isNotEmpty()
@@ -771,50 +795,89 @@ class TouchStateMachineTest {
     @Test
     fun aStalledTimerDoesNotBurst() {
         slowSpace()
-        move(1, space, ring + 2f * keyHeight)
+        move(1, space, farOut)
         advance(5_000) // main thread stalled
         assertThat(movedChars()).isAtMost(4) // 100 ms at most: 40 chars/s
     }
 
     @Test
-    fun backInsideTheRingStopsTheRateAndStepsByPositionFromHere() {
+    fun fingerPinnedAtTheBottomEdgeMovesDownAtFullSpeed() {
         slowSpace()
-        move(1, space, ring + 2f * keyHeight)
+        // The space bar is on the bottom row: the surface's edge is half a key below its centre.
+        val room = geometry.height - space.centerY
+        assertThat(room).isLessThan(ring)
+        move(1, space, 0f, room) // at the edge: a small offset, but full deflection
+        assertThat(linesOver()).isIn(11..12)
+        move(1, space, 0f, room + 3 * keyHeight) // below the surface (nav bar): the same
+        assertThat(linesOver()).isIn(11..12)
+    }
+
+    @Test
+    fun theRingShortensTowardsTheBottomEdgeSoTheWholeRangeFitsInTheRoomLeft() {
+        slowSpace()
+        val room = geometry.height - space.centerY
+        val shortRing = room - keyHeight * JOYSTICK_EDGE_MARGIN_KEY_HEIGHTS
+        move(1, space, 0f, shortRing - 1f) // at the (shortened) ring: medium, 4 lines/s
+        assertThat(linesOver()).isIn(3..4)
+        move(1, space, 0f, (shortRing + room) / 2f) // between ring and edge: between 4 and 12
+        assertThat(linesOver()).isIn(7..9)
+        // Upwards there is plenty of room: the same offset is still slow.
+        move(1, space, 0f, -shortRing)
+        assertThat(linesOver(2)).isIn(-3..-1)
+        // With its centre low, a slow dead zone still exists.
+        move(1, space, 0f, keyHeight * 0.1f)
+        assertThat(linesOver()).isEqualTo(0)
+    }
+
+    @Test
+    fun fingersPinnedAgainstAnyEdgeAreAtFullDeflection() {
+        val kh = 100f
+        val corner =
+            JoystickState(20f, 30f, kh, 1000f, 400f) // 20 px from the left, 30 from the top
+        assertThat(corner.level(0f, 30f)).isEqualTo(2f) // at the left edge
+        assertThat(corner.level(-50f, 30f)).isEqualTo(2f) // beyond it
+        assertThat(corner.level(20f, 0f)).isEqualTo(2f) // top
+        // Away from the edges the ring is whole again: slow just outside the dead zone.
+        assertThat(corner.level(20f + corner.deadZone + 1f, 30f)).isLessThan(0.1f)
+        assertThat(corner.level(20f + corner.radius + 1f, 30f)).isGreaterThan(1f)
+        assertThat(corner.level(20f + corner.radius + 1f, 30f)).isLessThan(1.1f)
+        val right = JoystickState(980f, 200f, kh, 1000f, 400f)
+        assertThat(right.level(1000f, 200f)).isEqualTo(2f)
+        assertThat(right.level(980f + 5f, 200f)).isEqualTo(-1f) // dead zone first
+    }
+
+    @Test
+    fun backToTheCentreStopsTheCursor() {
+        slowSpace()
+        move(1, space, farOut)
         repeat(4) { advance(JOYSTICK_TICK_MS) }
         val before = movedChars()
-        move(1, space, ring * 0.5f) // back inside: no jump
+        assertThat(before).isGreaterThan(0)
+        move(1, space, 3f) // back in the dead zone: no jump, nothing more
         assertThat(touch.joystick!!.engaged).isFalse()
         assertThat(machine.nextDeadline()).isNull()
+        assertThat(charsOver(2)).isEqualTo(0)
         assertThat(movedChars()).isEqualTo(before)
-        advance(1_000)
-        assertThat(movedChars()).isEqualTo(before)
-        now += 1_000
-        move(1, space, ring * 0.5f + 20f) // 20 px further: 2 characters
-        assertThat(movedChars()).isEqualTo(before + 2)
-        now += 1_000
-        move(1, space, ring * 0.5f - 10f)
-        assertThat(movedChars()).isEqualTo(before + 2 - 3)
     }
 
     @Test
-    fun crossingTheRingAgainResumesTheRate() {
+    fun leavingTheDeadZoneAgainResumesTheRate() {
         slowSpace()
-        move(1, space, ring + 2f * keyHeight)
+        move(1, space, farOut)
         move(1, space, 0f)
         assertThat(machine.nextDeadline()).isNull()
-        move(1, space, ring + 2f * keyHeight)
-        val before = movedChars()
-        repeat(4) { advance(JOYSTICK_TICK_MS) }
-        assertThat(movedChars()).isGreaterThan(before)
+        move(1, space, farOut)
+        assertThat(charsOver()).isIn(39..41)
     }
 
     @Test
-    fun releasingStopsTheRateMovementAndTypesNoSpace() {
+    fun releasingStopsTheMovementClearsTheOverlayAndTypesNoSpace() {
         slowSpace()
-        move(1, space, ring + 2f * keyHeight)
+        move(1, space, farOut)
         repeat(4) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
         val after = host.drags.size
+        assertThat(touch.joystick).isNull()
         assertThat(machine.nextDeadline()).isNull()
         advance(1_000)
         assertThat(host.drags).hasSize(after)
@@ -845,9 +908,11 @@ class TouchStateMachineTest {
         host.longPressDelayMs = 100_000L
         downLeft(1)
         now += 1_000
-        moveLeft(1, 30f)
+        moveLeft(1, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
         assertThat(host.keys).isEmpty()
     }
 
@@ -856,9 +921,11 @@ class TouchStateMachineTest {
         down(1, space) // the centre is the right half's start
         advance(300)
         now += 1_000
-        move(1, space, 30f)
+        move(1, space, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, false))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { !it.third }).isTrue()
         assertThat(host.keys).isEmpty()
     }
 
@@ -867,9 +934,11 @@ class TouchStateMachineTest {
         downLeft(1)
         advance(300)
         now += 1_000
-        moveLeft(1, 30f)
+        moveLeft(1, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
     }
 
     @Test
@@ -911,14 +980,16 @@ class TouchStateMachineTest {
     @Test
     fun anotherFingerTypingDuringASpaceDragLeavesTheDragAlone() {
         slowSpace()
-        move(1, space, 20f)
+        move(1, space, farOut)
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
         down(2, a)
         machine.onUp(2)
-        now += 1_000
-        move(1, space, 40f)
+        val before = movedChars()
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
         assertThat(host.keys).containsExactly(a.key.action)
-        assertThat(host.drags).containsExactly(Triple(2, 0, false), Triple(2, 0, false))
+        assertThat(before).isGreaterThan(0)
+        assertThat(movedChars()).isGreaterThan(before)
     }
 
     @Test
