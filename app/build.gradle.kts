@@ -1,7 +1,45 @@
+import java.util.Properties
+
 plugins {
     id("keycorrect.android.application")
     id("keycorrect.android.compose")
 }
+
+// The version lives in version.properties; every build appends the commit it was built from, so
+// Settings → About shows exactly which build is installed.
+val appVersion =
+    Properties().apply { rootProject.file("version.properties").inputStream().use(::load) }
+
+/** Output of a git command, or null if git is missing, the command fails or this isn't a repo. */
+fun git(vararg args: String): String? = runCatching {
+    providers
+        .exec {
+            commandLine("git", *args)
+            isIgnoreExitValue = true
+        }
+        .standardOutput
+        .asText
+        .get()
+        .trim()
+}
+    .getOrNull()
+
+// "<short sha>", plus "-dirty" when tracked files have uncommitted changes; empty without git.
+val gitCommit: String =
+    git("rev-parse", "--short", "HEAD").orEmpty().let { sha ->
+        val dirty =
+            sha.isNotEmpty() &&
+                git("status", "--porcelain", "--untracked-files=no")?.isNotEmpty() == true
+        if (dirty) "$sha-dirty" else sha
+    }
+
+// Release signing comes from Gradle properties outside the repo (~/.gradle/gradle.properties,
+// docs/INSTALL.md). It is configured only when all four exist; otherwise the release APK is built
+// unsigned (as on CI).
+val releaseSigning =
+    listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        .associateWith { providers.gradleProperty("keycorrect.release.$it").orNull }
+        .takeIf { props -> props.values.all { it != null } }
 
 android {
     namespace = "dev.keycorrect"
@@ -14,12 +52,25 @@ android {
 
     defaultConfig {
         applicationId = "dev.keycorrect"
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = appVersion.getProperty("versionCode").toInt()
+        versionName =
+            appVersion.getProperty("versionName") +
+                (if (gitCommit.isNotEmpty()) "+$gitCommit" else "")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
         // native code. 32-bit-only devices (armeabi-v7a, x86) are intentionally unsupported.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+
+    signingConfigs {
+        releaseSigning?.let { props ->
+            create("release") {
+                storeFile = file(props.getValue("storeFile")!!)
+                storePassword = props.getValue("storePassword")
+                keyAlias = props.getValue("keyAlias")
+                keyPassword = props.getValue("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -29,6 +80,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -51,6 +103,8 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
     implementation(project(":core:settings"))
+    implementation(project(":core:voice"))
+    implementation(project(":feature:voice-sherpa"))
     implementation(project(":feature:keyboard-ui"))
     implementation(libs.androidx.autofill)
     implementation(libs.androidx.core.ktx)

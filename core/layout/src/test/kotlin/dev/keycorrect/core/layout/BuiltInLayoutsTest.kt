@@ -76,7 +76,7 @@ class BuiltInLayoutsTest {
         assertThat(without.width).isWithin(1e-4f).of(withKey.width)
         assertThat(without.keys.first { it.action == KeyAction.Space }.width)
             .isWithin(1e-4f)
-            .of(10f - 3 * 0.75f - 1.25f)
+            .of(10f - 2 * 0.75f - 2 * 1.15f)
     }
 
     @Test
@@ -108,29 +108,44 @@ class BuiltInLayoutsTest {
             for (layerId in listOf("letters", "symbols", "symbols2")) {
                 val row = bottomRow(variant, layerId)
                 row.keys
-                    .filter { it.action != KeyAction.Space && it.action != KeyAction.Enter }
+                    .filter { it.isModeOrEnter().not() && it.action != KeyAction.Space }
                     .forEach { assertThat(it.width).isEqualTo(0.75f) }
-                assertThat(row.keys.first { it.action == KeyAction.Enter }.width).isEqualTo(1.25f)
+                row.keys
+                    .filter { it.isModeOrEnter() }
+                    .forEach {
+                        assertThat(it.width).isEqualTo(1.15f)
+                    }
                 val space = row.keys.first { it.action == KeyAction.Space }
-                assertThat(space.width).isWithin(1e-4f).of(10f - 4 * 0.75f - 1.25f)
+                assertThat(space.width).isWithin(1e-4f).of(10f - 3 * 0.75f - 2 * 1.15f)
                 assertThat(row.width).isWithin(1e-4f).of(10f)
             }
         }
         val wide = bottomRow(options = ComposeOptions(bottomKeyWidth = 1f))
         assertThat(wide.keys.filter { it.action != KeyAction.Space }.map { it.width })
-            .containsExactly(1f, 1f, 1f, 1f, 1.25f)
-        assertThat(wide.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(4.75f)
+            .containsExactly(1.15f, 1f, 1f, 1f, 1.15f)
+            .inOrder()
+        assertThat(wide.keys.first { it.action == KeyAction.Space }.width).isWithin(1e-4f).of(4.7f)
     }
 
     @Test
-    fun enterIsNeverNarrowerThanTheOtherSideKeys() {
-        for (width in listOf(0.3f, 0.75f, 1.25f, 1.5f)) {
-            val row = bottomRow(options = ComposeOptions(bottomKeyWidth = width))
-            val enter = row.keys.first { it.action == KeyAction.Enter }.width
-            assertThat(enter).isEqualTo(maxOf(width, 1.25f))
+    fun modeSwitchAndEnterHaveTheirOwnWidth() {
+        for (width in listOf(0.75f, 1f, 1.15f, 1.5f)) {
+            val row = bottomRow(options = ComposeOptions(modeEnterKeyWidth = width))
+            val modeEnter = row.keys.filter { it.isModeOrEnter() }
+            assertThat(modeEnter.map { it.label }).containsExactly("?123", "\u21b5").inOrder()
+            modeEnter.forEach { assertThat(it.width).isEqualTo(width) }
+            row.keys
+                .filter { it.action != KeyAction.Space && !it.isModeOrEnter() }
+                .forEach { assertThat(it.width).isEqualTo(0.75f) }
+            assertThat(row.keys.first { it.action == KeyAction.Space }.width)
+                .isWithin(1e-4f)
+                .of(10f - 3 * 0.75f - 2 * width)
             assertThat(row.width).isWithin(1e-4f).of(10f)
         }
     }
+
+    private fun ResolvedKey.isModeOrEnter() =
+        action == KeyAction.Enter || action is KeyAction.SwitchLayer
 
     @Test
     fun bottomRowWithoutEmojiStillFillsTenUnits() {
@@ -146,7 +161,7 @@ class BuiltInLayoutsTest {
                 assertThat(row.width).isWithin(1e-4f).of(10f)
                 assertThat(row.keys.first { it.action == KeyAction.Space }.width)
                     .isWithin(1e-4f)
-                    .of(10f - 3 * width - maxOf(width, 1.25f))
+                    .of(10f - 2 * width - 2 * 1.15f)
             }
         }
     }
@@ -227,7 +242,9 @@ class BuiltInLayoutsTest {
         assertThat(withRow.rows.first().keys.map { it.label })
             .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
             .inOrder()
-        assertThat(withRow.rows.drop(1)).isEqualTo(plain.rows)
+        // Only the hints and popups of the letter keys differ (see symbol hints).
+        assertThat(withRow.rows.drop(1).map { r -> r.keys.map { it.label to it.width } })
+            .isEqualTo(plain.rows.map { r -> r.keys.map { it.label to it.width } })
         for (id in listOf("numpad", "phone", "datetime")) {
             assertThat(composer.compose(KeyboardSet.Default, id, options = ComposeOptions(true)))
                 .isEqualTo(composer.compose(KeyboardSet.Default, id))
@@ -367,7 +384,7 @@ class BuiltInLayoutsTest {
         assertThat(labels(rows[0]).joinToString("")).isEqualTo("1234567890")
         assertThat(labels(rows[1]).joinToString("")).isEqualTo("!@#$%^&*()")
         assertThat(labels(rows[2]))
-            .containsExactly("1/2", "-", "'", "\"", ":", ";", "/", "?", "+", "⌫")
+            .containsExactly("1/2", "-", "'", "\"", ":", ";", "/", "?", "⌫")
             .inOrder()
         val layerKey = rows[2].keys.first()
         assertThat(layerKey.action).isEqualTo(KeyAction.SwitchLayer("symbols2"))
@@ -376,7 +393,7 @@ class BuiltInLayoutsTest {
         assertThat(rows.all { it.width == 10f }).isTrue()
         fun popup(label: String) =
             rows.flatMap { it.keys }.first { it.label == label }.popup.map { it.label }
-        assertThat(popup("-")).containsExactly("_", "–", "—").inOrder()
+        assertThat(popup("-")).containsExactly("+", "_", "–", "—").inOrder()
         assertThat(popup("/")).containsExactly("\\")
         assertThat(popup("'")).containsExactly("`", "‘", "’").inOrder()
         assertThat(popup("\"")).containsExactly("“", "”").inOrder()
@@ -399,6 +416,97 @@ class BuiltInLayoutsTest {
         assertThat(layerKey.action).isEqualTo(KeyAction.SwitchLayer("symbols"))
         assertThat(layerKey.description).isEqualTo("Switch to symbols")
         assertThat(rows.all { it.width == 10f }).isTrue()
+    }
+
+    @Test
+    fun symbolsRowThreeHasTheSameControlsAndSevenCharacterKeysOnBothPages() {
+        val rows =
+            listOf("symbols", "symbols2").map { id ->
+                composer.compose(KeyboardSet.Default, id).rows[2].keys
+            }
+        for (keys in rows) {
+            assertThat(keys).hasSize(9)
+            assertThat(keys.first().width).isEqualTo(1.5f)
+            assertThat(keys.last().width).isEqualTo(1.5f)
+            assertThat(keys.first().action).isInstanceOf(KeyAction.SwitchLayer::class.java)
+            assertThat(keys.last().action).isEqualTo(KeyAction.Backspace)
+            assertThat(
+                    keys.drop(1).dropLast(1).all { it.action is KeyAction.Text && it.width == 1f }
+                )
+                .isTrue()
+        }
+        assertThat(rows[0].map { it.width }).isEqualTo(rows[1].map { it.width })
+    }
+
+    private fun modeSwitchOf(layer: KeyboardLayer) = layer.rows.last().keys.first()
+
+    @Test
+    fun fieldModePopupIsOnTheModeSwitchOfEveryTextBottomRowOnlyWhenOffered() {
+        for (variant in BottomRowVariant.entries) {
+            val on =
+                composer.compose(
+                    KeyboardSet.Default,
+                    "letters",
+                    variant,
+                    ComposeOptions(fieldModes = true),
+                )
+            assertThat(modeSwitchOf(on).popup.map { it.action })
+                .containsExactly(
+                    KeyAction.SetFieldMode(FieldMode.Text),
+                    KeyAction.SetFieldMode(FieldMode.Email),
+                    KeyAction.SetFieldMode(FieldMode.Url),
+                    KeyAction.SetFieldMode(FieldMode.Number),
+                    KeyAction.SetFieldMode(FieldMode.Phone),
+                )
+                .inOrder()
+            assertThat(modeSwitchOf(on).hint).isNull()
+            val off = composer.compose(KeyboardSet.Default, "letters", variant)
+            assertThat(modeSwitchOf(off).popup).isEmpty()
+            // Nothing else about the row changes.
+            assertThat(off.rows.last().keys.map { it.width })
+                .isEqualTo(on.rows.last().keys.map { it.width })
+        }
+    }
+
+    @Test
+    fun numberAndPhonePadsGetAWayBackOnlyWhenFieldModesAreOffered() {
+        for (id in listOf("numpad", "phone")) {
+            val plain = composer.compose(KeyboardSet.Default, id)
+            val withBack =
+                composer.compose(
+                    KeyboardSet.Default,
+                    id,
+                    options = ComposeOptions(fieldModes = true),
+                )
+            assertThat(withBack.rows.dropLast(1)).isEqualTo(plain.rows)
+            val back = withBack.rows.last().keys.single()
+            assertThat(back.label).isEqualTo("ABC")
+            assertThat(back.action).isEqualTo(KeyAction.SetFieldMode(FieldMode.Text))
+            assertThat(back.width).isEqualTo(plain.rows.maxOf { it.width })
+            assertThat(back.popup).hasSize(5)
+        }
+        // The datetime pad is not a switch target: it never gets the row.
+        val datetime =
+            composer.compose(
+                KeyboardSet.Default,
+                "datetime",
+                options = ComposeOptions(fieldModes = true),
+            )
+        assertThat(datetime.rows).isEqualTo(composer.compose(KeyboardSet.Default, "datetime").rows)
+    }
+
+    @Test
+    fun theBottomRowsOfBothSymbolsPagesAreIdentical() {
+        for (variant in BottomRowVariant.entries) {
+            for (numberRow in listOf(false, true)) {
+                val options = ComposeOptions(numberRow = numberRow)
+                val bottoms =
+                    listOf("symbols", "symbols2").map {
+                        composer.compose(KeyboardSet.Default, it, variant, options).rows.last()
+                    }
+                assertThat(bottoms[0]).isEqualTo(bottoms[1])
+            }
+        }
     }
 
     @Test
@@ -531,5 +639,179 @@ class BuiltInLayoutsTest {
         val withoutRow =
             composer.compose(set, KeyboardSet.LETTERS, options = ComposeOptions(numberRow = true))
         assertThat(units(both)).isWithin(1e-6).of(units(withoutRow) + rowHeight)
+    }
+
+    // Symbol hints, number-row hints and row 3 alignment (feedback round 4)
+
+    private fun letters(numberRow: Boolean, symbolHints: Boolean = true) =
+        composer
+            .compose(
+                KeyboardSet.Default,
+                KeyboardSet.LETTERS,
+                options = ComposeOptions(numberRow = numberRow, symbolHints = symbolHints),
+            )
+            .rows
+            .flatMap { it.keys }
+            .filter { it.style == KeyStyle.Character }
+            .associateBy { it.label }
+
+    @Test
+    fun symbolHintsFollowTheSymbolsPageWithTheNumberRowOn() {
+        val keys = letters(numberRow = true)
+        val expected =
+            mapOf(
+                "q" to "+",
+                "w" to "×",
+                "e" to "÷",
+                "r" to "=",
+                "t" to "/",
+                "y" to "_",
+                "u" to "<",
+                "i" to ">",
+                "o" to "[",
+                "p" to "]",
+                "a" to "!",
+                "s" to "@",
+                "d" to "#",
+                "f" to "$",
+                "g" to "%",
+                "h" to "^",
+                "j" to "&",
+                "k" to "*",
+                "l" to "(",
+                "z" to "-",
+                "x" to "'",
+                "c" to "\"",
+                "v" to ":",
+                "b" to ";",
+                "n" to "/",
+                "m" to "?",
+            )
+        for ((letter, symbol) in expected) {
+            assertThat(keys.getValue(letter).hint).isEqualTo(symbol)
+            assertThat(keys.getValue(letter).popup.first().label).isEqualTo(symbol)
+        }
+        // The number row itself has no hints.
+        "1234567890".forEach { assertThat(keys.getValue(it.toString()).hint).isNull() }
+    }
+
+    @Test
+    fun symbolHintsWithTheNumberRowOffUseTheDigitsRowOnTop() {
+        val keys = letters(numberRow = false)
+        "qwertyuiop".zip("1234567890").forEach { (letter, digit) ->
+            assertThat(keys.getValue(letter.toString()).hint).isEqualTo(digit.toString())
+            assertThat(keys.getValue(letter.toString()).popup.first().label)
+                .isEqualTo(digit.toString())
+        }
+        assertThat(keys.getValue("a").hint).isEqualTo("!")
+        assertThat(keys.getValue("z").hint).isEqualTo("-")
+        // Accents come after the symbol.
+        assertThat(keys.getValue("e").popup.map { it.label })
+            .containsExactly("3", "è", "é", "ê", "ë", "ē")
+            .inOrder()
+    }
+
+    @Test
+    fun topRowHasNoDigitHintsOrPopupEntriesWithTheNumberRowOn() {
+        for (symbolHints in listOf(true, false)) {
+            val keys = letters(numberRow = true, symbolHints = symbolHints)
+            for (letter in "qwertyuiop") {
+                val key = keys.getValue(letter.toString())
+                assertThat(key.hint).isNotIn("1234567890".map { it.toString() })
+                assertThat(key.popup.map { it.label }).containsNoneIn("1234567890".map { "$it" })
+            }
+        }
+        val e = letters(numberRow = true)
+        assertThat(e.getValue("e").popup.map { it.label })
+            .containsExactly("÷", "è", "é", "ê", "ë", "ē")
+            .inOrder()
+        assertThat(letters(numberRow = true, symbolHints = false).getValue("e").hint).isNull()
+        assertThat(
+                letters(numberRow = true, symbolHints = false).getValue("e").popup.map { it.label }
+            )
+            .containsExactly("è", "é", "ê", "ë", "ē")
+            .inOrder()
+    }
+
+    @Test
+    fun withoutSymbolHintsOnlyTheTopRowDigitsRemainWhenTheNumberRowIsOff() {
+        val keys = letters(numberRow = false, symbolHints = false)
+        assertThat(keys.getValue("q").hint).isEqualTo("1")
+        assertThat(keys.getValue("q").popup.map { it.label }).containsExactly("1")
+        for (letter in "asdfghjklzxcvbnm") {
+            val key = keys.getValue(letter.toString())
+            assertThat(key.hint).isNull()
+            assertThat(key.popup.map { it.label }).doesNotContain("!")
+        }
+        assertThat(keys.getValue("d").popup).isEmpty()
+        assertThat(keys.getValue("a").popup.map { it.label }.first()).isEqualTo("à")
+    }
+
+    @Test
+    fun symbolHintIsNeverDuplicatedInPopups() {
+        for (numberRow in listOf(false, true)) {
+            letters(numberRow).values.forEach { key ->
+                assertThat(key.popup.map { it.label }).containsNoDuplicates()
+            }
+        }
+    }
+
+    @Test
+    fun symbolHintsAreCachedPerOption() {
+        val a = letters(numberRow = true, symbolHints = true)
+        val b = letters(numberRow = true, symbolHints = false)
+        assertThat(a.getValue("f").hint).isEqualTo("$")
+        assertThat(b.getValue("f").hint).isNull()
+    }
+
+    @Test
+    fun row3AlignsOnLettersAndBothSymbolPages() {
+        for (numberRow in listOf(false, true)) {
+            val options = ComposeOptions(numberRow = numberRow)
+            val rows =
+                listOf("letters", "symbols", "symbols2").map {
+                    val layer = composer.compose(KeyboardSet.Default, it, options = options)
+                    // The row above the bottom row.
+                    layer.rows[layer.rows.size - 2]
+                }
+            for (row in rows) {
+                assertThat(row.keys).hasSize(9)
+                assertThat(row.keys.first().width).isEqualTo(1.5f)
+                assertThat(row.keys.last().width).isEqualTo(1.5f)
+                assertThat(row.keys.first().style).isEqualTo(KeyStyle.Modifier)
+                assertThat(row.keys.last().action).isEqualTo(KeyAction.Backspace)
+                assertThat(row.keys.drop(1).dropLast(1).map { it.width }.toSet())
+                    .containsExactly(1f)
+                assertThat(row.width).isEqualTo(10f)
+            }
+            assertThat(rows[1].keys.drop(1).dropLast(1).joinToString("") { it.label })
+                .isEqualTo("-'\":;/?")
+            assertThat(rows[2].keys.drop(1).dropLast(1).joinToString("") { it.label })
+                .isEqualTo("¡¿«»…§©")
+        }
+        assertThat(
+                composer.compose(KeyboardSet.Default, "symbols").rows[2].keys[1].popup.map {
+                    it.label
+                }
+            )
+            .contains("+")
+    }
+
+    @Test
+    fun voiceLongPressIsOnTheTextCommaAndTheEmailPeriodOnly() {
+        fun voiceKeys(variant: BottomRowVariant, options: ComposeOptions = ComposeOptions()) =
+            composer
+                .compose(KeyboardSet.Default, "letters", variant, options)
+                .rows
+                .last()
+                .keys
+                .filter { it.longPress == KeyAction.Voice }
+                .map { it.label }
+        assertThat(voiceKeys(BottomRowVariant.Text)).containsExactly(",")
+        assertThat(voiceKeys(BottomRowVariant.Email)).containsExactly(".")
+        assertThat(voiceKeys(BottomRowVariant.Url)).isEmpty()
+        // Without the voice key (a password field, voice typing off) the keys are plain.
+        assertThat(voiceKeys(BottomRowVariant.Text, ComposeOptions(voiceKey = false))).isEmpty()
+        assertThat(voiceKeys(BottomRowVariant.Email, ComposeOptions(voiceKey = false))).isEmpty()
     }
 }

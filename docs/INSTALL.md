@@ -73,6 +73,54 @@ It installs as package `dev.keycorrect`, next to the debug build. Updating a rel
 needs the same signing key (the debug keystore of the machine that built it); with a different
 key, uninstall first, which deletes the keyboard's learned data.
 
+### Test releases (install on a phone without a cable)
+
+Each test build is a GitHub **pre-release** with the signed APK attached (and, optionally, the
+voice pack, see below):
+https://github.com/rishi-shyamala/keycorrect/releases. The repo is public, so these downloads are
+too.
+
+- **Version:** `version.properties` holds it (e.g. `0.5.0-test.1`, `versionCode` 5001). Every
+  build appends the commit, e.g. `0.5.0-test.1+a7ca293`. Settings → About shows it, so you can
+  tell which build you are testing.
+- **Signing:** the release key is `~/.android/keycorrect-release.jks`, and its passwords are in
+  `~/.gradle/gradle.properties`; neither is in the repo. **Back both up.** Without the key, a new
+  build can't update an installed one: you'd have to uninstall, which deletes the learned data.
+  Builds without these properties (CI) are unsigned.
+- **On the phone:**
+  1. Open the release page and download the `.apk`.
+  2. Allow the browser to "install unknown apps" when Android asks.
+  3. Install, then turn the keyboard on (section 3).
+  4. Later builds install over it.
+  - **Voice pack (optional):** the release also has `keycorrect-voice-<version>.apk`
+    (`dev.keycorrect.voice`, about 65 MB). It holds the offline speech model and its native
+    libraries, has no code and no permissions, and is needed for voice typing: without it,
+    dictation says "Install the KeyCorrect voice pack" and never switches to the phone's
+    recognizer (Settings -> Voice typing -> Phone recognizer is a separate opt-in that may send
+    audio to the phone's speech provider, and is never used in incognito). Install it the same way as the keyboard, in any order. It must be signed
+    with the same key as the keyboard: the keyboard checks that and ignores a pack that isn't.
+    That is also why a debug keyboard needs a debug-signed pack (`./gradlew :voicepack:installDebug`
+    after `tools/data/fetch-voice.sh`) and a release keyboard the release pack. Updates install
+    over it. After updating the pack, restart the keyboard (or the phone) to use the new one.
+  - An older `dev.keycorrect` signed with a different key (e.g. the debug key) has to be
+    uninstalled first.
+- **Making one** (needs a clean, pushed commit):
+
+```bash
+tools/release/release.sh bump
+```
+
+Commit and push the version bump, then:
+
+```bash
+tools/release/release.sh publish
+```
+
+`publish` also builds and attaches the signed voice pack when its files are downloaded
+(`tools/data/fetch-voice.sh`, which fills the git-ignored `data/raw/voice/`); otherwise it says so
+and publishes the keyboard alone. To build the pack by itself: `./gradlew :voicepack:assembleRelease`
+(it is not part of `assembleDebug` or CI).
+
 ## 3. Turn the keyboard on
 
 On the device: Settings → General management → Keyboard list and default → enable

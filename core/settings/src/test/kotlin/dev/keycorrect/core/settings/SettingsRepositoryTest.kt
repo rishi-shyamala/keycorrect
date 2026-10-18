@@ -57,13 +57,17 @@ class SettingsRepositoryTest {
         assertThat(d.bottomKeyWidth).isEqualTo(0.75f)
         assertThat(d.edgePaddingDp).isEqualTo(4)
         assertThat(d.keyGapDp).isEqualTo(6)
-        assertThat(d.numberRow).isFalse()
+        assertThat(d.numberRow).isTrue()
+        assertThat(d.symbolHints).isTrue()
+        assertThat(d.modeEnterKeyWidth).isEqualTo(1.15f)
         assertThat(d.keyPreview).isTrue()
         assertThat(d.longPressDelayMs).isEqualTo(300)
         assertThat(d.autoCapitalize).isTrue()
         assertThat(d.hapticsEnabled).isTrue()
         assertThat(d.hapticDurationMs).isEqualTo(0)
         assertThat(d.hapticStrength).isEqualTo(0)
+        assertThat(d.autocorrectPulseMs).isEqualTo(20)
+        assertThat(d.unknownWordPulseMs).isEqualTo(20)
         assertThat(d.soundEnabled).isFalse()
         assertThat(d.soundVolume).isEqualTo(0.5f)
         assertThat(d.inlineAutofill).isTrue()
@@ -85,13 +89,17 @@ class SettingsRepositoryTest {
                 bottomKeyWidth = 0.8f,
                 edgePaddingDp = 1,
                 keyGapDp = 0,
-                numberRow = true,
+                modeEnterKeyWidth = 0.9f,
+                numberRow = false,
+                symbolHints = false,
                 keyPreview = false,
                 longPressDelayMs = 450,
                 autoCapitalize = false,
                 hapticsEnabled = false,
                 hapticDurationMs = 25,
                 hapticStrength = 128,
+                autocorrectPulseMs = 35,
+                unknownWordPulseMs = 9,
                 soundEnabled = true,
                 soundVolume = 0.8f,
                 inlineAutofill = false,
@@ -126,6 +134,37 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun voiceSettingsDefaultOnAndRoundTrip() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.voiceEnabled).isTrue()
+        assertThat(d.voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
+        assertThat(d.voiceAutoPunctuation).isTrue()
+        repo.update {
+            it.copy(
+                voiceEnabled = false,
+                voiceEngine = VoiceEngineChoice.PhoneRecognizer,
+                voiceAutoPunctuation = false,
+            )
+        }
+        val s = repo.settings.first()
+        assertThat(s.voiceEnabled).isFalse()
+        assertThat(s.voiceEngine).isEqualTo(VoiceEngineChoice.PhoneRecognizer)
+        assertThat(s.voiceAutoPunctuation).isFalse()
+        assertThat(store.data.first()[stringPreferencesKey("voice_engine")])
+            .isEqualTo("PhoneRecognizer")
+        store.edit { it[stringPreferencesKey("voice_engine")] = "Cloud" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
+    }
+
+    @Test
+    fun oldVoiceEngineNamesMigrate() = runTest {
+        store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
+        store.edit { it[stringPreferencesKey("voice_engine")] = "System" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.PhoneRecognizer)
+    }
+
+    @Test
     fun layoutSizesClampOnWriteAndRead() = runTest {
         repo.update { it.copy(bottomKeyWidth = 9f, edgePaddingDp = 40, keyGapDp = -3) }
         var s = repo.settings.first()
@@ -146,11 +185,21 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun modeEnterKeyWidthClampsOnWriteAndRead() = runTest {
+        repo.update { it.copy(modeEnterKeyWidth = 9f) }
+        assertThat(repo.settings.first().modeEnterKeyWidth).isEqualTo(1.5f)
+        store.edit { it[floatPreferencesKey("mode_enter_key_width")] = 0.1f }
+        assertThat(repo.settings.first().modeEnterKeyWidth).isEqualTo(0.75f)
+        assertThat(KeyboardSettings(modeEnterKeyWidth = Float.NaN).sanitized().modeEnterKeyWidth)
+            .isEqualTo(1.15f)
+    }
+
+    @Test
     fun eachFieldCanBeChangedIndependently() = runTest {
-        repo.update { it.copy(numberRow = true) }
+        repo.update { it.copy(numberRow = false) }
         repo.update { it.copy(keyHeightDp = 60) }
         assertThat(repo.settings.first())
-            .isEqualTo(KeyboardSettings(numberRow = true, keyHeightDp = 60))
+            .isEqualTo(KeyboardSettings(numberRow = false, keyHeightDp = 60))
     }
 
     @Test
@@ -174,6 +223,17 @@ class SettingsRepositoryTest {
         val raw = store.data.first()
         assertThat(raw[intPreferencesKey("key_height_dp")]).isEqualTo(80)
         assertThat(raw[floatPreferencesKey("sound_volume")]).isEqualTo(1f)
+    }
+
+    @Test
+    fun hapticPulseLengthsAreClampedToFiveToSixtyOnWriteAndRead() = runTest {
+        repo.update { it.copy(autocorrectPulseMs = 1, unknownWordPulseMs = 500) }
+        val s = repo.settings.first()
+        assertThat(s.autocorrectPulseMs).isEqualTo(5)
+        assertThat(s.unknownWordPulseMs).isEqualTo(60)
+        assertThat(store.data.first()[intPreferencesKey("autocorrect_pulse_ms")]).isEqualTo(5)
+        store.edit { it[intPreferencesKey("unknown_word_pulse_ms")] = -3 }
+        assertThat(repo.settings.first().unknownWordPulseMs).isEqualTo(5)
     }
 
     @Test

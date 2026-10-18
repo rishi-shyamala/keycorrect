@@ -40,13 +40,26 @@ enum class BottomRowVariant(val layoutId: String) {
  * `numberRowExtra` row instead (page 1 inserts operators under its digits, page 2 a digits row on
  * top), so every layer has the same number of rows and the same key height.
  *
- * [bottomKeyWidth] is the width, in letter-key units, of every non-space key in the bottom row
- * except Enter, which is never narrower than 1.25 units; the space key takes the rest so the row is
- * exactly 10 units. If the side keys would leave the space less than 1 unit, they shrink in
- * proportion to leave it exactly 1 (the row stays 10 units wide).
+ * [bottomKeyWidth] is the width, in letter-key units, of the bottom row's emoji, comma and period
+ * keys; [modeEnterKeyWidth] that of its mode-switch (?123/ABC) and Enter keys. The space key takes
+ * the rest so the row is exactly 10 units. If the side keys would leave the space less than 1 unit,
+ * they shrink in proportion to leave it exactly 1 (the row stays 10 units wide).
  *
  * [emojiKey] keeps the bottom row's emoji key; without it (sensitive fields) the key is dropped and
  * its width goes to the space key, so the row keeps its width.
+ *
+ * [voiceKey] keeps the long-press that starts voice typing (the comma's, with its mic hint);
+ * without it (password fields, voice typing off) the key is a plain one.
+ *
+ * [fieldModes] offers the manual field-kind switch (a plain text field): the long-press popup of
+ * the mode-switch key (`fieldMode` entries in the bottom layout), and on a number or phone pad a
+ * bottom "ABC" key that goes back. Without it the popup entries are dropped and the pads get no
+ * extra key.
+ *
+ * [symbolHints] gives each key of the letters layer the symbol at the same row and column of the
+ * composed first symbols page as its corner hint and first popup entry (function keys do not count
+ * as columns). With the number row on, the top letter row has no digit hints or digit popup
+ * entries, since the digits are on the row above.
  *
  * [terminalRow] puts the terminal extra-keys row (`terminal_row`) above the rows of every layer, so
  * it stays on screen when the layer changes.
@@ -65,9 +78,14 @@ data class ComposeOptions(
     val terminalRow: Boolean = false,
     val emojiKey: Boolean = true,
     val bottomKeyWidth: Float = DEFAULT_BOTTOM_KEY_WIDTH,
+    val fieldModes: Boolean = false,
+    val modeEnterKeyWidth: Float = DEFAULT_MODE_ENTER_KEY_WIDTH,
+    val symbolHints: Boolean = true,
+    val voiceKey: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
+        const val DEFAULT_MODE_ENTER_KEY_WIDTH = 1.15f
     }
 }
 
@@ -100,8 +118,20 @@ class KeyboardComposer(private val repository: LayoutRepository) {
                     addAll(
                         if (layout.kind == LayoutKind.Numpad) restrictNumpad(own, options) else own
                     )
+                    val back = if (options.fieldModes) textModeRow(layout.kind, own) else null
+                    if (back != null) add(back)
                 } else {
-                    val capped = own.map(::capFunctionKeys).toMutableList()
+                    val sized = own.map(::capFunctionKeys)
+                    val capped =
+                        if (layout.kind == LayoutKind.Letters) {
+                                val symbols =
+                                    if (options.symbolHints) symbolRows(set, variant, options)
+                                    else null
+                                withLetterHints(sized, size, symbols, options.numberRow)
+                            } else {
+                                sized
+                            }
+                            .toMutableList()
                     val extra = layout.numberRowExtra
                     if (options.numberRow && extra != null) capped.add(extra.insertAt, extra.row)
                     addAll(capped)
@@ -131,18 +161,36 @@ class KeyboardComposer(private val repository: LayoutRepository) {
             )
         }
 
+    /** The rows of the composed first symbols page, or null if [set] has none. */
+    private fun symbolRows(
+        set: KeyboardSet,
+        variant: BottomRowVariant,
+        options: ComposeOptions,
+    ): List<ResolvedRow>? =
+        if (KeyboardSet.SYMBOLS in set.layouts) {
+            compose(set, KeyboardSet.SYMBOLS, variant, options).rows
+        } else {
+            null
+        }
+
     /**
-     * A bottom row (one with a space key) with the emoji key dropped if disabled, every other key
-     * [ComposeOptions.bottomKeyWidth] wide (Enter at least [ENTER_KEY_WIDTH]) and the space key
-     * taking the rest of 10 units.
+     * A bottom row (one with a space key) with the emoji key dropped if disabled, the mode-switch
+     * and Enter keys [ComposeOptions.modeEnterKeyWidth] wide, every other key
+     * [ComposeOptions.bottomKeyWidth] wide, and the space key taking the rest of 10 units.
      */
     private fun sizeBottomRow(row: ResolvedRow, options: ComposeOptions): ResolvedRow {
         if (row.keys.none { it.action == KeyAction.Space }) return row
         val keys =
-            if (options.emojiKey) row.keys else row.keys.filter { it.action != KeyAction.Emoji }
+            (if (options.emojiKey) row.keys else row.keys.filter { it.action != KeyAction.Emoji })
+                .map { if (options.fieldModes) it else it.withoutFieldModes() }
+                .map {
+                    if (options.voiceKey || it.longPress == null) it else it.copy(longPress = null)
+                }
         val side = options.bottomKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
+        val modeEnter = options.modeEnterKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
         fun wanted(key: ResolvedKey) =
-            if (key.action == KeyAction.Enter) maxOf(side, ENTER_KEY_WIDTH) else side
+            if (key.action == KeyAction.Enter || key.action is KeyAction.SwitchLayer) modeEnter
+            else side
         val sides = keys.filter { it.action != KeyAction.Space }.sumOf { wanted(it).toDouble() }
         // Side keys so wide that the space would drop under its minimum shrink in proportion.
         val scale = minOf(1.0, (GRID_UNITS - MIN_SPACE_WIDTH) / sides).toFloat()
@@ -152,6 +200,46 @@ class KeyboardComposer(private val repository: LayoutRepository) {
                 keys.map {
                     it.copy(width = if (it.action == KeyAction.Space) space else wanted(it) * scale)
                 }
+        )
+    }
+
+    private fun ResolvedKey.withoutFieldModes(): ResolvedKey =
+        if (popup.any { it.action is KeyAction.SetFieldMode }) copy(popup = emptyList()) else this
+
+    /**
+     * The key that takes a number or phone pad back to text, as a thin row of its own under the
+     * pad: tap for the text keyboard, long-press for the other kinds. The entries are those of the
+     * text bottom row's mode-switch key; null if that layout has none (a user-edited set).
+     */
+    private fun textModeRow(kind: LayoutKind, pad: List<ResolvedRow>): ResolvedRow? {
+        val entries =
+            if (kind == LayoutKind.Numpad || kind == LayoutKind.Phone) modeEntries() else null
+        return entries?.let { modeRow(pad.maxOf { row -> row.width }, it) }
+    }
+
+    private fun modeEntries(): List<ResolvedKey>? =
+        repository
+            .get(BottomRowVariant.Text.layoutId)
+            .rows(KeyboardSet.LETTERS)
+            .flatMap { it.keys }
+            .firstOrNull { k -> k.popup.any { it.action is KeyAction.SetFieldMode } }
+            ?.popup
+
+    private fun modeRow(width: Float, entries: List<ResolvedKey>): ResolvedRow {
+        val back = FieldMode.Text
+        return ResolvedRow(
+            listOf(
+                ResolvedKey(
+                    label = "ABC",
+                    action = KeyAction.SetFieldMode(back),
+                    width = width,
+                    style = KeyStyle.Modifier,
+                    popup = entries,
+                    hint = null,
+                    description = back.description,
+                )
+            ),
+            TEXT_MODE_ROW_HEIGHT,
         )
     }
 
@@ -191,8 +279,9 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         const val MAX_FUNCTION_WIDTH = 1.5f
         const val MIN_BOTTOM_KEY_WIDTH = 0.1f
         const val MIN_SPACE_WIDTH = 1f
-        /** Enter stays a little wider than a letter key, whatever the bottom-row key width. */
-        const val ENTER_KEY_WIDTH = 1.25f
+
+        /** The "ABC" row under a number or phone pad reached by the manual field switch. */
+        const val TEXT_MODE_ROW_HEIGHT = 0.6f
 
         val NUMBER_ROW =
             ResolvedRow(

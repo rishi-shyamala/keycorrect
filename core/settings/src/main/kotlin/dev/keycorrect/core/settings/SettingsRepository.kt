@@ -36,9 +36,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         return KeyboardSettings(
             keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
             bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
+            modeEnterKeyWidth = this[MODE_ENTER_KEY_WIDTH] ?: d.modeEnterKeyWidth,
             edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
             keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
             numberRow = this[NUMBER_ROW] ?: d.numberRow,
+            symbolHints = this[SYMBOL_HINTS] ?: d.symbolHints,
             keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
             longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
             autoCapitalize = this[AUTO_CAPITALIZE] ?: d.autoCapitalize,
@@ -62,7 +64,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
             hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
             hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
+            autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
+            unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
             spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
+            gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
+            gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
             cursorSpeed =
                 CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
             backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
@@ -76,15 +82,20 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
                     ?: d.clipboardRetention,
             clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
+            voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+            voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
+            voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
         )
     }
 
     private fun MutablePreferences.write(s: KeyboardSettings) {
         this[KEY_HEIGHT_DP] = s.keyHeightDp
         this[BOTTOM_KEY_WIDTH] = s.bottomKeyWidth
+        this[MODE_ENTER_KEY_WIDTH] = s.modeEnterKeyWidth
         this[EDGE_PADDING_DP] = s.edgePaddingDp
         this[KEY_GAP_DP] = s.keyGapDp
         this[NUMBER_ROW] = s.numberRow
+        this[SYMBOL_HINTS] = s.symbolHints
         this[KEY_PREVIEW] = s.keyPreview
         this[LONG_PRESS_DELAY_MS] = s.longPressDelayMs
         this[AUTO_CAPITALIZE] = s.autoCapitalize
@@ -107,7 +118,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NON_WORD_TIE_RULE] = s.nonWordTieRule
         this[HAPTIC_ON_AUTOCORRECT] = s.hapticOnAutocorrect
         this[HAPTIC_ON_UNKNOWN_WORD] = s.hapticOnUnknownWord
+        this[AUTOCORRECT_PULSE_MS] = s.autocorrectPulseMs
+        this[UNKNOWN_WORD_PULSE_MS] = s.unknownWordPulseMs
         this[SPACEBAR_CURSOR] = s.spacebarCursor
+        this[GESTURE_TYPING] = s.gestureTyping
+        this[GESTURE_TRAIL] = s.gestureTrail
         this[CURSOR_SPEED] = s.cursorSpeed.name
         this[BACKSPACE_SWIPE] = s.backspaceSwipe
         this[EMOJI_SUGGESTIONS] = s.emojiSuggestions
@@ -116,11 +131,16 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[CLIPBOARD_MAX_ITEMS] = s.clipboardMaxItems
         this[CLIPBOARD_RETENTION] = s.clipboardRetention.name
         this[CLIPBOARD_IMAGES] = s.clipboardImages
+        this[VOICE_ENABLED] = s.voiceEnabled
+        this[VOICE_ENGINE] = s.voiceEngine.name
+        this[VOICE_AUTO_PUNCTUATION] = s.voiceAutoPunctuation
     }
 
     private companion object {
         val KEY_HEIGHT_DP = intPreferencesKey("key_height_dp")
         val BOTTOM_KEY_WIDTH = floatPreferencesKey("bottom_key_width")
+        val MODE_ENTER_KEY_WIDTH = floatPreferencesKey("mode_enter_key_width")
+        val SYMBOL_HINTS = booleanPreferencesKey("symbol_hints")
         val EDGE_PADDING_DP = intPreferencesKey("edge_padding_dp")
         val KEY_GAP_DP = intPreferencesKey("key_gap_dp")
         val NUMBER_ROW = booleanPreferencesKey("number_row")
@@ -146,7 +166,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NON_WORD_TIE_RULE = booleanPreferencesKey("non_word_tie_rule")
         val HAPTIC_ON_AUTOCORRECT = booleanPreferencesKey("haptic_on_autocorrect")
         val HAPTIC_ON_UNKNOWN_WORD = booleanPreferencesKey("haptic_on_unknown_word")
+        val AUTOCORRECT_PULSE_MS = intPreferencesKey("autocorrect_pulse_ms")
+        val UNKNOWN_WORD_PULSE_MS = intPreferencesKey("unknown_word_pulse_ms")
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
+        val GESTURE_TYPING = booleanPreferencesKey("gesture_typing")
+        val GESTURE_TRAIL = booleanPreferencesKey("gesture_trail")
         val CURSOR_SPEED = stringPreferencesKey("cursor_speed")
         val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
         val EMOJI_SUGGESTIONS = booleanPreferencesKey("emoji_suggestions")
@@ -155,5 +179,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val CLIPBOARD_MAX_ITEMS = intPreferencesKey("clipboard_max_items")
         val CLIPBOARD_RETENTION = stringPreferencesKey("clipboard_retention")
         val CLIPBOARD_IMAGES = booleanPreferencesKey("clipboard_images")
+        val VOICE_ENABLED = booleanPreferencesKey("voice_enabled")
+        val VOICE_ENGINE = stringPreferencesKey("voice_engine")
+        val VOICE_AUTO_PUNCTUATION = booleanPreferencesKey("voice_auto_punctuation")
     }
 }

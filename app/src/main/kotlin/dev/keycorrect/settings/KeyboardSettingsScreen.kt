@@ -25,6 +25,12 @@ fun KeyboardSettingsScreen(
             onCheckedChange = { v -> onUpdate { it.copy(numberRow = v) } },
         )
         SwitchRow(
+            title = stringResource(R.string.keyboard_symbol_hints),
+            supportingText = stringResource(R.string.keyboard_symbol_hints_summary),
+            checked = settings.symbolHints,
+            onCheckedChange = { v -> onUpdate { it.copy(symbolHints = v) } },
+        )
+        SwitchRow(
             title = stringResource(R.string.keyboard_key_preview),
             supportingText = stringResource(R.string.keyboard_key_preview_summary),
             checked = settings.keyPreview,
@@ -57,7 +63,7 @@ fun KeyboardSettingsScreen(
     }
 }
 
-/** The Appearance header and the sliders for key height, bottom-key width, padding and gap. */
+/** The Appearance header and the sliders for key height, bottom-key widths, padding and gap. */
 @Composable
 private fun SizeRows(
     settings: KeyboardSettings,
@@ -78,6 +84,15 @@ private fun SizeRows(
         valueRange = KeyboardSettings.BOTTOM_KEY_WIDTH_RANGE,
         valueLabel = { stringResource(R.string.value_percent, (it * PERCENT).roundToInt()) },
         onValueCommitted = { v -> onUpdate { it.copy(bottomKeyWidth = v) } },
+        snap = { (it * BOTTOM_KEY_STEPS_PER_UNIT).roundToInt() / BOTTOM_KEY_STEPS_PER_UNIT },
+    )
+    SliderRow(
+        title = stringResource(R.string.keyboard_mode_enter_key_width),
+        supportingText = stringResource(R.string.keyboard_mode_enter_key_width_summary),
+        value = settings.modeEnterKeyWidth,
+        valueRange = KeyboardSettings.MODE_ENTER_KEY_WIDTH_RANGE,
+        valueLabel = { stringResource(R.string.value_percent, (it * PERCENT).roundToInt()) },
+        onValueCommitted = { v -> onUpdate { it.copy(modeEnterKeyWidth = v) } },
         snap = { (it * BOTTOM_KEY_STEPS_PER_UNIT).roundToInt() / BOTTOM_KEY_STEPS_PER_UNIT },
     )
     IntSliderRow(

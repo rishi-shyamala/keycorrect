@@ -17,6 +17,7 @@ import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.layout.BottomRowVariant
 import dev.keycorrect.core.layout.ComposeOptions
+import dev.keycorrect.core.layout.FieldMode
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.layout.KeyboardGeometry
@@ -35,9 +36,15 @@ import dev.keycorrect.feature.keyboard.emoji.EmojiSearch
 import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
+import dev.keycorrect.feature.keyboard.prediction.SelectionState
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
+import dev.keycorrect.feature.keyboard.prediction.SwipeCase
 import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
+import dev.keycorrect.feature.keyboard.voice.MainThread
+import dev.keycorrect.feature.keyboard.voice.Scheduler
+import dev.keycorrect.feature.keyboard.voice.VoiceController
+import dev.keycorrect.feature.keyboard.voice.VoiceEnvironment
 import kotlin.math.roundToInt
 
 /**
@@ -53,6 +60,7 @@ import kotlin.math.roundToInt
  * cached, and asked of the editor (a blocking call) only otherwise: when input starts, after an
  * external cursor move, or in fields where nothing is read.
  */
+@Suppress("LargeClass") // the keyboard's one coordinator; swipe logic lives in SwipeController
 class KeyboardController(
     private val editor: TextEditor,
     private val composer: KeyboardComposer,
@@ -70,6 +78,10 @@ class KeyboardController(
     internal val emoji: EmojiEnvironment = EmojiEnvironment.None,
     /** Clipboard history (Phase 4, PR C). */
     internal val clipboard: ClipboardEnvironment = ClipboardEnvironment.None,
+    /** Voice typing: the microphone, its permission and the recognizer (Phase 6). */
+    voiceEnvironment: VoiceEnvironment = VoiceEnvironment.None,
+    voiceScheduler: Scheduler = MainThread.scheduler,
+    voicePost: (() -> Unit) -> Unit = MainThread::post,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
@@ -105,6 +117,16 @@ class KeyboardController(
             { e ->
                 EmojiChoice.resolve(e, emoji.preferredVariant(e.value), settings.emojiSkinTone)
             },
+            ::onSwipeCommitted,
+        )
+
+    private val swipes =
+        SwipeController(
+            input,
+            clock,
+            { swipeTypingActive },
+            ::swipeCase,
+            ::onSwipeCommitted,
         )
 
     /** Ctrl and Alt of the terminal extra-keys row; observable so the keys draw active. */
@@ -134,6 +156,33 @@ class KeyboardController(
         !profile.sensitive && selection.known && !selection.collapsed && !editing.swipeActive
     }
 
+    /**
+     * Voice typing (Phase 6). Its edits go through [tracked] like any of ours; when it starts and
+     * ends the typing side settles as for an emoji (the composing word is finished, the text
+     * context is read again).
+     */
+    val voice =
+        VoiceController(
+            tracked,
+            voiceEnvironment,
+            { settings },
+            { profile.sensitive },
+            { settings.incognito || !profile.learningEnabled },
+            { settings.autoCapitalize && profile.autoCapitalize != AutoCapitalize.None },
+            ::settleForVoice,
+            voicePost,
+            voiceScheduler,
+        )
+
+    private fun settleForVoice() {
+        input.endComposingForMove()
+        composingNow = input.isComposing
+        sawText = true
+        zeroChecked = false
+        if (fieldEmpty) fieldEmpty = false
+        updateAutoCapitalize()
+    }
+
     /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
     val gestures: KeyGestures = SearchAwareGestures()
 
@@ -157,6 +206,18 @@ class KeyboardController(
         }
 
         override fun onBackspaceSwipeEnd(commit: Boolean) = editing.onBackspaceSwipeEnd(commit)
+
+        // While the emoji search owns the keys, a swipe is not started (swipeTypingActive is off
+        // then); one that started earlier is finished or cancelled like any other.
+        override fun onSwipeStart(path: SwipePath) {
+            if (!searching) swipes.onStart(path)
+        }
+
+        override fun onSwipeMove(path: SwipePath) = swipes.onMove(path)
+
+        override fun onSwipeEnd(path: SwipePath) = swipes.onEnd(path)
+
+        override fun onSwipeCancel() = swipes.onCancel()
     }
 
     /** Touches of recently committed words, in memory only (for Phase 3 learning). */
@@ -184,8 +245,32 @@ class KeyboardController(
     var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
         private set
 
+    /**
+     * The profile every layout, suggestion and autocorrect decision follows: what the field
+     * declared, or, after the user switched a plain text field by hand ([fieldMode]), that kind's.
+     */
     var profile: FieldProfile by mutableStateOf(DEFAULT_PROFILE)
         private set
+
+    /** What the focused field declared, whatever [fieldMode] says. */
+    private var declaredProfile: FieldProfile = DEFAULT_PROFILE
+
+    /**
+     * The kind a plain text field was switched to by hand (long-press ?123), null for none (text).
+     * Lasts until the field changes; never set in a field that declared a kind of its own.
+     */
+    var fieldMode: FieldMode? by mutableStateOf(null)
+        private set
+
+    private fun effectiveProfile(): FieldProfile =
+        when (fieldMode) {
+            FieldMode.Email -> declaredProfile.withKind(FieldKind.Email)
+            FieldMode.Url -> declaredProfile.withKind(FieldKind.Url)
+            FieldMode.Number -> declaredProfile.withKind(FieldKind.Number)
+            FieldMode.Phone -> declaredProfile.withKind(FieldKind.Phone)
+            FieldMode.Text,
+            null -> declaredProfile
+        }
 
     /**
      * Keyboard height in row units (multiples of the key height setting), the same on every layer
@@ -197,12 +282,15 @@ class KeyboardController(
         private set
 
     /**
-     * Prepares the keyboard for a field. A [restarting] input that has the same [identity] as the
-     * previous one (the app re-announcing the same field, e.g. on rotation or when the keyboard is
-     * shown again; see [EditorIdentity.continues]) keeps the layer and shift and only refreshes the
-     * profile, enter action and auto-capitalisation; anything else is a new field and resets the
-     * keyboard. [initialSelStart]/[initialSelEnd] are the field's selection from `EditorInfo` (-1
-     * when unknown), the starting point for recognising the keyboard's own selection updates.
+     * Prepares the keyboard for a field. The keyboard opens on the field's home layer (letters for
+     * text) whenever it is opened for input: a new field, or the same field shown again after the
+     * keyboard was hidden. Only a [restarting] input with the same [identity] as the previous one
+     * (see [EditorIdentity.continues]) keeps the layer, shift and manual [fieldMode] and just
+     * refreshes the profile, enter action and auto-capitalisation. The service passes `restarting`
+     * true only for the restart a configuration change (rotation) causes, never for an app's own
+     * `restartInput` nor for the keyboard being shown again (see [ConfigRestartTracker]).
+     * [initialSelStart]/[initialSelEnd] are the field's selection from `EditorInfo` (-1 when
+     * unknown), the starting point for recognising the keyboard's own selection updates.
      */
     fun onStartInput(
         profile: FieldProfile,
@@ -212,22 +300,27 @@ class KeyboardController(
         initialSelStart: Int = -1,
         initialSelEnd: Int = -1,
     ) {
+        voice.stopNow()
         val initialSelection = EditorSelection(initialSelStart, initialSelEnd)
         val sameField = identity != null && identity.continues(this.identity, restarting)
         this.identity = identity
-        this.profile = profile
+        declaredProfile = profile
+        if (!sameField || profile.kind != FieldKind.Text) fieldMode = null
+        val effective = effectiveProfile()
+        this.profile = effective
         this.settings = settings
         if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
-        input.onStartInput(profile, settings, newField = !sameField)
+        input.onStartInput(effective, settings, newField = !sameField, selectionState())
         composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
         refreshFieldEmpty(newField = !sameField)
-        val newOptions = composeOptions(profile, settings)
+        val newOptions = composeOptions(effective, settings)
         if (sameField) {
             applyOptions(newOptions)
             updateLayoutKey()
             updateAutoCapitalize()
+            warmUpSwipe()
             return
         }
         panel = KeyboardPanel.Keys
@@ -237,25 +330,15 @@ class KeyboardController(
         shiftHeld = false
         shiftChorded = false
         terminalModifiers.reset()
-        variant =
-            when (profile.kind) {
-                FieldKind.Email -> BottomRowVariant.Email
-                FieldKind.Url -> BottomRowVariant.Url
-                else -> BottomRowVariant.Text
-            }
+        variant = variantFor(effective.kind)
         options = newOptions
-        val layerId =
-            when (profile.kind) {
-                FieldKind.Number -> NUMPAD
-                FieldKind.Phone -> PHONE
-                FieldKind.DateTime -> DATETIME
-                else -> KeyboardSet.LETTERS
-            }
+        val layerId = homeLayerFor(effective.kind)
         state = KeyboardState(layerId)
         layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits()
+        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
         updateLayoutKey()
         updateAutoCapitalize()
+        warmUpSwipe()
     }
 
     /**
@@ -264,6 +347,7 @@ class KeyboardController(
      */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
+        if (!settings.voiceEnabled) voice.stopNow()
         input.updateSettings(settings)
         applyOptions(composeOptions(profile, settings))
         updateLayoutKey()
@@ -279,6 +363,7 @@ class KeyboardController(
      * key, null for repeats, popup entries and accessibility actions.
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
+        voice.stopNow()
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
@@ -289,20 +374,15 @@ class KeyboardController(
     }
 
     private fun onTypingKey(action: KeyAction, touch: TouchPoint?) {
+        // A swipe lifted earlier whose decode is late is typed first or dropped; a swipe still
+        // under another finger is cancelled by any key (see [SwipeController.onKey]).
+        input.settlePendingSwipe()
+        swipes.onKey(action)
         cancelSwipeFor(action)
         when (action) {
             is KeyAction.Text -> onTextKey(action, touch)
-            KeyAction.Space -> {
-                markChord()
-                if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
-                state = state.afterCharacter(shiftHeld)
-                updateAutoCapitalize()
-            }
-            KeyAction.Backspace -> {
-                markChord()
-                if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_DEL))) input.onBackspace()
-                updateAutoCapitalize()
-            }
+            KeyAction.Space -> onSpaceKey()
+            KeyAction.Backspace -> onBackspaceKey()
             KeyAction.Enter -> onEnterKey()
             KeyAction.Shift -> state = state.onShift(clock())
             is KeyAction.SwitchLayer -> switchLayer(action.layerId)
@@ -312,14 +392,40 @@ class KeyboardController(
             }
             is KeyAction.Modifier -> terminalModifiers.onTap(action.modifier)
             KeyAction.Emoji -> showPanel(KeyboardPanel.Emoji)
+            is KeyAction.SetFieldMode -> switchFieldMode(action.mode)
+            // Voice is only ever a long press (see onKeyLongPress), never a tap.
+            KeyAction.Voice,
             KeyAction.None -> Unit
         }
+    }
+
+    /** The last char typed since the layer last changed; read only while a symbols page is up. */
+    private var lastTypedOnSymbols: Char? = null
+
+    private fun onSpaceKey() {
+        markChord()
+        // Space right after a symbol on a symbols page ends the symbol run: back to the letters.
+        // After a digit the page stays, so numbers can be typed.
+        val afterSymbol =
+            (state.layerId == KeyboardSet.SYMBOLS || state.layerId == KeyboardSet.SYMBOLS2) &&
+                lastTypedOnSymbols?.let { !it.isLetterOrDigit() } == true
+        if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
+        state = state.afterCharacter(shiftHeld)
+        updateAutoCapitalize()
+        if (afterSymbol) switchLayer(homeLayerFor(profile.kind))
+    }
+
+    private fun onBackspaceKey() {
+        markChord()
+        if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_DEL))) input.onBackspace()
+        updateAutoCapitalize()
     }
 
     private fun onTextKey(action: KeyAction.Text, touch: TouchPoint?) {
         markChord()
         val typed = state.transform(action)
         if (!sendWithModifiers(keyCodeForText(typed))) input.onText(typed, touch)
+        lastTypedOnSymbols = typed.lastOrNull()
         state = state.afterCharacter(shiftHeld)
         updateAutoCapitalize()
     }
@@ -337,6 +443,50 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
+    private fun variantFor(kind: FieldKind): BottomRowVariant =
+        when (kind) {
+            FieldKind.Email -> BottomRowVariant.Email
+            FieldKind.Url -> BottomRowVariant.Url
+            else -> BottomRowVariant.Text
+        }
+
+    /** The layer a field of [kind] opens on, and ABC returns to from a panel. */
+    private fun homeLayerFor(kind: FieldKind): String =
+        when (kind) {
+            FieldKind.Number -> NUMPAD
+            FieldKind.Phone -> PHONE
+            FieldKind.DateTime -> DATETIME
+            else -> KeyboardSet.LETTERS
+        }
+
+    /**
+     * The user picked [mode] for a plain text field (the popup of ?123): the keyboard becomes that
+     * kind's, with its layout, bottom row and suggestion and autocorrect rules, until the field
+     * changes. Text goes back. Ignored in a field that declared a kind of its own.
+     */
+    private fun switchFieldMode(mode: FieldMode) {
+        if (declaredProfile.kind != FieldKind.Text) return
+        val next = mode.takeIf { it != FieldMode.Text }
+        if (next == fieldMode) return
+        input.onLayerSwitch()
+        fieldMode = next
+        val effective = effectiveProfile()
+        profile = effective
+        input.onStartInput(effective, settings, newField = false, selectionState())
+        composingNow = input.isComposing
+        shiftHeld = false
+        shiftChorded = false
+        variant = variantFor(effective.kind)
+        options = composeOptions(effective, settings)
+        val layerId = homeLayerFor(effective.kind)
+        state = KeyboardState(layerId)
+        layer = composer.compose(keyboardSet, layerId, variant, options)
+        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
+        updateLayoutKey()
+        updateAutoCapitalize()
+        warmUpSwipe()
+    }
+
     private fun switchLayer(layerId: String) {
         // A user-edited layout may name a layer that doesn't exist; stay put rather than crash
         // the keyboard.
@@ -344,6 +494,7 @@ class KeyboardController(
             runCatching { composer.compose(keyboardSet, layerId, variant, options) }.getOrNull()
                 ?: return
         input.onLayerSwitch()
+        lastTypedOnSymbols = null
         shiftHeld = false
         shiftChorded = false
         state = state.withLayer(layerId)
@@ -372,6 +523,16 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
+    /** What is known of the editor's selection, for the prediction layer's delete decisions. */
+    private fun selectionState(): SelectionState {
+        val s = selection.normalised()
+        return when {
+            !s.known -> SelectionState.Unknown
+            s.collapsed -> SelectionState.Collapsed
+            else -> SelectionState.Range
+        }
+    }
+
     /**
      * The platform reported a selection change (`onUpdateSelection`): [selStart]/[selEnd] are the
      * new selection, [composingStart]/[composingEnd] the composing region (-1 when none). Updates
@@ -389,15 +550,22 @@ class KeyboardController(
     ) {
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
-        if (update.known) input.noteSelection(update.collapsed)
+        input.noteSelection(update.collapsed.takeIf { update.known })
         val verdict = ownEdits.onUpdate(update)
+        if (ownEdits.lastUpdateConfirmed) input.confirmEdits()
         // Our own edits don't change what a cursor at 0 has after it; anything else might.
         refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
-        if (verdict == UpdateVerdict.External) editing.dropDeferred()
+        if (verdict == UpdateVerdict.External) {
+            editing.dropDeferred()
+            // The user moved the cursor: dictation ends where it stands.
+            voice.onExternalChange()
+        }
         editing.onEditsSettled()
         when (verdict) {
             is UpdateVerdict.Own -> {
+                // Dictation's own edits: the typing side settles when it ends (settleForVoice).
+                if (voice.dictating) return
                 val resync = verdict.composingLength
                 if (resync < 0 || input.resyncComposing(resync)) return
             }
@@ -421,7 +589,17 @@ class KeyboardController(
      * never shown in a sensitive field; leaving it ends any emoji search.
      */
     fun showPanel(panel: KeyboardPanel) {
+        showPanelKeepingLayer(panel)
+        // The panels' ABC key: back to the letters, not to the symbols page that was up before.
+        if (panel == KeyboardPanel.Keys && state.layerId != homeLayerFor(profile.kind)) {
+            switchLayer(homeLayerFor(profile.kind))
+        }
+    }
+
+    /** [showPanel] without the return to the home layer (leaving a panel by a tool or a paste). */
+    private fun showPanelKeepingLayer(panel: KeyboardPanel) {
         if (panel == KeyboardPanel.Emoji && profile.sensitive) return
+        if (panel != KeyboardPanel.Keys) voice.stopNow()
         if (panel == KeyboardPanel.Clipboard && !clipboardAvailable) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         if (panel != KeyboardPanel.Clipboard) clipboardPanel.reset()
@@ -464,6 +642,50 @@ class KeyboardController(
     private var composingNow by mutableStateOf(false)
 
     /**
+     * Gesture typing is on for the current field: the setting is on and the field is a text, email,
+     * URL, name or address field that takes suggestions and has an engine (docs/PHASE5.md P5-5),
+     * and the letters are showing (not a panel, not the symbols, not the emoji search). Off in
+     * password, number, phone, date and terminal fields, and where the app asks for no suggestions;
+     * also off while suggestions are switched off, as the swiped word is committed like a picked
+     * suggestion. Read by the touch layer.
+     */
+    val swipeTypingActive: Boolean
+        get() =
+            settings.gestureTyping &&
+                panel == KeyboardPanel.Keys &&
+                state.layerId == KeyboardSet.LETTERS &&
+                profile.kind in SWIPE_KINDS &&
+                input.canSwipe()
+
+    /** The casing the shift state gives a word swiped now (docs/PHASE5.md). */
+    private fun swipeCase(): SwipeCase =
+        when (effectiveShift) {
+            ShiftState.Locked -> SwipeCase.All
+            ShiftState.Once -> SwipeCase.First
+            ShiftState.Auto ->
+                if (profile.autoCapitalize == AutoCapitalize.Characters) SwipeCase.All
+                else SwipeCase.First
+            // The shift state describes the text now; the word goes in after the swipe's space.
+            ShiftState.Off -> if (swipeCapsAfterSpace()) SwipeCase.First else SwipeCase.None
+        }
+
+    private fun swipeCapsAfterSpace(): Boolean =
+        settings.autoCapitalize &&
+            profile.autoCapitalize != AutoCapitalize.None &&
+            input.swipeCapsWanted(profile.autoCapitalize) == true
+
+    /** A swipe typed a word: like a typed letter, it consumes a one-shot shift. */
+    private fun onSwipeCommitted() {
+        markChord()
+        state = state.afterCharacter(shiftHeld)
+        composingNow = input.isComposing
+        sawText = true
+        zeroChecked = false
+        if (fieldEmpty) fieldEmpty = false
+        updateAutoCapitalize()
+    }
+
+    /**
      * The clipboard panel is offered when history is on and the field is not sensitive (a password
      * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
      * in any field, password fields included: pasting there is a normal use.
@@ -478,7 +700,11 @@ class KeyboardController(
      * same rule again for callers that reach here another way.
      */
     fun onKeyLongPress(action: KeyAction) {
-        if (action == KeyAction.Emoji) openClipboard()
+        when (action) {
+            KeyAction.Emoji -> openClipboard()
+            KeyAction.Voice -> voice.toggle()
+            else -> Unit
+        }
     }
 
     /** Opens the clipboard panel; does nothing when it is not [clipboardAvailable]. */
@@ -556,9 +782,17 @@ class KeyboardController(
     val toolsVisible: Boolean
         get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
 
+    /**
+     * Whether the strip's Edit tool is drawn selected: exactly while the editing panel is open,
+     * whatever the selection, the strip content or the tools' busy state do. Derived, so the tool
+     * recomposes only when the panel opens or closes.
+     */
+    val editToolSelected: Boolean by derivedStateOf { panel == KeyboardPanel.Editing }
+
     /** The Edit tool: opens the editing panel, or goes back to the keys from it. */
     fun toggleEditingPanel() {
-        if (panel == KeyboardPanel.Editing) showPanel(KeyboardPanel.Keys) else editing.openPanel()
+        if (panel == KeyboardPanel.Editing) showPanelKeepingLayer(KeyboardPanel.Keys)
+        else editing.openPanel()
     }
 
     /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
@@ -596,7 +830,7 @@ class KeyboardController(
         // panel open, so the user sees nothing happened and can pick again.
         if (!pasted) return
         chipDismissedFor = id
-        showPanel(KeyboardPanel.Keys)
+        showPanelKeepingLayer(KeyboardPanel.Keys)
         updateAutoCapitalize()
     }
 
@@ -667,6 +901,7 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        voice.stopNow()
         selection = EditorSelection()
         editing.reset()
         input.onFinishInput()
@@ -681,10 +916,18 @@ class KeyboardController(
     fun onGeometry(geometry: KeyboardGeometry) {
         if (geometry.width <= 0f || geometry.height <= 0f) return
         input.layout = KeyLayoutModels.from(geometry, ++layoutId)
+        warmUpSwipe()
+    }
+
+    /** Builds the swipe index off the main thread as soon as swiping can be used in this field. */
+    private fun warmUpSwipe() {
+        if (swipeTypingActive) input.warmUpSwipe()
     }
 
     /** A strip slot was tapped. */
     fun onSuggestionTap(slot: StripSlot) {
+        input.settlePendingSwipe()
+        swipes.onCancel()
         input.onStripTap(slot)
         composingNow = input.isComposing
         updateAutoCapitalize()
@@ -778,14 +1021,20 @@ class KeyboardController(
                 numberRow = settings.numberRow || profile.sensitive,
                 signedNumber = profile.signedNumber,
                 decimalNumber = profile.decimalNumber,
+                fieldModes = declaredProfile.kind == FieldKind.Text,
             )
         } else {
             ComposeOptions(
                 numberRow = settings.numberRow || profile.sensitive,
                 terminalRow = profile.kind == FieldKind.Terminal,
                 bottomKeyWidth = settings.bottomKeyWidth,
+                modeEnterKeyWidth = settings.modeEnterKeyWidth,
+                symbolHints = settings.symbolHints,
                 // No emoji (nor, from PR C, clipboard) in password fields.
                 emojiKey = !profile.sensitive,
+                fieldModes = declaredProfile.kind == FieldKind.Text,
+                // Voice typing (long-press the comma) is off in password fields and by setting.
+                voiceKey = settings.voiceEnabled && !profile.sensitive,
             )
         }
 
@@ -794,28 +1043,31 @@ class KeyboardController(
         if (newOptions == options) return
         options = newOptions
         layer = composer.compose(keyboardSet, state.layerId, variant, options)
-        heightUnits = referenceHeightUnits()
+        heightUnits = referenceHeightUnits(layer.takeIf { state.layerId == KeyboardSet.LETTERS })
     }
 
     /**
      * Total row weight of the letters layer for the current field. The number row is left out for
      * numeric fields: their pads already have the digits, so it would only make them taller.
      */
-    private fun referenceHeightUnits(): Float {
+    private fun referenceHeightUnits(composedLetters: KeyboardLayer? = null): Float {
         val numeric =
             profile.kind == FieldKind.Number ||
                 profile.kind == FieldKind.Phone ||
                 profile.kind == FieldKind.DateTime
+        // The letters layer just composed with these options is the reference: compose it once.
         val reference =
-            runCatching {
-                composer.compose(
-                    keyboardSet,
-                    KeyboardSet.LETTERS,
-                    variant,
-                    if (numeric) options.copy(numberRow = false) else options,
-                )
-            }
-                .getOrNull() ?: return heightUnits
+            composedLetters?.takeIf { !numeric }
+                ?: runCatching {
+                    composer.compose(
+                        keyboardSet,
+                        KeyboardSet.LETTERS,
+                        variant,
+                        if (numeric) options.copy(numberRow = false) else options,
+                    )
+                }
+                    .getOrNull()
+                ?: return heightUnits
         return reference.rows.sumOf { it.height.toDouble() }.toFloat()
     }
 
@@ -846,6 +1098,16 @@ class KeyboardController(
         const val PHONE = "phone"
         const val DATETIME = "datetime"
         const val DEFAULT_HEIGHT_UNITS = 4f
+
+        /** Fields where a swipe types a word (P5-5). */
+        val SWIPE_KINDS =
+            setOf(
+                FieldKind.Text,
+                FieldKind.Email,
+                FieldKind.Url,
+                FieldKind.PersonName,
+                FieldKind.PostalAddress,
+            )
 
         /** Before the first field is focused: plain text, no auto-caps. */
         val DEFAULT_PROFILE = FieldProfile.from(InputType.TYPE_CLASS_TEXT, 0)

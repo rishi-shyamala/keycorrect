@@ -31,22 +31,24 @@ A plain string is shorthand for a character key: `"q"` means `{ "label": "q" }`.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` · `keycode` · `modifier` · `emoji` |
+| `type` | string | `char` | `char` · `text` · `shift` · `backspace` · `space` · `enter` · `layer` · `modeSwitch` · `spacer` · `keycode` · `modifier` · `emoji` · `fieldMode` |
 | `label` | string | per type | Text drawn on the key. Required for `char`/`text` unless `text` is set, and for `layer`. Ignored for `modeSwitch` |
 | `text` | string | `label` | What gets typed (`char`/`text`) |
 | `shifted` | string | upper-cased `text` | What gets typed while shift is on (`char` only). Labels follow it |
-| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys only; setting it on any other type is an error). See "Popup entries" |
+| `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys, and `modeSwitch` keys with `fieldMode` entries only; setting it on any other type is an error). See "Popup entries" |
 | `hint` | string or `null` | first `popup` entry | Small corner label. `null` hides it |
+| `longPress` | `"voice"` | none | What holding the key does instead of opening a popup (`char`/`text` keys without a `popup` only). `"voice"` is `KeyAction.Voice`: it starts voice typing, and the keyboard draws a small mic icon as the key's hint. See "Long-press actions" |
 | `width` | number | `1.0` (`space` 5.0, `shift`/`backspace`/`enter`/`layer`/`modeSwitch` 1.5) | Width in standard-key units |
 | `target` | string | — | Layer id to switch to (`layer` only, required) |
 | `code` | string | — | Key to send (`keycode` only, required): `escape` · `tab` · `left` · `right` · `up` · `down` · `home` · `end` · `pageUp` · `pageDown` · `forwardDelete` |
 | `modifier` | string | — | `ctrl` or `alt` (`modifier` only, required) |
+| `mode` | string | — | `text` · `email` · `url` · `number` · `phone` (`fieldMode` only, required) |
 | `style` | string | per type | `character` · `modifier` · `space` · `action` (visual class) |
 | `description` | string | per type | Accessibility label (TalkBack) |
 
 Setting `text`, `shifted`, `target`, `code` or `modifier` on a type that doesn't use it is an error. Default `description` is the label, `Shift`, the code's name (`keycode`: `Escape`, `Tab`, `Left`, ..., `Page up`), `Control`/`Alt` (`modifier`), `Emoji`, `Delete`, `Space`, `Enter`, `Switch to <target>` (`layer`), or `Switch to symbols`/`Switch to letters` (`modeSwitch`). A single cased letter gets an upper-case `shifted` by default; anything else is unchanged.
 
-Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `code`, `description` and `type` (`char`/`text`/`keycode` only), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
+Popup entries are keys too (a bare string works), but the popup panel draws them as fixed-size cells. So an entry may set `label`, `text`, `shifted`, `code`, `description` and `type` (`char`/`text`/`keycode`/`fieldMode`), and nothing else: nested `popup`, `hint`, `width` and `style` on an entry are errors (for example `rows[0].keys[3].popup[1].width`).
 
 Type semantics:
 - `char`: types `text` (or `shifted` while shift is on) and consumes a one-shot shift.
@@ -54,12 +56,15 @@ Type semantics:
 - `shift`, `backspace`, `space`, `enter`: the usual. Enter adapts to the field's IME action at runtime.
 - `layer`: switches to `target`, which is a layer id from the keyboard set (below).
 - `modeSwitch`: only used in bottom rows. It is resolved at runtime to `?123 → symbols` when on the letters layer, and `ABC → letters` otherwise.
+- `fieldMode`: only as an entry in the popup of a `modeSwitch` key (and a `modeSwitch` popup holds nothing else). Tapping it is `KeyAction.SetFieldMode(mode)`: the keyboard becomes that field kind's (layout, bottom row, suggestion and autocorrect rules) until the field changes; `text` goes back. Default labels `Abc`, `@`, `/`, `123`, `☎`; descriptions `Text keyboard`, `Email keyboard`, ... The built-in bottom rows offer all five on `modeSwitch` (long-press `?123`) with `"hint": null`. The composer keeps the popup only with `ComposeOptions.fieldModes`, which the keyboard sets in plain text fields (`FieldKind.Text`); elsewhere the popup is dropped. With `fieldModes` on, the number and phone pads get a thin full-width `ABC` key under them (tap: text; long-press: the same popup), since they have no mode-switch key.
 - `keycode`: sends a raw key event (down and up) with the named Android key code, not text. The default label is `Esc`, `Tab`, `←`, `→`, `↑`, `↓`, `Home`, `End`, `PgUp`, `PgDn` or `Del`. Style `modifier`, width 1.0.
 - `modifier`: Ctrl or Alt. A tap applies it to the next key (one-shot); a second tap within 400 ms locks it; the next tap unlocks. While it is on, a letter, digit, punctuation key, Space, Enter, Backspace or `keycode` key is sent as a key event with the Ctrl/Alt meta state (terminal fields only). The key is drawn highlighted when on, and differently when locked. Style `modifier`, width 1.0.
 - `emoji`: opens the emoji panel (a long-press opens the clipboard). Parsed now, acted on from PR B. Style `modifier`, width 1.0.
 - `spacer`: an empty, non-interactive gap of `width` units. Touches there go to the nearest real key.
 
 ## Number-field options (`numpad` layouts)
+**Long-press actions.** `"longPress": "voice"` sets `ResolvedKey.longPress` to `KeyAction.Voice` (tapping the key still types it). A key with a `longPress` has no popup (setting both is an error), and the field is not valid on popup entries. The built-in text bottom row puts it on the comma and the email row on the period (the `@` and `/` keys of the email and URL rows type something else, and the URL row's period already has the TLD popup, so the URL row has no voice key). `ComposeOptions.voiceKey` (default true) keeps it; the keyboard clears it in password fields and when voice typing is off, so the key is plain there.
+
 `ComposeOptions(signedNumber, decimalNumber)` mirror the field's `TYPE_NUMBER_FLAG_SIGNED` / `TYPE_NUMBER_FLAG_DECIMAL` (both default to true). When composing a `numpad` layout, a key that types `-` is replaced by a spacer of the same width if `signedNumber` is false. Keys that type `.` or `,` are replaced likewise if `decimalNumber` is false. Both are treated as decimal separators: the numpad offers both so one layout serves every locale, and number fields have no thousands-grouping character. Spacers keep the geometry stable and touches fall through to the nearest real key. Other layout kinds ignore these options. Only top-level keys are affected, not popup entries.
 
 ## Keyboard set (built-in, Phase 1)
@@ -76,11 +81,15 @@ Layouts with `"bottomRow": "auto"` get a bottom row appended at runtime, chosen 
 | URL | `bottom_url` |
 
 Composer sizing (all layers except `numpad`/`phone`/`datetime`):
-- One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched.
+- One key unit `u = width / max(10, widest row)` is shared by letters, symbols and symbols2, so a standard key is the same size on every page. Numeric pads keep `width / widest row`. Narrower rows are centred, never stretched. Row 3 of both symbols pages has the same shape (1u layer key, eight 1u character keys, 1u backspace) so the controls do not move when switching pages, and both get the same appended bottom row.
 - Keys with style `modifier` or `action` (shift, backspace, layer, enter, keycode, modifier) are capped at 1.5u.
-- In the bottom row (the row with the space key) every key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.75; Enter at least 1.25) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, comma (@ for email, / for URL), space, period, enter`.
+- In the bottom row (the row with the space key) the mode-switch (?123/ABC) and Enter keys get `ComposeOptions.modeEnterKeyWidth` units (default 1.15), every other key except space gets `ComposeOptions.bottomKeyWidth` units (default 0.75) and space takes the rest so the row is 10u. If that would leave space under 1u, the side keys shrink to leave exactly 1u. Widths written in `bottom_*.json` are placeholders. Order: `?123/ABC, emoji, comma (@ for email, / for URL), space, period, enter`.
 
 An optional number row (setting) is prepended to the `letters` layer; the symbol layers get their `numberRowExtra` row instead.
+
+Row 3 is aligned on `letters`, `symbols` and `symbols2`: a 1.5u shift or page key, 7 character keys, a 1.5u backspace.
+
+**Symbol hints** (`ComposeOptions.symbolHints`, default on): when composing a `letters` layer the composer also composes the `symbols` layer with the same options and gives each character key of the letters rows the label of the character key at the same row index and column index (function keys and spacers are not counted) as its `hint` and as its first popup entry (not repeated if the popup already has it). So with the number row on, `q..p` get `+ × ÷ = / _ < > [ ]`, `a..l` get `! @ # $ % ^ & * (` and `z..m` get `- ' " : ; / ?`; with it off the top row gets the digits. With the number row on, digit popup entries and a digit hint are dropped from the top letter row. With `symbolHints` off no symbol is added, and the layout's own hints and popups stay (apart from the digit rule above).
 
 ## Terminal row
 The `extra` kind holds keys that are composed above the rows of every layer. The built-in `terminal_row` layout (Esc, Tab, Ctrl, Alt, ←, ↓, ↑, →, with Home, PgDn, PgUp and End on the long-press popups of the arrows) is added when `ComposeOptions.terminalRow` is set, which the keyboard does for terminal fields (`TYPE_NULL`). It goes above the number row and above every layer, so it stays when the layer changes, and its height counts in the keyboard's height units. `extra` layouts default to `"bottomRow": "included"` and are not layers of the keyboard set.

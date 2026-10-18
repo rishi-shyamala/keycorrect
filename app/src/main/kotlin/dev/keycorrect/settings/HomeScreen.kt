@@ -43,6 +43,11 @@ fun HomeScreen(
             onClick = { onNavigate(SettingsDestination.Emoji) },
         )
         NavRow(
+            title = stringResource(R.string.voice_title),
+            supportingText = stringResource(R.string.voice_summary),
+            onClick = { onNavigate(SettingsDestination.Voice) },
+        )
+        NavRow(
             title = stringResource(R.string.clipboard_title),
             supportingText = stringResource(R.string.clipboard_summary),
             onClick = { onNavigate(SettingsDestination.Clipboard) },

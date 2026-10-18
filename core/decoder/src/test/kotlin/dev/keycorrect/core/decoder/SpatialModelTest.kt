@@ -88,6 +88,24 @@ class SpatialModelTest {
     }
 
     @Test
+    fun cacheKeepsModelsAcrossSnapshotsWithSameOffsetsAndRebuildsOnChange() {
+        val cache = SpatialModelCache(SpatialConfig())
+        val identity = TouchCorrection.Identity
+        val same = KeyUnitOffsets { if (it == 'a') 0.1f to 0f else null }
+        val a = cache.get(TestKeyboard.layout, identity, same, Any(), "t")
+        // A new snapshot with the same learned offsets: the model is kept.
+        assertThat(cache.get(TestKeyboard.layout, identity, same, Any(), "t")).isSameInstanceAs(a)
+        // A new snapshot with other offsets: rebuilt, and the shift shows in the Gaussian.
+        val moved = KeyUnitOffsets { if (it == 'a') 0.3f to 0f else null }
+        val b = cache.get(TestKeyboard.layout, identity, moved, Any(), "t")
+        assertThat(b).isNotSameInstanceAs(a)
+        // Nothing learned equals no personalization.
+        val none = cache.get(TestKeyboard.layout, identity, null, null, null)
+        assertThat(cache.get(TestKeyboard.layout, identity, { null }, Any(), null))
+            .isSameInstanceAs(none)
+    }
+
+    @Test
     fun touchBetweenKeysIsAmbiguous() {
         val a = TestKeyboard.touch('i')!!
         val o = TestKeyboard.touch('o')!!

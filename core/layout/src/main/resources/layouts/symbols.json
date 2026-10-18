@@ -1,6 +1,7 @@
 // Symbols layer, page 1: digits, the shifted digits in US order, then punctuation.
-// The bottom row is appended at runtime (bottomRow: auto). With the number row on, numberRowExtra adds
-// a row of operators under the digits so this page has as many rows as the letters.
+// Row 3 lines up with the letters' row 3 (1.5u page key, 7 keys, 1.5u backspace). The bottom row is
+// appended at runtime (bottomRow: auto). With the number row on, numberRowExtra adds a row of operators
+// under the digits so this page has as many rows as the letters.
 {
   "format": 1,
   "id": "symbols",
@@ -32,16 +33,15 @@
       { "label": ")", "popup": ["]", "}", ">"] },
     ],
     [
-      { "type": "layer", "label": "1/2", "target": "symbols2", "width": 1, "style": "modifier", "description": "More symbols" },
-      { "label": "-", "popup": ["_", "–", "—"] },
+      { "type": "layer", "label": "1/2", "target": "symbols2", "style": "modifier", "description": "More symbols" },
+      { "label": "-", "popup": ["+", "_", "–", "—"] },
       { "label": "'", "popup": ["`", "‘", "’"] },
       { "label": "\"", "popup": ["“", "”"] },
       ":",
       ";",
       { "label": "/", "popup": ["\\"] },
       { "label": "?", "popup": ["¿"] },
-      { "label": "+", "popup": ["±"] },
-      { "type": "backspace", "width": 1 },
+      { "type": "backspace" },
     ],
   ],
   "numberRowExtra": {

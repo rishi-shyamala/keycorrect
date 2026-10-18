@@ -37,7 +37,7 @@ tree is clean except the user's own untracked `user-feedback.md`: never commit t
 `phase-4-feedback`). It holds every feedback-round-1 item plus the user's later changes:
 - the animated tool strip (edit and emoji at the left, clipboard and settings at the right);
 - no hold on space;
-- bottom-row keys at 75% of a letter key, with Enter ≥1.25u.
+- bottom-row keys at 75% of a letter key; ?123 and Enter at 115% (own slider).
 
 Device-tested on the Tab S9, reviewed, review fixes in, and the perf check done. Not run: the frame
 check of typing on a release build (the tablet was locked). Next, after the user merges: Phase 5,

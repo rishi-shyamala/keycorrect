@@ -53,6 +53,9 @@ internal object PanelIcons {
             "M5 7h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM7 18h10",
         )
 
+    /** One line of text between two end marks: select the line. */
+    val SelectLine = outlineIcon("select_line", "M4 12h16M4 8v8M20 8v8")
+
     /** Lines of text ending in a full stop: select the sentence. */
     val SelectSentence =
         outlineIcon("select_sentence", "M4 6h16M4 10h16M4 14h9M16.5 14.5h.01M4 18h6")
@@ -66,4 +69,44 @@ internal object PanelIcons {
 
     /** Two overlapping sheets: copy. */
     val Copy = outlineIcon("copy", "M9 9h10v10H9zM15 9V5H5v10h4")
+
+    /** Two chevrons pointing left: move a word left. */
+    val WordLeft = outlineIcon("word_left", "M12 7l-5 5 5 5M18 7l-5 5 5 5")
+
+    /** Two chevrons pointing right: move a word right. */
+    val WordRight = outlineIcon("word_right", "M6 7l5 5-5 5M12 7l5 5-5 5")
+
+    /** An arrow into a bar on the left: the start of the line. */
+    val Home = outlineIcon("home", "M5 5v14M19 12H9M14 7l-5 5 5 5")
+
+    /** An arrow into a bar on the right: the end of the line. */
+    val End = outlineIcon("end", "M19 5v14M5 12h10M10 7l5 5-5 5")
+
+    /** A dashed frame around a letter: select all. */
+    val SelectAll =
+        outlineIcon(
+            "select_all",
+            "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3" +
+                "M8 20H5a1 1 0 0 1-1-1v-3M9 16l3-8 3 8M10 14h4",
+        )
+
+    /** Scissors: cut. */
+    val Cut =
+        outlineIcon(
+            "cut",
+            "M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6M8.1 8.1 20 20M8.1 15.9 20 4",
+        )
+
+    /** A clipboard: paste. */
+    val Paste =
+        outlineIcon(
+            "paste",
+            "M9 3h6v4H9zM15 5h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2",
+        )
+
+    /** A curved arrow back: undo. */
+    val Undo = outlineIcon("undo", "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3")
+
+    /** A curved arrow forward: redo. */
+    val Redo = outlineIcon("redo", "M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3")
 }

@@ -15,10 +15,17 @@ import dev.keycorrect.core.input.TextEditor
  */
 internal class TextContextCache(private val editor: TextEditor) {
     private val text = StringBuilder()
+    private var snapshot: String? = null
 
     /** The cached text before the cursor; only meaningful while [beforeKnown]. */
     val before: CharSequence
         get() = text
+
+    /**
+     * [before] as an immutable String for another thread. Typing a composing word doesn't change
+     * the text before it, so one copy serves every request until the text itself changes.
+     */
+    fun beforeSnapshot(): String = snapshot ?: text.toString().also { snapshot = it }
 
     var beforeKnown = false
         private set
@@ -44,6 +51,7 @@ internal class TextContextCache(private val editor: TextEditor) {
     fun ensureBefore() {
         if (beforeKnown) return
         val read = editor.textBeforeCursor(TypingContext.MAX_BEFORE_CHARS)
+        snapshot = null
         text.setLength(0)
         if (read != null) text.append(read)
         beforeAvailable = read != null
@@ -65,6 +73,7 @@ internal class TextContextCache(private val editor: TextEditor) {
 
     fun appendBefore(added: String) {
         if (!beforeKnown) return
+        snapshot = null
         text.append(added)
         val excess = text.length - TypingContext.MAX_BEFORE_CHARS
         if (excess > 0) {
@@ -81,17 +90,20 @@ internal class TextContextCache(private val editor: TextEditor) {
     /** Drops the last grapheme before the cursor (a backspace); the cache must be [beforeKnown]. */
     fun dropLastCluster() {
         val n = Graphemes.lastClusterLength(text)
+        snapshot = null
         text.setLength(maxOf(0, text.length - n))
         if (beforeTruncated && text.length < MIN_TRUSTED_BEFORE) beforeKnown = false
     }
 
     /** Drops the last [n] chars before the cursor. */
     fun dropBefore(n: Int) {
+        snapshot = null
         text.setLength(maxOf(0, text.length - n))
     }
 
     /** Cuts the text before the cursor back to its first [length] chars. */
     fun truncateBefore(length: Int) {
+        snapshot = null
         text.setLength(length)
     }
 
@@ -143,6 +155,56 @@ internal class TextContextCache(private val editor: TextEditor) {
         return i
     }
 
+    /**
+     * A word the cursor is in or at the end of: [text], of which [beforeLength] chars precede it.
+     */
+    class WordAround(
+        val text: String,
+        /** Index of the word's first char in [before]. */
+        val start: Int,
+        val beforeLength: Int,
+        val afterLength: Int,
+    )
+
+    /**
+     * The plain word (letters and apostrophes, 2 to 32 chars, at a word boundary) that the cursor
+     * is inside or right after, or null. Needs both halves of the context to be known and readable;
+     * a word cut off by the end of what was read is not a word we can judge.
+     */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // guard clauses of one scan
+    fun wordAroundCursor(): WordAround? {
+        if (!beforeReadable || !afterKnown) return null
+        var i = text.length
+        while (i > 0 && (text[i - 1].isLetterOrDigit() || isApostrophe(text[i - 1]))) i--
+        if (i == 0 && beforeTruncated) return null
+        if (i > 0) {
+            val c = text[i - 1]
+            if (!c.isWhitespace() && c !in OPENING_PUNCTUATION) return null
+        }
+        while (i < text.length && isApostrophe(text[i])) i++
+        val beforeLength = text.length - i
+        if (beforeLength == 0) return null
+        var j = 0
+        while (j < after.length && (after[j].isLetterOrDigit() || isApostrophe(after[j]))) j++
+        if (j == after.length && after.length >= TypingContext.MAX_AFTER_CHARS) return null
+        val word = text.substring(i) + after.substring(0, j)
+        if (word.length !in 2..MAX_RECOMPOSE_CHARS) return null
+        if (!word[0].isLetter() || isApostrophe(word.last())) return null
+        if (!word.all { it.isLetter() || isApostrophe(it) }) return null
+        return WordAround(word, i, beforeLength, j)
+    }
+
+    /** The cached text before the cursor ends in a letter or an apostrophe (it may end a word). */
+    fun endsInWordChar(): Boolean {
+        val c = text.lastOrNull() ?: return false
+        return c.isLetter() || isApostrophe(c)
+    }
+
+    /** Drops the first [n] chars after the cursor. */
+    fun dropAfter(n: Int) {
+        after = after.drop(n)
+    }
+
     /** Forgets what was read; the next [ensureBefore] / [ensureAfter] reads the editor again. */
     fun invalidate() {
         beforeKnown = false
@@ -152,6 +214,7 @@ internal class TextContextCache(private val editor: TextEditor) {
     /** [invalidate], and drops the cached text itself. */
     fun reset() {
         invalidate()
+        snapshot = null
         text.setLength(0)
         beforeTruncated = false
         after = ""

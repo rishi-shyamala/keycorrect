@@ -1,8 +1,12 @@
 package dev.keycorrect.feature.keyboard
 
 import android.view.KeyEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.input.EditAction
@@ -42,6 +46,9 @@ internal class SimEditor : TextEditor {
     /** Counts of calls, for "never composes / never reads" assertions. */
     var composeCalls = 0
     var readCalls = 0
+
+    /** How many of [readCalls] were [surroundingText]. */
+    var surroundingCalls = 0
 
     /** How many of [readCalls] were [textAfterCursor]. */
     var afterCalls = 0
@@ -269,6 +276,7 @@ internal class SimEditor : TextEditor {
 
     override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? {
         readCalls++
+        surroundingCalls++
         val from = maxOf(0, selStart - beforeLength)
         val to = minOf(text.length, selEnd + afterLength)
         return Surrounding(text.substring(from, to), selStart - from, selEnd - from, from)
@@ -282,7 +290,8 @@ internal class SimEditor : TextEditor {
 
 /** A backend whose predictor, shortcuts and known words are set by the test. */
 internal class FakeBackend : PredictionBackend {
-    override var predictor: Predictor? = null
+    /** Snapshot state, like the app's backend: the keyboard recomposes when the engine arrives. */
+    override var predictor: Predictor? by mutableStateOf(null)
     val shortcuts = mutableMapOf<String, ShortcutRule>()
     val known = mutableSetOf<String>()
     val added = mutableListOf<String>()
@@ -337,8 +346,12 @@ internal fun testEnv(
     expander: ShortcutExpander = ShortcutExpander(),
     postToMain: (Runnable) -> Unit = { it.run() },
     separatorWaitMs: Long = DecoderLoop.SEPARATOR_WAIT_MS,
+    gestureWaitMs: Long = DecoderLoop.GESTURE_WAIT_MS,
 ): PredictionEnvironment {
-    val loop = DecoderLoop(executor, postToMain, separatorWaitMs) { backend.predictor }
+    val loop =
+        DecoderLoop(executor, postToMain, separatorWaitMs, gestureWaitMs) {
+            backend.predictor
+        }
     return PredictionEnvironment(backend, loop, scheduler, expander)
 }
 
@@ -373,6 +386,22 @@ internal class ScriptedPredictor : Predictor {
                 phrase = phrase?.let { Candidate(it, -1f, CandidateSource.Dictionary, true) },
                 autocorrectRunnerUp = runnerUp?.let { dict(it) },
             )
+    }
+
+    /** Every swipe decode asked for (previews and finals), in order. */
+    val gestureRequests = mutableListOf<GestureRequest>()
+
+    /** The words a swipe decodes to, best first; empty means nothing fits. */
+    var swipeWords: List<String> = emptyList()
+
+    override fun predictGesture(request: GestureRequest, stale: () -> Boolean): PredictResult {
+        gestureRequests += request
+        return PredictResult(
+            candidates = swipeWords.map { dict(it) },
+            literal = null,
+            autocorrect = swipeWords.firstOrNull()?.let { dict(it) },
+            sequence = request.sequence,
+        )
     }
 
     override fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult {

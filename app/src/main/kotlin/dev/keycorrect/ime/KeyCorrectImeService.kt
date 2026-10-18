@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -17,6 +18,7 @@ import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.feature.keyboard.ConfigRestartTracker
 import dev.keycorrect.feature.keyboard.EditorIdentity
 import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
@@ -64,6 +66,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             wordFeedback = { kind -> feedback.onWordEvent(kind, settingsFlow.value) },
             emoji = appContainer.emojiEnvironment,
             clipboard = appContainer.clipboardEnvironment,
+            voiceEnvironment = appContainer.voiceHost,
         )
     }
 
@@ -96,11 +99,20 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
                 predictionHost.applySettings(it)
+                appContainer.voiceHost.applySettings(it)
             }
         }
     }
 
+    /**
+     * Rotation and other configuration changes restart the input view of the same field; those
+     * restarts keep the layer (see [ConfigRestartTracker]). Every other start of the input view
+     * opens on the letters layer.
+     */
+    private val configRestarts = ConfigRestartTracker(SystemClock::uptimeMillis)
+
     override fun onConfigurationChanged(newConfig: Configuration) {
+        configRestarts.onConfigurationChanged(isInputViewShown)
         super.onConfigurationChanged(newConfig)
         updateDevice(newConfig)
     }
@@ -119,6 +131,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onDestroy() {
+        // The microphone and the recognizer are closed with the service.
+        controller.voice.stopNow()
         clipboardCapture.unregister()
         with(appContainer.clipboardEnvironment) {
             if (imagePaster === this@KeyCorrectImeService.imagePaster) imagePaster = null
@@ -171,24 +185,28 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         controller.onFinishInput()
+        configRestarts.reset()
         learningHost.requestFlush(FlushReason.KeyboardHidden)
         super.onFinishInputView(finishingInput)
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        // The controller first: super resumes the lifecycle, which lets Compose draw, and the
+        // first frame should show this field's state (layer, shift, strip), not the last one's.
+        controller.onStartInput(
+            FieldProfile.from(editorInfo),
+            settingsFlow.value,
+            // The controller keeps the layer for a restart of the same field only: a rotation.
+            restarting = configRestarts.isConfigRestart(),
+            identity = EditorIdentity.from(editorInfo),
+            initialSelStart = editorInfo.initialSelStart,
+            initialSelEnd = editorInfo.initialSelEnd,
+        )
         super.onStartInputView(editorInfo, restarting)
         // Loads the emoji catalog in the background, once per process.
         appContainer.emojiEnvironment.start()
         // Loads the clipboard history in the background and applies its retention rules.
         appContainer.clipboardEnvironment.start()
-        controller.onStartInput(
-            FieldProfile.from(editorInfo),
-            settingsFlow.value,
-            restarting,
-            EditorIdentity.from(editorInfo),
-            initialSelStart = editorInfo.initialSelStart,
-            initialSelEnd = editorInfo.initialSelEnd,
-        )
     }
 
     /** Asks the autofill service for chips styled like the keyboard; null opts out (menu). */

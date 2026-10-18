@@ -80,6 +80,14 @@ fun FeedbackSettingsScreen(
             enabled = settings.hapticsEnabled,
             onCheckedChange = { v -> onUpdate { it.copy(hapticOnAutocorrect = v) } },
         )
+        IntSliderRow(
+            title = stringResource(R.string.feedback_autocorrect_pulse),
+            value = settings.autocorrectPulseMs,
+            range = KeyboardSettings.HAPTIC_PULSE_MS_RANGE,
+            enabled = settings.hapticsEnabled && settings.hapticOnAutocorrect,
+            valueLabel = { stringResource(R.string.value_ms, it) },
+            onValueCommitted = { v -> onUpdate { it.copy(autocorrectPulseMs = v) } },
+        )
         OutlinedButton(
             onClick = { feedback.preview(FeedbackKind.Autocorrected, settings, view) },
             enabled = settings.hapticsEnabled && settings.hapticOnAutocorrect,
@@ -92,6 +100,14 @@ fun FeedbackSettingsScreen(
             checked = settings.hapticOnUnknownWord,
             enabled = settings.hapticsEnabled,
             onCheckedChange = { v -> onUpdate { it.copy(hapticOnUnknownWord = v) } },
+        )
+        IntSliderRow(
+            title = stringResource(R.string.feedback_unknown_word_pulse),
+            value = settings.unknownWordPulseMs,
+            range = KeyboardSettings.HAPTIC_PULSE_MS_RANGE,
+            enabled = settings.hapticsEnabled && settings.hapticOnUnknownWord,
+            valueLabel = { stringResource(R.string.value_ms, it) },
+            onValueCommitted = { v -> onUpdate { it.copy(unknownWordPulseMs = v) } },
         )
         OutlinedButton(
             onClick = { feedback.preview(FeedbackKind.UnknownWord, settings, view) },

@@ -51,10 +51,16 @@ include(":core:learning")
 
 include(":core:settings")
 
+include(":core:voice")
+
 include(":feature:keyboard-ui")
+
+include(":feature:voice-sherpa")
 
 include(":tools:dictbuild")
 
 include(":tools:emojibuild")
 
 include(":tools:eval")
+
+include(":voicepack")

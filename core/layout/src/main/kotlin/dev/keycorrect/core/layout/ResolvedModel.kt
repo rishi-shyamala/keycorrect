@@ -27,8 +27,32 @@ sealed interface KeyAction {
     /** Opens the emoji panel; a long-press opens the clipboard (Phase 4). */
     data object Emoji : KeyAction
 
+    /**
+     * Switches the keyboard to the layout and behaviour of a field of kind [mode], as if the field
+     * had declared it. Offered in the long-press popup of the mode-switch key (?123 / ABC), and
+     * only in plain text fields, which have no input type of their own to follow.
+     */
+    data class SetFieldMode(val mode: FieldMode) : KeyAction
+
+    /**
+     * Starts voice typing (dictation). Only ever a key's [ResolvedKey.longPress], never a tap: the
+     * comma's (docs/PHASE6.md P6-3).
+     */
+    data object Voice : KeyAction
+
     /** A non-interactive gap. */
     data object None : KeyAction
+}
+
+/**
+ * The field kinds a user can switch a plain text field to by hand (see [KeyAction.SetFieldMode]).
+ */
+enum class FieldMode(val json: String, val label: String, val description: String) {
+    Text("text", "Abc", "Text keyboard"),
+    Email("email", "@", "Email keyboard"),
+    Url("url", "/", "URL keyboard"),
+    Number("number", "123", "Number keyboard"),
+    Phone("phone", "\u260E", "Phone keyboard"),
 }
 
 enum class KeyModifier {
@@ -76,6 +100,12 @@ data class ResolvedKey(
     val hint: String? = null,
     val description: String = label,
     val shiftedLabel: String? = null,
+    /**
+     * What holding the key does instead of opening its popup (null: nothing; the popup, if any,
+     * opens). Only [KeyAction.Voice] exists; the keyboard draws a mic icon on a key that has it.
+     * Never set together with a popup.
+     */
+    val longPress: KeyAction? = null,
 ) {
     /** Keys that act on press and auto-repeat while held. */
     val repeatable: Boolean

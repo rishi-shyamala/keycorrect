@@ -17,9 +17,11 @@ class TouchStateMachineTest {
         override var spacebarCursor = true
         override var backspaceSwipe = true
         override var slopPx = 8f
-        override var cursorStepPx = 10f
-        override var lineStepPx = 50f
         override var wordStepPx = 40f
+        override var swipeTyping = true
+        override var swipeTrail = true
+        val swipeEvents = mutableListOf<String>()
+        var swipePoints = emptyList<Triple<Float, Float, Long>>()
         val drags = mutableListOf<Triple<Int, Int, Boolean>>()
         val swipes = mutableListOf<Int>()
         val swipeEnds = mutableListOf<Boolean>()
@@ -44,6 +46,29 @@ class TouchStateMachineTest {
 
                 override fun onBackspaceSwipeEnd(commit: Boolean) {
                     swipeEnds += commit
+                }
+
+                override fun onSwipeStart(path: SwipePath) {
+                    swipeEvents += "start"
+                    snapshot(path)
+                }
+
+                override fun onSwipeMove(path: SwipePath) {
+                    swipeEvents += "move"
+                    snapshot(path)
+                }
+
+                override fun onSwipeEnd(path: SwipePath) {
+                    swipeEvents += "end"
+                    snapshot(path)
+                }
+
+                override fun onSwipeCancel() {
+                    swipeEvents += "cancel"
+                }
+
+                private fun snapshot(path: SwipePath) {
+                    swipePoints = List(path.size) { Triple(path.x(it), path.y(it), path.time(it)) }
                 }
             }
 
@@ -78,7 +103,11 @@ class TouchStateMachineTest {
             maybeThrow("popup")
         }
 
+        /** Runs when a key is delivered, to look at the state the key sees. */
+        var onKeyProbe: (() -> Unit)? = null
+
         override fun onKey(action: KeyAction, touch: TouchPoint?) {
+            onKeyProbe?.invoke()
             keys += action
             touches += touch
             events += "key"
@@ -132,6 +161,21 @@ class TouchStateMachineTest {
         assertThat(host.keys).containsExactly(a.key.action)
         assertThat(touch.pressed).isEmpty()
         assertThat(touch.preview).isNull()
+    }
+
+    @Test
+    fun theKeyIsReleasedOnScreenBeforeTheTypingPipelineRuns() {
+        var pressedAtKey: Set<Int>? = null
+        var previewAtKey: KeySlot? = a
+        host.onKeyProbe = {
+            pressedAtKey = touch.pressed
+            previewAtKey = touch.preview
+        }
+        down(1, a)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+        assertThat(pressedAtKey).isEmpty()
+        assertThat(previewAtKey).isNull()
     }
 
     @Test
@@ -224,7 +268,7 @@ class TouchStateMachineTest {
         advance(1)
         val popup = touch.popup!!
         assertThat(popup.entries.map { it.label })
-            .containsExactly("à", "á", "â", "ä", "æ", "ã", "å", "ā")
+            .containsExactly("!", "à", "á", "â", "ä", "æ", "ã", "å", "ā") // the symbol hint first
             .inOrder()
         assertThat(popup.owner).isEqualTo(1L)
         assertThat(touch.preview).isNull()
@@ -565,48 +609,296 @@ class TouchStateMachineTest {
         assertThat(host.drags).isEmpty()
     }
 
-    @Test
-    fun spaceDragMovesTheCursorAndTypesNoSpace() {
-        slowSpace()
-        move(1, space, 40f)
-        machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(4, 0, false))
-        assertThat(host.ticks).isEqualTo(1)
-        assertThat(host.keys).isEmpty()
+    // --- Spacebar joystick: pure rate control from the centre ---
+
+    private val keyHeight
+        get() = space.bottom - space.top
+
+    private val ring
+        get() = keyHeight * JOYSTICK_RING_KEY_HEIGHTS
+
+    private val deadZone
+        get() = ring * JOYSTICK_DEAD_ZONE_FRACTION
+
+    /** Offset at which the rate has reached its maximum (far from every edge when sideways/up). */
+    private val farOut
+        get() = ring + keyHeight * JOYSTICK_FAST_KEY_HEIGHTS
+
+    /** Total characters and lines reported so far. */
+    private fun movedChars() = host.drags.sumOf { it.first }
+
+    private fun movedLines() = host.drags.sumOf { it.second }
+
+    /** Holds the finger still for [seconds] of timer ticks and returns the characters moved. */
+    private fun charsOver(seconds: Int = 1): Int {
+        val before = movedChars()
+        repeat(seconds * 40) { advance(JOYSTICK_TICK_MS) }
+        return movedChars() - before
+    }
+
+    private fun linesOver(seconds: Int = 1): Int {
+        val before = movedLines()
+        repeat(seconds * 40) { advance(JOYSTICK_TICK_MS) }
+        return movedLines() - before
     }
 
     @Test
-    fun spaceDragEmitsOnlyWhenTheStepCountChanges() {
+    fun theJoystickAppearsWhenTheDragStartsAndGoesOnRelease() {
         slowSpace()
-        move(1, space, 15f)
-        now += 1_000
-        move(1, space, 18f) // 1.8 steps: still 1
-        now += 1_000
-        move(1, space, -25f) // back past the start: from +1 to -2
-        assertThat(host.drags).containsExactly(Triple(1, 0, false), Triple(-3, 0, false))
+        move(1, space, 4f) // within the slop
+        assertThat(touch.joystick).isNull()
+        move(1, space, 30f)
+        val joystick = touch.joystick!!
+        assertThat(joystick.centerX).isEqualTo(space.centerX)
+        assertThat(joystick.centerY).isEqualTo(space.centerY)
+        assertThat(joystick.radius).isWithin(0.01f).of(ring)
+        assertThat(joystick.deadZone).isWithin(0.01f).of(ring * 0.25f)
+        assertThat(joystick.knobX).isWithin(0.01f).of(space.centerX + 30f)
+        machine.onUp(1)
+        assertThat(touch.joystick).isNull()
+    }
+
+    @Test
+    fun aLostTouchAndCancelAllClearTheJoystick() {
+        slowSpace()
+        move(1, space, 30f)
+        machine.cancel(1)
+        assertThat(touch.joystick).isNull()
+        down(2, space)
+        move(2, space, 30f)
+        assertThat(touch.joystick).isNotNull()
+        machine.cancelAll()
+        assertThat(touch.joystick).isNull()
+    }
+
+    @Test
+    fun theKnobStaysOnTheRing() {
+        slowSpace()
+        move(1, space, ring * 3f, 0f)
+        val joystick = touch.joystick!!
+        assertThat(joystick.knobX).isWithin(0.01f).of(space.centerX + ring)
+        assertThat(joystick.knobY).isWithin(0.01f).of(space.centerY)
+        assertThat(joystick.engaged).isTrue()
+        move(1, space, 0f, -ring * 3f)
+        assertThat(joystick.knobX).isWithin(0.01f).of(space.centerX)
+        assertThat(joystick.knobY).isWithin(0.01f).of(space.centerY - ring)
+    }
+
+    @Test
+    fun aDragThatStaysInTheDeadZoneMovesNothing() {
+        slowSpace()
+        move(1, space, host.slopPx + 2f) // past the slop, inside the dead zone
+        assertThat(deadZone).isGreaterThan(host.slopPx + 2f)
+        assertThat(touch.joystick).isNotNull()
+        assertThat(machine.nextDeadline()).isNull()
+        assertThat(charsOver(2)).isEqualTo(0)
+        move(1, space, 0f, -deadZone * 0.9f)
+        assertThat(linesOver(2)).isEqualTo(0)
+        machine.onUp(1)
+        assertThat(host.drags).isEmpty()
+        assertThat(host.keys).isEmpty()
+        assertThat(host.ticks).isEqualTo(0)
+    }
+
+    @Test
+    fun justOutsideTheDeadZoneInchesAlongSlowly() {
+        slowSpace()
+        move(1, space, deadZone + 1f) // about 3 chars/s
+        assertThat(machine.nextDeadline()).isEqualTo(now + JOYSTICK_TICK_MS)
+        assertThat(host.drags).isEmpty()
+        assertThat(charsOver()).isIn(2..4)
+        assertThat(movedLines()).isEqualTo(0)
+        assertThat(host.ticks).isEqualTo(0) // no haptic until the ring
+    }
+
+    @Test
+    fun theRateEasesInFromTheDeadZoneToTheRingThenGrowsBeyondIt() {
+        slowSpace()
+        move(1, space, deadZone + 1f)
+        val slow = charsOver()
+        move(1, space, (deadZone + ring) / 2f) // halfway: 3 + 12 / 4 = 6 chars/s
+        val half = charsOver()
+        assertThat(half).isIn(5..7)
+        move(1, space, ring - 1f) // about 15 chars/s
+        val near = charsOver()
+        assertThat(near).isIn(13..16)
+        move(1, space, ring + keyHeight * 0.75f) // halfway to full: about 27 chars/s
+        val past = charsOver()
+        assertThat(past).isIn(25..29)
+        move(1, space, farOut)
+        val fast = charsOver()
+        assertThat(fast).isIn(39..41)
+        assertThat(listOf(slow, half, near, past, fast)).isInStrictOrder()
+        move(1, space, farOut + 5 * keyHeight) // no faster than the maximum
+        assertThat(charsOver()).isIn(39..41)
+    }
+
+    @Test
+    fun heldStillTheCursorKeepsMovingOnTimerTicks() {
+        slowSpace()
+        move(1, space, farOut) // 40 chars/s
+        assertThat(touch.joystick!!.engaged).isTrue()
+        assertThat(machine.nextDeadline()).isEqualTo(now + JOYSTICK_TICK_MS)
+        assertThat(host.drags).isEmpty()
+        repeat(10) { advance(JOYSTICK_TICK_MS) } // 250 ms, finger still
+        assertThat(movedChars()).isIn(9..10)
+        assertThat(movedLines()).isEqualTo(0)
+        assertThat(host.drags.all { !it.third }).isTrue()
+        assertThat(machine.nextDeadline()).isNotNull()
+        assertThat(charsOver()).isIn(39..41) // and on, as long as it is held
+    }
+
+    @Test
+    fun beyondTheRingToTheLeftMovesLeft() {
+        slowSpace()
+        move(1, space, -farOut)
+        assertThat(charsOver()).isIn(-41..-39)
+    }
+
+    @Test
+    fun onlyTheLargerOffsetMoves() {
+        slowSpace()
+        move(1, space, farOut, -(deadZone + 5f)) // mostly sideways
+        repeat(40) { advance(JOYSTICK_TICK_MS) }
+        assertThat(movedChars()).isIn(39..41)
+        assertThat(movedLines()).isEqualTo(0)
+        host.drags.clear()
+        move(1, space, deadZone + 5f, -farOut) // mostly up: 12 lines/s
+        repeat(40) { advance(JOYSTICK_TICK_MS) }
+        assertThat(movedLines()).isIn(-12..-11)
+        assertThat(movedChars()).isEqualTo(0)
+    }
+
+    @Test
+    fun verticalRatesAreSlowerThanHorizontalOnes() {
+        slowSpace()
+        move(1, space, 0f, -(deadZone + 1f)) // about 1 line/s
+        assertThat(linesOver(2)).isIn(-3..-1)
+        move(1, space, 0f, -(ring - 1f)) // about 4 lines/s
+        assertThat(linesOver()).isIn(-4..-3)
+    }
+
+    @Test
+    fun theHapticTickComesOnceWhenTheFingerCrossesTheRing() {
+        slowSpace()
+        move(1, space, ring - 2f)
+        assertThat(host.ticks).isEqualTo(0)
+        move(1, space, ring + 2f)
+        assertThat(host.ticks).isEqualTo(1)
+        move(1, space, farOut)
+        assertThat(host.ticks).isEqualTo(1)
+        move(1, space, ring - 2f)
+        assertThat(touch.joystick!!.engaged).isFalse()
+        move(1, space, ring + 2f)
         assertThat(host.ticks).isEqualTo(2)
     }
 
     @Test
-    fun aFasterSpaceDragMovesMoreStepsPerPixel() {
+    fun theSelectFlagIsKeptWhileMoving() {
         host.longPressDelayMs = 100_000L
-        down(1, space)
-        now += 100
-        move(1, space, 40f) // 40 steps/s: gain 1 + (40 - 20) / 40 = 1.5
-        assertThat(host.drags).containsExactly(Triple(6, 0, false))
-        now += 10
-        move(1, space, 400f) // beyond the cap of 2.5x: 36 steps * 2.5
-        assertThat(host.drags.last()).isEqualTo(Triple(90, 0, false))
+        downLeft(1)
+        now += 1_000
+        moveLeft(1, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
+        moveLeft(1, -farOut)
+        host.drags.clear()
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
     }
 
     @Test
-    fun spaceDragVerticallyMovesOneLinePerLineStep() {
+    fun aStalledTimerDoesNotBurst() {
         slowSpace()
-        move(1, space, 0f, -120f)
-        assertThat(host.drags).containsExactly(Triple(0, -2, false))
-        now += 1_000
-        move(1, space, 0f, -20f)
-        assertThat(host.drags).containsExactly(Triple(0, -2, false), Triple(0, 2, false))
+        move(1, space, farOut)
+        advance(5_000) // main thread stalled
+        assertThat(movedChars()).isAtMost(4) // 100 ms at most: 40 chars/s
+    }
+
+    @Test
+    fun fingerPinnedAtTheBottomEdgeMovesDownAtFullSpeed() {
+        slowSpace()
+        // The space bar is on the bottom row: the surface's edge is half a key below its centre.
+        val room = geometry.height - space.centerY
+        assertThat(room).isLessThan(ring)
+        move(1, space, 0f, room) // at the edge: a small offset, but full deflection
+        assertThat(linesOver()).isIn(11..12)
+        move(1, space, 0f, room + 3 * keyHeight) // below the surface (nav bar): the same
+        assertThat(linesOver()).isIn(11..12)
+    }
+
+    @Test
+    fun theRingShortensTowardsTheBottomEdgeSoTheWholeRangeFitsInTheRoomLeft() {
+        slowSpace()
+        val room = geometry.height - space.centerY
+        val shortRing = room - keyHeight * JOYSTICK_EDGE_MARGIN_KEY_HEIGHTS
+        move(1, space, 0f, shortRing - 1f) // at the (shortened) ring: medium, 4 lines/s
+        assertThat(linesOver()).isIn(3..4)
+        move(1, space, 0f, (shortRing + room) / 2f) // between ring and edge: between 4 and 12
+        assertThat(linesOver()).isIn(7..9)
+        // Upwards there is plenty of room: the same offset is still slow.
+        move(1, space, 0f, -shortRing)
+        assertThat(linesOver(2)).isIn(-3..-1)
+        // With its centre low, a slow dead zone still exists.
+        move(1, space, 0f, keyHeight * 0.1f)
+        assertThat(linesOver()).isEqualTo(0)
+    }
+
+    @Test
+    fun fingersPinnedAgainstAnyEdgeAreAtFullDeflection() {
+        val kh = 100f
+        val corner =
+            JoystickState(20f, 30f, kh, 1000f, 400f) // 20 px from the left, 30 from the top
+        assertThat(corner.level(0f, 30f)).isEqualTo(2f) // at the left edge
+        assertThat(corner.level(-50f, 30f)).isEqualTo(2f) // beyond it
+        assertThat(corner.level(20f, 0f)).isEqualTo(2f) // top
+        // Away from the edges the ring is whole again: slow just outside the dead zone.
+        assertThat(corner.level(20f + corner.deadZone + 1f, 30f)).isLessThan(0.1f)
+        assertThat(corner.level(20f + corner.radius + 1f, 30f)).isGreaterThan(1f)
+        assertThat(corner.level(20f + corner.radius + 1f, 30f)).isLessThan(1.1f)
+        val right = JoystickState(980f, 200f, kh, 1000f, 400f)
+        assertThat(right.level(1000f, 200f)).isEqualTo(2f)
+        assertThat(right.level(980f + 5f, 200f)).isEqualTo(-1f) // dead zone first
+    }
+
+    @Test
+    fun backToTheCentreStopsTheCursor() {
+        slowSpace()
+        move(1, space, farOut)
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
+        val before = movedChars()
+        assertThat(before).isGreaterThan(0)
+        move(1, space, 3f) // back in the dead zone: no jump, nothing more
+        assertThat(touch.joystick!!.engaged).isFalse()
+        assertThat(machine.nextDeadline()).isNull()
+        assertThat(charsOver(2)).isEqualTo(0)
+        assertThat(movedChars()).isEqualTo(before)
+    }
+
+    @Test
+    fun leavingTheDeadZoneAgainResumesTheRate() {
+        slowSpace()
+        move(1, space, farOut)
+        move(1, space, 0f)
+        assertThat(machine.nextDeadline()).isNull()
+        move(1, space, farOut)
+        assertThat(charsOver()).isIn(39..41)
+    }
+
+    @Test
+    fun releasingStopsTheMovementClearsTheOverlayAndTypesNoSpace() {
+        slowSpace()
+        move(1, space, farOut)
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
+        machine.onUp(1)
+        val after = host.drags.size
+        assertThat(touch.joystick).isNull()
+        assertThat(machine.nextDeadline()).isNull()
+        advance(1_000)
+        assertThat(host.drags).hasSize(after)
+        assertThat(host.keys).isEmpty()
     }
 
     @Test
@@ -633,9 +925,11 @@ class TouchStateMachineTest {
         host.longPressDelayMs = 100_000L
         downLeft(1)
         now += 1_000
-        moveLeft(1, 30f)
+        moveLeft(1, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
         assertThat(host.keys).isEmpty()
     }
 
@@ -644,9 +938,11 @@ class TouchStateMachineTest {
         down(1, space) // the centre is the right half's start
         advance(300)
         now += 1_000
-        move(1, space, 30f)
+        move(1, space, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, false))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { !it.third }).isTrue()
         assertThat(host.keys).isEmpty()
     }
 
@@ -655,9 +951,11 @@ class TouchStateMachineTest {
         downLeft(1)
         advance(300)
         now += 1_000
-        moveLeft(1, 30f)
+        moveLeft(1, farOut)
+        repeat(10) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
-        assertThat(host.drags).containsExactly(Triple(3, 0, true))
+        assertThat(host.drags).isNotEmpty()
+        assertThat(host.drags.all { it.third }).isTrue()
     }
 
     @Test
@@ -699,14 +997,16 @@ class TouchStateMachineTest {
     @Test
     fun anotherFingerTypingDuringASpaceDragLeavesTheDragAlone() {
         slowSpace()
-        move(1, space, 20f)
+        move(1, space, farOut)
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
         down(2, a)
         machine.onUp(2)
-        now += 1_000
-        move(1, space, 40f)
+        val before = movedChars()
+        repeat(4) { advance(JOYSTICK_TICK_MS) }
         machine.onUp(1)
         assertThat(host.keys).containsExactly(a.key.action)
-        assertThat(host.drags).containsExactly(Triple(2, 0, false), Triple(2, 0, false))
+        assertThat(before).isGreaterThan(0)
+        assertThat(movedChars()).isGreaterThan(before)
     }
 
     @Test
@@ -851,10 +1151,209 @@ class TouchStateMachineTest {
     }
 
     @Test
+    fun holdingTheCommaStartsVoiceTypingWithoutTypingIt() {
+        down(1, slot(","))
+        assertThat(machine.nextDeadline()).isNotNull()
+        advance(300)
+        assertThat(host.keyLongPresses).containsExactly(KeyAction.Voice)
+        assertThat(host.ticks).isEqualTo(1)
+        assertThat(host.popupOpened).isEqualTo(0)
+        machine.onUp(1)
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun aShortTapOnTheCommaTypesIt() {
+        down(1, slot(","))
+        advance(299)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(KeyAction.Text(","))
+        assertThat(host.keyLongPresses).isEmpty()
+    }
+
+    @Test
     fun otherKeysHaveNoKeyLongPress() {
         down(1, a)
         advance(1_000)
         machine.onUp(1)
         assertThat(host.keyLongPresses).isEmpty()
+    }
+
+    // Gesture typing.
+
+    private val s
+        get() = slot("s")
+
+    private val d
+        get() = slot("d")
+
+    private fun swipeFromAToD() {
+        down(1, a)
+        now += 10
+        machine.onMove(1, s.centerX, s.centerY)
+        now += 10
+        machine.onMove(1, d.centerX, d.centerY)
+    }
+
+    @Test
+    fun aSlowDragWithinOneKeyIsNotASwipe() {
+        down(1, a)
+        advance(100)
+        machine.onMove(1, a.centerX + 20f, a.centerY + 10f)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).isEmpty()
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun travelUnderTheThresholdOnAnotherKeyIsNotASwipe() {
+        down(1, a)
+        // Over the next key already, but only about half a key width from the down point.
+        val reach = (a.right - a.left) * SWIPE_START_KEY_WIDTHS
+        machine.onMove(1, a.centerX + reach - 1f, a.centerY)
+        assertThat(host.swipeEvents).isEmpty()
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun crossingToAnotherKeyPastTheThresholdStartsASwipe() {
+        swipeFromAToD()
+        assertThat(host.swipeEvents).containsExactly("start", "move").inOrder()
+        assertThat(touch.preview).isNull()
+        assertThat(touch.pressed).isEmpty()
+        assertThat(touch.trail).isNotNull()
+        now += 10
+        machine.onMove(1, d.centerX + 5f, d.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "move", "move", "end").inOrder()
+        assertThat(host.keys).isEmpty()
+        assertThat(host.swipePoints.first()).isEqualTo(Triple(a.centerX, a.centerY, 0L))
+        assertThat(host.swipePoints).hasSize(4)
+        assertThat(host.swipePoints.last().first).isEqualTo(d.centerX + 5f)
+        assertThat(touch.trail).isNull()
+    }
+
+    @Test
+    fun theTrailIsNotPublishedWhenItIsOff() {
+        host.swipeTrail = false
+        swipeFromAToD()
+        assertThat(touch.trail).isNull()
+        assertThat(host.swipeEvents).contains("start")
+    }
+
+    @Test
+    fun theLongPressPopupDoesNotOpenOnceSwiping() {
+        val withPopup = geometry.slots.first { it.key.popup.isNotEmpty() && it.key.label == "e" }
+        val next = geometry.slots.first { it.key.label == "r" }
+        down(1, withPopup)
+        machine.onMove(1, next.centerX, next.centerY)
+        assertThat(host.swipeEvents).contains("start")
+        assertThat(machine.nextDeadline()).isNull()
+        advance(1_000)
+        assertThat(touch.popup).isNull()
+        assertThat(host.popupOpened).isEqualTo(0)
+    }
+
+    @Test
+    fun anOpenPopupIsNotTurnedIntoASwipe() {
+        val withPopup = geometry.slots.first { it.key.popup.isNotEmpty() && it.key.label == "e" }
+        val next = geometry.slots.first { it.key.label == "r" }
+        down(1, withPopup)
+        advance(400)
+        assertThat(touch.popup).isNotNull()
+        machine.onMove(1, next.centerX, next.centerY)
+        assertThat(host.swipeEvents).isEmpty()
+    }
+
+    @Test
+    fun withSwipeTypingOffNothingChanges() {
+        host.swipeTyping = false
+        swipeFromAToD()
+        machine.onUp(1)
+        assertThat(host.swipeEvents).isEmpty()
+        assertThat(host.keys).containsExactly(a.key.action)
+    }
+
+    @Test
+    fun spaceBackspaceAndShiftNeverSwipe() {
+        for (start in listOf(slot(KeyAction.Space), backspace, slot(KeyAction.Shift))) {
+            host.swipeEvents.clear()
+            down(1, start)
+            machine.onMove(1, a.centerX, a.centerY)
+            machine.onMove(1, d.centerX, d.centerY)
+            machine.onUp(1)
+            assertThat(host.swipeEvents).isEmpty()
+        }
+    }
+
+    @Test
+    fun aLostTouchCancelsTheSwipe() {
+        swipeFromAToD()
+        machine.cancel(1)
+        assertThat(host.swipeEvents.last()).isEqualTo("cancel")
+        assertThat(host.keys).isEmpty()
+        assertThat(touch.trail).isNull()
+    }
+
+    @Test
+    fun cancelAllCancelsTheSwipe() {
+        swipeFromAToD()
+        machine.cancelAll()
+        assertThat(host.swipeEvents.last()).isEqualTo("cancel")
+    }
+
+    @Test
+    fun aSecondFingerDuringASwipeIsIgnored() {
+        swipeFromAToD()
+        val before = host.events.toList()
+        down(2, slot("q"))
+        machine.onUp(2)
+        assertThat(host.events).isEqualTo(before)
+        assertThat(host.keys).isEmpty()
+        machine.onMove(1, d.centerX + 3f, d.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents.last()).isEqualTo("end")
+        assertThat(host.keys).isEmpty()
+    }
+
+    @Test
+    fun thePathIsClearedAfterTheSwipeEnds() {
+        swipeFromAToD()
+        machine.onUp(1)
+        host.swipeEvents.clear()
+        // A second swipe starts again from just its own points.
+        swipeFromAToD()
+        assertThat(host.swipePoints).hasSize(3)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "move", "end").inOrder()
+    }
+
+    @Test
+    fun theSwipePathHoldsThePointsFromBeforeRecognition() {
+        down(1, a)
+        now += 10
+        machine.onMove(1, a.centerX + 10f, a.centerY + 1f)
+        now += 10
+        machine.onMove(1, a.centerX + 25f, a.centerY + 2f)
+        assertThat(host.swipeEvents).isEmpty()
+        now += 10
+        machine.onMove(1, s.centerX, s.centerY)
+        machine.onUp(1)
+        assertThat(host.swipeEvents).containsExactly("start", "end").inOrder()
+        assertThat(host.swipePoints.map { it.first })
+            .containsExactly(a.centerX, a.centerX + 10f, a.centerX + 25f, s.centerX)
+            .inOrder()
+        assertThat(host.swipePoints.map { it.third }).containsExactly(0L, 10L, 20L, 30L).inOrder()
+    }
+
+    @Test
+    fun aTapDoesNotLeaveBufferedPointsForTheNextSwipe() {
+        down(1, a)
+        machine.onMove(1, a.centerX + 10f, a.centerY)
+        machine.onUp(1)
+        host.swipeEvents.clear()
+        swipeFromAToD()
+        assertThat(host.swipePoints).hasSize(3)
     }
 }

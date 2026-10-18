@@ -1,6 +1,9 @@
 package dev.keycorrect.feature.keyboard
 
 import android.text.InputType
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.snapshots.SnapshotStateObserver
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.layout.BuiltInLayouts
@@ -202,6 +205,35 @@ class StripToolTest {
     }
 
     @Test
+    fun aKeystrokeWithinABusyStripDoesNotWakeTheBusyWatcher() {
+        // What rememberBusyProgress watches: a derived Boolean, invalidated only when it flips.
+        start()
+        val busy = derivedStateOf { controller.stripBusy }
+        var wakeups = 0
+        val observer = SnapshotStateObserver { it() }
+        observer.start()
+        try {
+            val scope = Any()
+            lateinit var watch: (Any) -> Unit
+            watch = {
+                wakeups++
+                observer.observeReads(scope, watch) { busy.value }
+            }
+            observer.observeReads(scope, watch) { busy.value }
+            "hello wor"
+                .forEach {
+                    controller.onKey(KeyAction.Text(it.toString()))
+                    Snapshot.sendApplyNotifications()
+                }
+            // Idle to busy on the first letter, and no more while typing on.
+            assertThat(wakeups).isEqualTo(1)
+        } finally {
+            observer.stop()
+            observer.clear()
+        }
+    }
+
+    @Test
     fun theToolsShowOnTheKeysAndEditingPanelsOnly() {
         start()
         assertThat(controller.toolsVisible).isTrue()
@@ -226,6 +258,34 @@ class StripToolTest {
         controller.onTool(StripTool.Edit) {}
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
         controller.onTool(StripTool.Edit) {}
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+    }
+
+    @Test
+    fun theEditToolIsSelectedOnlyWhileTheEditingPanelIsOpen() {
+        start()
+        assertThat(controller.editToolSelected).isFalse()
+        controller.onTool(StripTool.Edit) {}
+        assertThat(controller.editToolSelected).isTrue()
+        controller.onTool(StripTool.Edit) {}
+        assertThat(controller.editToolSelected).isFalse()
+        controller.showPanel(KeyboardPanel.Emoji)
+        assertThat(controller.editToolSelected).isFalse()
+    }
+
+    @Test
+    fun selectionEventsNeverSelectTheEditTool() {
+        start()
+        "hello world".forEach { controller.onKey(KeyAction.Text("$it")) }
+        // A range appears (selection strip), grows, is replaced and collapses again.
+        for ((a, b) in listOf(0 to 5, 0 to 11, 6 to 11, 11 to 11)) {
+            editor.setSelection(a, b)
+            controller.onSelectionChanged(a, b, a, b)
+            assertThat(controller.editToolSelected).isFalse()
+        }
+        controller.editing.expandSelectionToWord()
+        controller.editing.cycleCase()
+        assertThat(controller.editToolSelected).isFalse()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
     }
 

@@ -2,8 +2,11 @@ package dev.keycorrect.feature.keyboard
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -37,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.layout.KeyAction
+import dev.keycorrect.core.layout.KeySlot
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardLayer
@@ -49,6 +55,7 @@ private const val TEXT_CACHE_SIZE = 256
 
 /** Key icons are drawn this big: about 1.6 times the 16 sp modifier glyphs they replace. */
 private const val KEY_ICON_DP = 26f
+private const val HINT_ICON_DP = 12f
 
 /** Height of the spacebar's split line as a share of the key's height. */
 private const val SPLIT_LINE_HEIGHT = 0.4f
@@ -84,6 +91,7 @@ internal fun KeyboardSurface(
     terminalModifiers: TerminalModifiers? = null,
     clipboardLongPress: Boolean = false,
     onKeyLongPress: (KeyAction) -> Unit = {},
+    swipeTyping: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val view = LocalView.current
@@ -101,6 +109,7 @@ internal fun KeyboardSurface(
     val currentFeedback by rememberUpdatedState(feedback)
     val currentClipboardLongPress by rememberUpdatedState(clipboardLongPress)
     val currentOnKeyLongPress by rememberUpdatedState(onKeyLongPress)
+    val currentSwipeTyping by rememberUpdatedState(swipeTyping)
     var size by remember { mutableStateOf(IntSize.Zero) }
     val geometry =
         remember(layer, size) {
@@ -147,6 +156,12 @@ internal fun KeyboardSurface(
                 override val gestures: KeyGestures
                     get() = currentGestures
 
+                override val swipeTyping: Boolean
+                    get() = currentSwipeTyping && currentSettings.gestureTyping
+
+                override val swipeTrail: Boolean
+                    get() = currentSettings.gestureTrail
+
                 override val spacebarCursor: Boolean
                     get() = currentSettings.spacebarCursor
 
@@ -156,11 +171,8 @@ internal fun KeyboardSurface(
                 override val slopPx: Float
                     get() = touchSlop
 
-                override val cursorStepPx: Float
-                    get() = currentDensity.density * currentSettings.cursorSpeed.stepDp
-
-                override val lineStepPx: Float
-                    get() = currentDensity.density * currentSettings.keyHeightDp
+                override val joystickSpeedScale: Float
+                    get() = currentSettings.cursorSpeed.joystickScale
 
                 override val wordStepPx: Float
                     get() = currentDensity.density * WORD_STEP_DP
@@ -169,130 +181,213 @@ internal fun KeyboardSurface(
             }
         }
 
-    Canvas(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(settings.keyHeightDp.dp * heightUnits)
-                .onSizeChanged { size = it }
-                .onGloballyPositioned { touch.surfaceOrigin = it.positionInWindow() }
-                .pointerInput(geometry) {
-                    val machine =
-                        TouchStateMachine(geometry, touch, host, SystemClock::uptimeMillis)
-                    touch.reset()
-                    try {
-                        awaitPointerEventScope {
-                            while (true) {
-                                // Wake for a pending long press or repeat even if no event comes.
-                                val deadline = machine.nextDeadline()
-                                val event =
-                                    if (deadline == null) {
-                                        awaitPointerEvent()
-                                    } else {
-                                        val wait = deadline - SystemClock.uptimeMillis()
-                                        withTimeoutOrNull(wait.coerceAtLeast(0L)) {
+    val drawer = remember(textCache) { KeyDrawer(textCache) }
+    // Two layers: every key unpressed in one (redrawn only when the layer, shift, size, theme or
+    // settings change), and just the held keys over it in the other, so a press or release redraws
+    // those few keys and no label. Each has its own graphicsLayer so its invalidation stays there.
+    Box(modifier = modifier.fillMaxWidth().height(settings.keyHeightDp.dp * heightUnits)) {
+        Canvas(
+            modifier =
+                Modifier.fillMaxSize()
+                    .graphicsLayer()
+                    .onSizeChanged { size = it }
+                    .onGloballyPositioned { touch.surfaceOrigin = it.positionInWindow() }
+                    .pointerInput(geometry) {
+                        val machine =
+                            TouchStateMachine(geometry, touch, host, SystemClock::uptimeMillis)
+                        touch.reset()
+                        try {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    // Wake for a pending long press or repeat even if no event
+                                    // comes.
+                                    val deadline = machine.nextDeadline()
+                                    val event =
+                                        if (deadline == null) {
                                             awaitPointerEvent()
+                                        } else {
+                                            val wait = deadline - SystemClock.uptimeMillis()
+                                            withTimeoutOrNull(wait.coerceAtLeast(0L)) {
+                                                awaitPointerEvent()
+                                            }
                                         }
+                                    if (event == null) {
+                                        machine.onTimer()
+                                        continue
                                     }
-                                if (event == null) {
-                                    machine.onTimer()
-                                    continue
-                                }
-                                val changes = event.changes
-                                for (i in changes.indices) {
-                                    val change = changes[i]
-                                    val id = change.id.value
-                                    when {
-                                        change.changedToDown() ->
-                                            machine.onDown(id, change.position.x, change.position.y)
-                                        // Even a release another handler consumed ends the press.
-                                        change.changedToUpIgnoreConsumed() -> machine.onUp(id)
-                                        change.pressed && change.positionChanged() ->
-                                            machine.onMove(id, change.position.x, change.position.y)
+                                    val changes = event.changes
+                                    for (i in changes.indices) {
+                                        val change = changes[i]
+                                        val id = change.id.value
+                                        when {
+                                            change.changedToDown() ->
+                                                machine.onDown(
+                                                    id,
+                                                    change.position.x,
+                                                    change.position.y,
+                                                )
+                                            // Even a release another handler consumed ends the
+                                            // press.
+                                            change.changedToUpIgnoreConsumed() -> machine.onUp(id)
+                                            change.pressed && change.positionChanged() ->
+                                                machine.onMove(
+                                                    id,
+                                                    change.position.x,
+                                                    change.position.y,
+                                                )
+                                        }
+                                        change.consume()
                                     }
-                                    change.consume()
-                                }
-                                // A finger that vanished without a release must not stay pressed.
-                                machine.retainOnly { id ->
-                                    changes.any { it.id.value == id && it.pressed }
+                                    // A finger that vanished without a release must not stay
+                                    // pressed.
+                                    machine.retainOnly { id ->
+                                        changes.any { it.id.value == id && it.pressed }
+                                    }
                                 }
                             }
+                        } finally {
+                            // Cancelled (layer change, window gone): nothing may stay pressed or
+                            // repeat.
+                            machine.cancelAll()
                         }
-                    } finally {
-                        // Cancelled (layer change, window gone): nothing may stay pressed or
-                        // repeat.
-                        machine.cancelAll()
                     }
-                }
-    ) {
-        val gap = settings.keyGapDp.dp.toPx()
-        val iconPx = KEY_ICON_DP.dp.toPx()
-        val splitWidth = 1.dp.toPx()
-        val spaceSplit = settings.spacebarCursor
-        val radius = CornerRadius(KeyCornerRadius.toPx())
-        val hintInset = 5.dp.toPx()
-        val pressed = touch.pressed
-        val shiftState = shift()
-        textCache.prepare(geometry, shiftState, enterLabel, this)
-        for (slot in geometry.slots) {
-            val key = slot.key
-            if (key.isSpacer) continue
-            val isPressed = slot.index in pressed
-            val latch = latchOf(key, terminalModifiers)
-            drawRoundRect(
-                color = keyFill(key, isPressed, shiftState, colors, latch),
-                topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2),
-                size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
-                cornerRadius = radius,
-            )
-            val icon = keyIconFor(key, shiftState, enterLabel)
-            if (icon != null) {
-                with(KeyIconArt) {
-                    drawKeyIcon(
-                        icon,
-                        keyContent(key, isPressed, shiftState, colors, latch),
-                        slot.centerX,
-                        slot.centerY,
-                        iconPx,
-                    )
-                }
-            } else {
-                textCache.label(slot.index, key)?.let { layout ->
-                    drawText(
-                        layout,
-                        color = keyContent(key, isPressed, shiftState, colors, latch),
-                        topLeft =
-                            Offset(
-                                slot.centerX - layout.size.width / 2f,
-                                slot.centerY - layout.size.height / 2f,
-                            ),
-                    )
-                }
-            }
-            if (spaceSplit && key.action == KeyAction.Space) {
-                // The spacebar gestures' split: drags left of it select, right of it move.
-                val x = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
-                val half = (slot.bottom - slot.top - gap) * SPLIT_LINE_HEIGHT / 2
-                drawLine(
-                    color =
-                        keyContent(key, isPressed, shiftState, colors, latch).copy(alpha = 0.25f),
-                    start = Offset(x, slot.centerY - half),
-                    end = Offset(x, slot.centerY + half),
-                    strokeWidth = splitWidth,
-                )
-            }
-            textCache.hint(slot.index, key)?.let { layout ->
-                drawText(
-                    layout,
-                    color = colors.onSurfaceVariant,
-                    topLeft =
-                        Offset(
-                            slot.right - gap / 2 - hintInset - layout.size.width,
-                            slot.top + gap / 2 + hintInset / 2,
-                        ),
-                )
+        ) {
+            drawer.set(shift, enterLabel, colors, terminalModifiers)
+            drawer.begin(this, geometry, settings)
+            for (slot in geometry.slots) {
+                if (!slot.key.isSpacer) drawKey(drawer, slot, isPressed = false)
             }
         }
+        Canvas(Modifier.fillMaxSize().graphicsLayer()) {
+            val pressed = touch.pressed
+            if (pressed.isEmpty()) return@Canvas
+            drawer.set(shift, enterLabel, colors, terminalModifiers)
+            drawer.begin(this, geometry, settings)
+            val slots = geometry.slots
+            for (index in pressed) {
+                val slot = slots.getOrNull(index)
+                if (slot != null && !slot.key.isSpacer) {
+                    // Paint the keyboard background over the key first, so the unpressed key below
+                    // leaves no fringe at the pressed one's rounded corners.
+                    drawRect(
+                        colors.surfaceContainer,
+                        Offset(slot.left, slot.top),
+                        Size(slot.right - slot.left, slot.bottom - slot.top),
+                    )
+                    drawKey(drawer, slot, isPressed = true)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * What drawing a key needs that does not change between keys (or frames, unless the settings do),
+ * worked out once per frame by [begin] so the per-key draw allocates nothing. UI thread only.
+ */
+private class KeyDrawer(val text: KeyTextCache) {
+    var gap = 0f
+    var iconPx = 0f
+    var splitWidth = 0f
+    var hintInset = 0f
+    var hintIconPx = 0f
+    var radius = CornerRadius.Zero
+    var spaceSplit = false
+    var shift = ShiftState.Off
+    var enterLabel = ""
+    var colors: ColorScheme? = null
+    var modifiers: TerminalModifiers? = null
+
+    var shiftOf: () -> ShiftState = { ShiftState.Off }
+
+    /** The inputs that come from composition; [shift] is read in the draw phase, as before. */
+    fun set(
+        shift: () -> ShiftState,
+        enterLabel: String,
+        colors: ColorScheme,
+        modifiers: TerminalModifiers?,
+    ) {
+        shiftOf = shift
+        this.enterLabel = enterLabel
+        this.colors = colors
+        this.modifiers = modifiers
+    }
+
+    /** Start of a frame: the pixel sizes and the current shift state, read here in draw. */
+    fun begin(scope: DrawScope, geometry: KeyboardGeometry, settings: KeyboardSettings) {
+        with(scope) {
+            gap = settings.keyGapDp.dp.toPx()
+            iconPx = KEY_ICON_DP.dp.toPx()
+            splitWidth = 1.dp.toPx()
+            radius = CornerRadius(KeyCornerRadius.toPx())
+            hintInset = 5.dp.toPx()
+            hintIconPx = HINT_ICON_DP.dp.toPx()
+        }
+        spaceSplit = settings.spacebarCursor
+        shift = shiftOf()
+        text.prepare(geometry, shift, enterLabel, scope)
+    }
+}
+
+/** Draws one key of the surface: fill, icon or label, the spacebar's split line and the hint. */
+private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
+    val colors = d.colors ?: return
+    val key = slot.key
+    val gap = d.gap
+    val shiftState = d.shift
+    val latch = latchOf(key, d.modifiers)
+    drawRoundRect(
+        color = keyFill(key, isPressed, shiftState, colors, latch),
+        topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2),
+        size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
+        cornerRadius = d.radius,
+    )
+    val icon = keyIconFor(key, shiftState, d.enterLabel)
+    if (icon != null) {
+        with(KeyIconArt) {
+            drawKeyIcon(
+                icon,
+                keyContent(key, isPressed, shiftState, colors, latch),
+                slot.centerX,
+                slot.centerY,
+                d.iconPx,
+            )
+        }
+    } else {
+        d.text.label(slot.index, key)?.let { layout ->
+            drawText(
+                layout,
+                color = keyContent(key, isPressed, shiftState, colors, latch),
+                topLeft =
+                    Offset(
+                        slot.centerX - layout.size.width / 2f,
+                        slot.centerY - layout.size.height / 2f,
+                    ),
+            )
+        }
+    }
+    if (d.spaceSplit && key.action == KeyAction.Space) {
+        // The spacebar gestures' split: drags left of it select, right of it move.
+        val x = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
+        val half = (slot.bottom - slot.top - gap) * SPLIT_LINE_HEIGHT / 2
+        drawLine(
+            color = keyContent(key, isPressed, shiftState, colors, latch).copy(alpha = 0.25f),
+            start = Offset(x, slot.centerY - half),
+            end = Offset(x, slot.centerY + half),
+            strokeWidth = d.splitWidth,
+        )
+    }
+    if (key.longPress == KeyAction.Voice) drawVoiceHint(d, slot, colors)
+    d.text.hint(slot.index, key)?.let { layout ->
+        drawText(
+            layout,
+            color = colors.onSurfaceVariant,
+            topLeft =
+                Offset(
+                    slot.right - gap / 2 - d.hintInset - layout.size.width,
+                    slot.top + gap / 2 + d.hintInset / 2,
+                ),
+        )
     }
 }
 
@@ -358,3 +453,18 @@ private fun feedbackKind(action: KeyAction): FeedbackKind =
         KeyAction.Enter -> FeedbackKind.Return
         else -> FeedbackKind.Standard
     }
+
+/** The mic is the voice key's hint: in the corner where a text hint would be. */
+private fun DrawScope.drawVoiceHint(d: KeyDrawer, slot: KeySlot, colors: ColorScheme) {
+    val size = d.hintIconPx
+    val gap = d.gap
+    with(KeyIconArt) {
+        drawKeyIcon(
+            KeyIcon.Mic,
+            colors.onSurfaceVariant,
+            slot.right - gap / 2 - d.hintInset - size / 2,
+            slot.top + gap / 2 + d.hintInset / 2 + size / 2,
+            size,
+        )
+    }
+}

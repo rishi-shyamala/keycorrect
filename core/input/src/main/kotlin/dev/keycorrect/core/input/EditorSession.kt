@@ -57,8 +57,22 @@ class EditorSession(
         }
     }
 
-    private fun readsAllowed(): Boolean =
-        editorInfo()?.let { !FieldProfile.from(it).sensitive } ?: false
+    /** The editor info [readsAllowed] was worked out for, and the answer. */
+    private var checkedInfo: EditorInfo? = null
+    private var checkedAllowed = false
+
+    /**
+     * The info belongs to one start of input and is not changed afterwards, so the field is
+     * classified once per start, not on every read (which parses the input type and extras).
+     */
+    private fun readsAllowed(): Boolean {
+        val info = editorInfo() ?: return false
+        if (info !== checkedInfo) {
+            checkedAllowed = !FieldProfile.from(info).sensitive
+            checkedInfo = info
+        }
+        return checkedAllowed
+    }
 
     /**
      * Deletes the selection if there is one, otherwise the grapheme before the cursor. In a

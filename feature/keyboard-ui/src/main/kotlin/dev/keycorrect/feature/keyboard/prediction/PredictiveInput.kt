@@ -6,6 +6,8 @@ import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.ComposingInput
 import dev.keycorrect.core.engineapi.FieldClass
+import dev.keycorrect.core.engineapi.GestureInput
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.KeySpec
 import dev.keycorrect.core.engineapi.PredictRequest
@@ -13,8 +15,10 @@ import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
 import dev.keycorrect.core.input.AutoCapitalize
+import dev.keycorrect.core.input.AutoCaps
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
+import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.TextEditor
 import dev.keycorrect.core.learning.AutocorrectReverted
 import dev.keycorrect.core.learning.CommitMethod as Learned
@@ -84,6 +88,12 @@ internal class PredictiveInput(
     private val onEmojiUsed: (String, String) -> Unit = { _, _ -> },
     /** The form of a suggested emoji to show and insert (the user's skin tone or variant). */
     private val emojiForm: (Emoji) -> String = { it.value },
+    /**
+     * A swipe's word was typed after the lift (its decode was late, or a key arrived first and
+     * waited for it): the owner consumes shift and refreshes auto-capitalisation, as it does when
+     * [swipeEnd] returns true.
+     */
+    private val onLateSwipe: () -> Unit = {},
 ) {
     /** The touches of recently finished words, for Phase 3. In memory only. */
     val touchLog = WordTouchLog()
@@ -111,9 +121,25 @@ internal class PredictiveInput(
     private val touches = ArrayList<TouchPoint?>()
 
     private val cache = TextContextCache(editor)
-    private var selectionIsRange = false
+    private var selection = SelectionState.Unknown
+
+    /**
+     * A delete sized from the cache was sent and the editor's matching echo (the cursor where that
+     * delete leaves it) has not arrived yet. Until it does the cache may differ from the editor (a
+     * rejected or truncated delete), so the next backspace asks the editor.
+     */
+    private var deletesUnconfirmed = false
+
+    private val selectionIsRange: Boolean
+        get() = selection == SelectionState.Range
 
     private var latest: PredictResult? = null
+
+    /**
+     * The unknown word the cursor was just placed in or after (an external move), whose corrections
+     * the strip offers; see [startRecorrect]. Cleared by typing and by any move.
+     */
+    private var recorrect: TextContextCache.WordAround? = null
 
     /** The composing text [latest] was decoded for. */
     private var latestTyped: String? = null
@@ -136,6 +162,26 @@ internal class PredictiveInput(
     private var restoredWord: String? = null
 
     private val prompts = StripPrompts(env.scheduler, onStrip)
+
+    /** A swipe in progress (nothing is typed until it lifts); see [swipeBegin]. */
+    private var swiping: SwipeSession? = null
+
+    /**
+     * The word the last swipe committed, while it still stands right before the cursor and nothing
+     * else happened: a space goes in before the next typed or swiped word (P5-1), the first
+     * backspace deletes it whole (P5-2) and a tap on an alternative in the strip replaces it.
+     * Cleared by any other key, a cursor move, an external change and a field change.
+     */
+    private var swipe: SwipedWord? = null
+
+    /**
+     * A swipe whose final decode was not ready on lift: nothing is typed until it arrives, and only
+     * if no other input came first (see [swipeEnd] and [settlePendingSwipe]).
+     */
+    private var pendingSwipe: PendingSwipe? = null
+
+    /** The layout whose swipe index was last asked for, so a swipe only warms it up once. */
+    private var warmedLayoutId = -1L
 
     // Learning (docs/PLAN.md §6.2-6.3). All of it lives behind the single gate in [learn]; none of
     // it is kept while the gate is closed.
@@ -207,13 +253,21 @@ internal class PredictiveInput(
      */
     fun canPredict(): Boolean = predictionOn
 
+    /** A swipe can be decoded here: suggestions are allowed in the field and an engine exists. */
+    fun canSwipe(): Boolean = predictionOn && backend.predictor != null
+
     // ------------------------------------------------------------------ lifecycle
 
     /**
      * A field was focused, or the keyboard re-shown on it. Forgets all word state (the caches are
      * re-read when needed); [newField] also forgets the words the user reverted.
      */
-    fun onStartInput(profile: FieldProfile, settings: KeyboardSettings, newField: Boolean) {
+    fun onStartInput(
+        profile: FieldProfile,
+        settings: KeyboardSettings,
+        newField: Boolean,
+        selection: SelectionState = SelectionState.Unknown,
+    ) {
         // What the previous input left open is settled against the previous field's gate.
         settleAll()
         this.profile = profile
@@ -229,7 +283,8 @@ internal class PredictiveInput(
         learn.setField(fieldClass())
         syncGate()
         resetWordState()
-        selectionIsRange = false
+        this.selection = selection
+        deletesUnconfirmed = false
         refreshContext()
     }
 
@@ -241,6 +296,11 @@ internal class PredictiveInput(
         val was = predictionOn
         predictionOn = computeCanPredict(profile, settings)
         syncGate()
+        if (!predictionOn) {
+            swipe = null
+            swiping = null
+            dropPendingSwipe()
+        }
         if (was && !predictionOn) {
             finishAsTyped()
             prompts.cancelAddWord()
@@ -276,14 +336,17 @@ internal class PredictiveInput(
     /** A text key: a letter, digit, apostrophe, punctuation or anything else a key types. */
     fun onText(text: String, touch: TouchPoint?) {
         if (!canPredict()) {
+            swipe = null
             editor.commitText(text)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence(text)
-        settleHeldRevert()
         val c = text.singleOrNull()
+        spaceAfterSwipe(c)
+        settleHeldRevert()
         val composingNow = composing.isNotEmpty()
         if (c != null && composingNow && (c.isLetterOrDigit() || isApostrophe(c))) {
             append(c, touch)
@@ -296,10 +359,12 @@ internal class PredictiveInput(
 
     /** Space, or any other separator committed as text. */
     fun onSeparator(text: String) {
+        swipe = null // the separator is the space the swipe left out
         if (!canPredict()) {
             editor.commitText(text)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence(text)
@@ -313,11 +378,15 @@ internal class PredictiveInput(
      */
     fun onBackspace() {
         val sensitive = profile?.sensitive == true
+        val swiped = swipe
+        swipe = null
         if (!canPredict()) {
             editor.deleteBackward(sensitive)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
+        if (swiped != null && deleteSwipedWord(swiped)) return
         flushSentence(null)
         if (composing.isNotEmpty()) {
             closeUndo()
@@ -346,13 +415,7 @@ internal class PredictiveInput(
             cache.invalidate() // the text isn't what we thought: fall back to a plain backspace
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
-        val hadRange = selectionIsRange
-        editor.deleteBackward(false)
-        if (hadRange) {
-            cache.invalidate()
-        } else if (cache.beforeKnown) {
-            cache.dropLastCluster()
-        }
+        deleteBeforeCursor()
         loop.advance()
         latest = null
         if (!recomposePreviousWord()) {
@@ -362,13 +425,53 @@ internal class PredictiveInput(
     }
 
     /**
+     * Deletes the selection or the grapheme before the cursor. Where the selection is known to be
+     * collapsed, the cache holds the text before the cursor and the previous cache-sized delete was
+     * confirmed by the editor, the grapheme is sized from the cache and deleted directly, with no
+     * editor read (this runs on every repeat of a held backspace; the echo of one repeat normally
+     * arrives before the next, 50 ms later). In every other case (a range, a selection never
+     * reported, a delete not yet confirmed) the editor decides what goes, and the cache is dropped
+     * to be read afresh.
+     *
+     * Remaining limitation: an app that silently rewrites the text around the cursor without moving
+     * it (same length, no selection change) is not noticed until the next external update.
+     */
+    private fun deleteBeforeCursor() {
+        if (selection != SelectionState.Collapsed || deletesUnconfirmed) {
+            editor.deleteBackward(false)
+            cache.invalidate() // a re-read is the truth again
+            deletesUnconfirmed = false
+            return
+        }
+        if (backend.predictor != null) ensureContext() // read once, not on every press
+        val length = cachedGraphemeLength()
+        if (length > 0) {
+            deletesUnconfirmed = true // before the call: a synchronous echo confirms it
+            editor.deleteSurroundingText(length, 0)
+        } else {
+            editor.deleteBackward(false)
+        }
+        if (cache.beforeKnown) cache.dropLastCluster()
+    }
+
+    /** Length of the grapheme the cache says precedes the cursor; 0 when it cannot say. */
+    private fun cachedGraphemeLength(): Int {
+        val trusted =
+            cache.beforeReadable &&
+                !(cache.beforeTruncated && cache.before.length < MIN_CACHED_LOOKBEHIND)
+        return if (trusted) Graphemes.lastClusterLength(cache.before) else 0
+    }
+
+    /**
      * Enter is about to be performed: finishes the composing word (with its correction) first.
      * [commitsLineBreak] is whether Enter will insert a line break, which the cache then follows;
      * an editor action or key event changes nothing we know of, and if the app reacts (clears the
      * field, say) the selection callback reports it as an external change.
      */
     fun beforeEnter(commitsLineBreak: Boolean) {
+        swipe = null
         if (!canPredict()) return
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence("\n")
@@ -391,9 +494,25 @@ internal class PredictiveInput(
 
     // ------------------------------------------------------------------ selection changes
 
-    /** Records whether the latest reported selection is a range. */
-    fun noteSelection(collapsed: Boolean) {
-        selectionIsRange = !collapsed
+    /**
+     * Records the latest reported selection: collapsed, a range, or (null) not reported. Only a
+     * collapsed one allows a delete without reading the editor.
+     */
+    fun noteSelection(collapsed: Boolean?) {
+        selection =
+            when (collapsed) {
+                null -> SelectionState.Unknown
+                true -> SelectionState.Collapsed
+                false -> SelectionState.Range
+            }
+    }
+
+    /**
+     * The editor's echo of our latest edits arrived with the cursor where they leave it: a delete
+     * sized from the cache did what it was meant to.
+     */
+    fun confirmEdits() {
+        deletesUnconfirmed = false
     }
 
     /**
@@ -441,17 +560,152 @@ internal class PredictiveInput(
      * decoded so far applies any more. The text before the cursor is read afresh when [collapsed].
      */
     fun onExternalChange(collapsed: Boolean) {
+        deletesUnconfirmed = false // the cache is read afresh
         settleAll()
         resetWordState()
         publish(StripModel.Empty)
-        if (collapsed) refreshContext()
+        if (collapsed) {
+            refreshContext()
+            startRecorrect()
+        }
+    }
+
+    // ------------------------------------------------------------------ re-correction
+
+    /**
+     * The cursor was placed (externally, collapsed, nothing composing) in or at the end of a word:
+     * if it is not in the dictionary, decodes it as composing text without touches and offers the
+     * candidates in the strip ([onRecorrectResult]). Nothing is read where suggestions aren't
+     * allowed (sensitive fields, none wanted) or no engine exists; the text before the cursor was
+     * just read by [refreshContext], so this adds the one read of the text after it. Costs nothing
+     * per keystroke: only an external cursor move gets here, and the decode runs on the decoder
+     * thread.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun startRecorrect() {
+        if (!canPredict() || backend.predictor == null || !cache.beforeReadable) return
+        if (!cache.endsInWordChar()) return // nothing to judge: skip reading the text after it
+        cache.ensureAfter()
+        val word = cache.wordAroundCursor() ?: return
+        if (!isUnknownPlainWord(word.text)) return
+        val seq = loop.advance()
+        recorrect = word
+        loop.submit(
+            PredictRequest(
+                context =
+                    TypingContext(
+                        cache.before.substring(0, word.start),
+                        cache.after.substring(word.afterLength),
+                        fieldClass(),
+                    ),
+                composing = ComposingInput(word.text, List(word.text.length) { null }),
+                layout = layout,
+                maxCandidates = MAX_CANDIDATES,
+                maxPhraseWords = 0,
+                autocorrectAllowed = false,
+                sequence = seq,
+            ),
+            ::onRecorrectResult,
+        )
+    }
+
+    @Suppress("ReturnCount") // guard clauses
+    private fun onRecorrectResult(result: PredictResult) {
+        val word = recorrect ?: return
+        if (result.sequence != loop.sequence || !canPredict()) return
+        val visible = result.unblocked()
+        val candidates =
+            visible.candidates.filter {
+                it.text.isNotEmpty() &&
+                    !it.isPhrase &&
+                    it.source != CandidateSource.Shortcut &&
+                    !sameWord(it.text, word.text)
+            }
+        val strip =
+            StripBuilder.build(
+                visible.copy(candidates = candidates, literal = null, phrase = null),
+                "",
+                null,
+                null,
+                env.expander::preview,
+            )
+        if (strip.isEmpty) {
+            recorrect = null
+            return
+        }
+        publish(strip)
+    }
+
+    /** Typing (or anything else that edits) ends the re-correction strip. */
+    private fun dropRecorrect() {
+        if (recorrect == null) return
+        recorrect = null
+        publish(StripModel.Empty)
+    }
+
+    /**
+     * A tap on a re-correction: the word around the cursor is replaced in place, the cursor ending
+     * after the replacement, and learning hears of it like any picked suggestion. The editor's text
+     * is checked first; if the word is no longer there nothing is replaced. Returns false if there
+     * was no re-correction.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun replaceRecorrected(slot: StripSlot): Boolean {
+        val word = recorrect ?: return false
+        recorrect = null
+        val replacement = slot.insert
+        val before = editor.textBeforeCursor(word.beforeLength)?.toString()
+        val after = if (word.afterLength == 0) "" else editor.textAfterCursor(word.afterLength)
+        val intact =
+            before == word.text.take(word.beforeLength) &&
+                after?.toString() == word.text.drop(word.beforeLength)
+        if (!intact || replacement.isEmpty()) {
+            cache.invalidate()
+            publish(StripModel.Empty)
+            return true
+        }
+        prompts.dismiss()
+        closeUndo()
+        flushSentence(null)
+        settleHeldRevert()
+        retypeGuard = null
+        val rank = slotRank(slot)
+        // The context of the word is the text before it.
+        cache.truncateBefore(word.start)
+        cache.dropAfter(word.afterLength)
+        val pre = capturePre()
+        loop.advance()
+        latest = null
+        editor.batchEdit {
+            editor.deleteSurroundingText(word.beforeLength, word.afterLength)
+            editor.commitText(replacement)
+        }
+        cache.appendBefore(replacement)
+        val touchList = List<TouchPoint?>(word.text.length) { null }
+        record(word.text, replacement, touchList, CommitMethod.SuggestionTap)
+        completeWord(
+            word.text,
+            replacement,
+            Learned.SuggestionPicked,
+            rank,
+            pre,
+            touchList,
+            null,
+            null,
+            false,
+        )
+        publish(StripModel.Empty)
+        requestNextWord()
+        return true
     }
 
     // ------------------------------------------------------------------ strip taps
 
     /** A strip slot was tapped. */
     fun onStripTap(slot: StripSlot) {
-        if (!canPredict()) return
+        if (!canPredict() || replaceRecorrected(slot)) return
+        swipe?.let { if (replaceSwipedWord(it, slot)) return }
+        swipe = null
         prompts.dismiss()
         closeUndo()
         flushSentence(null)
@@ -975,6 +1229,341 @@ internal class PredictiveInput(
         return !c.isWhitespace() && c !in NO_SPACE_AFTER
     }
 
+    // ------------------------------------------------------------------ swipe typing
+
+    /** A swipe in progress: the context it was started in and the casing at the latest preview. */
+    private class SwipeSession(val context: TypingContext) {
+        var case = SwipeCase.None
+    }
+
+    /** A lifted swipe waiting for its final decode, with the casing at the lift. */
+    private class PendingSwipe(val final: FinalGesture, val case: SwipeCase)
+
+    private val onGestureResult: (PredictResult) -> Unit = ::gestureResult
+    private val onLateGesture: (PredictResult) -> Unit = ::lateGesture
+
+    /**
+     * Builds what swiping needs (the layout's gesture index) on the decoder thread, once per
+     * layout, so the first swipe doesn't wait for it. Does nothing where swiping is off, no engine
+     * is there yet or the layout is unknown; call again when that changes.
+     */
+    fun warmUpSwipe() {
+        if (!canSwipe() || layout.keys.isEmpty() || warmedLayoutId == layout.id) return
+        warmedLayoutId = layout.id
+        loop.warmUpGestures(layout)
+    }
+
+    /**
+     * A swipe starts (docs/PHASE5.md). Nothing is typed until it lifts and a word being composed is
+     * left alone. Reads the text around the cursor once (the context of every preview). Returns
+     * false, and the swipe is ignored, when nothing could decode it: suggestions are off for the
+     * field, there is no engine, or the layout is unknown. A previous swipe still waiting for its
+     * decode is settled first ([settlePendingSwipe]).
+     */
+    fun swipeBegin(): Boolean {
+        settlePendingSwipe()
+        if (!canPredict() || backend.predictor == null || layout.keys.isEmpty()) return false
+        dropRecorrect()
+        prompts.dismiss()
+        ensureContext()
+        // What precedes the swiped word: the composing word and, where the swipe will add one, the
+        // space after it (engines expect the context to end at a word start).
+        val before = StringBuilder(cache.before)
+        if (composing.isNotEmpty()) before.append(composing).append(' ')
+        else if (swipeNeedsSpace(swipe != null)) before.append(' ')
+        swiping = SwipeSession(TypingContext(before.toString(), cache.after, fieldClass()))
+        warmUpSwipe()
+        return true
+    }
+
+    /**
+     * The swipe moved: asks the decoder thread for the best words for [gesture] so far. Each call
+     * makes everything asked before stale (see [DecoderLoop]), so the strip only ever shows the
+     * newest answer; the caller throttles.
+     */
+    fun swipePreview(gesture: GestureInput, case: SwipeCase) {
+        val s = swiping ?: return
+        s.case = case
+        val seq = loop.advance()
+        loop.submitGesture(
+            GestureRequest(s.context, gesture, layout, MAX_CANDIDATES, seq),
+            onGestureResult,
+        )
+    }
+
+    /** A preview arrived: its best word goes to the strip's centre slot. Nothing else changes. */
+    private fun gestureResult(result: PredictResult) {
+        val s = swiping ?: return
+        if (result.sequence != loop.sequence || !canPredict()) return
+        val top = result.candidates.firstOrNull { it.text.isNotEmpty() }?.text
+        publishQuiet(
+            if (top == null) StripModel.Empty
+            else StripModel(centre = StripSlot(top.withSwipeCase(s.case), SlotKind.Suggestion))
+        )
+    }
+
+    /**
+     * The finger lifted: decodes [gesture] for good on the decoder thread and commits the best
+     * word; returns whether a word was typed now. [case] is the shift state at the lift. Only a
+     * result decoded from this complete path is ever committed, never a preview.
+     *
+     * The main thread waits at most [DecoderLoop.gestureWaitMs] for the decode. If it is late the
+     * answer is typed when it arrives (the owner is told through `onLate`), provided no other input
+     * happened meanwhile; a key that comes first waits that long once more ([settlePendingSwipe])
+     * and otherwise the swipe is dropped.
+     *
+     * The word goes in as a picked suggestion would, without a trailing space: a space is put
+     * before it if the text before the cursor ends in a letter, digit or sentence punctuation (or a
+     * word was just swiped), except in email and URL fields. A word being composed is finished as
+     * typed first (no autocorrect: the swipe, not a separator, ended it). The strip then offers the
+     * alternatives, with the word marked as current.
+     */
+    @Suppress("ReturnCount") // each exit is a distinct outcome of the lift
+    fun swipeEnd(gesture: GestureInput?, case: SwipeCase): Boolean {
+        val s = swiping ?: return false
+        swiping = null
+        if (!canPredict()) return false
+        val final = gesture?.let {
+            val request = GestureRequest(s.context, it, layout, MAX_CANDIDATES, loop.advance())
+            loop.submitFinalGesture(request)
+        }
+        if (final == null) return finishSwipe(null, case)
+        if (final.await(loop.gestureWaitMs)) return finishSwipe(final.result, case)
+        pendingSwipe = PendingSwipe(final, case)
+        if (final.whenDone(onLateGesture)) return false
+        pendingSwipe = null // it finished just now
+        return finishSwipe(final.result, case)
+    }
+
+    /** The late final decode arrived (main thread): types the word if nothing else happened. */
+    private fun lateGesture(result: PredictResult) {
+        val p = pendingSwipe ?: return
+        pendingSwipe = null
+        if (result.sequence != loop.sequence || !canPredict()) return
+        if (finishSwipe(result, p.case)) onLateSwipe()
+    }
+
+    /**
+     * Called before any other input is handled (a key, a strip tap, the next swipe): a swipe whose
+     * decode is still outstanding gets [DecoderLoop.gestureWaitMs] more; if the result comes it is
+     * typed first (the owner is told), if not the swipe is dropped and nothing is typed.
+     */
+    fun settlePendingSwipe() {
+        val p = pendingSwipe ?: return
+        pendingSwipe = null
+        p.final.cancel()
+        val result = if (p.final.await(loop.gestureWaitMs)) p.final.result else null
+        if (result != null && result.sequence == loop.sequence && canPredict()) {
+            if (finishSwipe(result, p.case)) onLateSwipe()
+        } else {
+            restoreStrip()
+        }
+    }
+
+    private fun dropPendingSwipe() {
+        pendingSwipe?.final?.cancel()
+        pendingSwipe = null
+    }
+
+    private fun finishSwipe(result: PredictResult?, case: SwipeCase): Boolean {
+        val words = result?.let { swipeWords(it, case) }.orEmpty()
+        if (words.isEmpty()) {
+            restoreStrip()
+            return false
+        }
+        commitSwipe(words)
+        return true
+    }
+
+    /**
+     * Whether a capital is wanted for a word swiped now, judged on the text as it will be once the
+     * swipe has added its space (so "hello." then a swipe wants a capital). Null if the text can't
+     * be read.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    fun swipeCapsWanted(mode: AutoCapitalize): Boolean? {
+        if (mode == AutoCapitalize.Characters) return true
+        if (!canPredict() || !cache.beforeReadable) return null
+        val text = StringBuilder(cache.before)
+        if (composing.isNotEmpty()) text.append(composing).append(' ')
+        else if (swipeNeedsSpace(swipe != null)) text.append(' ')
+        return AutoCaps.shouldCapitalize(text, mode, startKnown = !cache.beforeTruncated)
+    }
+
+    /** The swipe was abandoned: nothing is typed and the strip is as it was. */
+    fun swipeCancel() {
+        if (swiping == null) return
+        swiping = null
+        loop.advance() // drops the previews in flight
+        restoreStrip()
+    }
+
+    private fun restoreStrip() {
+        val word = swipe
+        when {
+            word != null -> publishQuiet(swipeStrip(word))
+            composing.isNotEmpty() -> requestWord()
+            else -> {
+                publishQuiet(StripModel.Empty)
+                requestNextWord()
+            }
+        }
+    }
+
+    private fun commitSwipe(words: List<String>) {
+        prompts.dismiss()
+        closeUndo()
+        val prior = swipe
+        swipe = null
+        val top = words[0]
+        flushSentence(top)
+        settleHeldRevert()
+        if (composing.isNotEmpty()) finishAsTyped() else endEdit()
+        ensureContext()
+        val space = swipeNeedsSpace(prior != null)
+        val pre = capturePre()
+        editor.batchEdit {
+            if (space) editor.commitText(" ")
+            editor.commitText(top)
+        }
+        if (space) cache.appendBefore(" ")
+        cache.appendBefore(top)
+        loop.advance()
+        latest = null
+        // Learned like a picked suggestion, but with no touches: a swipe says nothing about where
+        // the finger lands on a key, and it is not logged in [touchLog] either.
+        completeWord("", top, Learned.Gesture, null, pre, emptyList(), null, null, false)
+        retypeGuard = null
+        val word = SwipedWord(words, 0, space)
+        swipe = word
+        publishQuiet(swipeStrip(word))
+    }
+
+    /** The strip after a swipe: the word in the centre, in bold, its alternatives beside it. */
+    private fun swipeStrip(word: SwipedWord): StripModel {
+        val others = word.words.filterIndexed { i, _ -> i != word.current }
+        fun other(i: Int) = others.getOrNull(i)?.let { StripSlot(it, SlotKind.Suggestion) }
+        return StripModel(
+            left = other(0),
+            centre = StripSlot(word.text, SlotKind.Suggestion, bold = true),
+            right = other(1),
+        )
+    }
+
+    /** Auto-space is for prose: an email address or a URL has no spaces. */
+    private fun swipeSpacing(): Boolean =
+        fieldClass().let { it != FieldClass.Email && it != FieldClass.Url }
+
+    /**
+     * Whether a swiped word needs a space before it: the text before the cursor ends in a letter, a
+     * digit or sentence punctuation, or [afterSwipe] (a word was just swiped) where the text can't
+     * be read.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun swipeNeedsSpace(afterSwipe: Boolean): Boolean {
+        if (!swipeSpacing()) return false
+        if (!cache.beforeReadable) return afterSwipe
+        val c = cache.before.lastOrNull() ?: return false
+        return c.isLetterOrDigit() || c in SENTENCE_PUNCTUATION
+    }
+
+    /**
+     * A key was typed after a swipe: a letter or digit starts a new word, so the space the swipe
+     * left out goes in first; punctuation attaches to the swiped word. The swipe's state ends.
+     */
+    private fun spaceAfterSwipe(typed: Char?) {
+        swipe ?: return
+        swipe = null
+        if (typed == null || !typed.isLetterOrDigit() || !swipeSpacing()) return
+        editor.commitText(" ")
+        cache.appendBefore(" ")
+    }
+
+    /**
+     * The first backspace after a swipe deletes the swiped word whole, and the space the swipe
+     * added before it (P5-2). False, with nothing changed, if the text before the cursor isn't what
+     * the swipe left (the caller then backspaces as usual).
+     */
+    @Suppress("ReturnCount") // verify-then-act guards
+    private fun deleteSwipedWord(word: SwipedWord): Boolean {
+        if (composing.isNotEmpty() || selectionIsRange) return false
+        ensureContext()
+        val n = word.text.length + if (word.addedSpace) 1 else 0
+        val before = cache.before
+        if (!cache.beforeReadable || !before.endsWith(word.text)) return false
+        if (word.addedSpace && (before.length < n || before[before.length - n] != ' ')) return false
+        pendingSentence = null // the word never happened: no sentence-buffer entry
+        closeUndo()
+        endEdit()
+        editor.deleteSurroundingText(n, 0)
+        cache.dropBefore(n)
+        if (learn.open) {
+            memory
+                .find(word.text, SentenceContext.lastWords(cache.before), learn.now())
+                ?.let(memory::remove)
+        }
+        shown.clear()
+        loop.advance()
+        latest = null
+        if (!recomposePreviousWord()) {
+            dropPendingRevert()
+            publish(StripModel.Empty)
+        }
+        return true
+    }
+
+    /**
+     * A strip slot was tapped while a swiped word stands at the cursor. An alternative replaces the
+     * word (learned as a replaced suggestion); the current word's own slot does nothing. Returns
+     * false if [slot] is not one of the swipe's, so the tap is handled as usual.
+     */
+    @Suppress("ReturnCount") // verify-then-act guards
+    private fun replaceSwipedWord(word: SwipedWord, slot: StripSlot): Boolean {
+        val index = word.words.indexOf(slot.insert)
+        if (index < 0 || slot.kind != SlotKind.Suggestion) return false
+        if (index == word.current) return true
+        ensureContext()
+        val old = word.text
+        if (composing.isNotEmpty() || !cache.beforeReadable || !cache.before.endsWith(old)) {
+            swipe = null // the text isn't what the swipe left: don't touch it
+            publish(StripModel.Empty)
+            return true
+        }
+        prompts.dismiss()
+        closeUndo()
+        pendingSentence = null // replaced below
+        val replacement = word.words[index]
+        cache.dropBefore(old.length)
+        edit =
+            if (learn.open) {
+                EditSession(
+                    old,
+                    memory.find(old, SentenceContext.lastWords(cache.before), learn.now()),
+                )
+            } else {
+                null
+            }
+        val pre = capturePre()
+        editor.batchEdit {
+            editor.deleteSurroundingText(old.length, 0)
+            editor.commitText(replacement)
+        }
+        cache.appendBefore(replacement)
+        loop.advance()
+        latest = null
+        completeWord("", replacement, Learned.Gesture, null, pre, emptyList(), null, null, false)
+        retypeGuard = null
+        word.current = index
+        publishQuiet(swipeStrip(word))
+        return true
+    }
+
+    /** Shows [base] without telling the learning layer a suggestion was visible. */
+    private fun publishQuiet(base: StripModel) {
+        prompts.base = base
+        onStrip(prompts.overlaid())
+    }
+
     // ------------------------------------------------------------------ decoding
 
     private fun requestWord() {
@@ -992,7 +1581,7 @@ internal class PredictiveInput(
 
     private fun request(seq: Long, typed: String, touchList: List<TouchPoint?>): PredictRequest =
         PredictRequest(
-            context = TypingContext(cache.before.toString(), cache.after, fieldClass()),
+            context = TypingContext(cache.beforeSnapshot(), cache.after, fieldClass()),
             composing = ComposingInput(typed, touchList),
             layout = layout,
             maxCandidates = MAX_CANDIDATES,
@@ -1086,6 +1675,10 @@ internal class PredictiveInput(
     }
 
     private fun resetWordState() {
+        swipe = null
+        swiping = null
+        recorrect = null
+        dropPendingSwipe()
         retypeGuard = null
         restoredWord = null
         composing.setLength(0)
@@ -1668,6 +2261,8 @@ internal class PredictiveInput(
     }
 
     private companion object {
+        /** A truncated cache shorter than this may cut a long grapheme cluster short. */
+        const val MIN_CACHED_LOOKBEHIND = 32
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
@@ -1682,5 +2277,16 @@ internal class PredictiveInput(
         const val ADDRESS_SEPARATORS = "@/\\_"
 
         const val NO_SPACE_AFTER = "([{<\"'“‘/@#-"
+
+        /** A swiped word after one of these gets a space first. */
+        const val SENTENCE_PUNCTUATION = ".,!?;:)]}"
     }
+}
+
+/** What is known of the editor's selection: it decides whether a delete may skip reading. */
+internal enum class SelectionState {
+    /** Never reported (a field opened without an initial selection, say). */
+    Unknown,
+    Collapsed,
+    Range,
 }

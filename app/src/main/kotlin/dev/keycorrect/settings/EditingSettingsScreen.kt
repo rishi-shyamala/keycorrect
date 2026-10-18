@@ -59,6 +59,20 @@ fun EditingSettingsScreen(
             onCheckedChange = { v -> onUpdate { it.copy(backspaceSwipe = v) } },
         )
 
+        SectionHeader(stringResource(R.string.editing_section_gesture))
+        SwitchRow(
+            title = stringResource(R.string.editing_gesture_typing),
+            supportingText = stringResource(R.string.editing_gesture_typing_summary),
+            checked = settings.gestureTyping,
+            onCheckedChange = { v -> onUpdate { it.copy(gestureTyping = v) } },
+        )
+        SwitchRow(
+            title = stringResource(R.string.editing_gesture_trail),
+            checked = settings.gestureTrail,
+            onCheckedChange = { v -> onUpdate { it.copy(gestureTrail = v) } },
+            enabled = settings.gestureTyping,
+        )
+
         TryItSection()
     }
 }

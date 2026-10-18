@@ -1,10 +1,10 @@
 package dev.keycorrect.core.settings
 
-/** Spacebar cursor speed: [stepDp] is the finger travel per character at a slow drag. */
-enum class CursorSpeed(val stepDp: Float) {
-    Slow(SLOW_STEP_DP),
-    Normal(NORMAL_STEP_DP),
-    Fast(FAST_STEP_DP),
+/** How fast the spacebar joystick moves the cursor: a multiplier on its speeds (docs/PHASE4.md). */
+enum class CursorSpeed(val joystickScale: Float) {
+    Slow(SLOW_SCALE),
+    Normal(NORMAL_SCALE),
+    Fast(FAST_SCALE),
 }
 
 /** Default skin tone for emoji that have tone variants; [None] is the plain (yellow) form. */
@@ -25,31 +25,62 @@ enum class ClipRetention(val millis: Long) {
     Month(MONTH_MS),
 }
 
+/** Which speech recognizer voice typing uses (docs/PHASE6.md). */
+enum class VoiceEngineChoice {
+    /**
+     * The built-in model from the KeyCorrect voice pack, on this device. Never falls back to the
+     * phone's recognizer: without a usable pack dictation says so.
+     */
+    BuiltIn,
+
+    /**
+     * The phone's own speech recognizer (Google, FUTO Voice Input, ...), an explicit opt-in: it may
+     * send audio to its provider's servers. Never used in private fields (incognito, no learning).
+     */
+    PhoneRecognizer;
+
+    companion object {
+        /** The stored name; the old names (before the engine choice was made explicit) migrate. */
+        fun parse(name: String?): VoiceEngineChoice? =
+            when (name) {
+                "Automatic" -> BuiltIn
+                "System" -> PhoneRecognizer
+                else -> entries.firstOrNull { it.name == name }
+            }
+    }
+}
+
 private const val HOUR_MS = 3_600_000L
 private const val DAY_MS = 86_400_000L
 private const val WEEK_MS = 604_800_000L
 private const val MONTH_MS = 2_592_000_000L // 30 days
 
-private const val SLOW_STEP_DP = 18f
-private const val NORMAL_STEP_DP = 12f
-private const val FAST_STEP_DP = 7f
+private const val SLOW_SCALE = 0.6f
+private const val NORMAL_SCALE = 1f
+private const val FAST_SCALE = 1.6f
 
 /** User-tunable keyboard behaviour. Every field has a safe default; see [sanitized]. */
 data class KeyboardSettings(
     /** Key height in dp, [KEY_HEIGHT_DP_RANGE]. */
     val keyHeightDp: Int = 54,
     /**
-     * Minimum width of the bottom row's side keys (?123, emoji, comma, period, Enter) as a fraction
-     * of a letter key, [BOTTOM_KEY_WIDTH_RANGE]; the spare width goes to the space bar.
+     * Width of the bottom row's emoji, comma and period keys as a fraction of a letter key,
+     * [BOTTOM_KEY_WIDTH_RANGE]; the spare width goes to the space bar.
      */
     val bottomKeyWidth: Float = DEFAULT_BOTTOM_KEY_WIDTH,
+    /** Width of the bottom row's ?123/ABC and Enter keys, [MODE_ENTER_KEY_WIDTH_RANGE]. */
+    val modeEnterKeyWidth: Float = DEFAULT_MODE_ENTER_KEY_WIDTH,
     /**
      * Padding around the whole keyboard in dp, [EDGE_PADDING_DP_RANGE]; the default is the old one.
      */
     val edgePaddingDp: Int = DEFAULT_EDGE_PADDING_DP,
     /** Space between neighbouring keys in dp, [KEY_GAP_DP_RANGE]; 0 = keys touch. */
     val keyGapDp: Int = DEFAULT_KEY_GAP_DP,
-    val numberRow: Boolean = false,
+    val numberRow: Boolean = true,
+    /**
+     * Each letter key's corner hint (and first popup entry) is the symbol at its place on page 1.
+     */
+    val symbolHints: Boolean = true,
     val keyPreview: Boolean = true,
     /** Long-press threshold in milliseconds, [LONG_PRESS_DELAY_MS_RANGE]. */
     val longPressDelayMs: Int = 300,
@@ -95,9 +126,22 @@ data class KeyboardSettings(
     val hapticOnAutocorrect: Boolean = true,
     /** Distinct vibration when a finished word is not in any dictionary and wasn't corrected. */
     val hapticOnUnknownWord: Boolean = true,
-    /** Dragging on the spacebar moves the cursor; hold then drag selects (docs/PHASE4.md). */
+    /**
+     * Length of each of the two pulses of the autocorrect haptic in ms, [HAPTIC_PULSE_MS_RANGE].
+     */
+    val autocorrectPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
+    /** Length of each of the three pulses of the unknown-word haptic in ms, same range. */
+    val unknownWordPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
+    /**
+     * Dragging on the spacebar moves the cursor (right half) or selects (left half);
+     * docs/PHASE4.md.
+     */
     val spacebarCursor: Boolean = true,
-    /** How far a spacebar drag moves per character. */
+    /** Gesture (swipe) typing on letter keys (docs/PHASE5.md). */
+    val gestureTyping: Boolean = true,
+    /** Draw the swipe's trail under the finger. */
+    val gestureTrail: Boolean = true,
+    /** How fast the spacebar joystick moves the cursor. */
     val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
     /** Swiping left on backspace selects whole words and release deletes them. */
     val backspaceSwipe: Boolean = true,
@@ -114,6 +158,11 @@ data class KeyboardSettings(
     val clipboardRetention: ClipRetention = ClipRetention.Week,
     /** Copied images are kept too (encrypted, 20 MB in all). */
     val clipboardImages: Boolean = true,
+    /** Voice typing: long-press the comma (docs/PHASE6.md). Never offered in password fields. */
+    val voiceEnabled: Boolean = true,
+    val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.BuiltIn,
+    /** Ask the recognizer for punctuation and capitalisation. */
+    val voiceAutoPunctuation: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -123,11 +172,16 @@ data class KeyboardSettings(
             bottomKeyWidth =
                 if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
                 else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
+            modeEnterKeyWidth =
+                if (modeEnterKeyWidth.isNaN()) DEFAULT_MODE_ENTER_KEY_WIDTH
+                else modeEnterKeyWidth.coerceIn(MODE_ENTER_KEY_WIDTH_RANGE),
             edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
             keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
             longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
             hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
             hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
+            autocorrectPulseMs = autocorrectPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
+            unknownWordPulseMs = unknownWordPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
             implicitAddReverts = implicitAddReverts.coerceIn(REVERTS_RANGE),
             suppressCorrectionReverts =
                 suppressCorrectionReverts
@@ -141,14 +195,18 @@ data class KeyboardSettings(
     companion object {
         val KEY_HEIGHT_DP_RANGE = 40..80
         val BOTTOM_KEY_WIDTH_RANGE = 0.30f..1.50f
+        val MODE_ENTER_KEY_WIDTH_RANGE = 0.75f..1.50f
         val EDGE_PADDING_DP_RANGE = 0..4
         val KEY_GAP_DP_RANGE = 0..6
         const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
+        const val DEFAULT_MODE_ENTER_KEY_WIDTH = 1.15f
         const val DEFAULT_EDGE_PADDING_DP = 4
         const val DEFAULT_KEY_GAP_DP = 6
         val LONG_PRESS_DELAY_MS_RANGE = 150..800
         val HAPTIC_DURATION_MS_RANGE = 0..100
         val HAPTIC_STRENGTH_RANGE = 0..255
+        val HAPTIC_PULSE_MS_RANGE = 5..60
+        const val DEFAULT_HAPTIC_PULSE_MS = 20
         val SOUND_VOLUME_RANGE = 0f..1f
         val REVERTS_RANGE = 1..5
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100

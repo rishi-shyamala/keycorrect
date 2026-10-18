@@ -229,24 +229,38 @@ class ClassicEngine(
         }
 
     /**
-     * Like [featuresFor] but never waits: null means "busy, the lock is held, try again later";
-     * [RankingFeatures.NOT_DECODABLE] means the decode ran and [text] is not among its candidates
-     * (retrying cannot help).
+     * Like [featuresFor] but never waits: null means "busy, try again later" (the lock is held, or
+     * [stale] became true during the decode, so typing never waits behind it);
+     * [RankingFeatures.NOT_DECODABLE] means the decode ran to the end and [text] is not among its
+     * candidates (retrying cannot help).
      */
-    fun tryFeaturesFor(request: PredictRequest, text: String): RankingFeatures? {
+    fun tryFeaturesFor(
+        request: PredictRequest,
+        text: String,
+        stale: () -> Boolean = isStale,
+    ): RankingFeatures? {
         if (!lock.tryLock()) return null
         try {
-            return featuresLocked(request, text) ?: RankingFeatures.NOT_DECODABLE
+            val features = featuresLocked(request, text, stale)
+            // An interrupted decode proves nothing about the pool: report busy, not undecodable.
+            return when {
+                stale() -> null
+                else -> features ?: RankingFeatures.NOT_DECODABLE
+            }
         } finally {
             lock.unlock()
         }
     }
 
-    private fun featuresLocked(request: PredictRequest, candidateText: String): RankingFeatures? {
+    private fun featuresLocked(
+        request: PredictRequest,
+        candidateText: String,
+        stale: () -> Boolean = isStale,
+    ): RankingFeatures? {
         val wide =
             if (request.maxCandidates < FEATURE_POOL) request.copy(maxCandidates = FEATURE_POOL)
             else request
-        val r = predictRanked(wide)
+        val r = predictRankedLocked(wide, stale)
         val lit = r.literal
         if (lit != null && lit.text == candidateText) {
             return featuresOf(lit, lexicon.containsWord(Text.key(lit.text)))
@@ -485,6 +499,7 @@ class ClassicEngine(
         for (k in 0 until search.resultCount) {
             val node = search.resultNode[k]
             var bestId = -1
+            var bestWord = ""
             var bestLm = Float.NEGATIVE_INFINITY
             var bestBase = 0f
             for (j in 0 until dictionary.wordIdCountAt(node)) {
@@ -498,10 +513,11 @@ class ClassicEngine(
                     bestLm = v
                     bestBase = base
                     bestId = id
+                    bestWord = word
                 }
             }
             if (bestId < 0) continue
-            val surface = shaped(dictionary.word(bestId), literal)
+            val surface = shaped(bestWord, literal)
             val rightLm = if (right >= 0) lm.rightLogProb(bestId, right) else 0f
             val breakdown =
                 ScoreBreakdown(
@@ -521,7 +537,7 @@ class ClassicEngine(
                     breakdown.total(config.scoring),
                     breakdown,
                     bestId,
-                    dictionary.word(bestId),
+                    bestWord,
                 )
             )
         }

@@ -97,6 +97,7 @@ fun SettingsApp(
                 SettingsDestination.Keyboard -> KeyboardSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Editing -> EditingSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Emoji -> EmojiSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.Voice -> VoiceSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Clipboard ->
                     ClipboardSettingsScreen(padding, container, settings, onUpdate)
                 SettingsDestination.TextCorrection ->

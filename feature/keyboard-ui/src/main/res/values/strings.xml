@@ -72,10 +72,14 @@
     <string name="edit_select_off">off</string>
 
     <!-- Selection strip: shown in place of the suggestions while a range is selected. -->
-    <string name="selection_word_description">Expand selection to word</string>
-    <string name="selection_sentence_description">Expand selection to sentence</string>
+    <string name="selection_word_description">Select word</string>
+    <string name="selection_sentence_description">Select sentence</string>
+    <string name="selection_line_description">Select line</string>
+    <string name="selection_start_back_description">Move selection start back</string>
+    <string name="selection_start_forward_description">Move selection start forward</string>
+    <string name="selection_end_back_description">Move selection end back</string>
+    <string name="selection_end_forward_description">Move selection end forward</string>
     <string name="selection_case_description">Change case</string>
-    <string name="selection_copy_description">Copy selection</string>
 
     <!-- Emoji suggestion in the strip: %1$s is the emoji's name, e.g. "pizza". -->
     <string name="strip_emoji">Emoji: %1$s</string>
@@ -123,9 +127,28 @@
     <string name="clipboard_delete">Delete</string>
     <string name="clipboard_clean">Clean link</string>
     <string name="clipboard_menu_close">Close</string>
-    <string name="clipboard_chip">\uD83D\uDCCB %1$s</string>
+    <string name="clipboard_chip">%1$s</string>
     <string name="clipboard_chip_description">Paste copied text: %1$s</string>
     <string name="clipboard_chip_image_description">Paste copied image</string>
     <string name="clipboard_chip_dismiss">\u2715</string>
     <string name="clipboard_chip_dismiss_description">Dismiss copied clip</string>
+    <string name="voice_key_action">Voice typing</string>
+    <string name="voice_listening">Listening\u2026</string>
+    <string name="voice_finishing">Finishing\u2026</string>
+    <string name="voice_stop">Stop</string>
+    <string name="voice_stop_description">Stop and keep the text</string>
+    <string name="voice_cancel_description">Cancel voice typing</string>
+    <string name="voice_level_description">Microphone level</string>
+    <string name="voice_error_no_permission">Allow microphone access, then long-press the comma again</string>
+    <string name="voice_error_no_engine">No speech recognizer is available</string>
+    <string name="voice_error_audio">The microphone could not be used</string>
+    <string name="voice_error_engine">The speech recognizer failed</string>
+    <string name="voice_error_no_match">Didn\'t catch that</string>
+    <string name="voice_error_busy">The speech recognizer is busy</string>
+    <string name="voice_error_no_voice_pack">Install the KeyCorrect voice pack to dictate</string>
+    <string name="voice_error_voice_pack_untrusted">Voice pack isn\'t trusted (signature)</string>
+    <string name="voice_error_voice_pack_broken">Voice pack is damaged</string>
+    <string name="voice_error_private_field">The phone recognizer isn\'t used in private fields</string>
+    <string name="voice_error_timeout">The last words may be missing</string>
+    <string name="voice_error_dismiss_description">Dismiss message</string>
 </resources>

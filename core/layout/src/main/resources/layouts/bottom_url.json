@@ -7,7 +7,16 @@
   "kind": "bottom",
   "rows": [
     [
-      { "type": "modeSwitch", "width": 1.5 },
+      {
+        "type": "modeSwitch", "width": 1.5, "hint": null,
+        "popup": [
+          { "type": "fieldMode", "mode": "text" },
+          { "type": "fieldMode", "mode": "email" },
+          { "type": "fieldMode", "mode": "url" },
+          { "type": "fieldMode", "mode": "number" },
+          { "type": "fieldMode", "mode": "phone" },
+        ],
+      },
       { "type": "emoji" },
       "/",
       { "type": "space", "width": 4 },

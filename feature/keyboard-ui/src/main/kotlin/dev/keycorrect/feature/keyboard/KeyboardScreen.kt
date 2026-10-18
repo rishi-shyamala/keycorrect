@@ -36,6 +36,7 @@ import dev.keycorrect.feature.keyboard.clipboard.ClipboardTitleStrip
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanel
 import dev.keycorrect.feature.keyboard.emoji.EmojiSearchRow
 import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
+import dev.keycorrect.feature.keyboard.voice.ListeningBar
 
 /**
  * The full keyboard: suggestion strip (autofill chips for now) above the key surface, with the key
@@ -151,6 +152,7 @@ private fun Keys(
             terminalModifiers = controller.terminalModifiers,
             clipboardLongPress = controller.clipboardAvailable,
             onKeyLongPress = controller::onKeyLongPress,
+            swipeTyping = controller.swipeTypingActive && settings.gestureTyping,
         )
         KeySemantics(
             layer = layer,
@@ -160,6 +162,7 @@ private fun Keys(
             modifier = Modifier.matchParentSize(),
             terminalModifiers = controller.terminalModifiers,
             onClipboard = if (controller.clipboardAvailable) controller::openClipboard else null,
+            onVoice = controller.voice::toggle,
         )
     }
 }
@@ -184,6 +187,7 @@ private fun SuggestionArea(
     val press = { feedback.haptic(view, settings) }
     val modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)
     when {
+        controller.voice.barVisible -> ListeningBar(controller.voice, onPress = press, modifier)
         controller.panel == KeyboardPanel.Emoji ->
             Box(modifier) {
                 if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
@@ -218,14 +222,16 @@ private fun StripContent(
     } else if (controller.selectionStripVisible) {
         SelectionStrip(controller.editing)
     } else {
+        // Remembered, so the strip's slots see the same callbacks on every recomposition and a
+        // slot whose word did not change is skipped.
         PredictionStrip(
-            strip = { controller.strip },
-            onSlot = controller::onSuggestionTap,
-            onAddWord = controller::onAddWordTap,
-            onSlotLongPress = controller::onSuggestionLongPress,
-            onNeverYes = controller::onNeverSuggestConfirm,
-            onNeverCancel = controller::onNeverSuggestCancel,
-            canBlock = { controller.canBlockSuggestions },
+            strip = remember(controller) { { controller.strip } },
+            onSlot = remember(controller) { controller::onSuggestionTap },
+            onAddWord = remember(controller) { controller::onAddWordTap },
+            onSlotLongPress = remember(controller) { controller::onSuggestionLongPress },
+            onNeverYes = remember(controller) { controller::onNeverSuggestConfirm },
+            onNeverCancel = remember(controller) { controller::onNeverSuggestCancel },
+            canBlock = remember(controller) { { controller.canBlockSuggestions } },
         )
         // Only when the strip above is empty (see KeyboardController.stripClip).
         ClipChip(controller, onPress = onPress)

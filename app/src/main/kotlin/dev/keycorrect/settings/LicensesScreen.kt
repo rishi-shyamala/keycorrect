@@ -49,6 +49,10 @@ fun LicensesScreen(contentPadding: PaddingValues) {
         Body(R.string.licenses_androidx)
         Body(R.string.licenses_kotlin)
         Body(R.string.licenses_sqlcipher)
+        Body(R.string.licenses_sherpa)
+        Body(R.string.licenses_onnxruntime)
+        Body(R.string.licenses_moonshine)
+        Body(R.string.licenses_silero)
     }
 }
 

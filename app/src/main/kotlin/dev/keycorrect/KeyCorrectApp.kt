@@ -27,6 +27,7 @@ import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
+import dev.keycorrect.voice.VoiceHost
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -131,6 +132,9 @@ class AppContainer(private val context: Context) {
             applicationScope.launch { settingsRepository.settings.collect(env::applySettings) }
         }
     }
+
+    /** Voice typing: permission, microphone and recognizer choice (voice pack, else system). */
+    val voiceHost: VoiceHost by lazy { VoiceHost(context) }
 
     /** "Reset all learning": the learning data plus emoji recents and variant choices. */
     suspend fun resetAllLearning() {
