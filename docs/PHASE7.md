@@ -28,3 +28,83 @@ within the latency budget, and the sample plugin works end to end.
 - **Plugin SDK:** the AIDL `dev.keycorrect.TEXT_ENGINE` and a sample plugin APK.
 - **Eval:** a reranker arm in `tools/eval`, giving accuracy, false corrections and latency for each
   candidate model. The default is chosen from the data.
+
+## Model research (2026-10-18)
+
+**Runtime:** llama.cpp **v0.7.0** (2026-10-15, MIT), pinned in `tools/data/fetch-neural.sh`. The script
+downloads the source tarball and the candidate GGUFs into `data/raw/neural/` (git-ignored by
+`/data/raw/`), pinned to Hugging Face commits, with SHA-256 in `tools/data/neural-sources.sha256`.
+
+### Candidates
+
+All GGUF sizes are the files actually fetched (or listed by the repo for the ones not fetched).
+"Pack" means the size of the GGUF if it were the model in the neural-pack APK (budget ~250 MB total).
+
+| Model | Params | Licence | GGUF source | File | Vocab | Fits pack? |
+|---|---|---|---|---|---|---|
+| **SmolLM2-135M** (base) | 135M | Apache-2.0 | ggml-org (Q4_K_M 101 MB also there) | Q8_0 **145 MB** | 49,152 | yes |
+| **SmolLM2-360M** (base) | 362M | Apache-2.0 | QuantFactory conversion (HuggingFaceTB ships only the instruct Q8_0, 386 MB) | Q4_K_M **271 MB** (Q4_0 229 MB) | 49,152 | marginal |
+| **Granite 4.0 350M** (instruct) | 352M | Apache-2.0 | ibm-granite (official) | Q4_K_M **237 MB** (Q8_0 378 MB) | 100,352 | yes |
+| **Qwen3-0.6B** | 596M | Apache-2.0 | Qwen (official) | Q8_0 **639 MB** (official repo has no Q4) | 151,936 | no |
+| **Gemma 3 270M** (base) | 268M | Gemma Terms of Use | ggml-org | Q8_0 **292 MB** (170M of the params are embeddings) | 262,144 | no |
+| Not fetched: LFM2.5-350M (LiquidAI) | 354M | LFM Open License 1.0 (custom, revenue-capped) | LiquidAI | Q4_K_M 229 MB | n/a | licence needs review |
+| Not fetched: Qwen3.5-0.8B | 753M | Apache-2.0 | ggml-org / unsloth | Q4_K_M 533 MB | ~250k | no |
+| Not fetched: Gemma 3n E2B / Gemma 4 E2B | 4.5-5.1B stored | Gemma terms / Apache-2.0 | ggml-org / google | 4.8 GB (3n Q8) | n/a | no |
+| Not considered: SmolLM3 (3B), MobileLLM-R1 ("other" licence) | | | | | | no |
+
+**Gemma terms:** Gemma 3 is under the Gemma Terms of Use, not an OSI licence. Redistribution is allowed
+but each recipient must be bound by the use restrictions (the Prohibited Use Policy), the notice has to
+travel with the weights, and Google reserves a right to require stopping use. Shipping that inside an
+APK is workable but needs an in-app terms notice, and nothing in this benchmark argues for it, so
+Gemma is excluded from the default (kept only as a comparison). The Gemma 4 E2B release is Apache-2.0
+but is ~5B stored parameters, far over the size budget. No sub-1B Gemma 3n/4 exists.
+
+### Desktop benchmark (x86-64, 16 threads machine, CPU-only, relative numbers only)
+
+llama-bench `pp32` (32-token prompt, 5 reps), warm file cache. Load time and RSS from the scoring tool
+(context 256). Phone numbers will be several times lower; use these only to rank the models.
+
+| Model | pp32 t/s, 1 thread | pp32 t/s, 4 threads | Load (warm) | Peak RSS | Top-1 (1000 items) | MRR |
+|---|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q8_0 | 543 | 1922 | 64 ms | 168 MB | 0.911 | 0.953 |
+| SmolLM2-360M Q4_K_M | 202 | 729 | 63 ms | 314 MB | 0.912 | 0.952 |
+| Granite 4.0 350M Q4_K_M | 388 | 1302 | 118 ms | 385 MB | 0.894 | 0.944 |
+| Gemma 3 270M Q8_0 | 589 | 1839 | 228 ms | 335 MB | 0.904 | 0.950 |
+| Qwen3-0.6B Q8_0 | 158 | 552 | 145 ms | 688 MB | 0.916 | 0.956 |
+
+### Reranking quality signal
+
+A small scoring tool (C++ against the built libllama, kept in the scratchpad, not committed) sums
+log P(" " + word | preceding words) for each candidate, with no KV reuse. Items: 1000 sentences
+sampled (seed 7, 6-20 words) from `data/processed/heldout.txt`; the cut is after the 3rd or later
+word. Each item has the true next word plus 4 distractors: 2 of similar unigram frequency (0.5x-2x)
+and 2 within edit distance 2 of the true word (from the top 50k unigrams, count >= 50). A candidate
+set of 5 gives 20% chance; a unigram-frequency prior alone gets **40.2%** top-1. All models pick the
+true word 89-92% of the time, i.e. the context signal is strong for every one of them. The standard
+error of each top-1 is about 0.9 points, so SmolLM2-135M, SmolLM2-360M, Gemma 270M and Qwen3-0.6B
+are **statistically indistinguishable** here; Granite is slightly behind.
+
+Caveats: the distractors are artificial (not the classic engine's real candidate lists), so this says
+only that the LM carries enough context signal to rerank; the real go/no-go is the Phase 7 eval arm in
+`tools/eval`, which measures accuracy, false corrections and latency inside the keyboard pipeline.
+The scoring tool's per-item time (SmolLM2-135M 38 ms vs Qwen3-0.6B 137 ms for 5 candidates, 4 threads)
+includes a full-vocabulary softmax per position, which penalises the large-vocab models (Gemma 262k,
+Qwen 152k) and is not what the shipped scorer would do; the real scorer shares the context prompt
+(KV reuse) and can restrict the output projection.
+
+### Recommendation
+
+- **Default: SmolLM2-135M (base), Q8_0, 145 MB** (Q4_K_M, 101 MB, is the fallback if the pack is tight and
+  the eval shows no loss). Apache-2.0, redistributable; the fastest and smallest candidate (3.5x faster
+  prompt processing than Qwen3-0.6B, 168 MB RSS); equal quality to the larger models in this test; a
+  small 49k vocabulary keeps the output projection cheap; Q8 avoids quantisation noise on a model this
+  small. Fits the 250 MB pack with room for the runtime libs.
+- **Optional upgrade: SmolLM2-360M Q4_0/Q4_K_M** (229-271 MB) for users who import it via file import; not
+  default because it is 2.7x slower prompt processing for no measurable gain here, and Q4_K_M is just over
+  budget.
+- Exclude: Gemma 3 270M (terms, 262k vocab, 292 MB), Qwen3-0.6B (639 MB, kept only as a quality
+  reference), Granite 350M (largest vocab of the fitting models, lowest accuracy), LFM2.5 (custom
+  licence).
+- The final choice is still the user's; this ranking should be re-checked with the real eval arm before
+  the pack is built, and the on-device numbers on the Tab S9 (Snapdragon 8 Gen 2) measured with the
+  NDK build.
