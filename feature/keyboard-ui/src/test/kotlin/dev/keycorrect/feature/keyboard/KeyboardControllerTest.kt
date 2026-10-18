@@ -39,7 +39,7 @@ class KeyboardControllerTest {
 
     private fun start(
         field: Field = textProfile,
-        settings: KeyboardSettings = KeyboardSettings(),
+        settings: KeyboardSettings = KeyboardSettings(numberRow = false),
         restarting: Boolean = false,
     ) =
         controller.onStartInput(
@@ -161,7 +161,7 @@ class KeyboardControllerTest {
         controller.updateSettings(KeyboardSettings(numberRow = true))
         assertThat(controller.layer.rows.size).isEqualTo(before.rows.size + 1)
         controller.updateSettings(KeyboardSettings(numberRow = true, keyHeightDp = 60))
-        controller.updateSettings(KeyboardSettings())
+        controller.updateSettings(KeyboardSettings(numberRow = false))
         assertThat(controller.layer).isEqualTo(before)
     }
 
@@ -382,7 +382,11 @@ class KeyboardControllerTest {
         start(restarting = true)
         assertThat(controller.state.layerId).isEqualTo("letters")
         controller.onKey(KeyAction.SwitchLayer("symbols"))
-        controller.onStartInput(textProfile.profile, KeyboardSettings(), restarting = true)
+        controller.onStartInput(
+            textProfile.profile,
+            KeyboardSettings(numberRow = false),
+            restarting = true,
+        )
         assertThat(controller.state.layerId).isEqualTo("letters") // no identity: never "same"
     }
 
@@ -472,7 +476,7 @@ class KeyboardControllerTest {
         controller.onKey(KeyAction.SwitchLayer("symbols"))
         assertThat(controller.heightUnits).isEqualTo(plain + 1f)
         // A setting change while on symbols resizes the window once, for every layer.
-        controller.updateSettings(KeyboardSettings())
+        controller.updateSettings(KeyboardSettings(numberRow = false))
         assertThat(controller.heightUnits).isEqualTo(plain)
     }
 

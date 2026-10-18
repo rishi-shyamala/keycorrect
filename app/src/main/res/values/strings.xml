@@ -26,7 +26,7 @@
     <string name="keyboard_key_height">Key height</string>
     <string name="keyboard_bottom_key_width">Emoji, comma and period width</string>
     <string name="keyboard_bottom_key_width_summary">Width of the emoji, comma and period keys, as a share of a letter key.</string>
-    <string name="keyboard_mode_enter_key_width">?123 and Enter width</string>
+    <string name="keyboard_mode_enter_key_width">\?123 and Enter width</string>
     <string name="keyboard_mode_enter_key_width_summary">Width of the ?123 / ABC and Enter keys, as a share of a letter key.</string>
     <string name="keyboard_edge_padding">Edge padding</string>
     <string name="keyboard_key_gap">Gap between keys</string>

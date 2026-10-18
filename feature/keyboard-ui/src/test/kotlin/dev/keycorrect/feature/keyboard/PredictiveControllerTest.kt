@@ -48,7 +48,7 @@ class PredictiveControllerTest {
 
     private fun start(
         profile: FieldProfile = textField,
-        settings: KeyboardSettings = KeyboardSettings(),
+        settings: KeyboardSettings = KeyboardSettings(numberRow = false),
     ) = controller.onStartInput(profile, settings, false, null, editor.cursor, editor.cursor)
 
     private fun type(text: String) = text.forEach { controller.onKey(KeyAction.Text("$it")) }
@@ -170,7 +170,7 @@ class PredictiveControllerTest {
             editor.setText(opener)
             controller.onStartInput(
                 textField,
-                KeyboardSettings(),
+                KeyboardSettings(numberRow = false),
                 false,
                 null,
                 editor.cursor,
@@ -181,7 +181,7 @@ class PredictiveControllerTest {
             assertWithMessage("after '$opener'").that(editor.composeCalls).isEqualTo(1)
         }
         editor.setText("")
-        controller.onStartInput(textField, KeyboardSettings(), false, null, 0, 0)
+        controller.onStartInput(textField, KeyboardSettings(numberRow = false), false, null, 0, 0)
         editor.composeCalls = 0
         type("a")
         assertThat(editor.composeCalls).isEqualTo(1)
@@ -210,7 +210,7 @@ class PredictiveControllerTest {
     fun noComposingInTheMiddleOfAWord() {
         start()
         editor.setText("wrld", at = 1)
-        controller.onStartInput(textField, KeyboardSettings())
+        controller.onStartInput(textField, KeyboardSettings(numberRow = false))
         type("o")
         assertThat(editor.composeCalls).isEqualTo(0)
         assertThat(text()).isEqualTo("world")
