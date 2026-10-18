@@ -25,7 +25,7 @@ internal class TrieSearch(
     private val lambda: Float,
     private val completionPenalty: Float,
 ) {
-    // State pool (struct of arrays) and a binary max-heap over state indices.
+    // State pool (struct of arrays) and a 4-ary max-heap over state indices.
     private val stNode = IntArray(search.maxStates)
     private val stPos = IntArray(search.maxStates)
     private val stEdits = IntArray(search.maxStates)
@@ -328,7 +328,7 @@ internal class TrieSearch(
         val bound = stBound[s]
         var i = start
         while (i > 0) {
-            val parent = (i - 1) ushr 1
+            val parent = (i - 1) ushr 2
             if (!before(bound, s, heapBound[parent], heap[parent])) break
             heap[i] = heap[parent]
             heapBound[i] = heapBound[parent]
@@ -345,13 +345,14 @@ internal class TrieSearch(
         val lastBound = heapBound[size]
         var i = 0
         while (true) {
-            var child = 2 * i + 1
-            if (child >= size) break
-            if (
-                child + 1 < size &&
-                    before(heapBound[child + 1], heap[child + 1], heapBound[child], heap[child])
-            ) {
-                child++
+            val first = 4 * i + 1
+            if (first >= size) break
+            // Best of up to four children (the order is total, so the pop sequence is the same as
+            // with any other heap arity).
+            var child = first
+            val end = minOf(first + 4, size)
+            for (c in first + 1 until end) {
+                if (before(heapBound[c], heap[c], heapBound[child], heap[child])) child = c
             }
             if (!before(heapBound[child], heap[child], lastBound, last)) break
             heap[i] = heap[child]
