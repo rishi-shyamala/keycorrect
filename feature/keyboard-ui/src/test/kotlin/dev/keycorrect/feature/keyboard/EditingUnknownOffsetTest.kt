@@ -85,6 +85,19 @@ class EditingUnknownOffsetTest {
     }
 
     @Test
+    fun selectionEdgesMoveWithTheTrackedSelection() {
+        start("Hi there. Good one. Bye now.", at = 0)
+        sim.setSelection(10, 19)
+        controller.editing.moveSelectionEdge(SelectionUnit.Sentence, SelectionEdge.Start, false)
+        assertThat(sim.selected).isEqualTo("Hi there. Good one.")
+        controller.editing.moveSelectionEdge(SelectionUnit.Sentence, SelectionEdge.End, true)
+        assertThat(sim.selected).isEqualTo("Hi there. Good one. Bye now.")
+        controller.editing.moveSelectionEdge(SelectionUnit.Word, SelectionEdge.Start, true)
+        assertThat(sim.selected).isEqualTo("there. Good one. Bye now.")
+        assertThat(sim.selections.last()).isEqualTo(3 to 28)
+    }
+
+    @Test
     fun wordAtAWordEndSelectsThePreviousWord() {
         start("one two", at = 7)
         perform(EditingAction.SelectWord)

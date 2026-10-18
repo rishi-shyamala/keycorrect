@@ -326,6 +326,25 @@ constructor(
     /** The selection grows to the sentence(s) around it. */
     fun expandSelectionToSentence(): Boolean = selectAround(TextUnits::expandSentence)
 
+    /** The selection grows to the line(s) around it. */
+    fun expandSelectionToLine(): Boolean = selectAround(TextUnits::expandLine)
+
+    /** The selection grows to the whole [unit]s around it (the strip's Word, Sentence, Line). */
+    fun expandSelection(unit: SelectionUnit): Boolean =
+        selectAround(expand = { text, start, end -> TextUnits.expand(unit, text, start, end) })
+
+    /**
+     * Moves one [edge] of the selection a [unit] back or [forward], snapped to unit boundaries (see
+     * [UnitEdges.move]). The selection never inverts; it can shrink to a caret. False where nothing
+     * was changed.
+     */
+    fun moveSelectionEdge(unit: SelectionUnit, edge: SelectionEdge, forward: Boolean): Boolean =
+        selectAround(
+            expand = { text, start, end ->
+                UnitEdges.move(unit, text, TextSpan(start, end), edge, forward)
+            }
+        )
+
     /**
      * Changes the case of the selection to the next of the cycle (lower, Title, UPPER), keeping it
      * selected. False where nothing was changed.
