@@ -75,7 +75,8 @@ key, uninstall first, which deletes the keyboard's learned data.
 
 ### Test releases (install on a phone without a cable)
 
-Each test build is a GitHub **pre-release** with the signed APK attached:
+Each test build is a GitHub **pre-release** with the signed APK attached (and, optionally, the
+voice pack, see below):
 https://github.com/rishi-shyamala/keycorrect/releases. The repo is public, so these downloads are
 too.
 
@@ -91,6 +92,14 @@ too.
   2. Allow the browser to "install unknown apps" when Android asks.
   3. Install, then turn the keyboard on (section 3).
   4. Later builds install over it.
+  - **Voice pack (optional):** the release also has `keycorrect-voice-<version>.apk`
+    (`dev.keycorrect.voice`, about 65 MB). It holds the offline speech model and its native
+    libraries, has no code and no permissions, and is only needed for voice typing with the
+    built-in recognizer. Install it the same way as the keyboard, in any order. It must be signed
+    with the same key as the keyboard: the keyboard checks that and ignores a pack that isn't.
+    That is also why a debug keyboard needs a debug-signed pack (`./gradlew :voicepack:installDebug`
+    after `tools/data/fetch-voice.sh`) and a release keyboard the release pack. Updates install
+    over it. After updating the pack, restart the keyboard (or the phone) to use the new one.
   - An older `dev.keycorrect` signed with a different key (e.g. the debug key) has to be
     uninstalled first.
 - **Making one** (needs a clean, pushed commit):
@@ -104,6 +113,11 @@ Commit and push the version bump, then:
 ```bash
 tools/release/release.sh publish
 ```
+
+`publish` also builds and attaches the signed voice pack when its files are downloaded
+(`tools/data/fetch-voice.sh`, which fills the git-ignored `data/raw/voice/`); otherwise it says so
+and publishes the keyboard alone. To build the pack by itself: `./gradlew :voicepack:assembleRelease`
+(it is not part of `assembleDebug` or CI).
 
 ## 3. Turn the keyboard on
 
