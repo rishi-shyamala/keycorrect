@@ -205,19 +205,28 @@ private fun PackStatus() {
     LaunchedEffect(Unit) {
         result = withContext(Dispatchers.Default) { VoicePackLocator(context).locate() }
     }
+    val found = result ?: return
     val text =
-        when (val found = result) {
-            null -> return
-            is VoicePackResult.Available -> R.string.voice_pack_installed
+        when (found) {
+            is VoicePackResult.Available -> stringResource(R.string.voice_pack_installed)
             is VoicePackResult.Unavailable ->
-                when (found.problem) {
-                    VoicePackProblem.NotInstalled -> R.string.voice_pack_not_installed
-                    VoicePackProblem.SignatureMismatch -> R.string.voice_pack_signature_mismatch
-                    VoicePackProblem.Broken -> R.string.voice_pack_broken
-                }
+                // The detail is an error class name only (no paths, no user data).
+                stringResource(packProblemMessage(found.problem), found.detail.orEmpty())
         }
     Text(
-        stringResource(text),
+        text,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
     )
 }
+
+/** The status line for each reason the voice pack can't be used (a `%1$s` takes the detail). */
+internal fun packProblemMessage(problem: VoicePackProblem): Int =
+    when (problem) {
+        VoicePackProblem.NotInstalled -> R.string.voice_pack_not_installed
+        VoicePackProblem.SignatureMismatch -> R.string.voice_pack_signature_mismatch
+        VoicePackProblem.LibrariesMissing -> R.string.voice_pack_libraries_missing
+        VoicePackProblem.LibraryLoadFailed -> R.string.voice_pack_load_failed
+        VoicePackProblem.ModelsMissing -> R.string.voice_pack_models_missing
+        VoicePackProblem.ChangedDuringLoad -> R.string.voice_pack_changed
+        VoicePackProblem.NeedsRestart -> R.string.voice_pack_needs_restart
+    }

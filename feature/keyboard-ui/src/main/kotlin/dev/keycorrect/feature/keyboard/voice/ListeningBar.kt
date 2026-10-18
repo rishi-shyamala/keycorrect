@@ -85,7 +85,7 @@ internal fun ListeningBar(
                     modifier
                         .clickable(
                             onClickLabel = stringResource(R.string.voice_error_dismiss_description),
-                            onClick = voice::clearFailure,
+                            onClick = voice::onFailureTapped,
                         )
                         .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart,
@@ -101,6 +101,7 @@ internal fun ListeningBar(
     }
 }
 
+@Suppress("CyclomaticComplexMethod") // a flat mapping, one line per error
 internal fun errorMessage(error: SttError): Int =
     when (error) {
         SttError.NoPermission -> R.string.voice_error_no_permission
@@ -112,7 +113,11 @@ internal fun errorMessage(error: SttError): Int =
         SttError.Busy -> R.string.voice_error_busy
         SttError.NoVoicePack -> R.string.voice_error_no_voice_pack
         SttError.VoicePackUntrusted -> R.string.voice_error_voice_pack_untrusted
-        SttError.VoicePackBroken -> R.string.voice_error_voice_pack_broken
+        SttError.VoicePackLibrariesMissing -> R.string.voice_error_voice_pack_libraries_missing
+        SttError.VoicePackLoadFailed -> R.string.voice_error_voice_pack_load_failed
+        SttError.VoicePackModelsMissing -> R.string.voice_error_voice_pack_models_missing
+        SttError.VoicePackChanged -> R.string.voice_error_voice_pack_changed
+        SttError.VoicePackNeedsRestart -> R.string.voice_error_voice_pack_needs_restart
         SttError.PrivateField -> R.string.voice_error_private_field
         SttError.Timeout -> R.string.voice_error_timeout
     }

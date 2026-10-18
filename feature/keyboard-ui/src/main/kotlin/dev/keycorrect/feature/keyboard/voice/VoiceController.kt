@@ -159,6 +159,9 @@ internal constructor(
     private var lastSpeechAt = 0L
     private var progressSeen = false
 
+    /** The engine is being opened (see [start]); Stop and the cross cancel it. */
+    private var opening = false
+
     /**
      * What the last dictation committed and kept, so a "delete that" said at the start of the next
      * one (the system recognizer has one result per dictation) can remove it if it is still right
@@ -184,15 +187,37 @@ internal constructor(
             return
         }
         val gen = ++generation
-        val opening =
-            env.openEngine(s, privateField()) { v ->
-                post { if (gen == generation) level = v.coerceIn(0f, 1f) }
+        // The bar says "Starting..." while the engine opens (the voice pack's libraries are
+        // loaded off the main thread); Stop or the cross during that cancels the opening.
+        opening = true
+        starting = true
+        state = VoiceState.Listening()
+        env.openEngineAsync(
+            s,
+            privateField(),
+            { v -> post { if (gen == generation) level = v.coerceIn(0f, 1f) } },
+        ) { result ->
+            post {
+                if (gen != generation) {
+                    // Cancelled while opening: nobody will use this engine.
+                    (result as? EngineOpening.Ready)?.engine?.release()
+                } else {
+                    opening = false
+                    onEngineOpened(gen, s, result)
+                }
             }
+        }
+    }
+
+    @Suppress("ReturnCount") // guard clauses
+    private fun onEngineOpened(gen: Int, s: KeyboardSettings, result: EngineOpening) {
         val opened =
-            when (opening) {
-                is EngineOpening.Ready -> opening.engine
+            when (result) {
+                is EngineOpening.Ready -> result.engine
                 is EngineOpening.Unavailable -> {
-                    fail(opening.error)
+                    starting = false
+                    state = VoiceState.Idle
+                    fail(result.error)
                     return
                 }
             }
@@ -280,12 +305,15 @@ internal constructor(
     /** Stop: the recognizer delivers what it has, and dictation ends with it. */
     fun finish() {
         val current = state as? VoiceState.Listening ?: return
-        if (current.finishing) return
-        state = current.copy(finishing = true)
-        capture?.stop()
-        capture = null
-        awaitFinal(FINISH_TIMEOUT_MS, FINISH_TIMEOUT_MS)
-        session?.finish()
+        if (opening) {
+            cancel()
+        } else if (!current.finishing) {
+            state = current.copy(finishing = true)
+            capture?.stop()
+            capture = null
+            awaitFinal(FINISH_TIMEOUT_MS, FINISH_TIMEOUT_MS)
+            session?.finish()
+        }
     }
 
     /**
@@ -328,6 +356,16 @@ internal constructor(
 
     /** The selection moved by something other than dictation. */
     fun onExternalChange() = stopNow()
+
+    /**
+     * The strip's message was tapped. Most messages are just dismissed; "the voice pack was
+     * updated" restarts the keyboard instead (once its window is hidden).
+     */
+    fun onFailureTapped() {
+        val failed = state as? VoiceState.Failed
+        clearFailure()
+        if (failed?.error == SttError.VoicePackNeedsRestart) env.restartKeyboard()
+    }
 
     /** The strip's message was dismissed or timed out. */
     fun clearFailure() {
@@ -396,6 +434,7 @@ internal constructor(
         elapsedSeconds = 0
         phraseFraction = 0f
         starting = false
+        opening = false
         speaking = false
         silenceCountdown = 0
         capture?.stop()
@@ -411,7 +450,9 @@ internal constructor(
 
     private fun fail(error: SttError) {
         state = VoiceState.Failed(error)
-        cancelFailure = scheduler.postDelayed(FAILURE_MS) { clearFailure() }
+        // The restart offer stays longer: it asks for a tap.
+        val ms = if (error == SttError.VoicePackNeedsRestart) RESTART_OFFER_MS else FAILURE_MS
+        cancelFailure = scheduler.postDelayed(ms) { clearFailure() }
     }
 
     private fun apply(edits: List<DictationEdit>) {
@@ -474,5 +515,6 @@ internal constructor(
 
         /** How long a failure message stays in the strip. */
         const val FAILURE_MS = 3_000L
+        const val RESTART_OFFER_MS = 8_000L
     }
 }

@@ -33,6 +33,12 @@ interface BuiltInEngineSource {
      * (once per process; a no-op afterwards).
      */
     fun warmUp() = Unit
+
+    /**
+     * Whether libraries from an earlier pack install are loaded that the installed pack no longer
+     * provides (removed, or replaced with different ones). Reads files: not on the main thread.
+     */
+    fun librariesStale(): Boolean = false
 }
 
 /**
@@ -51,6 +57,8 @@ class VoicePackEngineSource(context: Context) : BuiltInEngineSource {
             runCatching { locator.locate() }
         }
     }
+
+    override fun librariesStale() = locator.loadedLibrariesStale()
 
     override fun open(): BuiltInOpening =
         when (val found = locator.locate()) {
@@ -84,14 +92,7 @@ internal fun chooseEngine(
         VoiceEngineChoice.BuiltIn ->
             when (val opened = builtIn?.open()) {
                 is BuiltInOpening.Ready -> EngineOpening.Ready(opened.engine)
-                is BuiltInOpening.Unavailable ->
-                    EngineOpening.Unavailable(
-                        when (opened.problem) {
-                            VoicePackProblem.NotInstalled -> SttError.NoVoicePack
-                            VoicePackProblem.SignatureMismatch -> SttError.VoicePackUntrusted
-                            VoicePackProblem.Broken -> SttError.VoicePackBroken
-                        }
-                    )
+                is BuiltInOpening.Unavailable -> EngineOpening.Unavailable(opened.problem.toError())
                 null -> EngineOpening.Unavailable(SttError.NoVoicePack)
             }
         VoiceEngineChoice.PhoneRecognizer ->
@@ -101,6 +102,17 @@ internal fun chooseEngine(
                 phone.open(onLevel)?.let { EngineOpening.Ready(it) }
                     ?: EngineOpening.Unavailable(SttError.NoEngine)
             }
+    }
+
+internal fun VoicePackProblem.toError(): SttError =
+    when (this) {
+        VoicePackProblem.NotInstalled -> SttError.NoVoicePack
+        VoicePackProblem.SignatureMismatch -> SttError.VoicePackUntrusted
+        VoicePackProblem.LibrariesMissing -> SttError.VoicePackLibrariesMissing
+        VoicePackProblem.LibraryLoadFailed -> SttError.VoicePackLoadFailed
+        VoicePackProblem.ModelsMissing -> SttError.VoicePackModelsMissing
+        VoicePackProblem.ChangedDuringLoad -> SttError.VoicePackChanged
+        VoicePackProblem.NeedsRestart -> SttError.VoicePackNeedsRestart
     }
 
 /** Whether the voice pack's libraries are worth loading in the background: voice on, built-in. */
@@ -117,7 +129,21 @@ class VoiceHost(
     private val capture: AudioCapture = AudioCapture(context),
     private val builtIn: BuiltInEngineSource? = VoicePackEngineSource(context),
     private val requestPermission: () -> Unit = { MicPermissionActivity.launch(context) },
+    /** Runs [block] off the main thread (the voice pack's locate() reads and hashes files). */
+    private val background: (() -> Unit) -> Unit = { block ->
+        thread(isDaemon = true, name = "keycorrect-voicepack-open", block = block)
+    },
 ) : VoiceEnvironment {
+    /** Set by the keyboard service: restarts its process once the window is hidden. */
+    @Volatile var restarter: (() -> Unit)? = null
+
+    override fun restartKeyboard() {
+        restarter?.invoke()
+    }
+
+    /** See [BuiltInEngineSource.librariesStale]; off the main thread. */
+    fun voicePackLibrariesStale(): Boolean = builtIn?.librariesStale() == true
+
     private val phone = PhoneEngineSource { onLevel ->
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             SystemRecognizerEngine(context, onLevel = onLevel)
@@ -145,6 +171,28 @@ class VoiceHost(
         privateField: Boolean,
         onLevel: (Float) -> Unit,
     ): EngineOpening = chooseEngine(settings.voiceEngine, privateField, builtIn, phone, onLevel)
+
+    /**
+     * The built-in engine is opened on a background thread: locating the pack may hash and load its
+     * native libraries. The phone recognizer must be created on the main thread, so it isn't.
+     */
+    override fun openEngineAsync(
+        settings: KeyboardSettings,
+        privateField: Boolean,
+        onLevel: (Float) -> Unit,
+        onOpened: (EngineOpening) -> Unit,
+    ) {
+        if (settings.voiceEngine == VoiceEngineChoice.BuiltIn) {
+            background {
+                onOpened(
+                    runCatching { openEngine(settings, privateField, onLevel) }
+                        .getOrDefault(EngineOpening.Unavailable(SttError.Engine))
+                )
+            }
+        } else {
+            onOpened(openEngine(settings, privateField, onLevel))
+        }
+    }
 
     override fun startCapture(
         sampleRate: Int,

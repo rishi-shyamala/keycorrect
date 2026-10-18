@@ -62,6 +62,25 @@ class VoiceControllerTest {
         var onAudio: ((ShortArray, Int) -> Unit)? = null
         var onLevel: ((Float) -> Unit)? = null
 
+        /** When set, openEngineAsync parks its callback here instead of answering at once. */
+        var parkOpening = false
+        var parked: (() -> Unit)? = null
+        var restarts = 0
+
+        override fun restartKeyboard() {
+            restarts++
+        }
+
+        override fun openEngineAsync(
+            settings: KeyboardSettings,
+            privateField: Boolean,
+            onLevel: (Float) -> Unit,
+            onOpened: (EngineOpening) -> Unit,
+        ) {
+            val opening = openEngine(settings, privateField, onLevel)
+            if (parkOpening) parked = { onOpened(opening) } else onOpened(opening)
+        }
+
         override fun micPermissionGranted() = granted
 
         override fun requestMicPermission() {
@@ -305,7 +324,11 @@ class VoiceControllerTest {
             listOf(
                 SttError.NoVoicePack,
                 SttError.VoicePackUntrusted,
-                SttError.VoicePackBroken,
+                SttError.VoicePackLibrariesMissing,
+                SttError.VoicePackLoadFailed,
+                SttError.VoicePackModelsMissing,
+                SttError.VoicePackChanged,
+                SttError.VoicePackNeedsRestart,
                 SttError.PrivateField,
             )) {
             env.unavailable = error
@@ -314,6 +337,53 @@ class VoiceControllerTest {
             voice.clearFailure()
             assertThat(env.engine!!.listener).isNull()
         }
+    }
+
+    @Test
+    fun theBarSaysStartingWhileTheEngineOpensAndStopCancelsIt() {
+        env.parkOpening = true
+        voice.start()
+        assertThat(voice.state).isInstanceOf(VoiceState.Listening::class.java)
+        assertThat(voice.starting).isTrue()
+        voice.finish() // Stop while opening cancels
+        assertThat(voice.state).isEqualTo(VoiceState.Idle)
+        env.parked!!.invoke() // the late engine is released, never used
+        assertThat(env.engine!!.released).isTrue()
+        assertThat(env.engine!!.listener).isNull()
+        assertThat(voice.state).isEqualTo(VoiceState.Idle)
+    }
+
+    @Test
+    fun anEngineThatOpensLaterStartsListening() {
+        env.parkOpening = true
+        voice.start()
+        env.parked!!.invoke()
+        assertThat(env.engine!!.listener).isNotNull()
+        assertThat(voice.dictating).isTrue()
+    }
+
+    @Test
+    fun aFailureWhileOpeningLeavesNoStartingBar() {
+        env.parkOpening = true
+        env.unavailable = SttError.VoicePackNeedsRestart
+        voice.start()
+        env.parked!!.invoke()
+        assertThat(voice.state).isEqualTo(VoiceState.Failed(SttError.VoicePackNeedsRestart))
+        assertThat(voice.starting).isFalse()
+    }
+
+    @Test
+    fun tappingTheRestartMessageRestartsOtherMessagesJustDismiss() {
+        env.unavailable = SttError.VoicePackNeedsRestart
+        voice.start()
+        voice.onFailureTapped()
+        assertThat(env.restarts).isEqualTo(1)
+        assertThat(voice.state).isEqualTo(VoiceState.Idle)
+        env.unavailable = SttError.VoicePackLoadFailed
+        voice.start()
+        voice.onFailureTapped()
+        assertThat(env.restarts).isEqualTo(1)
+        assertThat(voice.state).isEqualTo(VoiceState.Idle)
     }
 
     @Test

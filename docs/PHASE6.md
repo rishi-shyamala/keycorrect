@@ -57,16 +57,30 @@ learned substitutions. Stacked on Phase 5 (#11).
   `com.k2fsa.sherpa.onnx`, which the JNI symbols need; `System.loadLibrary` removed, presets
   dropped), `VoicePackLocator` and `SherpaMoonshineEngine`.
 - **Loading.** `VoicePackLocator(context).locate()` returns `Available(VoicePack)` or
-  `Unavailable(NotInstalled | SignatureMismatch | Broken)`. It reads both packages' signing
+  `Unavailable(problem, detail)` with `problem` one of `NotInstalled`, `SignatureMismatch`,
+  `LibrariesMissing`, `LibraryLoadFailed` (detail: the error class name only), `ModelsMissing`,
+  `ChangedDuringLoad`, `NeedsRestart` (each has its own message in the listening bar and in
+  Settings → Voice). It reads both packages' signing
   certificates (`GET_SIGNING_CERTIFICATES`), compares the SHA-256 sets for equality (the pure
   `checkPackSigners`; unreadable or empty means refused), and only then `System.load()`s
   `libonnxruntime.so` then `libsherpa-onnx-jni.so` from the pack's `nativeLibraryDir`, once per
   process. The models are read in place through `createPackageContext(...).assets` (checked with
   `openFd`, so they must be stored uncompressed). The assets are taken before the signature check
   and the pack's version code and update time are compared again after loading (a pack replaced
-  meanwhile gives `Broken`); a verified result is cached per (version code, update time). Missing
-  libraries or assets give `Broken`; so does
-  a pack updated while the keyboard process lives (a new path), until the process restarts.
+  meanwhile gives `ChangedDuringLoad`); a verified result is cached per (version code, update time).
+  `locate()` reads and hashes files, so it never runs on the main thread: `VoiceHost` opens the
+  built-in engine on a background thread (the bar shows "Starting..." and Stop/cross cancel it) and
+  the warm-up and the pack-change check run on their own threads.
+- **Reinstall and update.** Libraries load once per process and can't be unloaded, and a reinstall
+  puts the pack in a new directory. The SHA-256 of each loaded library is recorded; a later
+  `locate()` from a new directory with identical libraries reuses the loaded ones (models are read
+  from the new pack's assets), with different ones gives `NeedsRestart` ("The voice pack was
+  updated — tap to restart the keyboard"; the tap hides the keyboard and restarts). The IME
+  service registers (dynamically) a receiver for `PACKAGE_ADDED/REPLACED/REMOVED` of
+  `dev.keycorrect.voice`; when libraries are loaded and the installed ones differ or are gone, a
+  restart is marked pending (`PackRestartPolicy`) and the process is killed the next time the
+  keyboard window is hidden and no dictation is running (learned data is flushed first); the system
+  starts the keyboard again when it is next shown.
 - **Engine.** `SherpaMoonshineEngine(pack)`: not streaming. A session's worker thread loads the VAD
   and recognizer (2 threads), feeds 16 kHz audio to Silero VAD (0.5 s silence ends a segment, speech
   is cut at 15 s), decodes each finished segment with Moonshine, and emits

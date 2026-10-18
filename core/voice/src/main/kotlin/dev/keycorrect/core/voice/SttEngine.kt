@@ -136,8 +136,23 @@ enum class SttError {
     /** The voice pack is signed with a different key than the keyboard, so it isn't used. */
     VoicePackUntrusted,
 
-    /** The voice pack is installed but incomplete or unusable. */
-    VoicePackBroken,
+    /** The voice pack is installed but its native libraries aren't on disk. */
+    VoicePackLibrariesMissing,
+
+    /** The voice pack's native libraries are there but couldn't be loaded. */
+    VoicePackLoadFailed,
+
+    /** The voice pack's speech models are missing or unreadable. */
+    VoicePackModelsMissing,
+
+    /** The voice pack was updated while it was being checked. */
+    VoicePackChanged,
+
+    /**
+     * The voice pack was updated or reinstalled with different libraries; the keyboard must restart
+     * before it can be used (the bar offers a tap to do so).
+     */
+    VoicePackNeedsRestart,
 
     /** The phone recognizer is chosen, but this field is private (incognito or no learning). */
     PrivateField,

@@ -98,19 +98,23 @@ class VoicePackLocatorTest {
     }
 
     @Test
-    fun missingLibrariesOrModelsAreBroken() {
+    fun missingLibrariesOrModelsHaveTheirOwnReasons() {
         File(libs, "libsherpa-onnx-jni.so").delete()
-        assertThat(problem()).isEqualTo(VoicePackProblem.Broken)
+        assertThat(problem()).isEqualTo(VoicePackProblem.LibrariesMissing)
         assertThat(loaded).isEmpty()
         File(libs, "libsherpa-onnx-jni.so").writeText("x")
         source.assets = FakeAssets(complete = false)
-        assertThat(problem()).isEqualTo(VoicePackProblem.Broken)
+        assertThat(problem()).isEqualTo(VoicePackProblem.ModelsMissing)
+        source.libDir = null
+        assertThat(problem()).isEqualTo(VoicePackProblem.LibrariesMissing)
     }
 
     @Test
-    fun anUnloadableLibraryIsBroken() {
-        locator = VoicePackLocator(source) { throw UnsatisfiedLinkError() }
-        assertThat(problem()).isEqualTo(VoicePackProblem.Broken)
+    fun anUnloadableLibraryIsReportedWithTheErrorClassOnly() {
+        locator = VoicePackLocator(source) { throw UnsatisfiedLinkError("/secret/path/lib.so") }
+        val result = locator.locate() as VoicePackResult.Unavailable
+        assertThat(result.problem).isEqualTo(VoicePackProblem.LibraryLoadFailed)
+        assertThat(result.detail).isEqualTo("UnsatisfiedLinkError")
     }
 
     @Test
@@ -125,7 +129,7 @@ class VoicePackLocatorTest {
                 }
             }
         locator = VoicePackLocator(changing) { loaded += it }
-        assertThat(problem()).isEqualTo(VoicePackProblem.Broken)
+        assertThat(problem()).isEqualTo(VoicePackProblem.ChangedDuringLoad)
     }
 
     @Test
@@ -156,13 +160,48 @@ class VoicePackLocatorTest {
         assertThat(problem()).isEqualTo(VoicePackProblem.SignatureMismatch)
     }
 
+    private fun reinstall(content: String): File {
+        val dir = tmp.newFolder("lib-${source.stamp.lastUpdateTime + 1}")
+        VoicePackLayout.LIBRARIES.forEach { File(dir, it).writeText(content) }
+        source.libDir = dir.path
+        source.stamp = PackStamp(source.stamp.versionCode + 1, source.stamp.lastUpdateTime + 1)
+        return dir
+    }
+
     @Test
-    fun anUpdateThatMovesTheLibrariesIsBrokenUntilRestart() {
+    fun aReinstallWithIdenticalLibrariesInANewDirectoryIsAvailableWithoutReloading() {
         locator.locate()
-        val moved = tmp.newFolder("lib2")
-        VoicePackLayout.LIBRARIES.forEach { File(moved, it).writeText("x") }
-        source.libDir = moved.path
-        source.stamp = PackStamp(2, 200)
-        assertThat(problem()).isEqualTo(VoicePackProblem.Broken)
+        val before = loaded.size
+        reinstall("x")
+        assertThat(locator.loadedLibrariesStale()).isFalse()
+        assertThat(locator.locate()).isInstanceOf(VoicePackResult.Available::class.java)
+        assertThat(loaded).hasSize(before)
+    }
+
+    @Test
+    fun aReinstallWithDifferentLibrariesNeedsARestart() {
+        locator.locate()
+        reinstall("y")
+        assertThat(locator.loadedLibrariesStale()).isTrue()
+        assertThat(problem()).isEqualTo(VoicePackProblem.NeedsRestart)
+        assertThat(loaded).hasSize(2) // the new ones are not loaded
+    }
+
+    @Test
+    fun anUpdateWhoseLibrariesAreMissingIsLibrariesMissing() {
+        locator.locate()
+        val dir = reinstall("x")
+        File(dir, "libonnxruntime.so").delete()
+        assertThat(locator.loadedLibrariesStale()).isTrue()
+        assertThat(problem()).isEqualTo(VoicePackProblem.LibrariesMissing)
+    }
+
+    @Test
+    fun aRemovedPackLeavesLoadedLibrariesStaleOnlyWhenSomethingWasLoaded() {
+        assertThat(locator.loadedLibrariesStale()).isFalse()
+        locator.locate()
+        assertThat(locator.loadedLibrariesStale()).isFalse()
+        source.installed = false
+        assertThat(locator.loadedLibrariesStale()).isTrue()
     }
 }
