@@ -70,7 +70,7 @@ internal object MainThread {
  * as it stands. A single-shot recognizer (one that records itself, like the system's) ends with its
  * first final result; a streaming engine keeps listening after a final until Stop.
  */
-@Suppress("TooManyFunctions") // one small state machine
+@Suppress("TooManyFunctions", "LongParameterList") // one small state machine, its seams injected
 class VoiceController
 internal constructor(
     private val editor: TextEditor,
