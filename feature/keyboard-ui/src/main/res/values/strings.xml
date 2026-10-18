@@ -132,4 +132,18 @@
     <string name="clipboard_chip_image_description">Paste copied image</string>
     <string name="clipboard_chip_dismiss">\u2715</string>
     <string name="clipboard_chip_dismiss_description">Dismiss copied clip</string>
+    <string name="voice_key_action">Voice typing</string>
+    <string name="voice_listening">Listening\u2026</string>
+    <string name="voice_finishing">Finishing\u2026</string>
+    <string name="voice_stop">Stop</string>
+    <string name="voice_stop_description">Stop and keep the text</string>
+    <string name="voice_cancel_description">Cancel voice typing</string>
+    <string name="voice_level_description">Microphone level</string>
+    <string name="voice_error_no_permission">Allow microphone access, then long-press the comma again</string>
+    <string name="voice_error_no_engine">No speech recognizer is available</string>
+    <string name="voice_error_audio">The microphone could not be used</string>
+    <string name="voice_error_engine">The speech recognizer failed</string>
+    <string name="voice_error_no_match">Didn\'t catch that</string>
+    <string name="voice_error_busy">The speech recognizer is busy</string>
+    <string name="voice_error_dismiss_description">Dismiss message</string>
 </resources>

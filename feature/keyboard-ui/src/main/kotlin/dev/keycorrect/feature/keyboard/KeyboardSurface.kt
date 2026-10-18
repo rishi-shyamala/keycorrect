@@ -55,6 +55,7 @@ private const val TEXT_CACHE_SIZE = 256
 
 /** Key icons are drawn this big: about 1.6 times the 16 sp modifier glyphs they replace. */
 private const val KEY_ICON_DP = 26f
+private const val HINT_ICON_DP = 12f
 
 /** Height of the spacebar's split line as a share of the key's height. */
 private const val SPLIT_LINE_HEIGHT = 0.4f
@@ -289,6 +290,7 @@ private class KeyDrawer(val text: KeyTextCache) {
     var iconPx = 0f
     var splitWidth = 0f
     var hintInset = 0f
+    var hintIconPx = 0f
     var radius = CornerRadius.Zero
     var spaceSplit = false
     var shift = ShiftState.Off
@@ -319,6 +321,7 @@ private class KeyDrawer(val text: KeyTextCache) {
             splitWidth = 1.dp.toPx()
             radius = CornerRadius(KeyCornerRadius.toPx())
             hintInset = 5.dp.toPx()
+            hintIconPx = HINT_ICON_DP.dp.toPx()
         }
         spaceSplit = settings.spacebarCursor
         shift = shiftOf()
@@ -373,6 +376,19 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
             end = Offset(x, slot.centerY + half),
             strokeWidth = d.splitWidth,
         )
+    }
+    if (key.longPress == KeyAction.Voice) {
+        // The mic is the key's hint: in the corner where a text hint would be.
+        val size = d.hintIconPx
+        with(KeyIconArt) {
+            drawKeyIcon(
+                KeyIcon.Mic,
+                colors.onSurfaceVariant,
+                slot.right - gap / 2 - d.hintInset - size / 2,
+                slot.top + gap / 2 + d.hintInset / 2 + size / 2,
+                size,
+            )
+        }
     }
     d.text.hint(slot.index, key)?.let { layout ->
         drawText(

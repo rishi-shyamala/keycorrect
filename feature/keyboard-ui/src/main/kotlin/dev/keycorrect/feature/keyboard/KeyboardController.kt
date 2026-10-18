@@ -41,6 +41,10 @@ import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
 import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
+import dev.keycorrect.feature.keyboard.voice.MainThread
+import dev.keycorrect.feature.keyboard.voice.Scheduler
+import dev.keycorrect.feature.keyboard.voice.VoiceController
+import dev.keycorrect.feature.keyboard.voice.VoiceEnvironment
 import kotlin.math.roundToInt
 
 /**
@@ -74,6 +78,10 @@ class KeyboardController(
     internal val emoji: EmojiEnvironment = EmojiEnvironment.None,
     /** Clipboard history (Phase 4, PR C). */
     internal val clipboard: ClipboardEnvironment = ClipboardEnvironment.None,
+    /** Voice typing: the microphone, its permission and the recognizer (Phase 6). */
+    voiceEnvironment: VoiceEnvironment = VoiceEnvironment.None,
+    voiceScheduler: Scheduler = MainThread.scheduler,
+    voicePost: (() -> Unit) -> Unit = MainThread::post,
 ) {
     private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
@@ -146,6 +154,32 @@ class KeyboardController(
      */
     val selectionStripVisible: Boolean by derivedStateOf {
         !profile.sensitive && selection.known && !selection.collapsed && !editing.swipeActive
+    }
+
+    /**
+     * Voice typing (Phase 6). Its edits go through [tracked] like any of ours; when it starts and
+     * ends the typing side settles as for an emoji (the composing word is finished, the text
+     * context is read again).
+     */
+    val voice =
+        VoiceController(
+            tracked,
+            voiceEnvironment,
+            { settings },
+            { profile.sensitive },
+            { settings.autoCapitalize && profile.autoCapitalize != AutoCapitalize.None },
+            ::settleForVoice,
+            voicePost,
+            voiceScheduler,
+        )
+
+    private fun settleForVoice() {
+        input.endComposingForMove()
+        composingNow = input.isComposing
+        sawText = true
+        zeroChecked = false
+        if (fieldEmpty) fieldEmpty = false
+        updateAutoCapitalize()
     }
 
     /** The spacebar cursor and backspace swipe, for the key surface (Phase 4). */
@@ -265,6 +299,7 @@ class KeyboardController(
         initialSelStart: Int = -1,
         initialSelEnd: Int = -1,
     ) {
+        voice.stopNow()
         val initialSelection = EditorSelection(initialSelStart, initialSelEnd)
         val sameField = identity != null && identity.continues(this.identity, restarting)
         this.identity = identity
@@ -311,6 +346,7 @@ class KeyboardController(
      */
     fun updateSettings(settings: KeyboardSettings) {
         this.settings = settings
+        if (!settings.voiceEnabled) voice.stopNow()
         input.updateSettings(settings)
         applyOptions(composeOptions(profile, settings))
         updateLayoutKey()
@@ -326,6 +362,7 @@ class KeyboardController(
      * key, null for repeats, popup entries and accessibility actions.
      */
     fun onKey(action: KeyAction, touch: TouchPoint? = null) {
+        voice.stopNow()
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
@@ -518,10 +555,16 @@ class KeyboardController(
         // Our own edits don't change what a cursor at 0 has after it; anything else might.
         refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
-        if (verdict == UpdateVerdict.External) editing.dropDeferred()
+        if (verdict == UpdateVerdict.External) {
+            editing.dropDeferred()
+            // The user moved the cursor: dictation ends where it stands.
+            voice.onExternalChange()
+        }
         editing.onEditsSettled()
         when (verdict) {
             is UpdateVerdict.Own -> {
+                // Dictation's own edits: the typing side settles when it ends (settleForVoice).
+                if (voice.dictating) return
                 val resync = verdict.composingLength
                 if (resync < 0 || input.resyncComposing(resync)) return
             }
@@ -555,6 +598,7 @@ class KeyboardController(
     /** [showPanel] without the return to the home layer (leaving a panel by a tool or a paste). */
     private fun showPanelKeepingLayer(panel: KeyboardPanel) {
         if (panel == KeyboardPanel.Emoji && profile.sensitive) return
+        if (panel != KeyboardPanel.Keys) voice.stopNow()
         if (panel == KeyboardPanel.Clipboard && !clipboardAvailable) return
         if (panel != KeyboardPanel.Emoji) emojiSearch.close()
         if (panel != KeyboardPanel.Clipboard) clipboardPanel.reset()
@@ -655,7 +699,11 @@ class KeyboardController(
      * same rule again for callers that reach here another way.
      */
     fun onKeyLongPress(action: KeyAction) {
-        if (action == KeyAction.Emoji) openClipboard()
+        when (action) {
+            KeyAction.Emoji -> openClipboard()
+            KeyAction.Voice -> voice.toggle()
+            else -> Unit
+        }
     }
 
     /** Opens the clipboard panel; does nothing when it is not [clipboardAvailable]. */
@@ -852,6 +900,7 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        voice.stopNow()
         selection = EditorSelection()
         editing.reset()
         input.onFinishInput()
@@ -983,6 +1032,8 @@ class KeyboardController(
                 // No emoji (nor, from PR C, clipboard) in password fields.
                 emojiKey = !profile.sensitive,
                 fieldModes = declaredProfile.kind == FieldKind.Text,
+                // Voice typing (long-press the comma) is off in password fields and by setting.
+                voiceKey = settings.voiceEnabled && !profile.sensitive,
             )
         }
 

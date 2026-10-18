@@ -36,6 +36,7 @@ import dev.keycorrect.feature.keyboard.clipboard.ClipboardTitleStrip
 import dev.keycorrect.feature.keyboard.emoji.EmojiPanel
 import dev.keycorrect.feature.keyboard.emoji.EmojiSearchRow
 import dev.keycorrect.feature.keyboard.emoji.EmojiTabStrip
+import dev.keycorrect.feature.keyboard.voice.ListeningBar
 
 /**
  * The full keyboard: suggestion strip (autofill chips for now) above the key surface, with the key
@@ -161,6 +162,7 @@ private fun Keys(
             modifier = Modifier.matchParentSize(),
             terminalModifiers = controller.terminalModifiers,
             onClipboard = if (controller.clipboardAvailable) controller::openClipboard else null,
+            onVoice = controller.voice::toggle,
         )
     }
 }
@@ -185,6 +187,7 @@ private fun SuggestionArea(
     val press = { feedback.haptic(view, settings) }
     val modifier = Modifier.fillMaxWidth().height(SuggestionStripHeight)
     when {
+        controller.voice.barVisible -> ListeningBar(controller.voice, onPress = press, modifier)
         controller.panel == KeyboardPanel.Emoji ->
             Box(modifier) {
                 if (controller.emojiSearch.active) EmojiSearchRow(controller, onPress = press)
