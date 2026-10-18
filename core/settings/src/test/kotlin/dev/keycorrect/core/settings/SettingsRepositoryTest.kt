@@ -212,6 +212,27 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun neuralSettingsDefaultRoundTripAndClamp() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.neuralRerank).isTrue()
+        assertThat(d.neuralPhrases).isFalse()
+        assertThat(d.lmStrength).isEqualTo(0.5f)
+        repo.update { it.copy(neuralRerank = false, neuralPhrases = true, lmStrength = 0.8f) }
+        var s = repo.settings.first()
+        assertThat(s.neuralRerank).isFalse()
+        assertThat(s.neuralPhrases).isTrue()
+        assertThat(s.lmStrength).isEqualTo(0.8f)
+        assertThat(store.data.first()[booleanPreferencesKey("neural_rerank")]).isFalse()
+        repo.update { it.copy(lmStrength = 7f) }
+        assertThat(repo.settings.first().lmStrength).isEqualTo(1f)
+        store.edit { it[floatPreferencesKey("lm_strength")] = Float.NaN }
+        assertThat(repo.settings.first().lmStrength).isEqualTo(0.5f)
+        store.edit { it[floatPreferencesKey("lm_strength")] = -2f }
+        s = repo.settings.first()
+        assertThat(s.lmStrength).isEqualTo(0f)
+    }
+
+    @Test
     fun oldVoiceEngineNamesMigrate() = runTest {
         store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
         assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)

@@ -182,6 +182,12 @@ data class KeyboardSettings(
     val voiceLiveMs: Int = VOICE_LIVE_AUTO,
     /** Stop dictating after this many seconds without speech; [VOICE_AUTO_STOP_OFF] never. */
     val voiceAutoStopSeconds: Int = DEFAULT_VOICE_AUTO_STOP_SECONDS,
+    /** Let an on-device language model reorder the suggestions when one is installed (PHASE7). */
+    val neuralRerank: Boolean = true,
+    /** Offer whole-phrase completions from the on-device language model (PHASE7; off). */
+    val neuralPhrases: Boolean = false,
+    /** How much the language model's opinion counts in the reranking, [LM_STRENGTH_RANGE]. */
+    val lmStrength: Float = DEFAULT_LM_STRENGTH,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -226,6 +232,9 @@ data class KeyboardSettings(
                     voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
                     else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
                 },
+            lmStrength =
+                if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
+                else lmStrength.coerceIn(LM_STRENGTH_RANGE),
         )
 
     companion object {
@@ -258,6 +267,8 @@ data class KeyboardSettings(
         val VOICE_AUTO_STOP_SECONDS_RANGE = 3..30
         const val VOICE_AUTO_STOP_OFF = 0
         const val DEFAULT_VOICE_AUTO_STOP_SECONDS = 10
+        val LM_STRENGTH_RANGE = 0f..1f
+        const val DEFAULT_LM_STRENGTH = 0.5f
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }
 }

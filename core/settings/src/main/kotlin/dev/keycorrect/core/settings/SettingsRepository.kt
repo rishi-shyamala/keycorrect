@@ -96,62 +96,76 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private fun Preferences.toSettings(): KeyboardSettings {
         val d = KeyboardSettings()
         return KeyboardSettings(
-            keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
-            bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
-            modeEnterKeyWidth = this[MODE_ENTER_KEY_WIDTH] ?: d.modeEnterKeyWidth,
-            edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
-            keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
-            numberRow = this[NUMBER_ROW] ?: d.numberRow,
-            symbolHints = this[SYMBOL_HINTS] ?: d.symbolHints,
-            keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
-            longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
-            autoCapitalize = this[AUTO_CAPITALIZE] ?: d.autoCapitalize,
-            hapticsEnabled = this[HAPTICS_ENABLED] ?: d.hapticsEnabled,
-            hapticDurationMs = this[HAPTIC_DURATION_MS] ?: d.hapticDurationMs,
-            hapticStrength = this[HAPTIC_STRENGTH] ?: d.hapticStrength,
-            soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
-            soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
-            inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
-            suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
-            autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
-            nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
-            phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
-            autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
-            learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
-            sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
-            incognito = this[INCOGNITO] ?: d.incognito,
-            implicitAddReverts = this[IMPLICIT_ADD_REVERTS] ?: d.implicitAddReverts,
-            suppressCorrectionReverts =
-                this[SUPPRESS_CORRECTION_REVERTS] ?: d.suppressCorrectionReverts,
-            nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
-            hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
-            hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
-            autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
-            unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
-            spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
-            gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
-            gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
-            cursorSpeed =
-                CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
-            backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
-            emojiSuggestions = this[EMOJI_SUGGESTIONS] ?: d.emojiSuggestions,
-            emojiSkinTone =
-                SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
-                    ?: d.emojiSkinTone,
-            clipboardHistory = this[CLIPBOARD_HISTORY] ?: d.clipboardHistory,
-            clipboardMaxItems = this[CLIPBOARD_MAX_ITEMS] ?: d.clipboardMaxItems,
-            clipboardRetention =
-                ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
-                    ?: d.clipboardRetention,
-            clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
-            voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
-            voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
-            voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
-            voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
-            voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
-            voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
-            voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
-        )
+                keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
+                bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
+                modeEnterKeyWidth = this[MODE_ENTER_KEY_WIDTH] ?: d.modeEnterKeyWidth,
+                edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
+                keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
+                numberRow = this[NUMBER_ROW] ?: d.numberRow,
+                symbolHints = this[SYMBOL_HINTS] ?: d.symbolHints,
+                keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
+                longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
+                autoCapitalize = this[AUTO_CAPITALIZE] ?: d.autoCapitalize,
+                hapticsEnabled = this[HAPTICS_ENABLED] ?: d.hapticsEnabled,
+                hapticDurationMs = this[HAPTIC_DURATION_MS] ?: d.hapticDurationMs,
+                hapticStrength = this[HAPTIC_STRENGTH] ?: d.hapticStrength,
+                soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
+                soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
+                inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
+                suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
+                autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
+                nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
+                phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
+                autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
+                learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
+                sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
+                incognito = this[INCOGNITO] ?: d.incognito,
+                implicitAddReverts = this[IMPLICIT_ADD_REVERTS] ?: d.implicitAddReverts,
+                suppressCorrectionReverts =
+                    this[SUPPRESS_CORRECTION_REVERTS] ?: d.suppressCorrectionReverts,
+                nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
+                hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
+                hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
+                autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
+                unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
+                spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
+                gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
+                gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
+                cursorSpeed =
+                    CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] }
+                        ?: d.cursorSpeed,
+                backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
+                emojiSuggestions = this[EMOJI_SUGGESTIONS] ?: d.emojiSuggestions,
+                emojiSkinTone =
+                    SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
+                        ?: d.emojiSkinTone,
+                clipboardHistory = this[CLIPBOARD_HISTORY] ?: d.clipboardHistory,
+                clipboardMaxItems = this[CLIPBOARD_MAX_ITEMS] ?: d.clipboardMaxItems,
+                clipboardRetention =
+                    ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
+                        ?: d.clipboardRetention,
+                clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
+            )
+            .withVoiceAndNeural(this)
+    }
+
+    /** The voice and neural fields; split from [toSettings] to keep it readable. */
+    private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return with(p) {
+            copy(
+                voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+                voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
+                voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
+                voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
+                voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
+                voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
+                voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
+                neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
+                neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
+                lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
+            )
+        }
     }
 
     private fun MutablePreferences.write(s: KeyboardSettings) {
@@ -204,6 +218,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[VOICE_PAUSE_MS] = s.voicePauseMs
         this[VOICE_LIVE_MS] = s.voiceLiveMs
         this[VOICE_AUTO_STOP_SECONDS] = s.voiceAutoStopSeconds
+        this[NEURAL_RERANK] = s.neuralRerank
+        this[NEURAL_PHRASES] = s.neuralPhrases
+        this[LM_STRENGTH] = s.lmStrength
     }
 
     private companion object {
@@ -256,6 +273,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val VOICE_PAUSE_MS = intPreferencesKey("voice_pause_ms")
         val VOICE_LIVE_MS = intPreferencesKey("voice_live_ms")
         val VOICE_AUTO_STOP_SECONDS = intPreferencesKey("voice_auto_stop_seconds")
+        val NEURAL_RERANK = booleanPreferencesKey("neural_rerank")
+        val NEURAL_PHRASES = booleanPreferencesKey("neural_phrases")
+        val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -285,6 +305,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 CLIPBOARD_IMAGES.name,
                 VOICE_ENABLED.name,
                 VOICE_AUTO_PUNCTUATION.name,
+                NEURAL_RERANK.name,
+                NEURAL_PHRASES.name,
             )
         val INT_KEYS =
             setOf(
@@ -304,7 +326,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_LIVE_MS.name,
                 VOICE_AUTO_STOP_SECONDS.name,
             )
-        val FLOAT_KEYS = setOf(BOTTOM_KEY_WIDTH.name, MODE_ENTER_KEY_WIDTH.name, SOUND_VOLUME.name)
+        val FLOAT_KEYS =
+            setOf(
+                BOTTOM_KEY_WIDTH.name,
+                MODE_ENTER_KEY_WIDTH.name,
+                SOUND_VOLUME.name,
+                LM_STRENGTH.name,
+            )
         val STRING_KEYS =
             setOf(
                 CURSOR_SPEED.name,
