@@ -82,6 +82,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
                     ?: d.clipboardRetention,
             clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
+            voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+            voiceEngine =
+                VoiceEngineChoice.entries.firstOrNull { it.name == this[VOICE_ENGINE] }
+                    ?: d.voiceEngine,
+            voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
         )
     }
 
@@ -128,6 +133,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[CLIPBOARD_MAX_ITEMS] = s.clipboardMaxItems
         this[CLIPBOARD_RETENTION] = s.clipboardRetention.name
         this[CLIPBOARD_IMAGES] = s.clipboardImages
+        this[VOICE_ENABLED] = s.voiceEnabled
+        this[VOICE_ENGINE] = s.voiceEngine.name
+        this[VOICE_AUTO_PUNCTUATION] = s.voiceAutoPunctuation
     }
 
     private companion object {
@@ -173,5 +181,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val CLIPBOARD_MAX_ITEMS = intPreferencesKey("clipboard_max_items")
         val CLIPBOARD_RETENTION = stringPreferencesKey("clipboard_retention")
         val CLIPBOARD_IMAGES = booleanPreferencesKey("clipboard_images")
+        val VOICE_ENABLED = booleanPreferencesKey("voice_enabled")
+        val VOICE_ENGINE = stringPreferencesKey("voice_engine")
+        val VOICE_AUTO_PUNCTUATION = booleanPreferencesKey("voice_auto_punctuation")
     }
 }

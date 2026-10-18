@@ -25,6 +25,15 @@ enum class ClipRetention(val millis: Long) {
     Month(MONTH_MS),
 }
 
+/** Which speech recognizer voice typing uses (docs/PHASE6.md). */
+enum class VoiceEngineChoice {
+    /** The built-in model from the voice pack when it is installed, else the system recognizer. */
+    Automatic,
+
+    /** Always the installed system recognizer (Google, FUTO Voice Input, ...). */
+    System,
+}
+
 private const val HOUR_MS = 3_600_000L
 private const val DAY_MS = 86_400_000L
 private const val WEEK_MS = 604_800_000L
@@ -133,6 +142,11 @@ data class KeyboardSettings(
     val clipboardRetention: ClipRetention = ClipRetention.Week,
     /** Copied images are kept too (encrypted, 20 MB in all). */
     val clipboardImages: Boolean = true,
+    /** Voice typing: long-press the comma (docs/PHASE6.md). Never offered in password fields. */
+    val voiceEnabled: Boolean = true,
+    val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.Automatic,
+    /** Ask the recognizer for punctuation and capitalisation. */
+    val voiceAutoPunctuation: Boolean = true,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =

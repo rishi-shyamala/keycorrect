@@ -134,6 +134,28 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun voiceSettingsDefaultOnAndRoundTrip() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.voiceEnabled).isTrue()
+        assertThat(d.voiceEngine).isEqualTo(VoiceEngineChoice.Automatic)
+        assertThat(d.voiceAutoPunctuation).isTrue()
+        repo.update {
+            it.copy(
+                voiceEnabled = false,
+                voiceEngine = VoiceEngineChoice.System,
+                voiceAutoPunctuation = false,
+            )
+        }
+        val s = repo.settings.first()
+        assertThat(s.voiceEnabled).isFalse()
+        assertThat(s.voiceEngine).isEqualTo(VoiceEngineChoice.System)
+        assertThat(s.voiceAutoPunctuation).isFalse()
+        assertThat(store.data.first()[stringPreferencesKey("voice_engine")]).isEqualTo("System")
+        store.edit { it[stringPreferencesKey("voice_engine")] = "Cloud" }
+        assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.Automatic)
+    }
+
+    @Test
     fun layoutSizesClampOnWriteAndRead() = runTest {
         repo.update { it.copy(bottomKeyWidth = 9f, edgePaddingDp = 40, keyGapDp = -3) }
         var s = repo.settings.first()
