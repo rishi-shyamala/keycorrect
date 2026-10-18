@@ -18,7 +18,7 @@
         ],
       },
       { "type": "emoji" },
-      ",",
+      { "label": ",", "longPress": "voice" },
       { "type": "space", "width": 4 },
       { "label": ".", "popup": ["?", "!", ",", ";", ":", "'", "\""] },
       { "type": "enter", "width": 1.5 },
