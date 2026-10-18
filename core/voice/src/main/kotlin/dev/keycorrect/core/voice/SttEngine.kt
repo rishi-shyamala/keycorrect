@@ -54,7 +54,7 @@ data class SttConfig(
     val liveUpdateMillis: Long = LIVE_AUTO,
 ) {
     companion object {
-        /** As often as decoding allows: twice the time a decode took, from 0.5 s to 1.5 s. */
+        /** As often as decoding allows: twice the time a decode took, from 0.5 s to 3 s. */
         const val LIVE_AUTO = 0L
 
         /** No words while speaking; a phrase appears after its pause. */

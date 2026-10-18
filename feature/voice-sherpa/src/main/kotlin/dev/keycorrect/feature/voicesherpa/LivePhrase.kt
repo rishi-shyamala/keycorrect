@@ -11,7 +11,14 @@ internal object LiveTuning {
 
     /** The gap to the next live decode is twice the last one's duration, within these. */
     const val MIN_INTERVAL_MS = 500L
-    const val MAX_INTERVAL_MS = 1500L
+    const val MAX_INTERVAL_MS = 3000L
+
+    /**
+     * Live decoding never takes more than this share of the worker's time over the last
+     * [DUTY_WINDOW_MS], so the decodes that matter (a pause, Stop) are not held up by it.
+     */
+    const val MAX_DUTY = 0.4f
+    const val DUTY_WINDOW_MS = 6000L
 
     /** Audio kept from before the VAD noticed speech, so the first word isn't clipped. */
     const val PRE_ROLL_SAMPLES = RATE * 3 / 10
@@ -25,6 +32,16 @@ internal object LiveTuning {
 
     /** A fixed interval is raised to twice the decode time, but not beyond this. */
     const val MAX_RAISED_MS = 3000L
+
+    /**
+     * Moonshine fails above about 9.25 s (docs/PHASE6.md); nothing longer than this is ever handed
+     * to the recognizer: a longer stretch is split first.
+     */
+    const val MAX_DECODE_SAMPLES = RATE * 9
+
+    /** Live words kept as a segment's text only if not longer than this many times plausible. */
+    const val CHARS_PER_SECOND = 15f
+    const val FALLBACK_FACTOR = 1.5f
 
     /** Speech of at least this much with no text at all is "unclear", not "nothing heard". */
     const val UNCLEAR_MIN_SAMPLES = RATE.toLong()
@@ -48,13 +65,16 @@ internal object LiveTuning {
 
 /**
  * When the next live decode is due. [fixedMillis] is the user's interval, or <= 0 for Auto: twice
- * the time the last decode took, within 0.5 to 1.5 s. A fixed interval is raised to twice the
- * decode time when the phone can't keep up (up to [LiveTuning.MAX_RAISED_MS]). Worker thread only.
+ * the time the last decode took, within 0.5 to 3 s. A fixed interval is raised to twice the decode
+ * time when the phone can't keep up (up to [LiveTuning.MAX_RAISED_MS]). Beyond that, no decode is
+ * due while live decoding used more than [LiveTuning.MAX_DUTY] of the last
+ * [LiveTuning.DUTY_WINDOW_MS]. Worker thread only.
  */
 internal class LiveSchedule(private val fixedMillis: Long) {
     private var intervalMs = if (fixedMillis > 0) fixedMillis else LiveTuning.INTERVAL_MS
     private var at = 0L
     private var decodedSamples = 0
+    private val recent = ArrayDeque<LongArray>() // [start, end] of the latest decodes
 
     /** A new phrase (or its remainder) starts at [now]. */
     fun restart(now: Long) {
@@ -66,7 +86,15 @@ internal class LiveSchedule(private val fixedMillis: Long) {
     fun due(size: Int, now: Long): Boolean =
         size >= LiveTuning.MIN_SAMPLES &&
             size - decodedSamples >= LiveTuning.MIN_NEW_SAMPLES &&
-            now - at >= intervalMs
+            now - at >= intervalMs &&
+            busyMillis(now) <= LiveTuning.MAX_DUTY * LiveTuning.DUTY_WINDOW_MS
+
+    /** Milliseconds of live decoding inside the window that ends at [now]. */
+    private fun busyMillis(now: Long): Long {
+        val from = now - LiveTuning.DUTY_WINDOW_MS
+        while (recent.isNotEmpty() && recent.first()[1] <= from) recent.removeFirst()
+        return recent.sumOf { minOf(it[1], now) - maxOf(it[0], from) }
+    }
 
     /** A decode of [size] samples ran from [start] to [end]. */
     fun decoded(size: Int, start: Long, end: Long) {
@@ -76,6 +104,7 @@ internal class LiveSchedule(private val fixedMillis: Long) {
             else twice.coerceIn(LiveTuning.MIN_INTERVAL_MS, LiveTuning.MAX_INTERVAL_MS)
         at = end
         decodedSamples = size
+        recent.addLast(longArrayOf(start, end))
     }
 }
 
@@ -107,6 +136,13 @@ internal class SampleBuffer {
 
     fun copy(): FloatArray = data.copyOf(size)
 
+    /** Drops all but the last [keep] samples. */
+    fun keepLast(keep: Int) {
+        if (size <= keep) return
+        System.arraycopy(data, size - keep, data, 0, keep)
+        size = keep
+    }
+
     /** Empties the buffer and gives a grown array back. */
     fun clear() {
         size = 0
@@ -134,20 +170,62 @@ internal fun plausible(text: String, samples: Int): Boolean {
 }
 
 /**
+ * Whether live words [text] can be taken as the text of a finished segment of [samples] length: not
+ * longer than [LiveTuning.FALLBACK_FACTOR] times the characters speech of that duration has (the
+ * live copy may hold more than the segment, e.g. after a forced cut).
+ */
+internal fun fitsSegment(text: String, samples: Int): Boolean {
+    val seconds = maxOf(samples.toFloat() / SherpaTuning.SAMPLE_RATE, 1f)
+    return text.length <= seconds * LiveTuning.CHARS_PER_SECOND * LiveTuning.FALLBACK_FACTOR
+}
+
+/**
  * Decodes [segment]. Moonshine fails outright on long audio (docs/PHASE6.md) and a decode may come
  * back empty or with a few words for a long stretch of speech; then the segment is cut at its
  * quietest point near the middle and the halves are decoded (again cut when still long), and the
  * result with more words wins. Speech is never dropped silently.
  */
 internal fun recognizeSplitting(recognizer: SegmentRecognizer, segment: FloatArray): String {
-    val text = recognizer.recognize(segment).trim()
+    val text = recognizeBounded(recognizer, segment)
     if (segment.size <= LiveTuning.SPLIT_MIN_SAMPLES || !nearlyEmpty(text, segment.size))
         return text
     val cut = quietestPoint(segment, 0.25f, 0.75f, prefer = segment.size / 2)
     val left = recognizeSplitting(recognizer, segment.copyOfRange(0, cut))
     val right = recognizeSplitting(recognizer, segment.copyOfRange(cut, segment.size))
-    val joined = listOf(left, right).filter { it.isNotEmpty() }.joinToString(" ")
+    val joined = joinHalves(left, right)
     return if (wordCount(joined) > wordCount(text)) joined else text
+}
+
+/**
+ * Decodes [samples], never handing the recognizer more than [LiveTuning.MAX_DECODE_SAMPLES]: a
+ * longer stretch is cut at its quietest point and the halves decoded.
+ */
+internal fun recognizeBounded(recognizer: SegmentRecognizer, samples: FloatArray): String {
+    if (samples.size <= LiveTuning.MAX_DECODE_SAMPLES) return recognizer.recognize(samples).trim()
+    val cut = quietestPoint(samples, 0.25f, 0.75f, prefer = samples.size / 2)
+    val left = recognizeBounded(recognizer, samples.copyOfRange(0, cut))
+    val right = recognizeBounded(recognizer, samples.copyOfRange(cut, samples.size))
+    return joinHalves(left, right)
+}
+
+/**
+ * The two halves' text as one. A cut in the middle of a word makes both halves say it, so a first
+ * word of [right] that repeats the last one of [left] (ignoring case and punctuation) is dropped.
+ */
+internal fun joinHalves(left: String, right: String): String {
+    val a = left.trim()
+    var b = right.trim()
+    val last = a.substringAfterLast(' ')
+    val first = b.substringBefore(' ')
+    if (a.isNotEmpty() && b.isNotEmpty() && sameWord(last, first)) {
+        b = b.substring(first.length).trim()
+    }
+    return listOf(a, b).filter { it.isNotEmpty() }.joinToString(" ")
+}
+
+private fun sameWord(a: String, b: String): Boolean {
+    val x = a.filter { it.isLetterOrDigit() }
+    return x.isNotEmpty() && x.equals(b.filter { it.isLetterOrDigit() }, ignoreCase = true)
 }
 
 private fun nearlyEmpty(text: String, samples: Int): Boolean {

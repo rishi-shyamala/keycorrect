@@ -326,10 +326,10 @@ class SegmentedDictationTest {
         h.detector.speech = true
         repeat(5) { h.chunk(200) } // the decode at 800 ms ends at 1800 ms
         assertThat(calls).isEqualTo(1)
-        // 2 x 1000 ms, clamped to 1500 ms: not before 3300 ms, however much audio comes.
-        for (t in 1800..3200 step 200) h.chunk(200, t.toLong())
+        // 2 x 1000 ms: not before 3800 ms, however much audio comes.
+        for (t in 1800..3600 step 200) h.chunk(200, t.toLong())
         assertThat(calls).isEqualTo(1)
-        h.chunk(200, 3300)
+        h.chunk(200, 3800)
         assertThat(calls).isEqualTo(2)
     }
 
@@ -539,7 +539,7 @@ class SegmentedDictationTest {
                     liveUpdateMillis = 99_999,
                 )
             )
-        assertThat(high.phraseLimitMillis).isEqualTo(8_500)
+        assertThat(high.phraseLimitMillis).isEqualTo(8_000)
         assertThat(high.pauseSeconds).isEqualTo(1.5f)
         assertThat(high.liveUpdateMillis).isEqualTo(2_000)
         val low =
@@ -549,5 +549,203 @@ class SegmentedDictationTest {
         assertThat(low.phraseLimitMillis).isEqualTo(3_000)
         assertThat(low.pauseSeconds).isEqualTo(0.3f)
         assertThat(low.liveUpdateMillis).isEqualTo(SttConfig.LIVE_OFF)
+    }
+
+    // --- Noise, forced cuts, bounds, duty ---
+
+    @Test
+    fun aClickThatTheVadDropsIsNeitherDecodedNorCutAndSpeechAfterItStillWorks() {
+        val h = Direct({ "Thank you" })
+        h.detector.speech = true
+        h.chunk(200) // the click: the VAD reports speech ...
+        h.detector.speech = false // ... and then none, with no segment
+        repeat(40) { h.chunk(200) } // 8 s: more than the phrase limit
+        assertThat(h.decoded).isEmpty()
+        assertThat(h.partials).isEmpty()
+        assertThat(h.detector.resets).isEqualTo(0)
+        assertThat(h.progress.takeLast(20).all { it.phraseMillis == 0L && !it.speaking }).isTrue()
+        // Real speech afterwards: its live copy starts from the pre-roll kept from before.
+        h.detector.speech = true
+        repeat(5) { h.chunk(200) }
+        assertThat(h.decoded).containsExactly(LiveTuning.PRE_ROLL_SAMPLES + 5 * 3200)
+    }
+
+    @Test
+    fun aClickAloneEndsWithNoMatch() {
+        val h = Direct({ "Thank you" })
+        h.detector.speech = true
+        h.chunk(200)
+        h.detector.speech = false
+        repeat(20) { h.chunk(200) }
+        h.session.finish()
+        assertThat(h.decoded).isEmpty()
+        assertThat(h.results.last()).isEqualTo(SttResult.Error(SttError.NoMatch))
+    }
+
+    @Test
+    fun liveWordsAreNotStandInsForACutPartThatDecodesToNothing() {
+        var mode = "live"
+        val h = Direct({ if (mode == "live") "hello there" else "" }, phraseLimitMillis = 2000)
+        h.detector.speech = true
+        repeat(9) { h.chunk(200) } // live words are shown meanwhile
+        assertThat(h.partials.map { it.text }).contains("hello there")
+        mode = "empty"
+        h.chunk(200) // 2 s: the phrase is cut, the part before decodes to nothing
+        assertThat(h.partials.filter { it.endsSegment }).isEmpty()
+        h.detector.segments += FloatArray(4000) // what the VAD makes of the rest: empty too
+        h.session.finish()
+        // Nothing of the old live words is committed again.
+        assertThat(h.partials.filter { it.endsSegment }).isEmpty()
+        assertThat(h.results.last()).isEqualTo(SttResult.Error(SttError.Unclear))
+    }
+
+    @Test
+    fun liveWordsLongerThanASegmentCanHoldAreNotUsedForIt() {
+        var final = false
+        val h = Direct({ if (final) "" else "internationalization characteristics understanding" })
+        h.detector.speech = true
+        repeat(5) { h.chunk(200) }
+        assertThat(h.partials).hasSize(1)
+        final = true
+        h.detector.segments += FloatArray(8000) // 0.5 s cannot have held all that
+        h.chunk(200)
+        assertThat(h.partials.filter { it.endsSegment }).isEmpty()
+    }
+
+    @Test
+    fun theRecognizerIsNeverFedMoreThanNineSecondsAtTheEightSecondLimit() {
+        val limit = 9 * 16000
+        val h = Direct({ "w" }, phraseLimitMillis = 8000)
+        h.chunk(400) // idle: the pre-roll
+        h.detector.speech = true
+        repeat(60) { h.chunk(200) } // 12 s of unbroken speech
+        h.detector.segments += FloatArray(12 * 16000) // a VAD segment that came out too long
+        h.chunk(200)
+        h.detector.segments += FloatArray(25 * 16000)
+        h.session.finish()
+        assertThat(h.decoded).isNotEmpty()
+        assertThat(h.decoded.max()).isAtMost(limit)
+        assertThat(h.detector.resets).isAtLeast(1)
+    }
+
+    @Test
+    fun aSplitDropsAWordRepeatedByAMidWordCut() {
+        assertThat(joinHalves("so the brothel", "brothel owner")).isEqualTo("so the brothel owner")
+        assertThat(joinHalves("hello.", "Hello again")).isEqualTo("hello. again")
+        assertThat(joinHalves("one two", "three")).isEqualTo("one two three")
+        assertThat(joinHalves("", "three")).isEqualTo("three")
+        val samples = 16000
+        val segment = FloatArray(6 * samples) { 0.5f }
+        for (i in (3.2 * samples).toInt() until (3.3 * samples).toInt()) segment[i] = 0.001f
+        var n = 0
+        val h =
+            Direct({
+                if (it.size > 4 * samples) "" else if (n++ == 0) "the brothel" else "brothel"
+            })
+        h.detector.segments += segment
+        h.session.finish()
+        // "brothel" comes out of both halves; it is said once.
+        assertThat(h.results.last()).isEqualTo(SttResult.Final("the brothel"))
+    }
+
+    @Test
+    fun liveDecodingIsSkippedWhileItUsesTooMuchOfTheLastSeconds() {
+        val schedule = LiveSchedule(0)
+        schedule.restart(0)
+        schedule.decoded(16000, 0, 3000) // 3 s of work: the next is 3 s later
+        assertThat(schedule.due(100_000, 3500)).isFalse() // interval not over
+        assertThat(schedule.due(100_000, 6000)).isFalse() // interval over, but 50% busy
+        assertThat(schedule.due(100_000, 6700)).isTrue() // 38% of the last 6 s
+    }
+
+    @Test
+    fun theAutoIntervalGrowsToThreeSecondsForASlowPhone() {
+        val schedule = LiveSchedule(0)
+        schedule.restart(0)
+        schedule.decoded(16000, 0, 1400) // 2 x 1.4 s
+        assertThat(schedule.due(100_000, 1400 + 2799)).isFalse()
+        assertThat(schedule.due(100_000, 1400 + 2800)).isTrue()
+        val slower = LiveSchedule(0)
+        slower.decoded(16000, 0, 10)
+        slower.decoded(16000, 20_000, 22_000)
+        assertThat(slower.due(100_000, 22_000 + 2999)).isFalse()
+        assertThat(slower.due(100_000, 22_000 + 3000)).isTrue()
+    }
+
+    @Test
+    fun cancelDuringALiveDecodeEmitsNothing() {
+        val started = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val results = CopyOnWriteArrayList<SttResult>()
+        val released = java.util.concurrent.atomic.AtomicBoolean()
+        val times = java.util.concurrent.ConcurrentLinkedQueue(listOf(0L, 800L, 800L))
+        val detector = ScriptedDetector().apply { speech = true }
+        val session =
+            SegmentedDictation(
+                listener = { results += it },
+                create = {
+                    SpeechComponents(
+                        detector,
+                        object : SegmentRecognizer {
+                            override fun recognize(segment: FloatArray): String {
+                                started.countDown()
+                                gate.await(5, TimeUnit.SECONDS)
+                                return "live words"
+                            }
+
+                            override fun release() {
+                                released.set(true)
+                            }
+                        },
+                    )
+                },
+                clock = { times.poll() ?: 1_000_000L },
+            )
+        session.acceptAudio(ShortArray(16000))
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue()
+        session.cancel()
+        gate.countDown()
+        waitUntil { released.get() }
+        assertThat(results).isEmpty()
+    }
+
+    @Test
+    fun stopWaitsBehindAtMostOneLiveDecode() {
+        val started = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val done = CountDownLatch(1)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        // The clock reads 0, 800, 800 for the first decode, and a late time afterwards: any later
+        // live decode would be due, so it would show.
+        val times = java.util.concurrent.ConcurrentLinkedQueue(listOf(0L, 800L, 800L))
+        val detector = ScriptedDetector().apply { speech = true }
+        val session =
+            SegmentedDictation(
+                listener = { if (it is SttResult.Final || it is SttResult.Error) done.countDown() },
+                create = {
+                    SpeechComponents(
+                        detector,
+                        object : SegmentRecognizer {
+                            override fun recognize(segment: FloatArray): String {
+                                calls.incrementAndGet()
+                                started.countDown()
+                                gate.await(5, TimeUnit.SECONDS)
+                                return "w"
+                            }
+
+                            override fun release() = Unit
+                        },
+                    )
+                },
+                clock = { times.poll() ?: 1_000_000L },
+            )
+        session.acceptAudio(ShortArray(16000))
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue()
+        session.acceptAudio(ShortArray(3200)) // queued behind the decode
+        session.acceptAudio(ShortArray(3200))
+        session.finish()
+        gate.countDown()
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue()
+        assertThat(calls.get()).isEqualTo(1)
     }
 }

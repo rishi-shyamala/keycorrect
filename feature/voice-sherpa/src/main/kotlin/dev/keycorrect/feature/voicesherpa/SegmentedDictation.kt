@@ -52,7 +52,13 @@ internal class SpeechComponents(val detector: SpeechDetector, val recognizer: Se
  * worker, so the words appear while speaking and may change until the pause, when the finished
  * segment is decoded once more and committed. A live decode never queues up behind another: the
  * next one waits at least twice the time the last took (within [LiveTuning.MIN_INTERVAL_MS] to
- * [LiveTuning.MAX_INTERVAL_MS]). A [SttResult.Progress] goes out about every 200 ms of audio.
+ * [LiveTuning.MAX_INTERVAL_MS]), none is started while live decoding used more than
+ * [LiveTuning.MAX_DUTY] of the last few seconds, and none after [finish], so a pause or Stop waits
+ * behind one live decode at most. A [SttResult.Progress] goes out about every 200 ms of audio.
+ *
+ * A sound the VAD takes for the start of speech but drops (a click: shorter than its minimum
+ * speech) leaves no segment; after a pause-length grace the phrase copy is cut back to the
+ * pre-roll, and nothing is decoded or cut without speech detected.
  *
  * A segment that decodes to nothing (or hardly anything) for its length is split at its quietest
  * point and the halves are decoded, so a long phrase is not lost; when the whole session heard
@@ -64,7 +70,9 @@ internal class SpeechComponents(val detector: SpeechDetector, val recognizer: Se
  * called nothing is emitted any more. No text or audio is ever logged.
  */
 @Suppress("TooManyFunctions") // one small state machine
-internal class SegmentedDictation(
+internal class SegmentedDictation
+@Suppress("LongParameterList") // the seams are injected
+constructor(
     private val listener: SttListener,
     private val create: () -> SpeechComponents,
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { r ->
@@ -74,6 +82,8 @@ internal class SegmentedDictation(
     private val phraseLimitMillis: Long = SherpaTuning.DEFAULT_PHRASE_MILLIS,
     /** Live words: [SttConfig.LIVE_AUTO], [SttConfig.LIVE_OFF] or a fixed interval. */
     private val liveUpdateMillis: Long = SttConfig.LIVE_AUTO,
+    /** The VAD's closing pause: how long a speech start without a segment may stay unresolved. */
+    private val pauseMillis: Long = SherpaTuning.DEFAULT_PAUSE_MILLIS,
     /** Milliseconds from any monotonic clock; replaced in tests. */
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) : SttSession {
@@ -90,11 +100,15 @@ internal class SegmentedDictation(
     private val schedule = LiveSchedule(liveUpdateMillis)
     private var progressSamples = 0
 
+    // When the VAD stopped reporting speech without handing over a segment; 0 if it hasn't.
+    private var speechLostAt = NOT_LOST
+
     private val limitSamples =
         (phraseLimitMillis * SherpaTuning.SAMPLE_RATE / MILLIS_PER_SECOND).toInt()
 
-    // The copy of the phrase never grows past the limit plus a margin.
-    private val capSamples = limitSamples + SherpaTuning.SAMPLE_RATE
+    // The copy of the phrase never grows past the limit plus a margin (nor past what is decoded).
+    private val capSamples =
+        minOf(limitSamples + SherpaTuning.SAMPLE_RATE, LiveTuning.MAX_DECODE_SAMPLES)
 
     // Seconds of speech the VAD handed over, for telling "unclear" from "silence".
     private var speechSamples = 0L
@@ -115,8 +129,11 @@ internal class SegmentedDictation(
             val c = components ?: return@post
             c.detector.accept(samples)
             track(c, samples)
-            drain(c)
-            if (collecting && phrase.size >= limitSamples) cutPhrase(c)
+            val ended = drain(c)
+            dropNoise(c, ended)
+            if (collecting && c.detector.speechDetected && phrase.size >= limitSamples) {
+                cutPhrase(c)
+            }
             if (collecting && liveUpdateMillis != SttConfig.LIVE_OFF) liveDecode(c)
             reportProgress(c, samples.size)
         }
@@ -169,24 +186,53 @@ internal class SegmentedDictation(
         else phrase.appendKeepingLast(samples, LiveTuning.PRE_ROLL_SAMPLES)
     }
 
-    private fun drain(c: SpeechComponents) {
+    /** Commits the segments the VAD finished; true if there were any. */
+    private fun drain(c: SpeechComponents): Boolean {
         var ended = false
         while (!cancelled) {
             val segment = c.detector.nextSegment() ?: break
             ended = true
-            commit(c.recognizer, segment)
+            commit(c.recognizer, segment, useLive = true)
         }
-        if (!ended) return
+        if (!ended) return false
         // The copy of the phrase is done with; the speech may go on (the VAD cut it), from here.
-        phrase.clear()
         collecting = c.detector.speechDetected
+        if (collecting) phrase.clear() else phrase.keepLast(LiveTuning.PRE_ROLL_SAMPLES)
+        liveText = ""
+        speechLostAt = NOT_LOST
         schedule.restart(clock())
+        return true
     }
 
-    /** Decodes a finished [segment] and adds its words to the stable text. */
-    private fun commit(recognizer: SegmentRecognizer, segment: FloatArray) {
+    /**
+     * The VAD reported speech and then none, but handed over no segment: a click or other short
+     * sound. Once that has lasted a pause, the phrase copy is cut back to the pre-roll, so it is
+     * never decoded as a phrase of silence.
+     */
+    private fun dropNoise(c: SpeechComponents, ended: Boolean) {
+        if (ended || !collecting || c.detector.speechDetected) {
+            speechLostAt = NOT_LOST
+            return
+        }
+        val now = clock()
+        if (speechLostAt == NOT_LOST) speechLostAt = now
+        if (now - speechLostAt < pauseMillis) return
+        collecting = false
+        liveText = ""
+        phrase.keepLast(LiveTuning.PRE_ROLL_SAMPLES)
+        speechLostAt = NOT_LOST
+    }
+
+    /**
+     * Decodes a finished [segment] and adds its words to the stable text. When that gives nothing
+     * the live words stand in, if [useLive] and they could be the text of this segment.
+     */
+    private fun commit(recognizer: SegmentRecognizer, segment: FloatArray, useLive: Boolean) {
         speechSamples += segment.size
-        val piece = recognizeSplitting(recognizer, segment).ifEmpty { liveText }
+        val decoded = recognizeSplitting(recognizer, segment)
+        val piece = decoded.ifEmpty {
+            if (useLive && fitsSegment(liveText, segment.size)) liveText else ""
+        }
         liveText = ""
         if (piece.isEmpty()) return
         if (text.isNotEmpty()) text.append(' ')
@@ -204,11 +250,14 @@ internal class SegmentedDictation(
     private fun cutPhrase(c: SpeechComponents) {
         val all = phrase.copy()
         val cut = quietestPoint(all, LiveTuning.CUT_FROM, 1f, prefer = all.size)
-        commit(c.recognizer, all.copyOfRange(0, cut))
+        // The live words cover the whole phrase, and the rest is decoded again: never a stand-in.
+        commit(c.recognizer, all.copyOfRange(0, cut), useLive = false)
         val rest = all.copyOfRange(cut, all.size)
         c.detector.reset()
         c.detector.accept(rest)
         phrase.clear()
+        liveText = ""
+        speechLostAt = NOT_LOST
         collecting = c.detector.speechDetected
         if (collecting) phrase.appendUpTo(rest, capSamples)
         else phrase.appendKeepingLast(rest, LiveTuning.PRE_ROLL_SAMPLES)
@@ -217,14 +266,17 @@ internal class SegmentedDictation(
 
     /** Decodes the phrase so far when it is time and returns; never waits for a slot. */
     private fun liveDecode(c: SpeechComponents) {
+        // Not after Stop or a cancel: a pause or Stop waits behind one live decode at most.
+        if (cancelled || finished || !c.detector.speechDetected) return
         val size = phrase.size
         val now = clock()
-        if (cancelled || size > capSamples || !schedule.due(size, now)) return
-        val heard = runCatching { c.recognizer.recognize(phrase.copy()).trim() }.getOrDefault("")
+        if (size > capSamples || !schedule.due(size, now)) return
+        val heard = runCatching { recognizeBounded(c.recognizer, phrase.copy()) }.getOrDefault("")
         schedule.decoded(size, now, clock())
-        if (heard.isEmpty() || !plausible(heard, size)) return
-        liveText = heard
-        showLive(heard)
+        if (heard.isNotEmpty() && plausible(heard, size)) {
+            liveText = heard
+            showLive(heard)
+        }
     }
 
     private fun showLive(heard: String) {
@@ -285,5 +337,6 @@ internal class SegmentedDictation(
         const val PCM_SCALE = 32768f
         const val NANOS_PER_MILLI = 1_000_000L
         const val MILLIS_PER_SECOND = 1000L
+        const val NOT_LOST = -1L
     }
 }

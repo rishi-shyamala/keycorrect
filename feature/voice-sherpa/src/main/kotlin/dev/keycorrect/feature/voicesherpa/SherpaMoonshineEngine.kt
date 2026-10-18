@@ -45,6 +45,7 @@ class SherpaMoonshineEngine internal constructor(private val factory: Components
                 create = { factory.create(tuning) },
                 phraseLimitMillis = tuning.phraseLimitMillis,
                 liveUpdateMillis = tuning.liveUpdateMillis,
+                pauseMillis = (tuning.pauseSeconds * MILLIS_PER_SECOND).toLong(),
             )
             .also { active = it }
     }
@@ -68,17 +69,22 @@ internal data class SessionTuning(
     val liveUpdateMillis: Long,
 ) {
     companion object {
-        fun from(config: SttConfig) =
-            SessionTuning(
-                phraseLimitMillis =
-                    config.phraseLimitMillis.coerceIn(
-                        SherpaTuning.MIN_PHRASE_MILLIS,
-                        SherpaTuning.MAX_PHRASE_MILLIS,
-                    ),
+        fun from(config: SttConfig): SessionTuning {
+            val phraseLimit =
+                config.phraseLimitMillis.coerceIn(
+                    SherpaTuning.MIN_PHRASE_MILLIS,
+                    SherpaTuning.MAX_PHRASE_MILLIS,
+                )
+            return SessionTuning(
+                phraseLimitMillis = phraseLimit,
                 pauseSeconds =
-                    (config.pauseMillis / MILLIS).coerceIn(
-                        SherpaTuning.MIN_PAUSE_SECONDS,
-                        SherpaTuning.MAX_PAUSE_SECONDS,
+                    minOf(
+                        (config.pauseMillis / MILLIS).coerceIn(
+                            SherpaTuning.MIN_PAUSE_SECONDS,
+                            SherpaTuning.MAX_PAUSE_SECONDS,
+                        ),
+                        // Never more than half the phrase: a pause that long would never fit.
+                        phraseLimit / 2f / MILLIS,
                     ),
                 liveUpdateMillis =
                     when {
@@ -91,6 +97,7 @@ internal data class SessionTuning(
                             )
                     },
             )
+        }
 
         private const val MILLIS = 1000f
         private const val LIVE_MAX_FIXED = 2000L
@@ -116,9 +123,13 @@ internal object SherpaTuning {
     const val MIN_SPEECH_SECONDS = 0.25f
     const val MIN_PHRASE_MILLIS = 3_000L
 
-    /** The most the user can ask for: 92% of the 9.25 s where Moonshine fails. */
-    const val MAX_PHRASE_MILLIS = 8_500L
+    /**
+     * The most the user can ask for: 86% of the 9.25 s where Moonshine fails, leaving room for the
+     * pre-roll and the VAD's padding on top of the phrase.
+     */
+    const val MAX_PHRASE_MILLIS = 8_000L
     const val DEFAULT_PHRASE_MILLIS = 7_000L
+    const val DEFAULT_PAUSE_MILLIS = 500L
     const val VAD_WINDOW = 512
 }
 
