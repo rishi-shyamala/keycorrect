@@ -169,6 +169,22 @@ class InMemoryEmojiHistoryStore(private val clock: () -> Long = System::currentT
         }
     }
 
+    override suspend fun dump(): EmojiHistoryDump {
+        val s = state.value
+        return EmojiHistoryDump(
+            s.recents.entries
+                .sortedByDescending { it.value.lastUsed }
+                .map {
+                    EmojiRecentRow(it.key, it.value.base, it.value.lastUsed, it.value.useCount)
+                },
+            s.variants.entries
+                .sortedBy { it.key }
+                .map {
+                    EmojiVariantRow(it.key, it.value.first, it.value.second)
+                },
+        )
+    }
+
     override suspend fun clearSince(sinceMillis: Long) {
         state.update { s ->
             State(
