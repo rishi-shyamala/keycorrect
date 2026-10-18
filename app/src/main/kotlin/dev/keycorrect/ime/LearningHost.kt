@@ -10,9 +10,11 @@ import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.classifier.OutcomeClassifier
 import dev.keycorrect.core.learning.model.ForgetResult
+import dev.keycorrect.core.learning.model.JournalEntry
 import dev.keycorrect.core.learning.model.LearnedCorrection
 import dev.keycorrect.core.learning.model.LearningPersistence
 import dev.keycorrect.core.learning.model.LearningStore
+import dev.keycorrect.core.learning.model.PersistedLearning
 import dev.keycorrect.core.learning.model.PersonalModel
 import dev.keycorrect.core.learning.model.TouchStatistics
 import dev.keycorrect.core.learning.model.UserWordInfo
@@ -450,6 +452,43 @@ class LearningHost(
         dirty = false
         updatesSinceFlush = 0
         _state.value = LearningHostState.Ready
+        bump()
+    }
+
+    // ---- backup & transfer --------------------------------------------------------------
+
+    /**
+     * The model's complete state as rows, for a backup. Fails (IllegalStateException) while the
+     * saved state is unavailable, because exporting an empty model would silently lose data.
+     */
+    suspend fun exportState(): PersistedLearning = onLearningThread {
+        requireReady()
+        model.export()
+    }
+
+    /**
+     * Replaces the learning state with the one [prepare] derives from the current state, keeping
+     * the 24 h journal when [keepJournal]. The model, the saved copy and any other tables [commit]
+     * writes stay consistent: [commit] receives the new state and journal and must persist them
+     * atomically (together with whatever else the import changes); the in-memory model is replaced
+     * only after it returned. If [prepare] or [commit] throws, nothing has changed. The queued
+     * events are ordered with this (all run on the learning thread).
+     */
+    suspend fun replaceState(
+        keepJournal: Boolean,
+        prepare: (current: PersistedLearning) -> PersistedLearning,
+        commit: suspend (state: PersistedLearning, journal: List<JournalEntry>) -> Unit,
+    ) = onLearningThread {
+        requireReady()
+        val next = prepare(model.export())
+        val journal = if (keepJournal) model.journalSnapshot() else emptyList()
+        commit(next, journal)
+        model.import(next, journal, wallClock())
+        enforceSentenceGate()
+        failedAdds.clear()
+        dirty = false
+        updatesSinceFlush = 0
+        lastFlushAt = wallClock()
         bump()
     }
 

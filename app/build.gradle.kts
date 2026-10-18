@@ -103,6 +103,7 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
     implementation(project(":core:settings"))
+    implementation(project(":core:transfer"))
     implementation(project(":core:voice"))
     implementation(project(":feature:voice-sherpa"))
     implementation(project(":feature:keyboard-ui"))
