@@ -67,12 +67,75 @@ class EditingControllerTest {
     // ------------------------------------------------------------------ cursor drag
 
     @Test
-    fun dragSendsArrowKeysInOneBatch() {
+    fun aHorizontalTickIsOneSetSelection() {
         start("hello world", at = 5)
         gestures.onCursorDrag(-3, 0, select = false)
-        assertThat(editor.keys).containsExactly(*Array(3) { KeyEvent.KEYCODE_DPAD_LEFT to 0 })
-        assertThat(editor.batches).isEqualTo(1)
+        assertThat(editor.selections).containsExactly(2 to 2)
+        assertThat(editor.keys).isEmpty()
         assertThat(editor.cursor).isEqualTo(2)
+    }
+
+    @Test
+    fun laterTicksOfTheSameDragReadNothingMore() {
+        start("hello world", at = 8)
+        gestures.onCursorDrag(-2, 0, select = false)
+        assertThat(editor.surroundingCalls).isEqualTo(1) // the window, once per drag
+        gestures.onCursorDrag(-1, 0, select = false)
+        gestures.onCursorDrag(3, 0, select = false)
+        assertThat(editor.surroundingCalls).isEqualTo(1)
+        assertThat(editor.selections).containsExactly(6 to 6, 5 to 5, 8 to 8).inOrder()
+        assertThat(editor.keys).isEmpty()
+    }
+
+    @Test
+    fun aSelectingTickExtendsFromTheAnchorInOneCall() {
+        start("hello world", at = 5)
+        gestures.onCursorDrag(2, 0, select = true)
+        gestures.onCursorDrag(-4, 0, select = true)
+        assertThat(editor.selections).containsExactly(5 to 7, 5 to 3).inOrder()
+        assertThat(editor.keys).isEmpty()
+    }
+
+    @Test
+    fun aTickStepsOverWholeEmoji() {
+        start("a😀b", at = 4)
+        gestures.onCursorDrag(-2, 0, select = false)
+        assertThat(editor.selections).containsExactly(1 to 1)
+        gestures.onCursorDrag(1, 0, select = false)
+        assertThat(editor.selections.last()).isEqualTo(3 to 3)
+    }
+
+    @Test
+    fun aTickAtTheEdgeOfTheFieldStaysPut() {
+        start("ab", at = 1)
+        gestures.onCursorDrag(-5, 0, select = false)
+        assertThat(editor.selections).containsExactly(0 to 0)
+        gestures.onCursorDrag(-1, 0, select = false)
+        assertThat(editor.selections).hasSize(1)
+        assertThat(editor.keys).isEmpty()
+    }
+
+    @Test
+    fun verticalTicksAndPasswordFieldsKeepUsingKeys() {
+        start("ab\ncd", at = 4)
+        gestures.onCursorDrag(0, -1, select = false)
+        assertThat(editor.keys).containsExactly(KeyEvent.KEYCODE_DPAD_UP to 0)
+        assertThat(editor.selections).isEmpty()
+        password()
+        editor.keys.clear()
+        gestures.onCursorDrag(-2, 0, select = false)
+        assertThat(editor.keys).hasSize(2)
+        assertThat(editor.selections).isEmpty()
+    }
+
+    @Test
+    fun aDragFromARangeKeepsUsingKeys() {
+        start("hello world", at = 5)
+        editor.setText("hello world", at = 5)
+        editor.anchor = 0
+        gestures.onCursorDrag(-1, 0, select = false)
+        assertThat(editor.selections).isEmpty()
+        assertThat(editor.keys).hasSize(1)
     }
 
     @Test
@@ -118,9 +181,9 @@ class EditingControllerTest {
         val seen = mutableListOf<Pair<Int, String>>()
         editor.onOperation = { seen += editor.keys.size to editor.composing }
         gestures.onCursorDrag(-1, 0, select = false)
-        // The first report is the composing word being finished, before the first key.
+        // The first report is the composing word being finished, before the cursor moves.
         assertThat(seen.first()).isEqualTo(0 to "")
-        assertThat(editor.keys).hasSize(1)
+        assertThat(editor.selections).hasSize(1)
     }
 
     @Test

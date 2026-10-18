@@ -5,6 +5,17 @@ import org.junit.Test
 
 class GraphemesTest {
     @Test
+    fun clusterLengthAtStepsForwardOverWholeClusters() {
+        val family = "👨‍👩‍👧"
+        val text = "a${family}e\u0301😀"
+        assertThat(Graphemes.clusterLengthAt(text, 0)).isEqualTo(1)
+        assertThat(Graphemes.clusterLengthAt(text, 1)).isEqualTo(family.length)
+        assertThat(Graphemes.clusterLengthAt(text, 1 + family.length)).isEqualTo(2)
+        assertThat(Graphemes.clusterLengthAt(text, text.length - 2)).isEqualTo(2)
+        assertThat(Graphemes.clusterLengthAt(text, text.length)).isEqualTo(0)
+    }
+
+    @Test
     fun emptyTextHasNoCluster() {
         assertThat(Graphemes.lastClusterLength("")).isEqualTo(0)
     }
