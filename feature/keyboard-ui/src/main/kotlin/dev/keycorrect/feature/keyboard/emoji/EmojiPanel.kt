@@ -49,6 +49,7 @@ import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardPanel
+import dev.keycorrect.feature.keyboard.PanelIcons
 import dev.keycorrect.feature.keyboard.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -266,8 +267,8 @@ private fun EmojiBottomBar(
             onPress()
             controller.showPanel(KeyboardPanel.Keys)
         }
-        BarButton(
-            text = "🔍",
+        IconBarButton(
+            icon = PanelIcons.Search,
             description = stringResource(R.string.emoji_search_description),
             modifier = Modifier.width(BAR_BUTTON_WIDTH),
         ) {
@@ -276,42 +277,6 @@ private fun EmojiBottomBar(
         }
         Box(Modifier.weight(1f))
         BackspaceButton(controller, onPress, Modifier.width(ABC_WIDTH))
-    }
-}
-
-@Composable
-internal fun BarButton(
-    text: String,
-    description: String,
-    modifier: Modifier = Modifier,
-    highlighted: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    Box(
-        modifier =
-            modifier
-                .fillMaxHeight()
-                .padding(2.dp)
-                .clip(RoundedCornerShape(BarCorner))
-                .background(if (highlighted) colors.primary else colors.surfaceContainerHighest)
-                .clickable(role = Role.Button, onClick = onClick)
-                .clearAndSetSemantics {
-                    contentDescription = description
-                    role = Role.Button
-                    onClick {
-                        onClick()
-                        true
-                    }
-                },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = if (highlighted) colors.onPrimary else colors.onSurface,
-            fontSize = BAR_TEXT_SIZE.sp,
-            maxLines = 1,
-        )
     }
 }
 
@@ -421,10 +386,10 @@ private val KnownLabels =
 private val TabIconSize = 22.dp
 private val TabIndicatorWidth = 24.dp
 private val TabIndicatorHeight = 3.dp
-private val BarCorner = 8.dp
+internal val BarCorner = 8.dp
 internal val ABC_WIDTH = 64.dp
 private val BAR_BUTTON_WIDTH = 52.dp
 private const val TAB_TEXT_SIZE = 15
-private const val BAR_TEXT_SIZE = 18
+internal const val BAR_TEXT_SIZE = 18
 private const val REPEAT_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L

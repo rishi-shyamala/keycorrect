@@ -4,18 +4,22 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -29,21 +33,24 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.takeOrElse
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.labelRes
 
 /**
- * The prediction strip: three equal slots in the fixed-height strip area. [strip] is a lambda so
- * the state behind it is read here, in this composable only; it recomposes when the suggestions
- * change and for no other reason (typing in a field without suggestions never gets here at all).
- * Empty slots keep their space, so the layout does not move as candidates come and go.
+ * The prediction strip: three slots in the fixed-height strip area, each as wide as its text needs
+ * (see [slotWeight]). [strip] is a lambda so the state behind it is read here, in this composable
+ * only; it recomposes when the suggestions change and for no other reason (typing in a field
+ * without suggestions never gets here at all). Empty slots keep a minimum space.
  *
  * While the model carries an add-word prompt, a single chip takes over the whole strip.
  */
@@ -149,7 +156,7 @@ private fun RowScope.Slot(
     onLongPress: (StripSlot) -> Unit,
     blockable: Boolean,
 ) {
-    val base = Modifier.weight(1f).fillMaxHeight()
+    val base = Modifier.weight(slotWeight(slot)).fillMaxHeight()
     if (slot == null) {
         Box(base)
         return
@@ -206,17 +213,77 @@ private fun RowScope.Slot(
                 Text(PHRASE_HINT, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         } else {
-            Text(
-                slot.text,
-                color = color,
-                fontWeight = weight,
-                fontSize = if (slot.kind == SlotKind.Emoji) EmojiSlotSize else TextUnit.Unspecified,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ShrinkingText(slot, color, weight)
         }
     }
+}
+
+/**
+ * A slot's word, in full when it can be: the font shrinks to [SHRINK_FACTOR] of its size (not below
+ * [MIN_SLOT_SIZE]) when the text overflows its slot, and only text that still doesn't fit is
+ * ellipsized. Overflow is measured (cached) once per text and slot width.
+ */
+@Composable
+private fun ShrinkingText(slot: StripSlot, color: Color, weight: FontWeight) {
+    if (slot.kind == SlotKind.Emoji) {
+        Text(
+            slot.text,
+            color = color,
+            fontSize = EmojiSlotSize,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+        return
+    }
+    val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
+    val style = LocalTextStyle.current.copy(fontWeight = weight)
+    val base = style.fontSize.takeOrElse { DEFAULT_SLOT_SIZE }
+    BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val available = constraints.maxWidth
+        // Keyed on the text and the room it has, so a slot that widens gets its full size back and
+        // a new long word is shrunk in its first frame, not after an ellipsized one.
+        val size =
+            remember(slot.text, available, style, base) {
+                val full = style.copy(fontSize = base)
+                val overflows =
+                    available != Constraints.Infinity &&
+                        measurer
+                            .measure(
+                                slot.text,
+                                full,
+                                TextOverflow.Ellipsis,
+                                softWrap = false,
+                                maxLines = 1,
+                                constraints = Constraints(maxWidth = available),
+                            )
+                            .didOverflowWidth
+                if (overflows) shrunkSize(base) else base
+            }
+        Text(
+            slot.text,
+            color = color,
+            fontWeight = weight,
+            fontSize = size,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** [base] shrunk to [SHRINK_FACTOR] of its size, but never below [MIN_SLOT_SIZE] (or [base]). */
+internal fun shrunkSize(base: TextUnit): TextUnit =
+    minOf(base.value, maxOf(base.value * SHRINK_FACTOR, MIN_SLOT_SIZE.value)).sp
+
+/**
+ * The share of the strip a slot gets, proportional to its text (with a minimum, and a maximum so a
+ * phrase can't squeeze the other two), so that a word shows in full where a short one beside it
+ * leaves room. An empty slot keeps the minimum.
+ */
+internal fun slotWeight(slot: StripSlot?): Float {
+    if (slot == null) return MIN_SLOT_WEIGHT
+    val extra = if (slot.kind == SlotKind.Phrase) PHRASE_HINT.length else 0
+    return (slot.text.length + extra).toFloat().coerceIn(MIN_SLOT_WEIGHT, MAX_SLOT_WEIGHT)
 }
 
 @Composable
@@ -249,8 +316,14 @@ private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier)
 }
 
 private const val PHRASE_HINT = " →"
+private const val MIN_SLOT_WEIGHT = 5f
+private const val MAX_SLOT_WEIGHT = 14f
+private const val SHRINK_FACTOR = 0.8f
+private val DEFAULT_SLOT_SIZE = 14.sp
+private val MIN_SLOT_SIZE = 12.sp
+private const val MEASURE_CACHE = 16
 private val SlotCorner = 8.dp
-private val SlotPadding = 6.dp
+private val SlotPadding = 4.dp
 
 /** The emoji in the strip is drawn larger than the words around it. */
 private val EmojiSlotSize = 22.sp

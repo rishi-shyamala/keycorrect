@@ -1,12 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.addPathNodes
-import androidx.compose.ui.unit.dp
 
 /**
  * Monochrome outline icons for the shortcut row (24 x 24, 1.8 stroke, round caps), drawn from SVG
@@ -41,20 +35,5 @@ internal object ShortcutIcons {
                 "-1.8L4.3 9.1l1.7-3 2.3.8 1.5-.9z",
         )
 
-    private fun outline(name: String, path: String): ImageVector =
-        ImageVector.Builder(
-                name = name,
-                defaultWidth = 24.dp,
-                defaultHeight = 24.dp,
-                viewportWidth = 24f,
-                viewportHeight = 24f,
-            )
-            .addPath(
-                pathData = addPathNodes(path),
-                stroke = SolidColor(Color.Black),
-                strokeLineWidth = 1.8f,
-                strokeLineCap = StrokeCap.Round,
-                strokeLineJoin = StrokeJoin.Round,
-            )
-            .build()
+    private fun outline(name: String, path: String): ImageVector = outlineIcon(name, path)
 }

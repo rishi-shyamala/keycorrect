@@ -9,8 +9,8 @@
     [
       { "type": "modeSwitch", "width": 1.5 },
       { "type": "emoji" },
-      { "type": "space", "width": 4 },
       "/",
+      { "type": "space", "width": 4 },
       { "label": ".", "popup": [".com", ".org", ".net", ".io", ".dev", ".app"] },
       { "type": "enter", "width": 1.5 },
     ],

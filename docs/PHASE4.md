@@ -228,3 +228,15 @@ Also requested: keep the overall layout as close as possible to the Samsung keyb
 - [x] Emoji panel: categories, recents, skin tones, search, kaomoji; strip suggestion (Tab S9)
 - [ ] Clipboard: capture, pin/delete/clear, images, strip chip, TTL
 - [ ] Instrumented: clipboard data unreadable by other apps (encrypted DB and image blobs, no exported provider)
+
+## Feedback round 2 (user, 2026-10-17)
+
+1. **Comma left of the space bar.** Bottom rows are `?123, emoji, comma (@ email, / URL), space, period, enter`; the period keeps its popup (`.com` first for URLs). Width rules unchanged (side keys = bottomKeyWidth, Enter at least 1.25u).
+2. **Tool order.** Edit, Emoji (left) | Settings, Clipboard (right, clipboard at the far edge). Idle (spread) order is the same.
+3. **Tool timing.** The tools spread out only when the field is empty and nothing else needs the strip. "Empty" comes from the selection updates (cursor past 0 or a range means text). A cursor at 0 counts as empty until text has been seen in the field; after that the editor is asked for one char after the cursor. Sensitive fields are never read (they stay compact once typed in). Limitation: a prefilled field opened with the cursor at 0 counts as empty until the cursor moves. 250 ms animation kept.
+4. **Unknown-word haptic.** A triple short buzz (three 12 ms pulses, 60 ms apart), distinct from the key tick and the autocorrect double pulse.
+5. **Editing panel.** Joystick layout: Home/Up/End, Left/Select/Right, WordLeft/Down/WordRight, ABC/Backspace/Delete on the left; Word/Sent/Line, Cut/Copy/Paste, Undo/Redo/All on the right after a divider. Arrows are vector icons; D-pad rows are a little taller and the middle column wider.
+6. **Selection strip.** Word, Sentence, case and Copy are vector icons with content descriptions.
+7. **Suggestion slots.** Widths are proportional to the text (min 5, max 14 chars); the font shrinks to 80% before ellipsizing.
+8. **Emoji search button.** A vector magnifier replaces the glyph.
+
