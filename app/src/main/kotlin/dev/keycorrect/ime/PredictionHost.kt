@@ -256,12 +256,15 @@ class PredictionHost(
             assets.openFd(assetPath).use { fd ->
                 FileInputStream(fd.fileDescriptor).use { stream ->
                     Dictionary.open(
-                        stream.channel.map(
-                            FileChannel.MapMode.READ_ONLY,
-                            fd.startOffset,
-                            fd.length,
+                            stream.channel.map(
+                                FileChannel.MapMode.READ_ONLY,
+                                fd.startOffset,
+                                fd.length,
+                            )
                         )
-                    )
+                        // Fault the hot sections in here, on the loading thread, before the
+                        // predictor is published.
+                        .also { it.prefetch() }
                 }
             }
         } catch (e: java.io.FileNotFoundException) {

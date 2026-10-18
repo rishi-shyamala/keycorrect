@@ -59,9 +59,61 @@ private constructor(
 
     private class CachedWord(val id: Int, val word: String)
 
+    /**
+     * Trie node records and block samples, copied to the heap at open (~7 bytes per node): the trie
+     * is walked thousands of times per keystroke and a direct buffer's per-access bounds and
+     * liveness checks dominated the decode profile. The n-gram and word sections stay mapped.
+     */
+    private val childCounts = ByteArray(nodeCount)
+    private val labels = ByteArray(nodeCount)
+    private val maxLps = ByteArray(nodeCount)
+    private val firstChildren = IntArray(nodeCount)
+    private val samples = IntArray((nodeCount + Fmt.SAMPLE_STRIDE - 1) / Fmt.SAMPLE_STRIDE)
+
     init {
+        for (j in samples.indices) samples[j] = buf.getInt(samplesOff + j * 4)
+        var fc = 0
+        for (node in 0 until nodeCount) {
+            if (node % Fmt.SAMPLE_STRIDE == 0) fc = samples[node / Fmt.SAMPLE_STRIDE]
+            val rec = nodesOff + node * Fmt.NODE_RECORD
+            val count = buf.get(rec)
+            childCounts[node] = count
+            labels[node] = buf.get(rec + 1)
+            maxLps[node] = buf.get(rec + 2)
+            firstChildren[node] = fc
+            fc += count.toInt() and BYTE_MASK
+        }
         for (i in alphabet.indices) if (alphabet[i].code < 256) labelTable[alphabet[i].code] = i
     }
+
+    /**
+     * Touches the pages of the sections every prediction reads (terminal bitmap and values,
+     * multi-id records, word info, id-to-node), so a memory-mapped dictionary faults them in on the
+     * caller's thread rather than during the first keystrokes. The trie itself is copied to the
+     * heap by [open]; the n-gram sections are left to be paged in on demand. Returns a checksum
+     * only so the reads cannot be optimised away.
+     */
+    fun prefetch(): Int {
+        var sum = 0
+        val sections =
+            arrayOf(
+                bitmapOff to ((nodeCount + 63) / 64) * Fmt.BITMAP_BLOCK_BYTES,
+                termOff to keyCount * 3,
+                multiOff to multiEnd - multiOff,
+                infoOff to wordCount * 2,
+                idNodeOff to wordCount * 3,
+            )
+        for ((off, len) in sections) {
+            var p = 0
+            while (p < len) {
+                sum += buf.get(off + p)
+                p += PAGE_BYTES
+            }
+        }
+        return sum
+    }
+
+    private fun ByteArray.u8At(i: Int): Int = this[i].toInt() and BYTE_MASK
 
     // ---------------------------------------------------------------- trie
 
@@ -72,22 +124,16 @@ private constructor(
     /** Number of children of [node]. */
     fun childCount(node: Int): Int {
         checkNode(node)
-        return Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD)
+        return childCounts.u8At(node)
     }
 
     /** Handle of the first child of [node]; children are `firstChild + 0 until childCount`. */
     fun firstChild(node: Int): Int {
         checkNode(node)
-        val j = node ushr 4
-        var fc = buf.getInt(samplesOff + j * 4)
-        var t = j shl 4
-        while (t < node) {
-            fc += Fmt.u8(buf, nodesOff + t * Fmt.NODE_RECORD)
-            t++
-        }
+        val fc = firstChildren[node]
         // The children must exist: a corrupt sample/count would otherwise yield handles off the
         // trie.
-        if (fc < 0 || fc.toLong() + Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD) > nodeCount) {
+        if (fc < 0 || fc.toLong() + (childCounts.u8At(node)) > nodeCount) {
             throw DictionaryFormatException("corrupt trie: children of node $node out of range")
         }
         return fc
@@ -99,7 +145,7 @@ private constructor(
     /** The character labelling the edge into [node] (undefined for [root]). */
     fun nodeChar(node: Int): Char {
         checkNode(node)
-        val label = Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 1)
+        val label = labels.u8At(node)
         if (label >= alphabet.size) throw DictionaryFormatException("corrupt trie: bad label")
         return alphabet[label]
     }
@@ -122,7 +168,7 @@ private constructor(
         var hi = cnt - 1
         while (lo <= hi) {
             val mid = (lo + hi) ushr 1
-            val l = Fmt.u8(buf, nodesOff + (fc + mid) * Fmt.NODE_RECORD + 1)
+            val l = labels.u8At(fc + mid)
             if (l < label) lo = mid + 1 else if (l > label) hi = mid - 1 else return fc + mid
         }
         return -1
@@ -210,7 +256,7 @@ private constructor(
      */
     fun maxLogProbInSubtree(node: Int): Float {
         checkNode(node)
-        return uniMin + Fmt.u8(buf, nodesOff + node * Fmt.NODE_RECORD + 2) * uniStep
+        return uniMin + (maxLps.u8At(node)) * uniStep
     }
 
     private fun terminalValue(node: Int): Int {
@@ -234,15 +280,15 @@ private constructor(
         var hi = (nodeCount + Fmt.SAMPLE_STRIDE - 1) / Fmt.SAMPLE_STRIDE - 1
         while (lo < hi) {
             val mid = (lo + hi + 1) ushr 1
-            if (buf.getInt(samplesOff + mid * 4) <= node) lo = mid else hi = mid - 1
+            if (samples[mid] <= node) lo = mid else hi = mid - 1
         }
-        var fc = buf.getInt(samplesOff + lo * 4)
+        var fc = samples[lo]
         var i = lo shl 4
         val end = minOf(nodeCount, i + Fmt.SAMPLE_STRIDE)
         var best = i
         while (i < end && fc <= node) {
             best = i
-            fc += Fmt.u8(buf, nodesOff + i * Fmt.NODE_RECORD)
+            fc += childCounts.u8At(i)
             i++
         }
         return best
@@ -484,6 +530,9 @@ private constructor(
             "keys=$keyCount, nodes=$nodeCount, bigrams=$bigramCount, trigrams=$trigramCount)"
 
     companion object {
+        private const val PAGE_BYTES = 4096
+        private const val BYTE_MASK = 0xFF
+
         /** Reserved id of the sentence-start token; use as `w1` in bigram queries. */
         const val BOS_ID = 0
 
