@@ -81,7 +81,7 @@ class LearningEventsTest {
 
     private fun start(
         profile: FieldProfile = textField,
-        settings: KeyboardSettings = KeyboardSettings(),
+        settings: KeyboardSettings = KeyboardSettings(numberRow = false),
         newField: Boolean = true,
     ) {
         controller.onStartInput(
@@ -264,7 +264,7 @@ class LearningEventsTest {
         predictor.word("teh", listOf("the"), autocorrect = "the")
         type("teh")
         space()
-        controller.updateSettings(KeyboardSettings())
+        controller.updateSettings(KeyboardSettings(numberRow = false))
         backspace() // the undo window of a correction made while closed
         assertThat(reverts()).isEmpty()
     }
@@ -1273,13 +1273,13 @@ class LearningEventsTest {
 
     @Test
     fun theLayoutKeyFollowsTheLayerAndKeyHeight() {
-        start(settings = KeyboardSettings(keyHeightDp = 60))
+        start(settings = KeyboardSettings(numberRow = false, keyHeightDp = 60))
         type("hello")
         space()
         assertThat(committed().last().profile.layoutKey).isEqualTo("letters@60dp/b75/g2")
         controller.onKey(KeyAction.SwitchLayer("symbols"))
         controller.onKey(KeyAction.SwitchLayer("letters"))
-        controller.updateSettings(KeyboardSettings(keyHeightDp = 48))
+        controller.updateSettings(KeyboardSettings(numberRow = false, keyHeightDp = 48))
         type("world")
         space()
         assertThat(committed().last().profile.layoutKey).isEqualTo("letters@48dp/b75/g2")

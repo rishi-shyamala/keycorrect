@@ -123,7 +123,7 @@ class KeyboardComposer(private val repository: LayoutRepository) {
                                 val symbols =
                                     if (options.symbolHints) symbolRows(set, variant, options)
                                     else null
-                                withLetterHints(sized, size, symbols, options)
+                                withLetterHints(sized, size, symbols, options.numberRow)
                             } else {
                                 sized
                             }
@@ -168,48 +168,6 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         } else {
             null
         }
-
-    /**
-     * Applies the hint rules to the letter [rows], which start at row index [firstRow] of the final
-     * layer: digit entries come off the top row if the number row is on, and each character key
-     * gets the symbol at its row and column of [symbols] (null: no symbol hints) as its hint and
-     * first popup entry.
-     */
-    private fun withLetterHints(
-        rows: List<ResolvedRow>,
-        firstRow: Int,
-        symbols: List<ResolvedRow>?,
-        options: ComposeOptions,
-    ): List<ResolvedRow> = rows.mapIndexed { index, row ->
-        val symbolKeys = symbols?.getOrNull(firstRow + index)?.keys?.filter { it.isTextKey }
-        var column = 0
-        row.copy(
-            keys =
-                row.keys.map { key ->
-                    if (!key.isTextKey) return@map key
-                    val symbol = symbolKeys?.getOrNull(column++)
-                    val plain =
-                        if (options.numberRow && index == 0) key.withoutDigitEntries() else key
-                    if (symbol == null) plain else plain.withSymbolHint(symbol)
-                }
-        )
-    }
-
-    private fun ResolvedKey.withoutDigitEntries(): ResolvedKey {
-        val kept = popup.filterNot { it.label.isDigit() }
-        if (kept.size == popup.size) return this
-        return copy(popup = kept, hint = if (hint?.isDigit() == true) null else hint)
-    }
-
-    private fun ResolvedKey.withSymbolHint(symbol: ResolvedKey): ResolvedKey {
-        val entry = ResolvedKey(symbol.label, symbol.action, description = symbol.description)
-        return copy(
-            hint = symbol.label,
-            popup = if (popup.any { it.label == symbol.label }) popup else listOf(entry) + popup,
-        )
-    }
-
-    private fun String.isDigit() = length == 1 && this[0] in '0'..'9'
 
     /**
      * A bottom row (one with a space key) with the emoji key dropped if disabled, the mode-switch
@@ -302,10 +260,6 @@ class KeyboardComposer(private val repository: LayoutRepository) {
 
     private val LayoutKind.isNumeric: Boolean
         get() = this == LayoutKind.Numpad || this == LayoutKind.Phone || this == LayoutKind.Datetime
-
-    /** A key that types text (letters, digits, symbols), as opposed to a function key or spacer. */
-    private val ResolvedKey.isTextKey: Boolean
-        get() = style == KeyStyle.Character && action is KeyAction.Text
 
     private val ResolvedKey.isFunctionKey: Boolean
         get() = style == KeyStyle.Modifier || style == KeyStyle.Action
