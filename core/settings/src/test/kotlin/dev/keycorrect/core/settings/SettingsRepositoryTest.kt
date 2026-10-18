@@ -57,7 +57,9 @@ class SettingsRepositoryTest {
         assertThat(d.bottomKeyWidth).isEqualTo(0.75f)
         assertThat(d.edgePaddingDp).isEqualTo(4)
         assertThat(d.keyGapDp).isEqualTo(6)
-        assertThat(d.numberRow).isFalse()
+        assertThat(d.numberRow).isTrue()
+        assertThat(d.symbolHints).isTrue()
+        assertThat(d.modeEnterKeyWidth).isEqualTo(1.15f)
         assertThat(d.keyPreview).isTrue()
         assertThat(d.longPressDelayMs).isEqualTo(300)
         assertThat(d.autoCapitalize).isTrue()
@@ -87,7 +89,9 @@ class SettingsRepositoryTest {
                 bottomKeyWidth = 0.8f,
                 edgePaddingDp = 1,
                 keyGapDp = 0,
-                numberRow = true,
+                modeEnterKeyWidth = 0.9f,
+                numberRow = false,
+                symbolHints = false,
                 keyPreview = false,
                 longPressDelayMs = 450,
                 autoCapitalize = false,
@@ -150,11 +154,21 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun modeEnterKeyWidthClampsOnWriteAndRead() = runTest {
+        repo.update { it.copy(modeEnterKeyWidth = 9f) }
+        assertThat(repo.settings.first().modeEnterKeyWidth).isEqualTo(1.5f)
+        store.edit { it[floatPreferencesKey("mode_enter_key_width")] = 0.1f }
+        assertThat(repo.settings.first().modeEnterKeyWidth).isEqualTo(0.75f)
+        assertThat(KeyboardSettings(modeEnterKeyWidth = Float.NaN).sanitized().modeEnterKeyWidth)
+            .isEqualTo(1.15f)
+    }
+
+    @Test
     fun eachFieldCanBeChangedIndependently() = runTest {
-        repo.update { it.copy(numberRow = true) }
+        repo.update { it.copy(numberRow = false) }
         repo.update { it.copy(keyHeightDp = 60) }
         assertThat(repo.settings.first())
-            .isEqualTo(KeyboardSettings(numberRow = true, keyHeightDp = 60))
+            .isEqualTo(KeyboardSettings(numberRow = false, keyHeightDp = 60))
     }
 
     @Test
