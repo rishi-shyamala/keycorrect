@@ -524,6 +524,50 @@ class VoiceControllerTest {
     }
 
     @Test
+    fun theSilenceClockStartsWhenTheEngineIsReadyNotWhenItBeganToLoad() {
+        settings = KeyboardSettings(voiceAutoStopSeconds = 10)
+        voice.start() // at 0; the models take 20 s to load
+        assertThat(voice.starting).isTrue()
+        tickAt(19_000)
+        assertThat(env.engine!!.session.finished).isFalse()
+        now = 20_000
+        progress(0, speaking = false)
+        assertThat(voice.starting).isFalse()
+        tickAt(29_000)
+        assertThat(env.engine!!.session.finished).isFalse()
+        tickAt(30_500)
+        assertThat(env.engine!!.session.finished).isTrue()
+    }
+
+    @Test
+    fun anEngineThatRecordsItselfNeverShowsStarting() {
+        env.engine = FakeEngine(ownAudio = true)
+        voice.start()
+        assertThat(voice.starting).isFalse()
+    }
+
+    @Test
+    fun partialTextDoesNotCountAsSpeechForTheAutoStop() {
+        settings = KeyboardSettings(voiceAutoStopSeconds = 10)
+        voice.start()
+        progress(0, speaking = false)
+        now = 8000
+        partial("noise that was decoded")
+        tickAt(10_500)
+        assertThat(env.engine!!.session.finished).isTrue()
+    }
+
+    @Test
+    fun theAmberFlagFollowsTheRingOnlyAtTheLine() {
+        voice.start()
+        progress(5000)
+        assertThat(voice.phraseAmber).isFalse()
+        progress(5600)
+        assertThat(voice.phraseAmber).isTrue()
+        assertThat(voice.phraseHint).isTrue()
+    }
+
+    @Test
     fun autoStopOffOrAnEngineWithoutProgressNeverStops() {
         settings = KeyboardSettings(voiceAutoStopSeconds = KeyboardSettings.VOICE_AUTO_STOP_OFF)
         voice.start()

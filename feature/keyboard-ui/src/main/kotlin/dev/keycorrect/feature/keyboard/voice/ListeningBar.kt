@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -172,7 +173,9 @@ private fun Words(voice: VoiceController, state: VoiceState.Listening, modifier:
             }
             else ->
                 Text(
-                    stringResource(R.string.voice_listening),
+                    stringResource(
+                        if (voice.starting) R.string.voice_starting else R.string.voice_listening
+                    ),
                     style = body,
                     color = color.onSurface,
                     maxLines = 1,
@@ -182,9 +185,7 @@ private fun Words(voice: VoiceController, state: VoiceState.Listening, modifier:
             Text(
                 stringResource(R.string.voice_pause_hint),
                 style = MaterialTheme.typography.labelSmall.copy(lineHeight = HINT_LINE_HEIGHT),
-                color =
-                    if (voice.phraseFraction >= VoiceController.AMBER_FROM) AMBER
-                    else color.onSurfaceVariant,
+                color = if (voice.phraseAmber) AMBER else color.onSurfaceVariant,
                 maxLines = 1,
             )
         }
@@ -193,8 +194,9 @@ private fun Words(voice: VoiceController, state: VoiceState.Listening, modifier:
 
 /**
  * A mic with a ring that fills as the phrase nears the engine's limit (amber near the end), a dot
- * that pulses while speech is heard, and five bars that follow [level]. Everything is read in the
- * draw phase only, so the five updates a second redraw this canvas and recompose nothing.
+ * that pulses while speech is heard, and five bars that follow [level]. The ring and the level are
+ * read in the draw phase only, so the five updates a second redraw this canvas and recompose
+ * nothing; only [speaking] (which starts and stops the pulse) is read in composition.
  */
 @Composable
 private fun MicMeter(
@@ -203,14 +205,20 @@ private fun MicMeter(
     speaking: () -> Boolean,
     tint: Color,
 ) {
-    val pulse =
-        rememberInfiniteTransition(label = "mic")
-            .animateFloat(
-                initialValue = 0.55f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(tween(PULSE_MS), RepeatMode.Reverse),
-                label = "pulse",
-            )
+    // The transition runs only while speech is heard (it changes a few times a minute at most);
+    // otherwise nothing animates and nothing redraws between the progress updates.
+    val pulse: State<Float>? =
+        if (speaking()) {
+            rememberInfiniteTransition(label = "mic")
+                .animateFloat(
+                    initialValue = 0.55f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(tween(PULSE_MS), RepeatMode.Reverse),
+                    label = "pulse",
+                )
+        } else {
+            null
+        }
     val description = stringResource(R.string.voice_level_description)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -221,7 +229,7 @@ private fun MicMeter(
             drawCircle(
                 tint,
                 radius = size.minDimension / DOT_DIVISOR,
-                alpha = if (speaking()) pulse.value else IDLE_DOT_ALPHA,
+                alpha = pulse?.value ?: IDLE_DOT_ALPHA,
             )
         }
         Canvas(Modifier.padding(start = 6.dp).size(width = 30.dp, height = 22.dp)) {

@@ -119,8 +119,21 @@ internal constructor(
     var speaking: Boolean by mutableStateOf(false)
         private set
 
-    /** The phrase is long: the bar asks to pause briefly. Changes only when crossing the line. */
+    /**
+     * The phrase is long: the bar asks to pause briefly. Changes only when crossing the line, so
+     * composition reading it doesn't follow the five updates a second of [phraseFraction].
+     */
     val phraseHint: Boolean by derivedStateOf { phraseFraction >= HINT_FROM }
+
+    /** The phrase is nearly at the limit (the hint turns amber); changes only at the line. */
+    val phraseAmber: Boolean by derivedStateOf { phraseFraction >= AMBER_FROM }
+
+    /**
+     * The engine is still loading: no progress has come yet from an engine that reports it (the
+     * built-in one). The bar says "Starting..." and the auto-stop clock hasn't started.
+     */
+    var starting: Boolean by mutableStateOf(false)
+        private set
 
     /** Seconds until dictation stops by itself for lack of speech, in the last few; else 0. */
     var silenceCountdown: Int by mutableIntStateOf(0)
@@ -212,6 +225,7 @@ internal constructor(
         startedAt = clock()
         lastSpeechAt = startedAt
         progressSeen = false
+        starting = !opened.info.capturesOwnAudio
         tick(gen)
     }
 
@@ -327,8 +341,8 @@ internal constructor(
         val current = assembler ?: return
         when (result) {
             is SttResult.Partial -> {
+                // Not a sign of speech for the auto-stop: only the engine's progress says so.
                 apply(current.onPartial(result.text, result.stablePrefixLength, result.endsSegment))
-                lastSpeechAt = clock()
                 state =
                     (state as VoiceState.Listening).copy(
                         partial = result.text,
@@ -336,7 +350,13 @@ internal constructor(
                     )
             }
             is SttResult.Progress -> {
-                progressSeen = true
+                if (!progressSeen) {
+                    // The engine is ready: the silence clock starts now, not when the models
+                    // began to load.
+                    progressSeen = true
+                    starting = false
+                    lastSpeechAt = clock()
+                }
                 speaking = result.speaking
                 phraseFraction = fractionOf(result.phraseMillis, result.phraseLimitMillis)
                 if (result.speaking) lastSpeechAt = clock()
@@ -375,6 +395,7 @@ internal constructor(
         cancelTick = null
         elapsedSeconds = 0
         phraseFraction = 0f
+        starting = false
         speaking = false
         silenceCountdown = 0
         capture?.stop()

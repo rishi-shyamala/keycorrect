@@ -353,7 +353,7 @@
     <string name="voice_phrase_limit">Longest phrase</string>
     <string name="voice_phrase_limit_summary">How long you can speak without a pause before the phrase is cut. Shorter is steadier on slow phones; the model can\'t go much past 9 s.</string>
     <string name="voice_pause_length">Pause before a phrase is final</string>
-    <string name="voice_pause_length_summary">How long a pause must last before what you said is decoded and kept.</string>
+    <string name="voice_pause_length_summary">How long a pause must last before what you said is decoded and kept. Never more than half the longest phrase.</string>
     <string name="voice_live_interval">Live word updates</string>
     <string name="voice_live_interval_summary">How often the words refresh while you speak. Auto follows how fast the phone decodes; a fixed time slows down if the phone can\'t keep up. Off shows words after each pause.</string>
     <string name="voice_live_auto">Auto</string>
