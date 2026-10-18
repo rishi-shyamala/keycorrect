@@ -377,19 +377,7 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
             strokeWidth = d.splitWidth,
         )
     }
-    if (key.longPress == KeyAction.Voice) {
-        // The mic is the key's hint: in the corner where a text hint would be.
-        val size = d.hintIconPx
-        with(KeyIconArt) {
-            drawKeyIcon(
-                KeyIcon.Mic,
-                colors.onSurfaceVariant,
-                slot.right - gap / 2 - d.hintInset - size / 2,
-                slot.top + gap / 2 + d.hintInset / 2 + size / 2,
-                size,
-            )
-        }
-    }
+    if (key.longPress == KeyAction.Voice) drawVoiceHint(d, slot, colors)
     d.text.hint(slot.index, key)?.let { layout ->
         drawText(
             layout,
@@ -465,3 +453,18 @@ private fun feedbackKind(action: KeyAction): FeedbackKind =
         KeyAction.Enter -> FeedbackKind.Return
         else -> FeedbackKind.Standard
     }
+
+/** The mic is the voice key's hint: in the corner where a text hint would be. */
+private fun DrawScope.drawVoiceHint(d: KeyDrawer, slot: KeySlot, colors: ColorScheme) {
+    val size = d.hintIconPx
+    val gap = d.gap
+    with(KeyIconArt) {
+        drawKeyIcon(
+            KeyIcon.Mic,
+            colors.onSurfaceVariant,
+            slot.right - gap / 2 - d.hintInset - size / 2,
+            slot.top + gap / 2 + d.hintInset / 2 + size / 2,
+            size,
+        )
+    }
+}
