@@ -81,7 +81,19 @@ case "${1:-}" in
                 echo "The voice pack APK is unsigned or missing: see above." >&2
                 exit 1
             fi
-            "$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner" verify "$vapk"
+            apksigner="$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner"
+            "$apksigner" verify "$vapk"
+            # The keyboard only loads a pack signed by its own key: refuse to publish a mismatch.
+            cert() { "$apksigner" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | sort; }
+            kcert=$(cert "$apk")
+            vcert=$(cert "$vapk")
+            if [[ -z $kcert || $kcert != "$vcert" ]]; then
+                echo "The voice pack's signing certificate differs from the keyboard's:" \
+                    "the keyboard would refuse it." >&2
+                echo "  keyboard: ${kcert:-none}" >&2
+                echo "  voice pack: ${vcert:-none}" >&2
+                exit 1
+            fi
             vout=build/release/keycorrect-voice-$name.apk
             cp "$vapk" "$vout"
             assets+=("$vout")

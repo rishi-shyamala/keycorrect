@@ -2,7 +2,8 @@ plugins { id("keycorrect.android.library") }
 
 android {
     namespace = "dev.keycorrect.feature.voicesherpa"
-    // The JNI library looks the vendored sherpa-onnx classes up by name: the app's R8 must keep them.
+    // The JNI library looks the vendored sherpa-onnx classes up by name: the app's R8 must keep
+    // them.
     defaultConfig { consumerProguardFiles("consumer-rules.pro") }
 }
 
