@@ -485,6 +485,7 @@ class ClassicEngine(
         for (k in 0 until search.resultCount) {
             val node = search.resultNode[k]
             var bestId = -1
+            var bestWord = ""
             var bestLm = Float.NEGATIVE_INFINITY
             var bestBase = 0f
             for (j in 0 until dictionary.wordIdCountAt(node)) {
@@ -498,10 +499,11 @@ class ClassicEngine(
                     bestLm = v
                     bestBase = base
                     bestId = id
+                    bestWord = word
                 }
             }
             if (bestId < 0) continue
-            val surface = shaped(dictionary.word(bestId), literal)
+            val surface = shaped(bestWord, literal)
             val rightLm = if (right >= 0) lm.rightLogProb(bestId, right) else 0f
             val breakdown =
                 ScoreBreakdown(
@@ -521,7 +523,7 @@ class ClassicEngine(
                     breakdown.total(config.scoring),
                     breakdown,
                     bestId,
-                    dictionary.word(bestId),
+                    bestWord,
                 )
             )
         }
