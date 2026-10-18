@@ -53,6 +53,9 @@ internal object PanelIcons {
             "M5 7h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM7 18h10",
         )
 
+    /** One line of text between two end marks: select the line. */
+    val SelectLine = outlineIcon("select_line", "M4 12h16M4 8v8M20 8v8")
+
     /** Lines of text ending in a full stop: select the sentence. */
     val SelectSentence =
         outlineIcon("select_sentence", "M4 6h16M4 10h16M4 14h9M16.5 14.5h.01M4 18h6")

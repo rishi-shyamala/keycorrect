@@ -129,7 +129,9 @@ internal fun StripTools(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val tools = controller.tools
+    // The selection strip needs the whole width (unless autofill chips took its place).
+    val tools =
+        if (controller.selectionStripVisible && !autofillActive) emptyList() else controller.tools
     val progress = rememberBusyProgress(controller, autofillActive)
     val editSelected = controller.editToolSelected
     val leftCount = leftToolCount(tools)
@@ -158,7 +160,7 @@ internal fun StripTools(
         val count = tools.size
         val t = progress.value
         val slots = ToolSlots(count, leftCount, width, edgePx)
-        val toolWidth = slots.width(t)
+        val toolWidth = if (count == 0) 0 else slots.width(t)
         // The content is always laid out at its busy size; only its alpha animates.
         val middle =
             measurables[count].measure(

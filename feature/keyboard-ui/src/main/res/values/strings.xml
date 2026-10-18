@@ -72,10 +72,14 @@
     <string name="edit_select_off">off</string>
 
     <!-- Selection strip: shown in place of the suggestions while a range is selected. -->
-    <string name="selection_word_description">Expand selection to word</string>
-    <string name="selection_sentence_description">Expand selection to sentence</string>
+    <string name="selection_word_description">Select word</string>
+    <string name="selection_sentence_description">Select sentence</string>
+    <string name="selection_line_description">Select line</string>
+    <string name="selection_start_back_description">Move selection start back</string>
+    <string name="selection_start_forward_description">Move selection start forward</string>
+    <string name="selection_end_back_description">Move selection end back</string>
+    <string name="selection_end_forward_description">Move selection end forward</string>
     <string name="selection_case_description">Change case</string>
-    <string name="selection_copy_description">Copy selection</string>
 
     <!-- Emoji suggestion in the strip: %1$s is the emoji's name, e.g. "pizza". -->
     <string name="strip_emoji">Emoji: %1$s</string>

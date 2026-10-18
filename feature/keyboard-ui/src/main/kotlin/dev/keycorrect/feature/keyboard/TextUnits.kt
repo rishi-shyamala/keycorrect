@@ -5,6 +5,19 @@ import java.util.Locale
 /** A range of chars in some text: [start] until [end]. */
 internal data class TextSpan(val start: Int, val end: Int)
 
+/** The unit the selection strip works in: what expands the selection and what its arrows step. */
+internal enum class SelectionUnit {
+    Word,
+    Sentence,
+    Line,
+}
+
+/** Which end of the selection an arrow moves. */
+internal enum class SelectionEdge {
+    Start,
+    End,
+}
+
 /**
  * Where words, sentences and lines begin and end, for the editing panel and the selection strip.
  * Pure functions of the text around the selection, so they are unit-tested without an editor. Each
@@ -73,7 +86,15 @@ internal object TextUnits {
         return if (from < to) TextSpan(from, to) else null
     }
 
-    private fun isWordChar(text: CharSequence, i: Int): Boolean {
+    /** [expandWord], [expandSentence] or [expandLine] for [unit]. */
+    fun expand(unit: SelectionUnit, text: CharSequence, start: Int, end: Int): TextSpan? =
+        when (unit) {
+            SelectionUnit.Word -> expandWord(text, start, end)
+            SelectionUnit.Sentence -> expandSentence(text, start, end)
+            SelectionUnit.Line -> expandLine(text, start, end)
+        }
+
+    internal fun isWordChar(text: CharSequence, i: Int): Boolean {
         val c = text[i]
         return when {
             c.isLetterOrDigit() || c == '_' -> true
@@ -95,7 +116,7 @@ internal object TextUnits {
      * the char at [i] does not end a sentence: ".", "!", "?" and "…" must be followed by white
      * space or the end of the text.
      */
-    private fun terminatorEnd(text: CharSequence, i: Int): Int {
+    internal fun terminatorEnd(text: CharSequence, i: Int): Int {
         val c = text[i]
         val cjk = CJK_TERMINATORS.indexOf(c) >= 0
         if (!cjk && TERMINATORS.indexOf(c) < 0) return -1
@@ -122,11 +143,15 @@ internal object TextUnits {
         return 0
     }
 
-    private fun sentenceEnd(text: CharSequence, at: Int): Int {
-        // The char before [at] may itself end the sentence (a selection that already ends on it).
-        for (i in maxOf(at - 1, 0) until text.length) {
+    // The char before [at] may itself end the sentence (a selection that already ends on it).
+    private fun sentenceEnd(text: CharSequence, at: Int): Int =
+        sentenceEndFrom(text, maxOf(at - 1, 0), at)
+
+    /** The first sentence end at or after [atLeast], looking from [from] on. */
+    internal fun sentenceEndFrom(text: CharSequence, from: Int, atLeast: Int): Int {
+        for (i in from until text.length) {
             val stop = if (text[i] == '\n') i else terminatorEnd(text, i)
-            if (stop >= at) return stop
+            if (stop >= atLeast) return stop
         }
         var end = text.length
         while (end > 0 && text[end - 1].isWhitespace()) end--
