@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -186,13 +187,16 @@ private fun rememberBusyProgress(
     autofillActive: Boolean,
 ): State<Float> {
     val autofill = rememberUpdatedState(autofillActive)
+    // The flow below watches this one Boolean: a keystroke changes the strip, the composing flag
+    // and so on, which re-runs the derivation (a few comparisons) but only a flip wakes the flow.
+    val busyNow = remember(controller) { derivedStateOf { controller.stripBusy } }
     val animatable =
         remember(controller) {
-            val busy = Snapshot.withoutReadObservation { controller.stripBusy || autofill.value }
+            val busy = Snapshot.withoutReadObservation { busyNow.value || autofill.value }
             Animatable(if (busy) 1f else 0f)
         }
     LaunchedEffect(animatable) {
-        snapshotFlow { controller.stripBusy || autofill.value }
+        snapshotFlow { busyNow.value || autofill.value }
             .collect { busy -> animatable.animateTo(if (busy) 1f else 0f, TOOL_ANIMATION) }
     }
     return animatable.asState()

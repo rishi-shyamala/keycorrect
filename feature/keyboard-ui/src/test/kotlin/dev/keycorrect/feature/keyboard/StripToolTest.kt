@@ -1,6 +1,9 @@
 package dev.keycorrect.feature.keyboard
 
 import android.text.InputType
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.snapshots.SnapshotStateObserver
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.layout.BuiltInLayouts
@@ -199,6 +202,35 @@ class StripToolTest {
         assertThat(controller.stripBusy).isTrue()
         controller.dismissClipChip(1)
         assertThat(controller.stripBusy).isFalse()
+    }
+
+    @Test
+    fun aKeystrokeWithinABusyStripDoesNotWakeTheBusyWatcher() {
+        // What rememberBusyProgress watches: a derived Boolean, invalidated only when it flips.
+        start()
+        val busy = derivedStateOf { controller.stripBusy }
+        var wakeups = 0
+        val observer = SnapshotStateObserver { it() }
+        observer.start()
+        try {
+            val scope = Any()
+            lateinit var watch: (Any) -> Unit
+            watch = {
+                wakeups++
+                observer.observeReads(scope, watch) { busy.value }
+            }
+            observer.observeReads(scope, watch) { busy.value }
+            "hello wor"
+                .forEach {
+                    controller.onKey(KeyAction.Text(it.toString()))
+                    Snapshot.sendApplyNotifications()
+                }
+            // Idle to busy on the first letter, and no more while typing on.
+            assertThat(wakeups).isEqualTo(1)
+        } finally {
+            observer.stop()
+            observer.clear()
+        }
     }
 
     @Test
