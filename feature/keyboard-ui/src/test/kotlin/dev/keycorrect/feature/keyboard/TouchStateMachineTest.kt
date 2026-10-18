@@ -103,7 +103,11 @@ class TouchStateMachineTest {
             maybeThrow("popup")
         }
 
+        /** Runs when a key is delivered, to look at the state the key sees. */
+        var onKeyProbe: (() -> Unit)? = null
+
         override fun onKey(action: KeyAction, touch: TouchPoint?) {
+            onKeyProbe?.invoke()
             keys += action
             touches += touch
             events += "key"
@@ -157,6 +161,21 @@ class TouchStateMachineTest {
         assertThat(host.keys).containsExactly(a.key.action)
         assertThat(touch.pressed).isEmpty()
         assertThat(touch.preview).isNull()
+    }
+
+    @Test
+    fun theKeyIsReleasedOnScreenBeforeTheTypingPipelineRuns() {
+        var pressedAtKey: Set<Int>? = null
+        var previewAtKey: KeySlot? = a
+        host.onKeyProbe = {
+            pressedAtKey = touch.pressed
+            previewAtKey = touch.preview
+        }
+        down(1, a)
+        machine.onUp(1)
+        assertThat(host.keys).containsExactly(a.key.action)
+        assertThat(pressedAtKey).isEmpty()
+        assertThat(previewAtKey).isNull()
     }
 
     @Test
