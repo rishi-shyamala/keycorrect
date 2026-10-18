@@ -10,6 +10,7 @@ import dev.keycorrect.feature.keyboard.voice.VoiceEnvironment
 import dev.keycorrect.feature.voicesherpa.SherpaMoonshineEngine
 import dev.keycorrect.feature.voicesherpa.VoicePackLocator
 import dev.keycorrect.feature.voicesherpa.VoicePackResult
+import kotlin.concurrent.thread
 
 /**
  * The built-in engine, if there is one: the on-device model from the voice pack (docs/PHASE6.md
@@ -20,9 +21,21 @@ fun interface BuiltInEngineSource {
     fun open(): SttEngine?
 }
 
-/** The voice pack's Moonshine engine ([VoicePackLocator] checks the pack's signature first). */
+/**
+ * The voice pack's Moonshine engine ([VoicePackLocator] checks the pack's signature first). The
+ * pack's native libraries (~27 MB) are loaded once per process on a background thread when this is
+ * created, so the first dictation doesn't load them on the main thread; without the pack that check
+ * returns at once.
+ */
 class VoicePackEngineSource(context: Context) : BuiltInEngineSource {
     private val locator = VoicePackLocator(context)
+
+    init {
+        thread(isDaemon = true, name = "keycorrect-voicepack") {
+            // Only warms up: open() locates again (cheap once loaded) and reports problems.
+            runCatching { locator.locate() }
+        }
+    }
 
     override fun open(): SttEngine? =
         when (val found = locator.locate()) {
