@@ -164,11 +164,8 @@ internal fun KeyboardSurface(
                 override val slopPx: Float
                     get() = touchSlop
 
-                override val cursorStepPx: Float
-                    get() = currentDensity.density * currentSettings.cursorSpeed.stepDp
-
-                override val lineStepPx: Float
-                    get() = currentDensity.density * currentSettings.keyHeightDp
+                override val joystickSpeedScale: Float
+                    get() = currentSettings.cursorSpeed.joystickScale
 
                 override val wordStepPx: Float
                     get() = currentDensity.density * WORD_STEP_DP

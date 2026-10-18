@@ -17,8 +17,6 @@ class TouchStateMachineTest {
         override var spacebarCursor = true
         override var backspaceSwipe = true
         override var slopPx = 8f
-        override var cursorStepPx = 10f
-        override var lineStepPx = 50f
         override var wordStepPx = 40f
         override var swipeTyping = true
         override var swipeTrail = true
@@ -251,7 +249,7 @@ class TouchStateMachineTest {
         advance(1)
         val popup = touch.popup!!
         assertThat(popup.entries.map { it.label })
-            .containsExactly("à", "á", "â", "ä", "æ", "ã", "å", "ā")
+            .containsExactly("!", "à", "á", "â", "ä", "æ", "ã", "å", "ā") // the symbol hint first
             .inOrder()
         assertThat(popup.owner).isEqualTo(1L)
         assertThat(touch.preview).isNull()
