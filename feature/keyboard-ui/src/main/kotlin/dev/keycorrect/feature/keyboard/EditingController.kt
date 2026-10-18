@@ -203,6 +203,7 @@ constructor(
      * the keys must do it: a sensitive field, a selection to start with, text the editor does not
      * place in the field, right-to-left text (where Left is visual), or a window that has run out.
      */
+    @Suppress("ReturnCount") // guard clauses: each is one reason to leave it to the keys
     private fun moveBySelection(dx: Int, select: Boolean): Boolean {
         if (sensitive()) return false
         val now = clock()
@@ -238,8 +239,8 @@ constructor(
     private fun openDrag(select: Boolean): Drag? {
         val read = editor.surroundingText(DRAG_CONTEXT, DRAG_CONTEXT)?.takeIf { it.collapsed }
         val base = read?.let(::fieldBase)?.takeIf { it >= 0 }
-        val text = read?.text?.toString()
-        if (read == null || base == null || text == null || text.any(::isRightToLeft)) return null
+        val text = read?.text?.toString()?.takeUnless { it.any(::isRightToLeft) }
+        if (read == null || base == null || text == null) return null
         return Drag(
             text = text,
             base = base,
@@ -264,6 +265,7 @@ constructor(
      * The text around the cursor at the start of a joystick drag, and where the cursor is in it
      * ([cursor], moved as ticks arrive). [anchor] is the fixed end of a selecting drag.
      */
+    @Suppress("LongParameterList") // the window's text and where it is, then the drag's mode
     private class Drag(
         val text: String,
         /** Field offset of the window's first char. */
@@ -291,6 +293,7 @@ constructor(
          * The cursor after [dx] grapheme steps, clamped to the field; null where the window does
          * not cover them (a step lands near its edge while the field goes on).
          */
+        @Suppress("ReturnCount") // out-of-window exits
         fun stepped(dx: Int): Int? {
             var at = cursor
             repeat(abs(dx)) {
