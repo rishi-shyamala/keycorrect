@@ -90,3 +90,58 @@ learned substitutions. Stacked on Phase 5 (#11).
   text stands and a message says the last words may be missing.
 - **Release.** `tools/release/release.sh publish` checks that the voice pack and the keyboard APK
   have the same signing certificate (SHA-256) and stops otherwise.
+
+## Long dictation & live words
+
+**The bug.** Speaking for a long time ended with "Didn't catch that": Moonshine v2 tiny fails
+outright on audio longer than about 9.25 s (ONNX Runtime: the decoder's cross-attention shapes don't
+broadcast), sherpa-onnx catches that and returns an empty result, so a long segment decoded to
+nothing. The VAD's own maximum didn't help: Silero cuts only at a quiet moment and with a 3 s maximum
+segments of 12 s were still produced (desktop, `sherpa-onnx-vad-with-offline-asr`).
+
+**Experiment** (desktop, sherpa-onnx 1.13.8 Linux CLI, Moonshine v2 tiny quantized, 2 threads;
+clips cut from the bundled test wavs, A = 6.6 s clip then the 16.7 s clip, B = the reverse):
+
+| Clip length | A | B |
+|---|---|---|
+| 4 s | ok | ok |
+| 6 s | ok (cut mid-word: repeated "the brothel") | ok |
+| 8 s | ok | ok |
+| 9.24 s | ok | ok |
+| 9.28 s and longer (9.4, 10, 12, 15, 17 s) | empty (exception) | empty (exception) |
+
+Decoding takes 30 to 90 ms per clip on the desktop (RTF about 0.006), so the live re-decode is
+cheap there; the phone is to be measured. Failure is a hard, sharp threshold at about 9.25 s, not a
+gradual loss of quality.
+
+**Limits.** Phrase limit default **7 s** (76% of the first failure); the user can set 3 s to
+**8.5 s** (92%, never nearer than the chunk and pre-roll margin to the failure). The session cuts a
+phrase itself when its copy of the speech reaches the limit: at the quietest 30 ms frame of the
+second half, committing the part before, resetting the VAD and feeding the rest back. Settings
+(Settings, Voice, "Long dictation", all clamped on read and write): longest phrase 3 to 8.5 s
+(default 7); pause before a phrase is final 0.3 to 1.5 s (0.5); live update interval Auto, 0.5 to
+2.0 s or Off (Auto); stop after silence 3 to 30 s or Off (10 s).
+
+**Robustness.** A segment longer than 4 s that decodes to nothing, or to fewer than one word per
+2.5 s, is cut at its quietest point near the middle and the halves are decoded (again when still
+long); the result with more words wins. If the whole session heard at least 1 s of speech and made
+no text, the error is `SttError.Unclear` ("Couldn't make that out - try shorter phrases"), not
+`NoMatch`.
+
+**Live words.** `SegmentedDictation` keeps its own copy of the phrase in progress (from the VAD's
+speech start, with 0.3 s of pre-roll) and, while speech goes on, decodes it on the worker about
+every 0.7 s: the wait to the next decode is twice the last one's duration, within 0.5 to 1.5 s
+(Auto), or a fixed interval that is raised to twice the decode time when the phone is slower. A live
+decode runs inline on the one worker, so none ever queues behind another. `Partial(committed +
+live, stablePrefixLength = committed.length)`; at the pause the segment is decoded once more and
+committed (if that decode is empty the live words are kept). Output that is clearly a decoder loop
+(more than 6 words per second) is not shown. Buffers are freed per segment.
+
+**Progress.** `SttResult.Progress(phraseMillis, phraseLimitMillis, speaking)` about every 200 ms of
+audio; the phone recognizer sends none.
+
+**Listening bar.** Total time (m:ss), a ring around the mic that fills with
+`phraseMillis / phraseLimitMillis` (amber from 75%), a pulsing dot while speech is heard, the hint
+"pause briefly to keep going" from 60%, live words greyed until stable, and (with auto-stop on) a
+"Stopping in N" countdown in the last 3 s of silence. Progress is read in draw scopes only. Auto-stop
+applies only to engines that report progress.
