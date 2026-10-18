@@ -142,6 +142,35 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
       - `warmUp`: 11.6 ms. It runs off the engine lock, so typed predictions never wait for it.
     - Desktop swipe eval: p50/p95/p99 0.26/1.98/3.46 ms.
     - A key-reach pre-filter avoids 44% of template builds on cold decodes.
+  - **2026-10-18, full performance sweep (branch `perf-sweep`).** Two audits (main thread / UI;
+    engines and orchestration), then fixes; every eval output is byte-identical to before.
+    - Decoder: `hypot` → `sqrt` in the gesture path (it was ~66% of swipe samples); the trie
+      copied from the mmap into heap arrays (~2.6 MB) with `firstChild` precomputed; a 4-ary
+      search heap; `Dictionary.word()` once per candidate; the spatial-model cache kept across
+      learning publishes when the key offsets are unchanged; Gaussian rows reused within a word;
+      the dictionary prefetched on load.
+    - Learning: per-context n-gram factors cached, an `ArrayDeque` journal, quickselect eviction;
+      ranking-feature decodes give way to typing (an interrupted run reports busy).
+    - Main thread:
+      - Held backspace does 0 editor reads (was 2 reads + 1 delete per repeat).
+      - A joystick tick is one `setSelection` (was a batch of 2–4 key events).
+      - The controller is ready before the first frame, and the layer is composed once.
+      - The read gate is cached per field, and haptic effects are cached.
+    - Rendering:
+      - Prediction slots skip unchanged slots; a single-pass fit-text replaces
+        `BoxWithConstraints`.
+      - The strip busy watcher wakes only when the flag flips.
+      - The key canvas is split into a static layer and a pressed-key layer, so a press redraws
+        only the held keys; the overlay caches its layouts and strokes.
+    - Desktop before → after:
+      - Decode p50/p95/p99/max: 0.055/0.426/0.924/1.365 → 0.050/0.401/0.854/1.051 ms.
+      - Swipe p50/p95/p99/max: 0.26/2.00/3.43/6.33 → 0.16/1.12/1.91/4.66 ms.
+      - Learn eval: 16.5/4.7 → 15.3/4.3 s.
+      - Keystroke: 3.49 → 3.32 KB per key on the keyboard path.
+    - Device numbers are pending; the tablet was unavailable. The heap trie should gain more on
+      ART than on HotSpot.
+    - Not done: incremental learning saves (they write only dirty rows; this is off the typing
+      path, but each save is an allocation burst).
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
