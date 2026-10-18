@@ -144,12 +144,8 @@ internal interface TouchHost {
     val slopPx: Float
         get() = 0f
 
-    /** Spacebar travel (px) per character at a slow drag. */
-    val cursorStepPx: Float
-        get() = 1f
-
-    /** Spacebar travel (px) per line. */
-    val lineStepPx: Float
+    /** Multiplier on the spacebar joystick's speeds (the cursor-speed setting). */
+    val joystickSpeedScale: Float
         get() = 1f
 
     /** Backspace swipe travel (px) per further word. */
@@ -489,7 +485,7 @@ internal class TouchStateMachine(
                     JOYSTICK_CHARS_SLOW_PER_S,
                     JOYSTICK_CHARS_MEDIUM_PER_S,
                     JOYSTICK_CHARS_MAX_PER_S,
-                )
+                ) * host.joystickSpeedScale
             press.rateX += sign(dx) * perSecond * seconds
             press.rateY = 0f
         } else {
@@ -499,7 +495,7 @@ internal class TouchStateMachine(
                     JOYSTICK_LINES_SLOW_PER_S,
                     JOYSTICK_LINES_MEDIUM_PER_S,
                     JOYSTICK_LINES_MAX_PER_S,
-                )
+                ) * host.joystickSpeedScale
             press.rateY += sign(dy) * perSecond * seconds
             press.rateX = 0f
         }

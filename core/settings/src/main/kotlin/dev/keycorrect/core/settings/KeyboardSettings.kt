@@ -1,10 +1,10 @@
 package dev.keycorrect.core.settings
 
-/** Spacebar cursor speed: [stepDp] is the finger travel per character at a slow drag. */
-enum class CursorSpeed(val stepDp: Float) {
-    Slow(SLOW_STEP_DP),
-    Normal(NORMAL_STEP_DP),
-    Fast(FAST_STEP_DP),
+/** How fast the spacebar joystick moves the cursor: a multiplier on its speeds (docs/PHASE4.md). */
+enum class CursorSpeed(val joystickScale: Float) {
+    Slow(SLOW_SCALE),
+    Normal(NORMAL_SCALE),
+    Fast(FAST_SCALE),
 }
 
 /** Default skin tone for emoji that have tone variants; [None] is the plain (yellow) form. */
@@ -30,9 +30,9 @@ private const val DAY_MS = 86_400_000L
 private const val WEEK_MS = 604_800_000L
 private const val MONTH_MS = 2_592_000_000L // 30 days
 
-private const val SLOW_STEP_DP = 18f
-private const val NORMAL_STEP_DP = 12f
-private const val FAST_STEP_DP = 7f
+private const val SLOW_SCALE = 0.6f
+private const val NORMAL_SCALE = 1f
+private const val FAST_SCALE = 1.6f
 
 /** User-tunable keyboard behaviour. Every field has a safe default; see [sanitized]. */
 data class KeyboardSettings(
@@ -116,7 +116,7 @@ data class KeyboardSettings(
     val gestureTyping: Boolean = true,
     /** Draw the swipe's trail under the finger. */
     val gestureTrail: Boolean = true,
-    /** How far a spacebar drag moves per character. */
+    /** How fast the spacebar joystick moves the cursor. */
     val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
     /** Swiping left on backspace selects whole words and release deletes them. */
     val backspaceSwipe: Boolean = true,
