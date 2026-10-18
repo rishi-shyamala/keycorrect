@@ -37,6 +37,7 @@ A plain string is shorthand for a character key: `"q"` means `{ "label": "q" }`.
 | `shifted` | string | upper-cased `text` | What gets typed while shift is on (`char` only). Labels follow it |
 | `popup` | array of key/string | `[]` | Long-press alternatives, in display order (`char`/`text`/`keycode` keys, and `modeSwitch` keys with `fieldMode` entries only; setting it on any other type is an error). See "Popup entries" |
 | `hint` | string or `null` | first `popup` entry | Small corner label. `null` hides it |
+| `longPress` | `"voice"` | none | What holding the key does instead of opening a popup (`char`/`text` keys without a `popup` only). `"voice"` is `KeyAction.Voice`: it starts voice typing, and the keyboard draws a small mic icon as the key's hint. See "Long-press actions" |
 | `width` | number | `1.0` (`space` 5.0, `shift`/`backspace`/`enter`/`layer`/`modeSwitch` 1.5) | Width in standard-key units |
 | `target` | string | — | Layer id to switch to (`layer` only, required) |
 | `code` | string | — | Key to send (`keycode` only, required): `escape` · `tab` · `left` · `right` · `up` · `down` · `home` · `end` · `pageUp` · `pageDown` · `forwardDelete` |
@@ -62,6 +63,8 @@ Type semantics:
 - `spacer`: an empty, non-interactive gap of `width` units. Touches there go to the nearest real key.
 
 ## Number-field options (`numpad` layouts)
+**Long-press actions.** `"longPress": "voice"` sets `ResolvedKey.longPress` to `KeyAction.Voice` (tapping the key still types it). A key with a `longPress` has no popup (setting both is an error), and the field is not valid on popup entries. The built-in text bottom row puts it on the comma and the email row on the period (the `@` and `/` keys of the email and URL rows type something else, and the URL row's period already has the TLD popup, so the URL row has no voice key). `ComposeOptions.voiceKey` (default true) keeps it; the keyboard clears it in password fields and when voice typing is off, so the key is plain there.
+
 `ComposeOptions(signedNumber, decimalNumber)` mirror the field's `TYPE_NUMBER_FLAG_SIGNED` / `TYPE_NUMBER_FLAG_DECIMAL` (both default to true). When composing a `numpad` layout, a key that types `-` is replaced by a spacer of the same width if `signedNumber` is false. Keys that type `.` or `,` are replaced likewise if `decimalNumber` is false. Both are treated as decimal separators: the numpad offers both so one layout serves every locale, and number fields have no thousands-grouping character. Spacers keep the geometry stable and touches fall through to the nearest real key. Other layout kinds ignore these options. Only top-level keys are affected, not popup entries.
 
 ## Keyboard set (built-in, Phase 1)

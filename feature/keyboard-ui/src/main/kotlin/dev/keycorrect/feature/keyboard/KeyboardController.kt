@@ -355,6 +355,8 @@ class KeyboardController(
             is KeyAction.Modifier -> terminalModifiers.onTap(action.modifier)
             KeyAction.Emoji -> showPanel(KeyboardPanel.Emoji)
             is KeyAction.SetFieldMode -> switchFieldMode(action.mode)
+            // Voice is only ever a long press (see onKeyLongPress), never a tap.
+            KeyAction.Voice,
             KeyAction.None -> Unit
         }
     }

@@ -535,4 +535,28 @@ class LayoutParserTest {
         assertThat(parsed.kind).isEqualTo(LayoutKind.Extra)
         assertThat(parsed.bottomRow).isEqualTo(BottomRowMode.Included)
     }
+
+    @Test
+    fun longPressVoiceParsesToTheAction() {
+        val k = key("""{"label":",","longPress":"voice"}""")
+        assertThat(k.longPress).isEqualTo(KeyAction.Voice)
+        // Tapping still types the key, and it draws no text hint.
+        assertThat(k.action).isEqualTo(KeyAction.Text(","))
+        assertThat(k.hint).isNull()
+        assertThat(key("\",\"").longPress).isNull()
+    }
+
+    @Test
+    fun longPressErrors() {
+        assertThat(errorOf(layout("""[[{"label":",","longPress":"emoji"}]]""")))
+            .contains("keys[0].longPress")
+        assertThat(errorOf(layout("""[[{"type":"space","longPress":"voice"}]]""")))
+            .contains("keys[0].longPress")
+        assertThat(errorOf(layout("""[[{"label":".","longPress":"voice","popup":["!"]}]]""")))
+            .contains("popup")
+        assertThat(
+                errorOf(layout("""[[{"label":"a","popup":[{"label":",","longPress":"voice"}]}]]"""))
+            )
+            .contains("popup[0].longPress")
+    }
 }

@@ -48,6 +48,9 @@ enum class BottomRowVariant(val layoutId: String) {
  * [emojiKey] keeps the bottom row's emoji key; without it (sensitive fields) the key is dropped and
  * its width goes to the space key, so the row keeps its width.
  *
+ * [voiceKey] keeps the long-press that starts voice typing (the comma's, with its mic hint);
+ * without it (password fields, voice typing off) the key is a plain one.
+ *
  * [fieldModes] offers the manual field-kind switch (a plain text field): the long-press popup of
  * the mode-switch key (`fieldMode` entries in the bottom layout), and on a number or phone pad a
  * bottom "ABC" key that goes back. Without it the popup entries are dropped and the pads get no
@@ -78,6 +81,7 @@ data class ComposeOptions(
     val fieldModes: Boolean = false,
     val modeEnterKeyWidth: Float = DEFAULT_MODE_ENTER_KEY_WIDTH,
     val symbolHints: Boolean = true,
+    val voiceKey: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
@@ -179,6 +183,9 @@ class KeyboardComposer(private val repository: LayoutRepository) {
         val keys =
             (if (options.emojiKey) row.keys else row.keys.filter { it.action != KeyAction.Emoji })
                 .map { if (options.fieldModes) it else it.withoutFieldModes() }
+                .map {
+                    if (options.voiceKey || it.longPress == null) it else it.copy(longPress = null)
+                }
         val side = options.bottomKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
         val modeEnter = options.modeEnterKeyWidth.coerceAtLeast(MIN_BOTTOM_KEY_WIDTH)
         fun wanted(key: ResolvedKey) =

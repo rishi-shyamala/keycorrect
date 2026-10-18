@@ -796,4 +796,22 @@ class BuiltInLayoutsTest {
             )
             .contains("+")
     }
+
+    @Test
+    fun voiceLongPressIsOnTheTextCommaAndTheEmailPeriodOnly() {
+        fun voiceKeys(variant: BottomRowVariant, options: ComposeOptions = ComposeOptions()) =
+            composer
+                .compose(KeyboardSet.Default, "letters", variant, options)
+                .rows
+                .last()
+                .keys
+                .filter { it.longPress == KeyAction.Voice }
+                .map { it.label }
+        assertThat(voiceKeys(BottomRowVariant.Text)).containsExactly(",")
+        assertThat(voiceKeys(BottomRowVariant.Email)).containsExactly(".")
+        assertThat(voiceKeys(BottomRowVariant.Url)).isEmpty()
+        // Without the voice key (a password field, voice typing off) the keys are plain.
+        assertThat(voiceKeys(BottomRowVariant.Text, ComposeOptions(voiceKey = false))).isEmpty()
+        assertThat(voiceKeys(BottomRowVariant.Email, ComposeOptions(voiceKey = false))).isEmpty()
+    }
 }

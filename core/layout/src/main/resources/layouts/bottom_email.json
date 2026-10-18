@@ -20,7 +20,7 @@
       { "type": "emoji" },
       "@",
       { "type": "space", "width": 4 },
-      ".",
+      { "label": ".", "longPress": "voice" },
       { "type": "enter", "width": 1.5 },
     ],
   ],

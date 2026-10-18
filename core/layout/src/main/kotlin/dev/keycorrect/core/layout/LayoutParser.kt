@@ -56,6 +56,8 @@ internal object LayoutParser {
         ForwardDelete("forwardDelete", KeyCodes.FORWARD_DEL, "Del", "Forward delete"),
     }
 
+    private const val LONG_PRESS_VOICE = "voice"
+
     private val modifierLabels =
         mapOf(KeyModifier.Ctrl to ("Ctrl" to "Control"), KeyModifier.Alt to ("Alt" to "Alt"))
 
@@ -215,6 +217,16 @@ internal object LayoutParser {
         if (type == Type.ModeSwitch && kind != LayoutKind.Bottom) {
             fail(path, "modeSwitch is only allowed in bottom layouts")
         }
+        if (key.longPress != null) {
+            if (popup) fail("$path.longPress", "not valid on popup entries")
+            if (!isTyped) fail("$path.longPress", "only valid on char/text keys")
+            if (key.longPress != LONG_PRESS_VOICE) {
+                fail("$path.longPress", "unknown action '${key.longPress}', expected 'voice'")
+            }
+            if (key.popup.isNotEmpty()) {
+                fail("$path.longPress", "a key with a popup cannot also have a longPress")
+            }
+        }
         if (!isTyped && key.text != null) fail("$path.text", "only valid on char/text keys")
         if (type != Type.Char && key.shifted != null)
             fail("$path.shifted", "only valid on char keys")
@@ -243,6 +255,7 @@ internal object LayoutParser {
         if (type != Type.ModeSwitch && modeEntries > 0) {
             fail("$path.popup", "fieldMode entries are only allowed in a modeSwitch key's popup")
         }
+        val longPress = if (key.longPress == LONG_PRESS_VOICE) KeyAction.Voice else null
         val hint = if (key.hint == HINT_UNSET) popups.firstOrNull()?.label else key.hint
 
         fun build(
@@ -260,6 +273,7 @@ internal object LayoutParser {
                 hint,
                 key.description ?: description,
                 shiftedLabel,
+                longPress,
             )
 
         return when (type) {
