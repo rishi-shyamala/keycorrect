@@ -147,8 +147,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     private var lastPublishWall = Long.MIN_VALUE
     private var lastPruneWall = Long.MIN_VALUE
 
-    private val journal = ArrayList<JournalEntry>()
-    private val journalPending = ArrayList<JournalEntry>()
+    // Deques: the oldest entries are dropped from the front at the cap, once per event.
+    private val journal = ArrayDeque<JournalEntry>()
+    private val journalPending = ArrayDeque<JournalEntry>()
     private val pendingAdds = ArrayList<AddUserWord>()
 
     // Cached immutable lexicon views, rebuilt only when the lexicon changed.
@@ -385,13 +386,8 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         val e = JournalEntry(time, u)
         journal += e
         journalPending += e
-        if (journal.size > config.maxJournalEntries) {
-            val drop = journal.size - config.maxJournalEntries
-            journal.subList(0, drop).clear()
-        }
-        if (journalPending.size > config.maxJournalEntries) {
-            journalPending.subList(0, journalPending.size - config.maxJournalEntries).clear()
-        }
+        while (journal.size > config.maxJournalEntries) journal.removeFirst()
+        while (journalPending.size > config.maxJournalEntries) journalPending.removeFirst()
     }
 
     private fun housekeeping(now: Long) {

@@ -219,14 +219,16 @@ private fun StripContent(
     } else if (controller.selectionStripVisible) {
         SelectionStrip(controller.editing)
     } else {
+        // Remembered, so the strip's slots see the same callbacks on every recomposition and a
+        // slot whose word did not change is skipped.
         PredictionStrip(
-            strip = { controller.strip },
-            onSlot = controller::onSuggestionTap,
-            onAddWord = controller::onAddWordTap,
-            onSlotLongPress = controller::onSuggestionLongPress,
-            onNeverYes = controller::onNeverSuggestConfirm,
-            onNeverCancel = controller::onNeverSuggestCancel,
-            canBlock = { controller.canBlockSuggestions },
+            strip = remember(controller) { { controller.strip } },
+            onSlot = remember(controller) { controller::onSuggestionTap },
+            onAddWord = remember(controller) { controller::onAddWordTap },
+            onSlotLongPress = remember(controller) { controller::onSuggestionLongPress },
+            onNeverYes = remember(controller) { controller::onNeverSuggestConfirm },
+            onNeverCancel = remember(controller) { controller::onNeverSuggestCancel },
+            canBlock = remember(controller) { { controller.canBlockSuggestions } },
         )
         // Only when the strip above is empty (see KeyboardController.stripClip).
         ClipChip(controller, onPress = onPress)

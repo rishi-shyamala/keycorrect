@@ -55,15 +55,58 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
     ) {
         if (map.size <= cap) return
         val target = (cap * 0.9).toInt()
-        val items = ArrayList<Pair<String, Double>>(map.size)
-        map.forEach { k, c -> items += k to decay.value(c, now) }
-        // Ties by key, so which tied entries go never depends on hash-map iteration order.
-        items.sortWith(compareBy({ it.second }, { it.first }))
-        for (i in 0 until map.size - target) {
-            val (k, v) = items[i]
-            map.remove(k)
-            onEvict(k, v)
+        val n = map.size
+        val keys = Array(n) { "" }
+        val values = DoubleArray(n)
+        var count = 0
+        map.forEach { k, c ->
+            keys[count] = k
+            values[count++] = decay.value(c, now)
         }
+        // Only the lowest n - target go, in ascending order (the context totals they feed are sums
+        // whose rounding depends on that order). Ties by key, so which tied entries go never
+        // depends on hash-map iteration order.
+        val drop = n - target
+        for (i in lowest(keys, values, count, drop)) {
+            val k = keys[i]
+            map.remove(k)
+            onEvict(k, values[i])
+        }
+    }
+
+    /** The indices of the [k] smallest entries by (value, key), ascending: a partial selection. */
+    private fun lowest(keys: Array<String>, values: DoubleArray, n: Int, k: Int): List<Int> {
+        if (k <= 0) return emptyList()
+        val order =
+            Comparator<Int> { i, j ->
+                val c = values[i].compareTo(values[j])
+                if (c != 0) c else keys[i].compareTo(keys[j])
+            }
+        val idx = Array(n) { it }
+        if (k < n) {
+            // Hoare quickselect: afterwards idx[0 until k] hold the k smallest, in no order.
+            val kth = k - 1
+            var lo = 0
+            var hi = n - 1
+            while (lo < hi) {
+                val pivot = idx[(lo + hi) ushr 1]
+                var i = lo
+                var j = hi
+                while (i <= j) {
+                    while (order.compare(idx[i], pivot) < 0) i++
+                    while (order.compare(idx[j], pivot) > 0) j--
+                    if (i <= j) {
+                        val t = idx[i]
+                        idx[i] = idx[j]
+                        idx[j] = t
+                        i++
+                        j--
+                    }
+                }
+                if (kth <= j) hi = j else if (kth >= i) lo = i else break
+            }
+        }
+        return idx.asList().subList(0, k).sortedWith(order)
     }
 
     fun freeze(now: Long): FrozenNgrams =
@@ -131,15 +174,41 @@ internal class FrozenNgrams(
     private fun v(map: FrozenMap<Cell>, key: String): Double =
         map[key]?.let { decay.value(it, now) } ?: 0.0
 
-    /** The keys of the last context: one context is asked about with every candidate. */
-    private class ContextKeys(val context: List<String>, val keys: List<String>)
+    /** Total decayed unigram mass: the same for every query on this frozen view. */
+    private val total = decay.value(uniTotal, now)
+
+    /**
+     * What one context contributes to every candidate asked about with it: the key prefixes and the
+     * decayed context totals with their interpolation weights (all context-only, so computed once
+     * rather than per candidate). A missing level has an empty prefix and a total of 0.
+     */
+    private class ContextFactors(val context: List<String>, val bi: Level, val tri: Level)
+
+    /**
+     * One interpolation level: key prefix, decayed context total, and the weight [lam] = t/(t+k).
+     */
+    private class Level(val prefix: String, val total: Double, val lam: Double)
 
     // Racy but safe: entries are immutable, and a miss only recomputes.
-    private var lastContext: ContextKeys? = null
+    private var lastContext: ContextFactors? = null
 
-    private fun contextKeys(context: List<String>): List<String> {
-        lastContext?.let { if (it.context == context) return it.keys }
-        return Text.contextKeys(context).also { lastContext = ContextKeys(context.toList(), it) }
+    private fun level(prefix: String, total: Double) =
+        Level(prefix, total, total / (total + cfg.interpolationK))
+
+    private fun factors(context: List<String>): ContextFactors {
+        lastContext?.let { if (it.context == context) return it }
+        val ctx = Text.contextKeys(context)
+        var bi = level("", 0.0)
+        var tri = bi
+        if (ctx.isNotEmpty()) {
+            val a = ctx.last()
+            bi = level("$a ", v(ctx1, a))
+            if (ctx.size >= 2) {
+                val k2 = "${ctx[ctx.size - 2]} $a"
+                tri = level("$k2 ", v(ctx2, k2))
+            }
+        }
+        return ContextFactors(context.toList(), bi, tri).also { lastContext = it }
     }
 
     fun logProb(context: List<String>, word: String): Float? {
@@ -147,25 +216,18 @@ internal class FrozenNgrams(
         if (w.isEmpty()) return null
         val c1 = v(uni, w)
         if (c1 < cfg.minWordEvidence) return null
-        val n = decay.value(uniTotal, now)
-        if (n < cfg.minTotalEvidence) return null
-        var p = (c1 / n).coerceAtMost(1.0)
-        val ctx = contextKeys(context)
-        if (ctx.isNotEmpty()) {
-            val a = ctx.last()
-            val t1 = v(ctx1, a)
-            if (t1 > 0.0) {
-                val lam = t1 / (t1 + cfg.interpolationK)
-                p = lam * (v(bi, "$a $w") / t1).coerceAtMost(1.0) + (1 - lam) * p
-            }
-            if (ctx.size >= 2) {
-                val k2 = "${ctx[ctx.size - 2]} $a"
-                val t2 = v(ctx2, k2)
-                if (t2 > 0.0) {
-                    val lam = t2 / (t2 + cfg.interpolationK)
-                    p = lam * (v(tri, "$k2 $w") / t2).coerceAtMost(1.0) + (1 - lam) * p
-                }
-            }
+        if (total < cfg.minTotalEvidence) return null
+        var p = (c1 / total).coerceAtMost(1.0)
+        val f = factors(context)
+        if (f.bi.total > 0.0) {
+            p =
+                f.bi.lam * (v(bi, f.bi.prefix + w) / f.bi.total).coerceAtMost(1.0) +
+                    (1 - f.bi.lam) * p
+        }
+        if (f.tri.total > 0.0) {
+            p =
+                f.tri.lam * (v(tri, f.tri.prefix + w) / f.tri.total).coerceAtMost(1.0) +
+                    (1 - f.tri.lam) * p
         }
         return ln(p.coerceAtLeast(1e-9)).toFloat()
     }

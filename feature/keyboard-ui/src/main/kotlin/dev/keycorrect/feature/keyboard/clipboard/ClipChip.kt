@@ -16,6 +16,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +43,9 @@ import dev.keycorrect.feature.keyboard.ShortcutIcons
  */
 @Composable
 internal fun ClipChip(controller: KeyboardController, onPress: () -> Unit) {
-    val clip = controller.stripClip ?: return
+    // Derived, so a keystroke that leaves the chip as it was (usually: absent) recomposes nothing.
+    val clipState = remember(controller) { derivedStateOf { controller.stripClip } }
+    val clip = clipState.value ?: return
     val text = clip.preview.takeIf { clip.kind == ClipItem.Kind.Text }
     val label =
         stringResource(R.string.clipboard_chip, text ?: stringResource(R.string.clipboard_image))

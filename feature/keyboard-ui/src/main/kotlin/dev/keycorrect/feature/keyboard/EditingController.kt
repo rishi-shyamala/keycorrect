@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.keycorrect.core.input.EditAction
+import dev.keycorrect.core.input.Graphemes
 import dev.keycorrect.core.input.Surrounding
 import dev.keycorrect.core.input.TextEditor
 import kotlin.math.abs
@@ -155,6 +156,13 @@ constructor(
     private var swipe: Swipe? = null
     private var swipeTried = false
 
+    /** The joystick drag under way (see [moveBySelection]), and when it last moved. */
+    private var drag: Drag? = null
+    private var dragAt = 0L
+
+    /** The drag found it cannot move by selection (RTL text, no offset): keys until it ends. */
+    private var dragUnsupported = false
+
     /** Set by [readOrigin] when only an unsettled tracker kept it from the origin: try again. */
     private var originUnsettled = false
 
@@ -177,12 +185,156 @@ constructor(
     override fun onCursorDrag(dx: Int, dy: Int, select: Boolean) {
         if (dx == 0 && dy == 0) return
         endComposing()
+        if (dy == 0 && moveBySelection(dx, select)) return
+        if (dy != 0) drag = null // the arrow keys move the cursor on their own: the window is stale
         val meta = if (select) KeyEvent.META_SHIFT_ON else 0
         editor.batchEdit {
             val horizontal = if (dx < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
             val vertical = if (dy < 0) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN
             repeat(abs(dx)) { editor.sendKey(horizontal, meta) }
             repeat(abs(dy)) { editor.sendKey(vertical, meta) }
+        }
+    }
+
+    /**
+     * A horizontal joystick tick as one [TextEditor.setSelection] instead of 2 to 4 key events (a
+     * tick runs about 20 times a second). The cursor is stepped by grapheme through a window of
+     * text read once at the start of the drag, then kept locally. False, with nothing done, where
+     * the keys must do it: a sensitive field, a selection to start with, an editor that reports no
+     * text offset, right-to-left text (where Left is visual), a window that has run out, or an own
+     * edit in flight (its update could be coalesced with ours, so the tick uses keys and the next
+     * one reads a fresh window).
+     */
+    @Suppress("ReturnCount") // guard clauses: each is one reason to leave it to the keys
+    private fun moveBySelection(dx: Int, select: Boolean): Boolean {
+        if (sensitive()) return false
+        val now = clock()
+        if (now - dragAt > DRAG_GAP_MS) {
+            drag = null
+            dragUnsupported = false
+        }
+        dragAt = now
+        if (dragUnsupported) return false
+        val open = drag?.takeIf { it.select == select }
+        if (open != null && open.editInFlight()) {
+            drag = null // an own edit may be coalesced with our selection: keys for this tick
+            return false
+        }
+        var window = open?.takeIf { it.consistent() }
+        if (window == null) {
+            window = openDrag(select)
+            drag = window
+            if (window == null) {
+                dragUnsupported = true
+                return false
+            }
+        }
+        val target = window.stepped(dx)
+        if (target == null) {
+            drag = null // out of text: the keys do this tick, the next one reads a fresh window
+            return false
+        }
+        if (target != window.cursor) {
+            window.cursor = target
+            window.remember(target)
+            val anchor = if (select) window.anchor else target
+            editor.setSelection(window.base + anchor, window.base + target)
+        }
+        return true
+    }
+
+    private fun openDrag(select: Boolean): Drag? {
+        val read = editor.surroundingText(DRAG_CONTEXT, DRAG_CONTEXT)?.takeIf { it.collapsed }
+        // Only the editor's own offset places the window: a position inferred from the tracked
+        // selection is not trusted for a write.
+        val base = read?.offset?.takeIf { it >= 0 }
+        val text = read?.text?.toString()?.takeUnless { it.any(::isRightToLeft) }
+        if (read == null || base == null || text == null) return null
+        return Drag(
+            text = text,
+            base = base,
+            select = select,
+            anchor = read.selectionStart,
+            atStart = base == 0,
+            atEnd = text.length - read.selectionEnd < DRAG_CONTEXT,
+            settled = settledSelection,
+        )
+    }
+
+    private fun isRightToLeft(c: Char): Boolean =
+        when (Character.getDirectionality(c)) {
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE -> true
+            else -> false
+        }
+
+    /**
+     * The text around the cursor at the start of a joystick drag, and where the cursor is in it
+     * ([cursor], moved as ticks arrive). [anchor] is the fixed end of a selecting drag.
+     */
+    @Suppress("LongParameterList") // the window's text and where it is, then the drag's mode
+    private class Drag(
+        val text: String,
+        /** Field offset of the window's first char. */
+        val base: Int,
+        val select: Boolean,
+        val anchor: Int,
+        /** The window starts / ends where the field does (nothing lies beyond it). */
+        val atStart: Boolean,
+        val atEnd: Boolean,
+        private val settled: () -> EditorSelection?,
+    ) {
+        var cursor = anchor
+        private val sent = IntArray(SENT_KEPT)
+        private var sentCount = 0
+
+        init {
+            remember(anchor)
+        }
+
+        fun remember(position: Int) {
+            sent[sentCount++ % SENT_KEPT] = position
+        }
+
+        /**
+         * The cursor after [dx] grapheme steps, clamped to the field; null where the window does
+         * not cover them (a step lands near its edge while the field goes on).
+         */
+        @Suppress("ReturnCount") // out-of-window exits
+        fun stepped(dx: Int): Int? {
+            var at = cursor
+            repeat(abs(dx)) {
+                if (dx < 0) {
+                    if (at == 0 && atStart) return@repeat
+                    if (at < EDGE_MARGIN && !atStart) return null
+                    at -= Graphemes.lastClusterLength(text.substring(0, at))
+                } else {
+                    val left = text.length - at
+                    if (left == 0 && atEnd) return@repeat
+                    if (left < EDGE_MARGIN && !atEnd) return null
+                    at += Graphemes.clusterLengthAt(text, at)
+                }
+            }
+            return at
+        }
+
+        /** An own edit is in flight (or the tracked selection unknown): nothing can be told. */
+        fun editInFlight(): Boolean = settled() == null
+
+        /**
+         * The editor still shows what the drag put there. The tracked selection says so unless it
+         * is none of the positions sent lately (another finger typed, the app moved the cursor).
+         */
+        fun consistent(): Boolean {
+            val live = settled()?.normalised() ?: return false
+            return (0 until minOf(sentCount, SENT_KEPT)).any { i ->
+                val at = sent[i]
+                val start = base + if (select) minOf(anchor, at) else at
+                val end = base + if (select) maxOf(anchor, at) else at
+                live.selStart == start && live.selEnd == end
+            }
         }
     }
 
@@ -381,6 +533,8 @@ constructor(
         awaitingSettle = false
         swipeActive = false
         deferred = null
+        drag = null
+        dragUnsupported = false
     }
 
     /** The selected range and its text, read from the editor; null where nothing is selected. */
@@ -461,6 +615,18 @@ constructor(
     }
 
     private companion object {
+        /** Text read each side of the cursor when a joystick drag starts. */
+        const val DRAG_CONTEXT = 256
+
+        /** Ticks further apart than this are separate drags. */
+        const val DRAG_GAP_MS = 600L
+
+        /** A step this close to the window's edge may cut a grapheme short: the keys do it. */
+        const val EDGE_MARGIN = 32
+
+        /** How many of the positions a drag set are remembered. */
+        const val SENT_KEPT = 8
+
         /** How far before the cursor a backspace swipe looks for word boundaries. */
         const val SWIPE_CONTEXT_CHARS = 256
 

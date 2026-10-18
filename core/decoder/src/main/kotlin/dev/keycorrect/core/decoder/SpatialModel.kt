@@ -164,18 +164,29 @@ class SpatialModel(
  * Gaussians are rebuilt only when geometry or the touch correction changes.
  */
 internal class SpatialModelCache(private val config: SpatialConfig, capacity: Int = 8) {
+    /**
+     * A model with the owner it was last checked against and the learned offsets it was built on.
+     */
+    private class Entry(
+        val model: SpatialModel,
+        val owner: Any?,
+        val offsets: Array<Pair<Float, Float>?>,
+    )
+
     private val models =
-        object : LinkedHashMap<Long, SpatialModel>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, SpatialModel>?) =
+        object : LinkedHashMap<Long, Entry>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Entry>?) =
                 size > capacity
         }
     private var correction: TouchCorrection? = null
-    private var unitOwner: Any? = null
     private var unitTag: String? = null
 
     /**
      * [unitOwner] and [unitTag] identify where [unitOffsets] come from (the personalization
-     * snapshot and its touch profile): models are rebuilt when either changes.
+     * snapshot and its touch profile). A new [unitOwner] is a new snapshot, which happens on every
+     * learning publish while the learned touch offsets almost never change, so a cached model is
+     * kept when the offsets it was built on are still the ones [unitOffsets] returns. A new
+     * [unitTag] or [correction] rebuilds everything.
      */
     fun get(
         layout: KeyLayoutModel,
@@ -184,18 +195,42 @@ internal class SpatialModelCache(private val config: SpatialConfig, capacity: In
         unitOwner: Any? = null,
         unitTag: String? = null,
     ): SpatialModel {
-        if (
-            this.correction !== correction ||
-                this.unitOwner !== unitOwner ||
-                this.unitTag != unitTag
-        ) {
+        if (this.correction !== correction || this.unitTag != unitTag) {
             models.clear()
             this.correction = correction
-            this.unitOwner = unitOwner
             this.unitTag = unitTag
         }
-        return models.getOrPut(layout.id) {
-            SpatialModel(layout.keys, config, correction, unitOffsets)
+        val cached = models[layout.id]
+        if (cached != null && cached.owner === unitOwner) return cached.model
+        val offsets = offsetsOf(layout.keys, unitOffsets)
+        val model =
+            if (cached != null && cached.offsets.contentEquals(offsets)) cached.model
+            else SpatialModel(layout.keys, config, correction, unitOffsets)
+        models[layout.id] = Entry(model, unitOwner, offsets)
+        return model
+    }
+
+    /** The learned offset of each distinct key char, in the order [SpatialModel] asks for them. */
+    private fun offsetsOf(
+        keys: List<KeySpec>,
+        unitOffsets: KeyUnitOffsets?,
+    ): Array<Pair<Float, Float>?> {
+        if (unitOffsets == null) return NO_OFFSETS
+        val seen = LinkedHashSet<Char>()
+        for (key in keys) seen.add(SpatialModel.fold(key.char))
+        val out = arrayOfNulls<Pair<Float, Float>>(seen.size)
+        var i = 0
+        var any = false
+        for (c in seen) {
+            val o = unitOffsets.offset(c)
+            out[i++] = o
+            any = any || o != null
         }
+        // Nothing learned builds the same model as no offsets at all.
+        return if (any) out else NO_OFFSETS
+    }
+
+    private companion object {
+        val NO_OFFSETS = emptyArray<Pair<Float, Float>?>()
     }
 }

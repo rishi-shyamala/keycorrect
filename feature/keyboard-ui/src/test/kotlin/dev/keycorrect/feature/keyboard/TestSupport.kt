@@ -47,6 +47,9 @@ internal class SimEditor : TextEditor {
     var composeCalls = 0
     var readCalls = 0
 
+    /** How many of [readCalls] were [surroundingText]. */
+    var surroundingCalls = 0
+
     /** How many of [readCalls] were [textAfterCursor]. */
     var afterCalls = 0
 
@@ -273,6 +276,7 @@ internal class SimEditor : TextEditor {
 
     override fun surroundingText(beforeLength: Int, afterLength: Int): Surrounding? {
         readCalls++
+        surroundingCalls++
         val from = maxOf(0, selStart - beforeLength)
         val to = minOf(text.length, selEnd + afterLength)
         return Surrounding(text.substring(from, to), selStart - from, selEnd - from, from)

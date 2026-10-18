@@ -19,16 +19,32 @@ internal class TouchScorer(private val config: SpatialConfig, maxChars: Int) {
     private var model = SpatialModel(emptyList(), config)
     private var keyCount = 0
 
+    /**
+     * Touch whose table row is currently held for each position (NaN = none), so a word typed one
+     * key at a time only computes the Gaussians of the new key: the rows of the earlier keys are
+     * unchanged while the model and the touch are.
+     */
+    private val rowX = FloatArray(maxChars) { Float.NaN }
+    private val rowY = FloatArray(maxChars) { Float.NaN }
+
     /** Number of bound input chars. */
     var length = 0
         private set
 
     /** Binds [input] (at most the capacity given at construction) to [model]. */
     fun bind(model: SpatialModel, input: ComposingInput) {
+        if (this.model !== model) {
+            rowX.fill(Float.NaN)
+            rowY.fill(Float.NaN)
+        }
         this.model = model
         keyCount = model.keyCount
         length = minOf(input.text.length, typed.size)
-        if (table.size < length * keyCount) table = FloatArray(length * keyCount)
+        if (table.size < length * keyCount) {
+            table = FloatArray(length * keyCount)
+            rowX.fill(Float.NaN)
+            rowY.fill(Float.NaN)
+        }
         for (pos in 0 until length) {
             val c = SpatialModel.fold(input.text[pos])
             typed[pos] = c
@@ -36,8 +52,15 @@ internal class TouchScorer(private val config: SpatialConfig, maxChars: Int) {
             val touch = input.touches[pos]
             hasTouch[pos] = touch != null
             if (touch != null) {
-                val base = pos * keyCount
-                for (k in 0 until keyCount) table[base + k] = model.gaussian(k, touch.x, touch.y)
+                if (touch.x != rowX[pos] || touch.y != rowY[pos]) {
+                    val base = pos * keyCount
+                    for (k in 0 until keyCount) table[base + k] =
+                        model.gaussian(k, touch.x, touch.y)
+                    rowX[pos] = touch.x
+                    rowY[pos] = touch.y
+                }
+            } else {
+                rowX[pos] = Float.NaN
             }
             val slot = model.slotOf(c)
             exact[pos] = if (touch != null && slot >= 0) table[pos * keyCount + slot] else 0f

@@ -187,11 +187,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
-        super.onStartInputView(editorInfo, restarting)
-        // Loads the emoji catalog in the background, once per process.
-        appContainer.emojiEnvironment.start()
-        // Loads the clipboard history in the background and applies its retention rules.
-        appContainer.clipboardEnvironment.start()
+        // The controller first: super resumes the lifecycle, which lets Compose draw, and the
+        // first frame should show this field's state (layer, shift, strip), not the last one's.
         controller.onStartInput(
             FieldProfile.from(editorInfo),
             settingsFlow.value,
@@ -201,6 +198,11 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             initialSelStart = editorInfo.initialSelStart,
             initialSelEnd = editorInfo.initialSelEnd,
         )
+        super.onStartInputView(editorInfo, restarting)
+        // Loads the emoji catalog in the background, once per process.
+        appContainer.emojiEnvironment.start()
+        // Loads the clipboard history in the background and applies its retention rules.
+        appContainer.clipboardEnvironment.start()
     }
 
     /** Asks the autofill service for chips styled like the keyboard; null opts out (menu). */

@@ -1,6 +1,5 @@
 package dev.keycorrect.core.decoder.gesture
 
-import kotlin.math.hypot
 import kotlin.math.max
 
 /**
@@ -10,11 +9,23 @@ import kotlin.math.max
 internal object PathMath {
     private const val EPS = 1e-6f
 
+    /**
+     * Euclidean length of (dx, dy). Same value as kotlin.math.hypot (the products of two floats are
+     * exact in double, so the sqrt differs from the correctly rounded hypot only below float
+     * precision) without StrictMath.hypot's scaling and special-case handling, which dominated the
+     * swipe decode profile.
+     */
+    fun dist(dx: Float, dy: Float): Float {
+        val x = dx.toDouble()
+        val y = dy.toDouble()
+        return kotlin.math.sqrt(x * x + y * y).toFloat()
+    }
+
     /** Length of the first [count] points of [xy] as a polyline. */
     fun length(xy: FloatArray, count: Int): Float {
         var sum = 0f
         for (i in 1 until count) {
-            sum += hypot(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1])
+            sum += dist(xy[2 * i] - xy[2 * i - 2], xy[2 * i + 1] - xy[2 * i - 1])
         }
         return sum
     }
@@ -36,7 +47,7 @@ internal object PathMath {
         val step = total / (n - 1)
         var seg = 1
         var segStart = 0f // distance along the path at src point seg - 1
-        var segLen = hypot(src[2] - src[0], src[3] - src[1])
+        var segLen = dist(src[2] - src[0], src[3] - src[1])
         out[0] = src[0]
         out[1] = src[1]
         for (i in 1 until n - 1) {
@@ -44,7 +55,7 @@ internal object PathMath {
             while (seg < count - 1 && segStart + segLen < target) {
                 segStart += segLen
                 seg++
-                segLen = hypot(src[2 * seg] - src[2 * seg - 2], src[2 * seg + 1] - src[2 * seg - 1])
+                segLen = dist(src[2 * seg] - src[2 * seg - 2], src[2 * seg + 1] - src[2 * seg - 1])
             }
             val t = if (segLen > 0f) ((target - segStart) / segLen).coerceIn(0f, 1f) else 0f
             out[2 * i] = src[2 * seg - 2] + t * (src[2 * seg] - src[2 * seg - 2])

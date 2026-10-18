@@ -15,10 +15,17 @@ import dev.keycorrect.core.input.TextEditor
  */
 internal class TextContextCache(private val editor: TextEditor) {
     private val text = StringBuilder()
+    private var snapshot: String? = null
 
     /** The cached text before the cursor; only meaningful while [beforeKnown]. */
     val before: CharSequence
         get() = text
+
+    /**
+     * [before] as an immutable String for another thread. Typing a composing word doesn't change
+     * the text before it, so one copy serves every request until the text itself changes.
+     */
+    fun beforeSnapshot(): String = snapshot ?: text.toString().also { snapshot = it }
 
     var beforeKnown = false
         private set
@@ -44,6 +51,7 @@ internal class TextContextCache(private val editor: TextEditor) {
     fun ensureBefore() {
         if (beforeKnown) return
         val read = editor.textBeforeCursor(TypingContext.MAX_BEFORE_CHARS)
+        snapshot = null
         text.setLength(0)
         if (read != null) text.append(read)
         beforeAvailable = read != null
@@ -65,6 +73,7 @@ internal class TextContextCache(private val editor: TextEditor) {
 
     fun appendBefore(added: String) {
         if (!beforeKnown) return
+        snapshot = null
         text.append(added)
         val excess = text.length - TypingContext.MAX_BEFORE_CHARS
         if (excess > 0) {
@@ -81,17 +90,20 @@ internal class TextContextCache(private val editor: TextEditor) {
     /** Drops the last grapheme before the cursor (a backspace); the cache must be [beforeKnown]. */
     fun dropLastCluster() {
         val n = Graphemes.lastClusterLength(text)
+        snapshot = null
         text.setLength(maxOf(0, text.length - n))
         if (beforeTruncated && text.length < MIN_TRUSTED_BEFORE) beforeKnown = false
     }
 
     /** Drops the last [n] chars before the cursor. */
     fun dropBefore(n: Int) {
+        snapshot = null
         text.setLength(maxOf(0, text.length - n))
     }
 
     /** Cuts the text before the cursor back to its first [length] chars. */
     fun truncateBefore(length: Int) {
+        snapshot = null
         text.setLength(length)
     }
 
@@ -202,6 +214,7 @@ internal class TextContextCache(private val editor: TextEditor) {
     /** [invalidate], and drops the cached text itself. */
     fun reset() {
         invalidate()
+        snapshot = null
         text.setLength(0)
         beforeTruncated = false
         after = ""
