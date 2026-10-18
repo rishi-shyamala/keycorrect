@@ -88,6 +88,22 @@ class EditingControllerTest {
     }
 
     @Test
+    fun aTickWithAnOwnEditInFlightUsesKeysAndTheNextOneReadsAFreshWindow() {
+        start("hello world", at = 8)
+        gestures.onCursorDrag(-2, 0, select = false)
+        assertThat(editor.selections).containsExactly(6 to 6)
+        editor.onOperation = null // the platform has not reported the next edit yet
+        controller.onKey(KeyAction.Text("x"))
+        gestures.onCursorDrag(-1, 0, select = false)
+        assertThat(editor.selections).hasSize(1)
+        assertThat(editor.keys).hasSize(1)
+        editor.echo(controller)
+        gestures.onCursorDrag(-1, 0, select = false)
+        assertThat(editor.selections).hasSize(2)
+        assertThat(editor.keys).hasSize(1)
+    }
+
+    @Test
     fun aSelectingTickExtendsFromTheAnchorInOneCall() {
         start("hello world", at = 5)
         gestures.onCursorDrag(2, 0, select = true)

@@ -200,8 +200,10 @@ constructor(
      * A horizontal joystick tick as one [TextEditor.setSelection] instead of 2 to 4 key events (a
      * tick runs about 20 times a second). The cursor is stepped by grapheme through a window of
      * text read once at the start of the drag, then kept locally. False, with nothing done, where
-     * the keys must do it: a sensitive field, a selection to start with, text the editor does not
-     * place in the field, right-to-left text (where Left is visual), or a window that has run out.
+     * the keys must do it: a sensitive field, a selection to start with, an editor that reports no
+     * text offset, right-to-left text (where Left is visual), a window that has run out, or an own
+     * edit in flight (its update could be coalesced with ours, so the tick uses keys and the next
+     * one reads a fresh window).
      */
     @Suppress("ReturnCount") // guard clauses: each is one reason to leave it to the keys
     private fun moveBySelection(dx: Int, select: Boolean): Boolean {
@@ -213,7 +215,12 @@ constructor(
         }
         dragAt = now
         if (dragUnsupported) return false
-        var window = drag?.takeIf { it.select == select && it.consistent() }
+        val open = drag?.takeIf { it.select == select }
+        if (open != null && open.editInFlight()) {
+            drag = null // an own edit may be coalesced with our selection: keys for this tick
+            return false
+        }
+        var window = open?.takeIf { it.consistent() }
         if (window == null) {
             window = openDrag(select)
             drag = window
@@ -238,7 +245,9 @@ constructor(
 
     private fun openDrag(select: Boolean): Drag? {
         val read = editor.surroundingText(DRAG_CONTEXT, DRAG_CONTEXT)?.takeIf { it.collapsed }
-        val base = read?.let(::fieldBase)?.takeIf { it >= 0 }
+        // Only the editor's own offset places the window: a position inferred from the tracked
+        // selection is not trusted for a write.
+        val base = read?.offset?.takeIf { it >= 0 }
         val text = read?.text?.toString()?.takeUnless { it.any(::isRightToLeft) }
         if (read == null || base == null || text == null) return null
         return Drag(
@@ -311,13 +320,15 @@ constructor(
             return at
         }
 
+        /** An own edit is in flight (or the tracked selection unknown): nothing can be told. */
+        fun editInFlight(): Boolean = settled() == null
+
         /**
          * The editor still shows what the drag put there. The tracked selection says so unless it
-         * is none of the positions sent lately (another finger typed, the app moved the cursor);
-         * while an own edit is in flight nothing can be told.
+         * is none of the positions sent lately (another finger typed, the app moved the cursor).
          */
         fun consistent(): Boolean {
-            val live = settled()?.normalised() ?: return true
+            val live = settled()?.normalised() ?: return false
             return (0 until minOf(sentCount, SENT_KEPT)).any { i ->
                 val at = sent[i]
                 val start = base + if (select) minOf(anchor, at) else at

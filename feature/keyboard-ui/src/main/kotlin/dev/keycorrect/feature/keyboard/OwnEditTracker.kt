@@ -230,8 +230,18 @@ internal class OwnEditTracker(
 
     // ------------------------------------------------------------------ classifying updates
 
+    /**
+     * The latest [onUpdate] was the editor's echo of everything sent so far, with a cursor exactly
+     * where the model put it (a position that was known): nothing is in flight and the editor did
+     * what we asked. False for an intermediate state of a batch, an echo of an older edit, an
+     * unknown expected position and every external update.
+     */
+    var lastUpdateConfirmed = false
+        private set
+
     /** Classifies [update], consuming the expectations it explains. */
     fun onUpdate(raw: EditorSelection): UpdateVerdict {
+        lastUpdateConfirmed = false
         val update = raw.normalised()
         expire()
         if (!update.known || !update.collapsed) return external(update)
@@ -240,8 +250,10 @@ internal class OwnEditTracker(
         if (exact < 0 && passesThroughIntermediate(update)) return UpdateVerdict.Own()
         val index = if (exact >= 0) exact else pending.indexOfLast { matchesNormalised(it, update) }
         if (index >= 0) {
+            val matched = pending[index]
             repeat(index + 1) { pending.removeFirst() }
             val latest = pending.isEmpty()
+            lastUpdateConfirmed = latest && batchDepth == 0 && matched.cursorMin >= 0
             val resync =
                 if (latest && update.composingLength != compLength && update.composingLength > 0) {
                     update.composingLength
@@ -267,6 +279,7 @@ internal class OwnEditTracker(
         if (
             update.composingLength == 0 && selStart >= 0 && selStart == selEnd && cursor == selEnd
         ) {
+            lastUpdateConfirmed = batchDepth == 0
             return UpdateVerdict.Own()
         }
         return external(update)

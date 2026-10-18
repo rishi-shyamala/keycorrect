@@ -36,6 +36,7 @@ import dev.keycorrect.feature.keyboard.emoji.EmojiSearch
 import dev.keycorrect.feature.keyboard.prediction.KeyLayoutModels
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
+import dev.keycorrect.feature.keyboard.prediction.SelectionState
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
@@ -274,7 +275,7 @@ class KeyboardController(
         this.settings = settings
         if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
-        input.onStartInput(effective, settings, newField = !sameField)
+        input.onStartInput(effective, settings, newField = !sameField, selectionState())
         composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
         refreshFieldEmpty(newField = !sameField)
@@ -431,7 +432,7 @@ class KeyboardController(
         fieldMode = next
         val effective = effectiveProfile()
         profile = effective
-        input.onStartInput(effective, settings, newField = false)
+        input.onStartInput(effective, settings, newField = false, selectionState())
         composingNow = input.isComposing
         shiftHeld = false
         shiftChorded = false
@@ -482,6 +483,16 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
+    /** What is known of the editor's selection, for the prediction layer's delete decisions. */
+    private fun selectionState(): SelectionState {
+        val s = selection.normalised()
+        return when {
+            !s.known -> SelectionState.Unknown
+            s.collapsed -> SelectionState.Collapsed
+            else -> SelectionState.Range
+        }
+    }
+
     /**
      * The platform reported a selection change (`onUpdateSelection`): [selStart]/[selEnd] are the
      * new selection, [composingStart]/[composingEnd] the composing region (-1 when none). Updates
@@ -499,8 +510,9 @@ class KeyboardController(
     ) {
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
         selection = update.normalised()
-        if (update.known) input.noteSelection(update.collapsed)
+        input.noteSelection(update.collapsed.takeIf { update.known })
         val verdict = ownEdits.onUpdate(update)
+        if (ownEdits.lastUpdateConfirmed) input.confirmEdits()
         // Our own edits don't change what a cursor at 0 has after it; anything else might.
         refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
