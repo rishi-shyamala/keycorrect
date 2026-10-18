@@ -51,6 +51,8 @@ include(":core:learning")
 
 include(":core:settings")
 
+include(":core:voice")
+
 include(":feature:keyboard-ui")
 
 include(":tools:dictbuild")
