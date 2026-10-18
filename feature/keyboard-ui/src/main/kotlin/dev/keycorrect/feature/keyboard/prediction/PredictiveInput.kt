@@ -399,15 +399,7 @@ internal class PredictiveInput(
             cache.invalidate() // the text isn't what we thought: fall back to a plain backspace
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
-        val hadRange = selectionIsRange
-        if (!hadRange && backend.predictor != null) ensureContext() // read once, not on every press
-        val fromCache = !hadRange && deleteFromCache()
-        if (!fromCache) editor.deleteBackward(false)
-        if (hadRange) {
-            cache.invalidate()
-        } else if (cache.beforeKnown) {
-            cache.dropLastCluster()
-        }
+        deleteBeforeCursor()
         loop.advance()
         latest = null
         if (!recomposePreviousWord()) {
@@ -417,19 +409,28 @@ internal class PredictiveInput(
     }
 
     /**
-     * Deletes the grapheme before the cursor sized from the cached text, with no editor read. False
-     * (nothing done) when the cache doesn't hold at least a grapheme's worth of text before the
-     * cursor reliably: the caller then lets the editor look. The selection is known not to be a
-     * range here.
+     * Deletes the selection or the grapheme before the cursor. Where the cache holds the text
+     * before the cursor the grapheme is sized from it and deleted directly, with no editor read
+     * (this runs on every repeat of a held backspace); otherwise the editor looks.
      */
-    private fun deleteFromCache(): Boolean {
-        if (!cache.beforeReadable) return false
-        val before = cache.before
-        if (cache.beforeTruncated && before.length < MIN_CACHED_LOOKBEHIND) return false
-        val length = Graphemes.lastClusterLength(before)
-        if (length <= 0) return false // the start of the field, or doubt: let the editor decide
-        editor.deleteSurroundingText(length, 0)
-        return true
+    private fun deleteBeforeCursor() {
+        if (selectionIsRange) {
+            editor.deleteBackward(false)
+            cache.invalidate()
+            return
+        }
+        if (backend.predictor != null) ensureContext() // read once, not on every press
+        val length = cachedGraphemeLength()
+        if (length > 0) editor.deleteSurroundingText(length, 0) else editor.deleteBackward(false)
+        if (cache.beforeKnown) cache.dropLastCluster()
+    }
+
+    /** Length of the grapheme the cache says precedes the cursor; 0 when it cannot say. */
+    private fun cachedGraphemeLength(): Int {
+        val trusted =
+            cache.beforeReadable &&
+                !(cache.beforeTruncated && cache.before.length < MIN_CACHED_LOOKBEHIND)
+        return if (trusted) Graphemes.lastClusterLength(cache.before) else 0
     }
 
     /**
