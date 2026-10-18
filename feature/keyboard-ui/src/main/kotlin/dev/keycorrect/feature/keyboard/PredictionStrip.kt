@@ -4,9 +4,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -32,11 +34,11 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,10 +80,11 @@ internal fun PredictionStrip(
         return
     }
     val blockable = canBlock()
+    val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
     Row(modifier = modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        Slot(model.left, onSlot, onSlotLongPress, blockable)
-        Slot(model.centre, onSlot, onSlotLongPress, blockable)
-        Slot(model.right, onSlot, onSlotLongPress, blockable)
+        Slot(model.left, measurer, onSlot, onSlotLongPress, blockable)
+        Slot(model.centre, measurer, onSlot, onSlotLongPress, blockable)
+        Slot(model.right, measurer, onSlot, onSlotLongPress, blockable)
     }
 }
 
@@ -148,10 +151,20 @@ private fun PromptButton(label: String, description: String, onClick: () -> Unit
     }
 }
 
+/** The strings a slot's accessibility semantics use, built once per slot rather than per frame. */
+private class SlotLabels(val description: String, val neverAction: String)
+
+/**
+ * One slot. Its inputs are a stable [StripSlot], a flag and callbacks the caller keeps stable, so a
+ * slot whose word did not change is skipped when its neighbour's did. Its labels are remembered per
+ * slot, and the plain [clickable] is used where there is no long press ([blockable] false, or a
+ * kind that cannot be blocked), the combined one only where the never-suggest long press exists.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.Slot(
     slot: StripSlot?,
+    measurer: TextMeasurer,
     onSlot: (StripSlot) -> Unit,
     onLongPress: (StripSlot) -> Unit,
     blockable: Boolean,
@@ -163,33 +176,44 @@ private fun RowScope.Slot(
     }
     val canBlockSlot =
         blockable && (slot.kind == SlotKind.Suggestion || slot.kind == SlotKind.Autocorrect)
-    val description = stringResource(slot.labelRes(), slot.label)
-    val neverLabel = stringResource(R.string.strip_never_action, slot.insert)
+    val resources = LocalResources.current
+    val configuration = LocalConfiguration.current
+    val labels =
+        remember(slot, resources, configuration) {
+            SlotLabels(
+                resources.getString(slot.labelRes(), slot.label),
+                resources.getString(R.string.strip_never_action, slot.insert),
+            )
+        }
+    val tap = remember(slot, onSlot) { { onSlot(slot) } }
+    val longPress = remember(slot, onLongPress) { { onLongPress(slot) } }
+    val press =
+        if (canBlockSlot) {
+            Modifier.combinedClickable(role = Role.Button, onLongClick = longPress, onClick = tap)
+        } else {
+            Modifier.clickable(role = Role.Button, onClick = tap)
+        }
     Box(
         modifier =
             base
                 .clip(RoundedCornerShape(SlotCorner))
-                .combinedClickable(
-                    role = Role.Button,
-                    onLongClick = if (canBlockSlot) ({ onLongPress(slot) }) else null,
-                    onClick = { onSlot(slot) },
-                )
+                .then(press)
                 .clearAndSetSemantics {
-                    contentDescription = description
+                    contentDescription = labels.description
                     role = Role.Button
                     onClick {
-                        onSlot(slot)
+                        tap()
                         true
                     }
                     if (canBlockSlot) {
-                        onLongClick(neverLabel) {
-                            onLongPress(slot)
+                        onLongClick(labels.neverAction) {
+                            longPress()
                             true
                         }
                         customActions =
                             listOf(
-                                CustomAccessibilityAction(neverLabel) {
-                                    onLongPress(slot)
+                                CustomAccessibilityAction(labels.neverAction) {
+                                    longPress()
                                     true
                                 }
                             )
@@ -213,7 +237,7 @@ private fun RowScope.Slot(
                 Text(PHRASE_HINT, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         } else {
-            ShrinkingText(slot, color, weight)
+            ShrinkingText(slot, measurer, color, weight)
         }
     }
 }
@@ -221,10 +245,15 @@ private fun RowScope.Slot(
 /**
  * A slot's word, in full when it can be: the font shrinks to [SHRINK_FACTOR] of its size (not below
  * [MIN_SLOT_SIZE]) when the text overflows its slot, and only text that still doesn't fit is
- * ellipsized. Overflow is measured (cached) once per text and slot width.
+ * ellipsized. Measured once per text and slot width, in the layout phase (see [fitText]).
  */
 @Composable
-private fun ShrinkingText(slot: StripSlot, color: Color, weight: FontWeight) {
+private fun ShrinkingText(
+    slot: StripSlot,
+    measurer: TextMeasurer,
+    color: Color,
+    weight: FontWeight,
+) {
     if (slot.kind == SlotKind.Emoji) {
         Text(
             slot.text,
@@ -235,40 +264,10 @@ private fun ShrinkingText(slot: StripSlot, color: Color, weight: FontWeight) {
         )
         return
     }
-    val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
-    val style = LocalTextStyle.current.copy(fontWeight = weight)
+    val local = LocalTextStyle.current
+    val style = remember(local, weight) { local.copy(fontWeight = weight) }
     val base = style.fontSize.takeOrElse { DEFAULT_SLOT_SIZE }
-    BoxWithConstraints(contentAlignment = Alignment.Center) {
-        val available = constraints.maxWidth
-        // Keyed on the text and the room it has, so a slot that widens gets its full size back and
-        // a new long word is shrunk in its first frame, not after an ellipsized one.
-        val size =
-            remember(slot.text, available, style, base) {
-                val full = style.copy(fontSize = base)
-                val overflows =
-                    available != Constraints.Infinity &&
-                        measurer
-                            .measure(
-                                slot.text,
-                                full,
-                                TextOverflow.Ellipsis,
-                                softWrap = false,
-                                maxLines = 1,
-                                constraints = Constraints(maxWidth = available),
-                            )
-                            .didOverflowWidth
-                if (overflows) shrunkSize(base) else base
-            }
-        Text(
-            slot.text,
-            color = color,
-            fontWeight = weight,
-            fontSize = size,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    Spacer(Modifier.fitText(slot.text, style, color, base, measurer))
 }
 
 /** [base] shrunk to [SHRINK_FACTOR] of its size, but never below [MIN_SLOT_SIZE] (or [base]). */
@@ -321,7 +320,7 @@ private const val MAX_SLOT_WEIGHT = 14f
 private const val SHRINK_FACTOR = 0.8f
 private val DEFAULT_SLOT_SIZE = 14.sp
 private val MIN_SLOT_SIZE = 12.sp
-private const val MEASURE_CACHE = 16
+private const val MEASURE_CACHE = 24
 private val SlotCorner = 8.dp
 private val SlotPadding = 4.dp
 
