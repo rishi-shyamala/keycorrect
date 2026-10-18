@@ -6,7 +6,6 @@ import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.dictionary.DictionaryFormatException
 import dev.keycorrect.core.dictionary.WordFlags
 import dev.keycorrect.core.engineapi.KeyLayoutModel
-import kotlin.math.hypot
 
 /**
  * The most frequent dictionary words as distinct lowercase keys, independent of any layout. [ids]
@@ -197,7 +196,7 @@ internal class GestureLayoutIndex(
         for (i in 1 until len) {
             val a = seq[i - 1].toInt()
             val b = seq[i].toInt()
-            sum += hypot(keyX[b] - keyX[a], keyY[b] - keyY[a])
+            sum += PathMath.dist(keyX[b] - keyX[a], keyY[b] - keyY[a])
         }
         return sum
     }
