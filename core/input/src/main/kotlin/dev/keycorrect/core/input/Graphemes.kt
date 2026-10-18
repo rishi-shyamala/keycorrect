@@ -19,4 +19,16 @@ object Graphemes {
         val start = iterator.previous()
         return if (start == BreakIterator.DONE) end else end - start
     }
+
+    /**
+     * Number of UTF-16 chars in the grapheme cluster that starts at [from] in [text] (0 at the end
+     * of it). [from] should be a cluster boundary, as a cursor position is.
+     */
+    fun clusterLengthAt(text: String, from: Int): Int {
+        if (from < 0 || from >= text.length) return 0
+        val iterator = iterators.get()!!
+        iterator.setText(text)
+        val next = iterator.following(from)
+        return if (next == BreakIterator.DONE) text.length - from else next - from
+    }
 }
