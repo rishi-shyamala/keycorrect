@@ -103,6 +103,7 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
     implementation(project(":core:settings"))
+    implementation(project(":core:transfer"))
     implementation(project(":core:voice"))
     implementation(project(":feature:voice-sherpa"))
     implementation(project(":feature:keyboard-ui"))
@@ -110,6 +111,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.compose.foundation)
 
     testImplementation(libs.kotlinx.coroutines.test)

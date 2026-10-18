@@ -79,6 +79,22 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
         }
     }
 
+    /**
+     * Writes [state] and replaces the whole journal inside a transaction the caller owns (backup
+     * restore, which changes other tables in the same transaction). Callers hold [withWriteLock].
+     */
+    internal fun replaceAllIn(
+        db: SupportSQLiteDatabase,
+        state: PersistedLearning,
+        journal: List<JournalEntry>,
+    ) {
+        writeState(db, state)
+        deleteJournalBefore(db, Long.MAX_VALUE)
+        insertJournal(db, journal)
+    }
+
+    internal suspend fun <T> withWriteLock(block: suspend () -> T): T = lock.withLock { block() }
+
     private fun insertJournal(db: SupportSQLiteDatabase, entries: List<JournalEntry>) {
         if (entries.isEmpty()) return
         db.compileStatement("INSERT INTO learning_journal (time_millis, payload) VALUES (?, ?)")

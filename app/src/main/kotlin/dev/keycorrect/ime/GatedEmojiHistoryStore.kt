@@ -25,6 +25,8 @@ class GatedEmojiHistoryStore(
         if (variant == null || recording()) delegate.setPreferredVariant(base, variant)
     }
 
+    override suspend fun dump() = delegate.dump()
+
     override suspend fun clearSince(sinceMillis: Long) = delegate.clearSince(sinceMillis)
 
     override suspend fun clear() = delegate.clear()

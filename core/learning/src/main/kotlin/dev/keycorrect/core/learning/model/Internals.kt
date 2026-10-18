@@ -193,3 +193,10 @@ private const val GOLDEN_GAMMA = -0x61c88647
 
 /** Keeps the mixed high bits, which HashMap's own bucket choice does not use. */
 private const val SHARD_SHIFT = 16
+
+/**
+ * How much of an n-gram, correction or touch weight with half-life [halfLifeMillis] is left after
+ * [elapsedMillis] of active-clock time: the model's own [Decay], for the backup merge.
+ */
+fun decayFactor(halfLifeMillis: Long, elapsedMillis: Long): Double =
+    Decay(halfLifeMillis.toDouble()).factor(elapsedMillis)

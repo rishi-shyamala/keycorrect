@@ -109,6 +109,9 @@ interface EmojiHistoryStore {
     /** Remembers [variant] for [base]; null forgets the choice. */
     suspend fun setPreferredVariant(base: String, variant: String?)
 
+    /** Every recent and variant choice with its bookkeeping (backup). Never logged. */
+    suspend fun dump(): EmojiHistoryDump
+
     /** Forgets recents and variant choices last touched at or after [sinceMillis]. */
     suspend fun clearSince(sinceMillis: Long)
 

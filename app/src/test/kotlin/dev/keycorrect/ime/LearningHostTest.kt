@@ -21,7 +21,9 @@ import dev.keycorrect.core.learning.model.PersonalModelConfig
 import dev.keycorrect.core.settings.KeyboardSettings
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -751,5 +753,36 @@ class LearningHostTest {
         f.settle()
         assertThat(store.inner.state!!.formatVersion)
             .isEqualTo(PersistedLearning.FORMAT_VERSION + 1)
+    }
+
+    // ---------------------------------------------------------------- replaceState ordering
+
+    @Test
+    fun replaceStateRunsAfterQueuedEventsAndBeforeLaterOnes() = runTest {
+        val f = fixture(this)
+        f.start()
+        f.settle()
+
+        f.host.onEvent(f.addWord("before"))
+        var seen = emptyList<String>()
+        val job =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                f.host.replaceState(
+                    keepJournal = false,
+                    prepare = { current ->
+                        seen = current.userWords.map { it.word }
+                        current.copy(userWords = emptyList())
+                    },
+                    commit = { state, journal -> f.store.inner.replaceAll(state, journal) },
+                )
+            }
+        f.host.onEvent(f.addWord("after"))
+        f.settle()
+        job.await()
+
+        // The earlier event was applied before prepare saw the model; the replacement wiped it;
+        // the later event landed on the new model.
+        assertThat(seen).containsExactly("before")
+        assertThat(f.model.export().userWords.map { it.word }).containsExactly("after")
     }
 }

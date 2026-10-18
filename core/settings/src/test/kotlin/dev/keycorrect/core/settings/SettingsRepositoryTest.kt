@@ -290,4 +290,65 @@ class SettingsRepositoryTest {
         }
         assertThat(seen).isEqualTo(60)
     }
+
+    @Test
+    fun exportedValuesApplyToAnotherDeviceUnchanged() = runTest {
+        repo.update {
+            it.copy(keyHeightDp = 63, hapticsEnabled = false, cursorSpeed = CursorSpeed.Fast)
+        }
+        val exported = repo.exportValues()
+        assertThat(exported["key_height_dp"]).isEqualTo(63)
+        assertThat(exported["haptics_enabled"]).isEqualTo(false)
+        assertThat(exported["cursor_speed"]).isEqualTo("Fast")
+
+        val other =
+            SettingsRepository(
+                PreferenceDataStoreFactory.create(scope = scope) {
+                    File(tmp.root, "o.preferences_pb")
+                }
+            )
+        other.applyValues(exported, replace = true)
+        assertThat(other.exportValues()).isEqualTo(exported)
+        assertThat(other.settings.first()).isEqualTo(repo.settings.first())
+    }
+
+    @Test
+    fun applyIgnoresUnknownKeysAndWrongTypesAndSanitizes() = runTest {
+        repo.applyValues(
+            mapOf(
+                "some_future_setting" to true,
+                "key_height_dp" to "tall",
+                "haptics_enabled" to false,
+                "edge_padding_dp" to 100_000,
+                "cursor_speed" to "Warp",
+            )
+        )
+        val s = repo.settings.first()
+        assertThat(s.keyHeightDp).isEqualTo(KeyboardSettings().keyHeightDp)
+        assertThat(s.hapticsEnabled).isFalse()
+        assertThat(s.edgePaddingDp).isAtMost(100)
+        assertThat(s.cursorSpeed).isEqualTo(KeyboardSettings().cursorSpeed)
+        assertThat(repo.exportValues()).doesNotContainKey("some_future_setting")
+    }
+
+    @Test
+    fun replaceResetsTheRestAndKeepLocalKeepsThisDevicesValue() = runTest {
+        repo.update { it.copy(keyHeightDp = 70, soundEnabled = !KeyboardSettings().soundEnabled) }
+        repo.applyValues(
+            mapOf("key_height_dp" to 50, "haptics_enabled" to false),
+            replace = true,
+            keepLocal = setOf("key_height_dp"),
+        )
+        val s = repo.settings.first()
+        assertThat(s.keyHeightDp).isEqualTo(70)
+        assertThat(s.hapticsEnabled).isFalse()
+        assertThat(s.soundEnabled).isEqualTo(KeyboardSettings().soundEnabled)
+    }
+
+    @Test
+    fun mergeKeepsSettingsNotInTheFile() = runTest {
+        repo.update { it.copy(keyHeightDp = 70) }
+        repo.applyValues(mapOf("haptics_enabled" to false))
+        assertThat(repo.settings.first().keyHeightDp).isEqualTo(70)
+    }
 }

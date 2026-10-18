@@ -13,6 +13,7 @@ import dev.keycorrect.core.data.ShortcutStore
 import dev.keycorrect.core.data.SqlClipboardStore
 import dev.keycorrect.core.data.SqlEmojiHistoryStore
 import dev.keycorrect.core.data.SqlLearningStore
+import dev.keycorrect.core.data.SqlPersonalDataWriter
 import dev.keycorrect.core.data.SqlShortcutStore
 import dev.keycorrect.core.data.SqlUserDictionaryStore
 import dev.keycorrect.core.data.UserDictionaryStore
@@ -27,6 +28,10 @@ import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
+import dev.keycorrect.transfer.AppTransferStores
+import dev.keycorrect.transfer.CurrentDevice
+import dev.keycorrect.transfer.PrefsImportHistory
+import dev.keycorrect.transfer.TransferService
 import dev.keycorrect.voice.VoiceHost
 import java.io.File
 import java.util.concurrent.Executors
@@ -131,6 +136,24 @@ class AppContainer(private val context: Context) {
         AppClipboardEnvironment(applicationScope, { clipboardRepository }).also { env ->
             applicationScope.launch { settingsRepository.settings.collect(env::applySettings) }
         }
+    }
+
+    /** Settings & learned-data export / import (docs/TRANSFER.md). */
+    val transferService: TransferService by lazy {
+        val learningStore = SqlLearningStore(database)
+        TransferService(
+            settings = settingsRepository,
+            stores =
+                AppTransferStores(userDictionary, shortcuts, emojiHistoryStore) {
+                    emojiEnvironment.reloadHistory()
+                },
+            learning = learningHost,
+            writer = SqlPersonalDataWriter(database, learningStore),
+            currentDevice = { CurrentDevice.profile(context, settingsRepository) },
+            appVersion = BuildConfig.VERSION_NAME,
+            clock = wallClock,
+            history = PrefsImportHistory(context),
+        )
     }
 
     /** Voice typing: permission, microphone and recognizer choice (voice pack, else system). */
