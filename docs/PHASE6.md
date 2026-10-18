@@ -115,27 +115,40 @@ cheap there; the phone is to be measured. Failure is a hard, sharp threshold at 
 gradual loss of quality.
 
 **Limits.** Phrase limit default **7 s** (76% of the first failure); the user can set 3 s to
-**8.5 s** (92%, never nearer than the chunk and pre-roll margin to the failure). The session cuts a
+**8 s** (86%: the 9.25 s failure counts the 0.3 s pre-roll and the VAD's padding too, so the margin
+is kept; the session also never hands the recognizer more than 9.0 s, longer stretches are split at
+their quietest point first). The session cuts a
 phrase itself when its copy of the speech reaches the limit: at the quietest 30 ms frame of the
 second half, committing the part before, resetting the VAD and feeding the rest back. Settings
-(Settings, Voice, "Long dictation", all clamped on read and write): longest phrase 3 to 8.5 s
-(default 7); pause before a phrase is final 0.3 to 1.5 s (0.5); live update interval Auto, 0.5 to
-2.0 s or Off (Auto); stop after silence 3 to 30 s or Off (10 s).
+(Settings, Voice, "Long dictation", all clamped on read and write): longest phrase 3 to 8 s
+(default 7); pause before a phrase is final 0.3 to 1.5 s (0.5), never more than half the longest
+phrase; live update interval Auto, 0.5 to 2.0 s or Off (Auto); stop after silence 3 to 30 s or Off (10 s).
 
 **Robustness.** A segment longer than 4 s that decodes to nothing, or to fewer than one word per
 2.5 s, is cut at its quietest point near the middle and the halves are decoded (again when still
-long); the result with more words wins. If the whole session heard at least 1 s of speech and made
+long); the result with more words wins (a word that both halves say because the cut fell in the
+middle of it is counted once). If the whole session heard at least 1 s of speech and made
 no text, the error is `SttError.Unclear` ("Couldn't make that out - try shorter phrases"), not
 `NoMatch`.
 
 **Live words.** `SegmentedDictation` keeps its own copy of the phrase in progress (from the VAD's
 speech start, with 0.3 s of pre-roll) and, while speech goes on, decodes it on the worker about
-every 0.7 s: the wait to the next decode is twice the last one's duration, within 0.5 to 1.5 s
+every 0.7 s: the wait to the next decode is twice the last one's duration, within 0.5 to 3 s
 (Auto), or a fixed interval that is raised to twice the decode time when the phone is slower. A live
-decode runs inline on the one worker, so none ever queues behind another. `Partial(committed +
+decode runs inline on the one worker, so none ever queues behind another; none is started while
+live decoding used more than 40% of the last 6 s, and none after Stop, so a pause or Stop waits
+behind one live decode at most. `Partial(committed +
 live, stablePrefixLength = committed.length)`; at the pause the segment is decoded once more and
-committed (if that decode is empty the live words are kept). Output that is clearly a decoder loop
-(more than 6 words per second) is not shown. Buffers are freed per segment.
+committed (if that decode is empty the live words are kept, but only when they are not longer than
+1.5 x the characters speech of that length has, and never after a forced cut: the live words cover
+the whole phrase while the rest is decoded again; those cases count as unclear, not as text). Output that is clearly a decoder loop
+(more than 6 words per second) is not shown. Buffers are freed per segment; after a segment the
+last 0.3 s stay as the pre-roll of the next phrase.
+
+**Noise.** A click can make the VAD report speech and then none without a segment (shorter than its
+minimum speech). Once that has lasted one pause, the session stops collecting and keeps only the
+pre-roll; nothing is live-decoded or force-cut without speech detected, so a silent "phrase" can
+not be hallucinated into text ("Thank you").
 
 **Progress.** `SttResult.Progress(phraseMillis, phraseLimitMillis, speaking)` about every 200 ms of
 audio; the phone recognizer sends none.
@@ -143,5 +156,8 @@ audio; the phone recognizer sends none.
 **Listening bar.** Total time (m:ss), a ring around the mic that fills with
 `phraseMillis / phraseLimitMillis` (amber from 75%), a pulsing dot while speech is heard, the hint
 "pause briefly to keep going" from 60%, live words greyed until stable, and (with auto-stop on) a
-"Stopping in N" countdown in the last 3 s of silence. Progress is read in draw scopes only. Auto-stop
-applies only to engines that report progress.
+"Stopping in N" countdown in the last 3 s of silence. The ring and level are read in draw scopes
+only (the hint and its amber colour are threshold flags, so the words don't recompose five times a
+second) and the pulse animates only while speech is heard. "Starting..." shows until the engine's
+first progress report; the silence clock starts then, and only progress (not partial text) counts
+as speech. Auto-stop applies only to engines that report progress.

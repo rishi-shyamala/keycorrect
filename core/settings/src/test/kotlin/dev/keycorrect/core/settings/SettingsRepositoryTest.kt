@@ -190,11 +190,11 @@ class SettingsRepositoryTest {
             )
         }
         var s = repo.settings.first()
-        assertThat(s.voicePhraseMs).isEqualTo(8500) // never past where the model fails
+        assertThat(s.voicePhraseMs).isEqualTo(8000) // never past where the model fails
         assertThat(s.voicePauseMs).isEqualTo(300)
         assertThat(s.voiceLiveMs).isEqualTo(500)
         assertThat(s.voiceAutoStopSeconds).isEqualTo(3)
-        assertThat(store.data.first()[intPreferencesKey("voice_phrase_ms")]).isEqualTo(8500)
+        assertThat(store.data.first()[intPreferencesKey("voice_phrase_ms")]).isEqualTo(8000)
         // A stored value from outside the ranges is clamped on read.
         store.edit {
             it[intPreferencesKey("voice_phrase_ms")] = 100

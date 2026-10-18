@@ -169,7 +169,10 @@ data class KeyboardSettings(
      * fails above about 9.25 s, so the range stops well before.
      */
     val voicePhraseMs: Int = DEFAULT_VOICE_PHRASE_MS,
-    /** How long a pause must last before the phrase before it is decoded, in ms. */
+    /**
+     * How long a pause must last before the phrase before it is decoded, in ms
+     * ([VOICE_PAUSE_MS_RANGE], and never more than half of [voicePhraseMs]).
+     */
     val voicePauseMs: Int = DEFAULT_VOICE_PAUSE_MS,
     /**
      * How often the words are updated while speaking, in ms: [VOICE_LIVE_AUTO] (as often as the
@@ -207,7 +210,11 @@ data class KeyboardSettings(
                 if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
                 else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
             voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
-            voicePauseMs = voicePauseMs.coerceIn(VOICE_PAUSE_MS_RANGE),
+            // Never more than half the phrase: a longer pause would not fit in it.
+            voicePauseMs =
+                voicePauseMs
+                    .coerceIn(VOICE_PAUSE_MS_RANGE)
+                    .coerceAtMost(voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE) / 2),
             voiceLiveMs =
                 when {
                     voiceLiveMs < 0 -> VOICE_LIVE_OFF
@@ -241,7 +248,7 @@ data class KeyboardSettings(
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100
 
         /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/PHASE6.md). */
-        val VOICE_PHRASE_MS_RANGE = 3000..8500
+        val VOICE_PHRASE_MS_RANGE = 3000..8000
         const val DEFAULT_VOICE_PHRASE_MS = 7000
         val VOICE_PAUSE_MS_RANGE = 300..1500
         const val DEFAULT_VOICE_PAUSE_MS = 500
