@@ -243,8 +243,10 @@ class ClassicEngine(
         try {
             val features = featuresLocked(request, text, stale)
             // An interrupted decode proves nothing about the pool: report busy, not undecodable.
-            if (stale()) return null
-            return features ?: RankingFeatures.NOT_DECODABLE
+            return when {
+                stale() -> null
+                else -> features ?: RankingFeatures.NOT_DECODABLE
+            }
         } finally {
             lock.unlock()
         }
