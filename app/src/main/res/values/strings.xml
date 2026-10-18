@@ -171,6 +171,10 @@
     <string name="licenses_libraries_header">Libraries</string>
     <string name="licenses_androidx">AndroidX and Jetpack Compose (Google) \u2014 Apache-2.0. https://www.apache.org/licenses/LICENSE-2.0</string>
     <string name="licenses_kotlin">Kotlin and kotlinx (coroutines, serialization; JetBrains) \u2014 Apache-2.0. https://www.apache.org/licenses/LICENSE-2.0</string>
+    <string name="licenses_sherpa">sherpa-onnx (Xiaomi Corporation and contributors), used for on-device speech recognition \u2014 Apache-2.0. https://www.apache.org/licenses/LICENSE-2.0</string>
+    <string name="licenses_onnxruntime">ONNX Runtime (Microsoft Corporation) \u2014 MIT. https://github.com/microsoft/onnxruntime/blob/main/LICENSE</string>
+    <string name="licenses_moonshine">Moonshine v2 tiny speech model (Useful Sensors, Inc., dba Moonshine AI) \u2014 MIT.</string>
+    <string name="licenses_silero">Silero VAD voice-activity model (Silero Team) \u2014 MIT. https://github.com/snakers4/silero-vad/blob/master/LICENSE</string>
     <string name="licenses_sqlcipher">SQLCipher for Android (Zetetic, LLC) \u2014 BSD-style licence, Community Edition. This product includes software developed by Zetetic, LLC. https://www.zetetic.net/sqlcipher/license/ Its cryptography uses the bundled LibTomCrypt library (public domain, https://www.libtom.net/LibTomCrypt/).</string>
     <string name="about_autofill_test">Autofill test</string>
     <string name="about_autofill_test_summary">Debug only: check password manager suggestions</string>
@@ -331,6 +335,20 @@
     <string name="editing_backspace_swipe">Swipe backspace to delete words</string>
     <string name="editing_backspace_swipe_summary">Swipe left on backspace to select words; let go to delete them.</string>
 
+    <string name="voice_title">Voice typing</string>
+    <string name="voice_summary">Hold the comma key to dictate, on this device</string>
+    <string name="voice_enabled">Voice typing</string>
+    <string name="voice_enabled_summary">Hold the comma key to dictate. The microphone is on only while the listening bar shows, and never in password fields.</string>
+    <string name="voice_section_engine">Speech engine</string>
+    <string name="voice_engine_summary">Automatic uses the KeyCorrect voice pack when it is installed, otherwise the speech recognizer built into your phone. Audio never leaves the device with the voice pack; a phone recognizer may use the network if it chooses to.</string>
+    <string name="voice_engine_automatic">Automatic</string>
+    <string name="voice_engine_system">Phone recognizer</string>
+    <string name="voice_pack_installed">Voice pack: installed. Dictation runs on this device with the Moonshine model.</string>
+    <string name="voice_pack_not_installed">Voice pack: not installed. The phone recognizer is used.</string>
+    <string name="voice_pack_signature_mismatch">Voice pack: not trusted. It is not signed by the same key as this keyboard, so it is not used.</string>
+    <string name="voice_pack_broken">Voice pack: installed but incomplete or unsupported on this device. The phone recognizer is used.</string>
+    <string name="voice_auto_punctuation">Automatic punctuation</string>
+    <string name="voice_auto_punctuation_summary">Add commas and full stops while dictating, when the engine can.</string>
     <string name="emoji_title">Emoji</string>
     <string name="emoji_summary">Suggestions and default skin tone</string>
     <string name="emoji_section_suggestions">Suggestions</string>

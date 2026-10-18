@@ -8,6 +8,21 @@
     <!-- Custom key-press haptics (duration/strength settings). Normal, install-time permission. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+      Voice typing (docs/PHASE6.md): the microphone, only while dictating. Runtime permission,
+      requested by MicPermissionActivity (a keyboard cannot show the dialog). Audio never leaves the
+      device: there is no INTERNET permission.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Package visibility (Android 11+) for the speech recognizers and the voice pack. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <package android:name="dev.keycorrect.voice" />
+    </queries>
+
     <application
         android:name=".KeyCorrectApp"
         android:allowBackup="false"
@@ -26,6 +41,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Asks for the microphone on behalf of the keyboard, then finishes at once. -->
+        <activity
+            android:name=".voice.MicPermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.KeyCorrect.Transparent" />
 
         <!--
           Serves image clips to the app they are pasted into. Never exported: another app reaches a
