@@ -163,6 +163,22 @@ data class KeyboardSettings(
     val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.BuiltIn,
     /** Ask the recognizer for punctuation and capitalisation. */
     val voiceAutoPunctuation: Boolean = true,
+    /**
+     * The longest stretch spoken without a pause that is decoded in one go, in ms
+     * ([VOICE_PHRASE_MS_RANGE]); the ring in the listening bar fills towards it. The built-in model
+     * fails above about 9.25 s, so the range stops well before.
+     */
+    val voicePhraseMs: Int = DEFAULT_VOICE_PHRASE_MS,
+    /** How long a pause must last before the phrase before it is decoded, in ms. */
+    val voicePauseMs: Int = DEFAULT_VOICE_PAUSE_MS,
+    /**
+     * How often the words are updated while speaking, in ms: [VOICE_LIVE_AUTO] (as often as the
+     * phone manages), [VOICE_LIVE_OFF] (only after each pause) or a fixed interval in
+     * [VOICE_LIVE_MS_RANGE].
+     */
+    val voiceLiveMs: Int = VOICE_LIVE_AUTO,
+    /** Stop dictating after this many seconds without speech; [VOICE_AUTO_STOP_OFF] never. */
+    val voiceAutoStopSeconds: Int = DEFAULT_VOICE_AUTO_STOP_SECONDS,
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -190,6 +206,19 @@ data class KeyboardSettings(
             soundVolume =
                 if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
                 else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
+            voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
+            voicePauseMs = voicePauseMs.coerceIn(VOICE_PAUSE_MS_RANGE),
+            voiceLiveMs =
+                when {
+                    voiceLiveMs < 0 -> VOICE_LIVE_OFF
+                    voiceLiveMs == VOICE_LIVE_AUTO -> VOICE_LIVE_AUTO
+                    else -> voiceLiveMs.coerceIn(VOICE_LIVE_MS_RANGE)
+                },
+            voiceAutoStopSeconds =
+                when {
+                    voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
+                    else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
+                },
         )
 
     companion object {
@@ -210,6 +239,18 @@ data class KeyboardSettings(
         val SOUND_VOLUME_RANGE = 0f..1f
         val REVERTS_RANGE = 1..5
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100
+
+        /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/PHASE6.md). */
+        val VOICE_PHRASE_MS_RANGE = 3000..8500
+        const val DEFAULT_VOICE_PHRASE_MS = 7000
+        val VOICE_PAUSE_MS_RANGE = 300..1500
+        const val DEFAULT_VOICE_PAUSE_MS = 500
+        val VOICE_LIVE_MS_RANGE = 500..2000
+        const val VOICE_LIVE_AUTO = 0
+        const val VOICE_LIVE_OFF = -1
+        val VOICE_AUTO_STOP_SECONDS_RANGE = 3..30
+        const val VOICE_AUTO_STOP_OFF = 0
+        const val DEFAULT_VOICE_AUTO_STOP_SECONDS = 10
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }
 }

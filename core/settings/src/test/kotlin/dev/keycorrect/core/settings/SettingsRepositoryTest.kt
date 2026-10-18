@@ -157,6 +157,61 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun voiceLimitsDefaultRoundTripAndAreClamped() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.voicePhraseMs).isEqualTo(7000)
+        assertThat(d.voicePauseMs).isEqualTo(500)
+        assertThat(d.voiceLiveMs).isEqualTo(KeyboardSettings.VOICE_LIVE_AUTO)
+        assertThat(d.voiceAutoStopSeconds).isEqualTo(10)
+        repo.update {
+            it.copy(
+                voicePhraseMs = 5000,
+                voicePauseMs = 800,
+                voiceLiveMs = 1200,
+                voiceAutoStopSeconds = 20,
+            )
+        }
+        val s = repo.settings.first()
+        assertThat(s.voicePhraseMs).isEqualTo(5000)
+        assertThat(s.voicePauseMs).isEqualTo(800)
+        assertThat(s.voiceLiveMs).isEqualTo(1200)
+        assertThat(s.voiceAutoStopSeconds).isEqualTo(20)
+        assertThat(store.data.first()[intPreferencesKey("voice_phrase_ms")]).isEqualTo(5000)
+    }
+
+    @Test
+    fun voiceLimitsCannotLeaveTheirRangesOnWriteOrRead() = runTest {
+        repo.update {
+            it.copy(
+                voicePhraseMs = 60_000,
+                voicePauseMs = 5,
+                voiceLiveMs = 3,
+                voiceAutoStopSeconds = 1,
+            )
+        }
+        var s = repo.settings.first()
+        assertThat(s.voicePhraseMs).isEqualTo(8500) // never past where the model fails
+        assertThat(s.voicePauseMs).isEqualTo(300)
+        assertThat(s.voiceLiveMs).isEqualTo(500)
+        assertThat(s.voiceAutoStopSeconds).isEqualTo(3)
+        assertThat(store.data.first()[intPreferencesKey("voice_phrase_ms")]).isEqualTo(8500)
+        // A stored value from outside the ranges is clamped on read.
+        store.edit {
+            it[intPreferencesKey("voice_phrase_ms")] = 100
+            it[intPreferencesKey("voice_pause_ms")] = 99_999
+            it[intPreferencesKey("voice_live_ms")] = -7
+            it[intPreferencesKey("voice_auto_stop_seconds")] = 500
+        }
+        s = repo.settings.first()
+        assertThat(s.voicePhraseMs).isEqualTo(3000)
+        assertThat(s.voicePauseMs).isEqualTo(1500)
+        assertThat(s.voiceLiveMs).isEqualTo(KeyboardSettings.VOICE_LIVE_OFF)
+        assertThat(s.voiceAutoStopSeconds).isEqualTo(30)
+        repo.update { it.copy(voiceAutoStopSeconds = KeyboardSettings.VOICE_AUTO_STOP_OFF) }
+        assertThat(repo.settings.first().voiceAutoStopSeconds).isEqualTo(0)
+    }
+
+    @Test
     fun oldVoiceEngineNamesMigrate() = runTest {
         store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
         assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)
