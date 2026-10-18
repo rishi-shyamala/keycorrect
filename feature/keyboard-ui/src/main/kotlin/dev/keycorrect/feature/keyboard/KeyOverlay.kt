@@ -41,6 +41,7 @@ private val TrailWidth = 6.dp
 
 private val JoystickRimWidth = 2.dp
 private const val JOYSTICK_BASE_ALPHA = 0.10f
+private const val JOYSTICK_DEAD_ZONE_ALPHA = 0.12f
 private const val JOYSTICK_RIM_ALPHA = 0.30f
 private const val JOYSTICK_RIM_ENGAGED_ALPHA = 0.70f
 private const val JOYSTICK_KNOB_ALPHA = 0.55f
@@ -102,14 +103,15 @@ internal fun KeyOverlay(
 }
 
 /**
- * The spacebar drag's joystick: a faint base ring at the touch-down point and a knob following the
- * finger (held on the ring), stronger once the finger is beyond the ring and the cursor is moving
- * at a rate. Allocation-free.
+ * The spacebar drag's joystick: a faint base ring at the touch-down point with a fainter dead zone
+ * inside it, and a knob following the finger (held on the ring), stronger once the finger is at the
+ * ring and the cursor is moving fast. Allocation-free.
  */
 private fun DrawScope.drawJoystick(joystick: JoystickState, origin: Offset, color: Color) {
     val center = Offset(joystick.centerX + origin.x, joystick.centerY + origin.y)
     val engaged = joystick.engaged
     drawCircle(color.copy(alpha = JOYSTICK_BASE_ALPHA), joystick.radius, center)
+    drawCircle(color.copy(alpha = JOYSTICK_DEAD_ZONE_ALPHA), joystick.deadZone, center)
     drawCircle(
         color.copy(alpha = if (engaged) JOYSTICK_RIM_ENGAGED_ALPHA else JOYSTICK_RIM_ALPHA),
         joystick.radius,
