@@ -358,11 +358,20 @@ class KeyboardController(
         }
     }
 
+    /** The last char typed since the layer last changed; read only while a symbols page is up. */
+    private var lastTypedOnSymbols: Char? = null
+
     private fun onSpaceKey() {
         markChord()
+        // Space right after a symbol on a symbols page ends the symbol run: back to the letters.
+        // After a digit the page stays, so numbers can be typed.
+        val afterSymbol =
+            (state.layerId == KeyboardSet.SYMBOLS || state.layerId == KeyboardSet.SYMBOLS2) &&
+                lastTypedOnSymbols?.let { !it.isLetterOrDigit() } == true
         if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
         state = state.afterCharacter(shiftHeld)
         updateAutoCapitalize()
+        if (afterSymbol) switchLayer(homeLayerFor(profile.kind))
     }
 
     private fun onBackspaceKey() {
@@ -375,6 +384,7 @@ class KeyboardController(
         markChord()
         val typed = state.transform(action)
         if (!sendWithModifiers(keyCodeForText(typed))) input.onText(typed, touch)
+        lastTypedOnSymbols = typed.lastOrNull()
         state = state.afterCharacter(shiftHeld)
         updateAutoCapitalize()
     }
@@ -443,6 +453,7 @@ class KeyboardController(
             runCatching { composer.compose(keyboardSet, layerId, variant, options) }.getOrNull()
                 ?: return
         input.onLayerSwitch()
+        lastTypedOnSymbols = null
         shiftHeld = false
         shiftChorded = false
         state = state.withLayer(layerId)

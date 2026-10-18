@@ -124,6 +124,12 @@ internal class PredictiveInput(
 
     private var latest: PredictResult? = null
 
+    /**
+     * The unknown word the cursor was just placed in or after (an external move), whose corrections
+     * the strip offers; see [startRecorrect]. Cleared by typing and by any move.
+     */
+    private var recorrect: TextContextCache.WordAround? = null
+
     /** The composing text [latest] was decoded for. */
     private var latestTyped: String? = null
     private var undo: Undo? = null
@@ -317,6 +323,7 @@ internal class PredictiveInput(
             editor.commitText(text)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence(text)
@@ -340,6 +347,7 @@ internal class PredictiveInput(
             editor.commitText(text)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence(text)
@@ -359,6 +367,7 @@ internal class PredictiveInput(
             editor.deleteBackward(sensitive)
             return
         }
+        dropRecorrect()
         prompts.dismiss()
         if (swiped != null && deleteSwipedWord(swiped)) return
         flushSentence(null)
@@ -413,6 +422,7 @@ internal class PredictiveInput(
     fun beforeEnter(commitsLineBreak: Boolean) {
         swipe = null
         if (!canPredict()) return
+        dropRecorrect()
         prompts.dismiss()
         closeUndo()
         flushSentence("\n")
@@ -488,14 +498,146 @@ internal class PredictiveInput(
         settleAll()
         resetWordState()
         publish(StripModel.Empty)
-        if (collapsed) refreshContext()
+        if (collapsed) {
+            refreshContext()
+            startRecorrect()
+        }
+    }
+
+    // ------------------------------------------------------------------ re-correction
+
+    /**
+     * The cursor was placed (externally, collapsed, nothing composing) in or at the end of a word:
+     * if it is not in the dictionary, decodes it as composing text without touches and offers the
+     * candidates in the strip ([onRecorrectResult]). Nothing is read where suggestions aren't
+     * allowed (sensitive fields, none wanted) or no engine exists; the text before the cursor was
+     * just read by [refreshContext], so this adds the one read of the text after it. Costs nothing
+     * per keystroke: only an external cursor move gets here, and the decode runs on the decoder
+     * thread.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun startRecorrect() {
+        if (!canPredict() || backend.predictor == null || !cache.beforeReadable) return
+        if (!cache.endsInWordChar()) return // nothing to judge: skip reading the text after it
+        cache.ensureAfter()
+        val word = cache.wordAroundCursor() ?: return
+        if (!isUnknownPlainWord(word.text)) return
+        val seq = loop.advance()
+        recorrect = word
+        loop.submit(
+            PredictRequest(
+                context =
+                    TypingContext(
+                        cache.before.substring(0, word.start),
+                        cache.after.substring(word.afterLength),
+                        fieldClass(),
+                    ),
+                composing = ComposingInput(word.text, List(word.text.length) { null }),
+                layout = layout,
+                maxCandidates = MAX_CANDIDATES,
+                maxPhraseWords = 0,
+                autocorrectAllowed = false,
+                sequence = seq,
+            ),
+            ::onRecorrectResult,
+        )
+    }
+
+    @Suppress("ReturnCount") // guard clauses
+    private fun onRecorrectResult(result: PredictResult) {
+        val word = recorrect ?: return
+        if (result.sequence != loop.sequence || !canPredict()) return
+        val visible = result.unblocked()
+        val candidates =
+            visible.candidates.filter {
+                it.text.isNotEmpty() &&
+                    !it.isPhrase &&
+                    it.source != CandidateSource.Shortcut &&
+                    !sameWord(it.text, word.text)
+            }
+        val strip =
+            StripBuilder.build(
+                visible.copy(candidates = candidates, literal = null, phrase = null),
+                "",
+                null,
+                null,
+                env.expander::preview,
+            )
+        if (strip.isEmpty) {
+            recorrect = null
+            return
+        }
+        publish(strip)
+    }
+
+    /** Typing (or anything else that edits) ends the re-correction strip. */
+    private fun dropRecorrect() {
+        if (recorrect == null) return
+        recorrect = null
+        publish(StripModel.Empty)
+    }
+
+    /**
+     * A tap on a re-correction: the word around the cursor is replaced in place, the cursor ending
+     * after the replacement, and learning hears of it like any picked suggestion. The editor's text
+     * is checked first; if the word is no longer there nothing is replaced. Returns false if there
+     * was no re-correction.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun replaceRecorrected(slot: StripSlot): Boolean {
+        val word = recorrect ?: return false
+        recorrect = null
+        val replacement = slot.insert
+        val before = editor.textBeforeCursor(word.beforeLength)?.toString()
+        val after = if (word.afterLength == 0) "" else editor.textAfterCursor(word.afterLength)
+        val intact =
+            before == word.text.take(word.beforeLength) &&
+                after?.toString() == word.text.drop(word.beforeLength)
+        if (!intact || replacement.isEmpty()) {
+            cache.invalidate()
+            publish(StripModel.Empty)
+            return true
+        }
+        prompts.dismiss()
+        closeUndo()
+        flushSentence(null)
+        settleHeldRevert()
+        retypeGuard = null
+        val rank = slotRank(slot)
+        // The context of the word is the text before it.
+        cache.truncateBefore(word.start)
+        cache.dropAfter(word.afterLength)
+        val pre = capturePre()
+        loop.advance()
+        latest = null
+        editor.batchEdit {
+            editor.deleteSurroundingText(word.beforeLength, word.afterLength)
+            editor.commitText(replacement)
+        }
+        cache.appendBefore(replacement)
+        val touchList = List<TouchPoint?>(word.text.length) { null }
+        record(word.text, replacement, touchList, CommitMethod.SuggestionTap)
+        completeWord(
+            word.text,
+            replacement,
+            Learned.SuggestionPicked,
+            rank,
+            pre,
+            touchList,
+            null,
+            null,
+            false,
+        )
+        publish(StripModel.Empty)
+        requestNextWord()
+        return true
     }
 
     // ------------------------------------------------------------------ strip taps
 
     /** A strip slot was tapped. */
     fun onStripTap(slot: StripSlot) {
-        if (!canPredict()) return
+        if (!canPredict() || replaceRecorrected(slot)) return
         swipe?.let { if (replaceSwipedWord(it, slot)) return }
         swipe = null
         prompts.dismiss()
@@ -1055,6 +1197,7 @@ internal class PredictiveInput(
     fun swipeBegin(): Boolean {
         settlePendingSwipe()
         if (!canPredict() || backend.predictor == null || layout.keys.isEmpty()) return false
+        dropRecorrect()
         prompts.dismiss()
         ensureContext()
         // What precedes the swiped word: the composing word and, where the swipe will add one, the
@@ -1468,6 +1611,7 @@ internal class PredictiveInput(
     private fun resetWordState() {
         swipe = null
         swiping = null
+        recorrect = null
         dropPendingSwipe()
         retypeGuard = null
         restoredWord = null
