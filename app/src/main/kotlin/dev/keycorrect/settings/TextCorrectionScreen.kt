@@ -40,7 +40,7 @@ fun TextCorrectionScreen(
             supportingText =
                 summary(stringResource(R.string.text_correction_enter_as_typed_summary)),
             checked = settings.enterKeepsTyped,
-            enabled = on && settings.autocorrectEnabled,
+            enabled = on,
             onCheckedChange = { v -> onUpdate { it.copy(enterKeepsTyped = v) } },
         )
         SwitchRow(

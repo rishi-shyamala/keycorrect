@@ -819,12 +819,10 @@ internal class PredictiveInput(
 
     /**
      * Ends the composing word. [separator] (null for Enter, which the caller performs) is committed
-     * after it. Applies the autocorrect/expansion of the freshest result when allowed.
-     */
-    /**
-     * Ends the word in progress at [separator]. [asTyped] (Enter as an editor action) keeps it as
-     * typed: no autocorrect (a shortcut still expands), no buzz, and an unknown word, likely a
-     * partial one the app completes, is neither learned nor recorded.
+     * after it. Applies the autocorrect/expansion of the freshest result when allowed. [asTyped]
+     * (an Enter that isn't a line break) keeps the word as typed: no autocorrect (a shortcut still
+     * expands), no buzz, and a word that looks like the start of a longer one, which the app's
+     * autocomplete finishes, is neither learned nor recorded.
      */
     private fun finishWord(separator: String?, allowUndo: Boolean, asTyped: Boolean = false) {
         val typed = composing.toString()
@@ -832,7 +830,7 @@ internal class PredictiveInput(
         val touchList = ArrayList(touches)
         val pre = capturePre()
         val decision = decide(typed).takeUnless { asTyped && it is Decision.Correct }
-        val unlearned = asTyped && decision == null && !keptAsTyped && !isKnown(typed)
+        val unlearned = asTyped && decision == null && !keptAsTyped && looksPartial(typed)
         composing.setLength(0)
         touches.clear()
         loop.advance()
@@ -892,7 +890,7 @@ internal class PredictiveInput(
                 )
             }
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
-        if (!unlearned) record(typed, committed, touchList, method)
+        if (unlearned) restoredWord = null else record(typed, committed, touchList, method)
         if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
@@ -2144,6 +2142,18 @@ internal class PredictiveInput(
         }
         return correction
     }
+
+    /**
+     * [typed] is an unknown word that the freshest result completes into a longer one ("spoti" ->
+     * "spotify"): probably a prefix the app finishes, not a new word to learn.
+     */
+    private fun looksPartial(typed: String): Boolean =
+        !isKnown(typed) &&
+            freshResult(typed)?.candidates.orEmpty().any {
+                it.source != CandidateSource.Shortcut &&
+                    it.text.length > typed.length &&
+                    it.text.startsWith(typed, ignoreCase = true)
+            }
 
     private fun isKnown(word: String): Boolean =
         backend.isKnownWord(word) || backend.isKnownWord(word.lowercase())

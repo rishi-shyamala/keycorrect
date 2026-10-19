@@ -6,6 +6,7 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictResult
+import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
@@ -29,9 +30,10 @@ class EnterAsTypedTest {
 
     init {
         backend.predictor = predictor
-        backend.known += listOf("the", "weather", "spot")
+        backend.known += listOf("the", "weather", "spot", "spotify")
         predictor.word("teh", listOf("the"), autocorrect = "the")
-        predictor.word("spoti", listOf("spot"), autocorrect = "spot")
+        predictor.word("spoti", listOf("spot", "spotify"), autocorrect = "spot")
+        predictor.word("kubectl", emptyList())
         controller =
             KeyboardController(
                 editor,
@@ -49,7 +51,8 @@ class EnterAsTypedTest {
         FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE, 0)
 
     private fun start(profile: FieldProfile, settings: KeyboardSettings = KeyboardSettings()) {
-        editor.enterInsertsLineBreak = profile.multiLine
+        editor.enterInsertsLineBreak =
+            profile.multiLine && profile.enterAction == EnterAction.NewLine
         controller.onStartInput(profile, settings, false, null, editor.cursor, editor.cursor)
     }
 
@@ -88,6 +91,49 @@ class EnterAsTypedTest {
         type("weather")
         enter()
         assertThat(committedWords()).contains("weather")
+    }
+
+    @Test
+    fun aCompleteNewWordBeforeSendIsStillLearned() {
+        // Nothing completes it, so it is a word of its own (a name, a term), not a prefix.
+        start(FieldProfile.from(InputType.TYPE_CLASS_TEXT, EditorInfo.IME_ACTION_SEND))
+        type("kubectl")
+        enter()
+        assertThat(editor.text.toString()).isEqualTo("kubectl")
+        assertThat(committedWords()).contains("kubectl")
+        assertThat(played).isEmpty()
+    }
+
+    @Test
+    fun anUndoneCorrectionIsStillLearnedOnEnter() {
+        start(search)
+        type("spoti")
+        controller.onKey(KeyAction.Space) // corrected to "spot "
+        controller.onKey(KeyAction.Backspace) // undo: "spoti" again
+        enter()
+        assertThat(editor.text.toString()).isEqualTo("spoti")
+        assertThat(sink.of<dev.keycorrect.core.learning.AutocorrectReverted>()).isNotEmpty()
+    }
+
+    @Test
+    fun aMultiLineFieldWithAnActionKeepsTheWord() {
+        val profile =
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
+                EditorInfo.IME_ACTION_SEND,
+            )
+        start(profile)
+        type("teh")
+        enter()
+        assertThat(editor.text.toString()).isEqualTo("teh")
+    }
+
+    @Test
+    fun noBuzzOnEnterWithAutocorrectOff() {
+        start(search, KeyboardSettings(autocorrectEnabled = false))
+        type("zzqx")
+        enter()
+        assertThat(played).isEmpty()
     }
 
     @Test
