@@ -95,6 +95,26 @@ To see where device time goes, add a stack-sampling profile to a run:
 `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling`.
 The `.trace` files land next to the JSON results; open them in Android Studio or Perfetto.
 
+### Phase 7: llama scorer (desktop, relative)
+
+`:core:llama` on x86-64 (16 logical cores), SmolLM2-135M Q8_0, 4 threads, CPU only, 2026-10-18.
+One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIntegrationTest.reportLatency`,
+40 calls for cold and same-context, 45 for warm; ARM numbers are pending the Tab S9 NDK build).
+
+| Case | p50 | p95 |
+|---|---|---|
+| Cold: nothing in common with the previous context | 16.7 ms | 17.8 ms |
+| Warm: the previous context plus one word (prefix reused, ~2 new tokens decoded) | 8.8 ms | 9.2 ms |
+| Same context again (1 token re-decoded) | 8.6 ms | 9.3 ms |
+| `generate`, 12 tokens max (a prompt of the same context, stops at punctuation) | 13.3 ms | 13.6 ms |
+
+- Prefix reuse roughly halves the call. What is left is mostly the candidate batch (8 sequences, ~16
+  tokens) and one log-softmax per scored position.
+- The log-sum-exp over the 49k-entry vocabulary was the first hotspot: with libm `expf` the same
+  scenarios took 28.9 ms cold and 12.9 ms same-context. A vectorisable polynomial `exp` (relative
+  error 2.4e-7) took that to the table above. Compile with `-O3`; the NDK build must not drop it.
+- Not measured yet: the 40 ms rerank deadline on the device, the effect of repacked weights on ARM.
+
 ## Findings log
 
 - **2026-10-11 (perf pass):**

@@ -47,6 +47,8 @@ include(":core:input")
 
 include(":core:layout")
 
+include(":core:llama")
+
 include(":core:learning")
 
 include(":core:packs")
