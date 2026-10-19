@@ -36,6 +36,14 @@ fun TextCorrectionScreen(
             onCheckedChange = { v -> onUpdate { it.copy(autocorrectEnabled = v) } },
         )
         SwitchRow(
+            title = stringResource(R.string.text_correction_enter_as_typed),
+            supportingText =
+                summary(stringResource(R.string.text_correction_enter_as_typed_summary)),
+            checked = settings.enterKeepsTyped,
+            enabled = on && settings.autocorrectEnabled,
+            onCheckedChange = { v -> onUpdate { it.copy(enterKeepsTyped = v) } },
+        )
+        SwitchRow(
             title = stringResource(R.string.text_correction_next_word),
             supportingText = summary(stringResource(R.string.text_correction_next_word_summary)),
             checked = settings.nextWordPredictions,

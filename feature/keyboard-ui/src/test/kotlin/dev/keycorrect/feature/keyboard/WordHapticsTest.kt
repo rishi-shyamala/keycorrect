@@ -56,7 +56,11 @@ class WordHapticsTest {
 
     @Test
     fun anAutocorrectOnPunctuationOrEnterFires() {
-        start()
+        // A new line corrects; Enter as an action keeps the word (EnterAsTypedTest).
+        editor.enterInsertsLineBreak = true
+        start(
+            FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE, 0)
+        )
         type("teh")
         controller.onKey(KeyAction.Text(","))
         type(" teh")

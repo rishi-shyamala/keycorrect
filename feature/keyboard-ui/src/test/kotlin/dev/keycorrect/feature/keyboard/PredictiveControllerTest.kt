@@ -286,7 +286,8 @@ class PredictiveControllerTest {
     @Test
     fun enterAppliesTheAutocorrectThenPerformsEnter() {
         predictor.word("teh", listOf("the"), autocorrect = "the")
-        start()
+        // An action Enter keeps the word as typed by default (EnterAsTypedTest).
+        start(settings = KeyboardSettings(numberRow = false, enterKeepsTyped = false))
         type("teh")
         controller.onKey(KeyAction.Enter)
         assertThat(text()).isEqualTo("the")

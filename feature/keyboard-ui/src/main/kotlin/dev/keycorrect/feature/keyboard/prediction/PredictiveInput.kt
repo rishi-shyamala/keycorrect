@@ -475,7 +475,12 @@ internal class PredictiveInput(
         prompts.dismiss()
         closeUndo()
         flushSentence("\n")
-        if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
+        if (composing.isNotEmpty()) {
+            // An editor action (Search, Send, Go...) hands the word to the app as typed, so its own
+            // autocomplete can finish a partial word.
+            val asTyped = !commitsLineBreak && settings.enterKeepsTyped
+            finishWord(separator = null, allowUndo = false, asTyped = asTyped)
+        }
         endEdit()
         flushPendingRevert() // Enter finishes a restored word as it is
         if (commitsLineBreak) cache.appendBefore("\n")
@@ -816,12 +821,18 @@ internal class PredictiveInput(
      * Ends the composing word. [separator] (null for Enter, which the caller performs) is committed
      * after it. Applies the autocorrect/expansion of the freshest result when allowed.
      */
-    private fun finishWord(separator: String?, allowUndo: Boolean) {
+    /**
+     * Ends the word in progress at [separator]. [asTyped] (Enter as an editor action) keeps it as
+     * typed: no autocorrect (a shortcut still expands), no buzz, and an unknown word, likely a
+     * partial one the app completes, is neither learned nor recorded.
+     */
+    private fun finishWord(separator: String?, allowUndo: Boolean, asTyped: Boolean = false) {
         val typed = composing.toString()
         val keptAsTyped = userKeepsAsTyped(typed)
         val touchList = ArrayList(touches)
         val pre = capturePre()
-        val decision = decide(typed)
+        val decision = decide(typed).takeUnless { asTyped && it is Decision.Correct }
+        val unlearned = asTyped && decision == null && !keptAsTyped && !isKnown(typed)
         composing.setLength(0)
         touches.clear()
         loop.advance()
@@ -864,8 +875,8 @@ internal class PredictiveInput(
         }
         val canUndo = allowUndo && decision != null && separator != null && !cursorInside
         val correction =
-            if (decision is Decision.Expand) {
-                abandonWord() // expansions are not learned from
+            if (decision is Decision.Expand || unlearned) {
+                abandonWord() // expansions and as-typed unknown words are not learned from
                 null
             } else {
                 completeWord(
@@ -881,8 +892,8 @@ internal class PredictiveInput(
                 )
             }
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
-        record(typed, committed, touchList, method)
-        wordFeedback(decision, typed, separator, keptAsTyped)
+        if (!unlearned) record(typed, committed, touchList, method)
+        if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
 

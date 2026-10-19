@@ -96,62 +96,74 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private fun Preferences.toSettings(): KeyboardSettings {
         val d = KeyboardSettings()
         return KeyboardSettings(
-            keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
-            bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
-            modeEnterKeyWidth = this[MODE_ENTER_KEY_WIDTH] ?: d.modeEnterKeyWidth,
-            edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
-            keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
-            numberRow = this[NUMBER_ROW] ?: d.numberRow,
-            symbolHints = this[SYMBOL_HINTS] ?: d.symbolHints,
-            keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
-            longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
-            autoCapitalize = this[AUTO_CAPITALIZE] ?: d.autoCapitalize,
-            hapticsEnabled = this[HAPTICS_ENABLED] ?: d.hapticsEnabled,
-            hapticDurationMs = this[HAPTIC_DURATION_MS] ?: d.hapticDurationMs,
-            hapticStrength = this[HAPTIC_STRENGTH] ?: d.hapticStrength,
-            soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
-            soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
-            inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
-            suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
-            autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
-            nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
-            phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
-            autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
-            learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
-            sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
-            incognito = this[INCOGNITO] ?: d.incognito,
-            implicitAddReverts = this[IMPLICIT_ADD_REVERTS] ?: d.implicitAddReverts,
-            suppressCorrectionReverts =
-                this[SUPPRESS_CORRECTION_REVERTS] ?: d.suppressCorrectionReverts,
-            nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
-            hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
-            hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
-            autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
-            unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
-            spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
-            gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
-            gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
-            cursorSpeed =
-                CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] } ?: d.cursorSpeed,
-            backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
-            emojiSuggestions = this[EMOJI_SUGGESTIONS] ?: d.emojiSuggestions,
-            emojiSkinTone =
-                SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
-                    ?: d.emojiSkinTone,
-            clipboardHistory = this[CLIPBOARD_HISTORY] ?: d.clipboardHistory,
-            clipboardMaxItems = this[CLIPBOARD_MAX_ITEMS] ?: d.clipboardMaxItems,
-            clipboardRetention =
-                ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
-                    ?: d.clipboardRetention,
-            clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
-            voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
-            voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
-            voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
-            voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
-            voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
-            voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
-            voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
-        )
+                keyHeightDp = this[KEY_HEIGHT_DP] ?: d.keyHeightDp,
+                bottomKeyWidth = this[BOTTOM_KEY_WIDTH] ?: d.bottomKeyWidth,
+                modeEnterKeyWidth = this[MODE_ENTER_KEY_WIDTH] ?: d.modeEnterKeyWidth,
+                edgePaddingDp = this[EDGE_PADDING_DP] ?: d.edgePaddingDp,
+                keyGapDp = this[KEY_GAP_DP] ?: d.keyGapDp,
+                numberRow = this[NUMBER_ROW] ?: d.numberRow,
+                symbolHints = this[SYMBOL_HINTS] ?: d.symbolHints,
+                keyPreview = this[KEY_PREVIEW] ?: d.keyPreview,
+                longPressDelayMs = this[LONG_PRESS_DELAY_MS] ?: d.longPressDelayMs,
+                autoCapitalize = this[AUTO_CAPITALIZE] ?: d.autoCapitalize,
+                hapticsEnabled = this[HAPTICS_ENABLED] ?: d.hapticsEnabled,
+                hapticDurationMs = this[HAPTIC_DURATION_MS] ?: d.hapticDurationMs,
+                hapticStrength = this[HAPTIC_STRENGTH] ?: d.hapticStrength,
+                soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
+                soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
+                inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
+                suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
+                autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
+                enterKeepsTyped = this[ENTER_KEEPS_TYPED] ?: d.enterKeepsTyped,
+                nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
+                phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
+                autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
+                learningEnabled = this[LEARNING_ENABLED] ?: d.learningEnabled,
+                sentenceBufferEnabled = this[SENTENCE_BUFFER_ENABLED] ?: d.sentenceBufferEnabled,
+                incognito = this[INCOGNITO] ?: d.incognito,
+                implicitAddReverts = this[IMPLICIT_ADD_REVERTS] ?: d.implicitAddReverts,
+                suppressCorrectionReverts =
+                    this[SUPPRESS_CORRECTION_REVERTS] ?: d.suppressCorrectionReverts,
+                nonWordTieRule = this[NON_WORD_TIE_RULE] ?: d.nonWordTieRule,
+                hapticOnAutocorrect = this[HAPTIC_ON_AUTOCORRECT] ?: d.hapticOnAutocorrect,
+                hapticOnUnknownWord = this[HAPTIC_ON_UNKNOWN_WORD] ?: d.hapticOnUnknownWord,
+                autocorrectPulseMs = this[AUTOCORRECT_PULSE_MS] ?: d.autocorrectPulseMs,
+                unknownWordPulseMs = this[UNKNOWN_WORD_PULSE_MS] ?: d.unknownWordPulseMs,
+                spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
+                gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
+                gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
+                cursorSpeed =
+                    CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] }
+                        ?: d.cursorSpeed,
+                backspaceSwipe = this[BACKSPACE_SWIPE] ?: d.backspaceSwipe,
+                emojiSuggestions = this[EMOJI_SUGGESTIONS] ?: d.emojiSuggestions,
+                emojiSkinTone =
+                    SkinTone.entries.firstOrNull { it.name == this[EMOJI_SKIN_TONE] }
+                        ?: d.emojiSkinTone,
+                clipboardHistory = this[CLIPBOARD_HISTORY] ?: d.clipboardHistory,
+                clipboardMaxItems = this[CLIPBOARD_MAX_ITEMS] ?: d.clipboardMaxItems,
+                clipboardRetention =
+                    ClipRetention.entries.firstOrNull { it.name == this[CLIPBOARD_RETENTION] }
+                        ?: d.clipboardRetention,
+                clipboardImages = this[CLIPBOARD_IMAGES] ?: d.clipboardImages,
+            )
+            .withVoiceAndNeural(this)
+    }
+
+    /** The voice and neural fields; split from [toSettings] to keep it readable. */
+    private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return with(p) {
+            copy(
+                voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+                voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
+                voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
+                voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
+                voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
+                voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
+                voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
+            )
+        }
     }
 
     private fun MutablePreferences.write(s: KeyboardSettings) {
@@ -173,6 +185,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[INLINE_AUTOFILL] = s.inlineAutofill
         this[SUGGESTIONS_ENABLED] = s.suggestionsEnabled
         this[AUTOCORRECT_ENABLED] = s.autocorrectEnabled
+        this[ENTER_KEEPS_TYPED] = s.enterKeepsTyped
         this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
         this[PHRASE_COMPLETION] = s.phraseCompletion
         this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
@@ -225,6 +238,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val INLINE_AUTOFILL = booleanPreferencesKey("inline_autofill")
         val SUGGESTIONS_ENABLED = booleanPreferencesKey("suggestions_enabled")
         val AUTOCORRECT_ENABLED = booleanPreferencesKey("autocorrect_enabled")
+        val ENTER_KEEPS_TYPED = booleanPreferencesKey("enter_keeps_typed")
         val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
         val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
         val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
@@ -267,6 +281,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 INLINE_AUTOFILL.name,
                 SUGGESTIONS_ENABLED.name,
                 AUTOCORRECT_ENABLED.name,
+                ENTER_KEEPS_TYPED.name,
                 NEXT_WORD_PREDICTIONS.name,
                 PHRASE_COMPLETION.name,
                 AUTO_SPACE_AFTER_PICK.name,
