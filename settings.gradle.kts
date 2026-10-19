@@ -67,6 +67,8 @@ include(":feature:voice-sherpa")
 
 include(":neuralpack")
 
+include(":sampleplugin")
+
 include(":tools:dictbuild")
 
 include(":tools:emojibuild")

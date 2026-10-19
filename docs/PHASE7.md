@@ -146,6 +146,7 @@ String generate(String prompt, int maxTokens, long timeoutMs);          // null 
   - A plugin whose certificate changes is unapproved.
   - The approval screen warns when a plugin holds INTERNET.
   - Approvals and the model choice are never carried by backup/transfer.
+- **Writing a plugin:** see [PLUGINS.md](PLUGINS.md) (contract, privacy, approval, the sample).
 - **How the engine process loads a model:** it never touches DataStore. The keyboard passes the model through `configure`.
 
 ### Pipeline (SCORE tier)
