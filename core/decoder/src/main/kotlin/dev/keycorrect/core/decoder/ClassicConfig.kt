@@ -150,9 +150,10 @@ data class AutocorrectConfig(
     /**
      * Whether a language-model rerank bonus (`PredictRequest.lmBonus`) may autocorrect a word that
      * is in the dictionary or the user's words. Off: the model only reorders suggestions and helps
-     * choose among corrections of non-words (docs/PHASE7.md, "Eval").
+     * choose among corrections of non-words. On by default: the eval showed that turning it off
+     * halves the accuracy gain without reducing false corrections (docs/PHASE7.md, "Eval").
      */
-    val lmReplacesRealWords: Boolean = false,
+    val lmReplacesRealWords: Boolean = true,
     /**
      * Unknown literal only: if the top two complete-word candidates are within this many ln units
      * of each other the pick between them is random.

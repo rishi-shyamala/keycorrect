@@ -66,26 +66,26 @@ class LmBonusTest {
     }
 
     @Test
-    fun bonusNeverCorrectsARealWordByDefault() {
-        val plain = engine.predictNow(request(TestKeyboard.typed("form")))
+    fun theGuardKeepsARealWordWhenSwitchedOn() {
+        val guarded =
+            ClassicEngine(
+                TestDictionary.dictionary,
+                ClassicConfig(autocorrect = AutocorrectConfig(lmReplacesRealWords = false)),
+            )
+        val plain = guarded.predictNow(request(TestKeyboard.typed("form")))
         assertThat(plain.autocorrect).isNull()
         assertThat(plain.texts()).contains("from")
         val boosted =
-            engine.predictNow(request(TestKeyboard.typed("form"), bonus = mapOf("from" to 50f)))
+            guarded.predictNow(request(TestKeyboard.typed("form"), bonus = mapOf("from" to 50f)))
         assertThat(boosted.autocorrect).isNull()
         // The suggestions are still reordered.
         assertThat(boosted.texts().first()).isEqualTo("from")
     }
 
     @Test
-    fun bonusCanCorrectARealWordWhenAllowed() {
-        val allowing =
-            ClassicEngine(
-                TestDictionary.dictionary,
-                ClassicConfig(autocorrect = AutocorrectConfig(lmReplacesRealWords = true)),
-            )
+    fun bonusCanCorrectARealWordByDefault() {
         val fixed =
-            allowing.predictNow(request(TestKeyboard.typed("form"), bonus = mapOf("from" to 50f)))
+            engine.predictNow(request(TestKeyboard.typed("form"), bonus = mapOf("from" to 50f)))
         assertThat(fixed.autocorrect?.text).isEqualTo("from")
     }
 

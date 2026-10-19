@@ -96,9 +96,10 @@ class NeuralRerankerTest {
         assertThat(seen.single().second).containsExactly("helli", "hello", "help").inOrder()
         assertThat(seen.single().third).isEqualTo(NeuralReranker.RERANK_DEADLINE_MS)
         assertThat(bonus!!.keys).containsExactly("helli", "hello", "help")
-        assertThat(bonus!!["helli"]).isWithin(1e-5f).of(0.5f * 1f * 1f)
-        assertThat(bonus!!["hello"]).isWithin(1e-5f).of(0.5f * 3f)
-        assertThat(bonus!!["help"]).isWithin(1e-5f).of(0.5f * -4f)
+        val w = 0.5f * NeuralReranker.LM_WEIGHT
+        assertThat(bonus!!["helli"]).isWithin(1e-5f).of(w * 1f)
+        assertThat(bonus!!["hello"]).isWithin(1e-5f).of(w * 3f)
+        assertThat(bonus!!["help"]).isWithin(1e-5f).of(w * -4f)
         assertThat(bonus!!.values.sum()).isWithin(1e-5f).of(0f)
     }
 

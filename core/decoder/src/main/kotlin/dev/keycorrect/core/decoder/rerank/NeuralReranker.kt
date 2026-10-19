@@ -236,8 +236,13 @@ class NeuralReranker(
          */
         const val RERANK_DEADLINE_MS = 40L
 
-        /** Default scale of the language-model bonus against the classic fused score. */
-        const val LM_WEIGHT = 1.0f
+        /**
+         * Default scale of the language-model bonus against the classic fused score. With the
+         * default LM strength (0.5) the effective weight is 0.1: +0.9 points of word accuracy for
+         * +0.13 false corrections per 1000 words on the eval (user's choice, docs/PHASE7.md
+         * "Eval").
+         */
+        const val LM_WEIGHT = 0.2f
 
         /** Default for the most texts sent to the scorer in one call. */
         const val MAX_TEXTS = 16
