@@ -117,6 +117,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
                 suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
                 autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
+                enterKeepsTyped = this[ENTER_KEEPS_TYPED] ?: d.enterKeepsTyped,
                 nextWordPredictions = this[NEXT_WORD_PREDICTIONS] ?: d.nextWordPredictions,
                 phraseCompletion = this[PHRASE_COMPLETION] ?: d.phraseCompletion,
                 autoSpaceAfterPick = this[AUTO_SPACE_AFTER_PICK] ?: d.autoSpaceAfterPick,
@@ -200,6 +201,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[INLINE_AUTOFILL] = s.inlineAutofill
         this[SUGGESTIONS_ENABLED] = s.suggestionsEnabled
         this[AUTOCORRECT_ENABLED] = s.autocorrectEnabled
+        this[ENTER_KEEPS_TYPED] = s.enterKeepsTyped
         this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
         this[PHRASE_COMPLETION] = s.phraseCompletion
         this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
@@ -258,6 +260,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val INLINE_AUTOFILL = booleanPreferencesKey("inline_autofill")
         val SUGGESTIONS_ENABLED = booleanPreferencesKey("suggestions_enabled")
         val AUTOCORRECT_ENABLED = booleanPreferencesKey("autocorrect_enabled")
+        val ENTER_KEEPS_TYPED = booleanPreferencesKey("enter_keeps_typed")
         val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
         val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
         val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
@@ -306,6 +309,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 INLINE_AUTOFILL.name,
                 SUGGESTIONS_ENABLED.name,
                 AUTOCORRECT_ENABLED.name,
+                ENTER_KEEPS_TYPED.name,
                 NEXT_WORD_PREDICTIONS.name,
                 PHRASE_COMPLETION.name,
                 AUTO_SPACE_AFTER_PICK.name,

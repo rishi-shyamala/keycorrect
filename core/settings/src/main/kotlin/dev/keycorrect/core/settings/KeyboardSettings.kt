@@ -99,6 +99,12 @@ data class KeyboardSettings(
     val suggestionsEnabled: Boolean = true,
     /** Replace likely typos on space/punctuation (one backspace undoes). */
     val autocorrectEnabled: Boolean = true,
+    /**
+     * When Enter is an action (Search, Send, Go, Done, Next) rather than a new line, the word being
+     * typed goes to the app as typed: no autocorrect, no unknown-word buzz, and it isn't learned
+     * unless it is a known word. Lets the app's own autocomplete finish a partial word.
+     */
+    val enterKeepsTyped: Boolean = true,
     /** Suggest the next word after a word is finished. */
     val nextWordPredictions: Boolean = true,
     /** Offer multi-word completions (docs/PLAN.md §3.2). */

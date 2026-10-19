@@ -475,7 +475,12 @@ internal class PredictiveInput(
         prompts.dismiss()
         closeUndo()
         flushSentence("\n")
-        if (composing.isNotEmpty()) finishWord(separator = null, allowUndo = false)
+        if (composing.isNotEmpty()) {
+            // An editor action (Search, Send, Go...) hands the word to the app as typed, so its own
+            // autocomplete can finish a partial word.
+            val asTyped = !commitsLineBreak && settings.enterKeepsTyped
+            finishWord(separator = null, allowUndo = false, asTyped = asTyped)
+        }
         endEdit()
         flushPendingRevert() // Enter finishes a restored word as it is
         if (commitsLineBreak) cache.appendBefore("\n")
@@ -814,14 +819,18 @@ internal class PredictiveInput(
 
     /**
      * Ends the composing word. [separator] (null for Enter, which the caller performs) is committed
-     * after it. Applies the autocorrect/expansion of the freshest result when allowed.
+     * after it. Applies the autocorrect/expansion of the freshest result when allowed. [asTyped]
+     * (an Enter that isn't a line break) keeps the word as typed: no autocorrect (a shortcut still
+     * expands), no buzz, and a word that looks like the start of a longer one, which the app's
+     * autocomplete finishes, is neither learned nor recorded.
      */
-    private fun finishWord(separator: String?, allowUndo: Boolean) {
+    private fun finishWord(separator: String?, allowUndo: Boolean, asTyped: Boolean = false) {
         val typed = composing.toString()
         val keptAsTyped = userKeepsAsTyped(typed)
         val touchList = ArrayList(touches)
         val pre = capturePre()
-        val decision = decide(typed)
+        val decision = decide(typed).takeUnless { asTyped && it is Decision.Correct }
+        val unlearned = asTyped && decision == null && !keptAsTyped && looksPartial(typed)
         composing.setLength(0)
         touches.clear()
         loop.advance()
@@ -864,8 +873,8 @@ internal class PredictiveInput(
         }
         val canUndo = allowUndo && decision != null && separator != null && !cursorInside
         val correction =
-            if (decision is Decision.Expand) {
-                abandonWord() // expansions are not learned from
+            if (decision is Decision.Expand || unlearned) {
+                abandonWord() // expansions and as-typed unknown words are not learned from
                 null
             } else {
                 completeWord(
@@ -881,8 +890,8 @@ internal class PredictiveInput(
                 )
             }
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
-        record(typed, committed, touchList, method)
-        wordFeedback(decision, typed, separator, keptAsTyped)
+        if (unlearned) restoredWord = null else record(typed, committed, touchList, method)
+        if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
 
@@ -2147,6 +2156,18 @@ internal class PredictiveInput(
         }
         return correction
     }
+
+    /**
+     * [typed] is an unknown word that the freshest result completes into a longer one ("spoti" ->
+     * "spotify"): probably a prefix the app finishes, not a new word to learn.
+     */
+    private fun looksPartial(typed: String): Boolean =
+        !isKnown(typed) &&
+            freshResult(typed)?.candidates.orEmpty().any {
+                it.source != CandidateSource.Shortcut &&
+                    it.text.length > typed.length &&
+                    it.text.startsWith(typed, ignoreCase = true)
+            }
 
     private fun isKnown(word: String): Boolean =
         backend.isKnownWord(word) || backend.isKnownWord(word.lowercase())
