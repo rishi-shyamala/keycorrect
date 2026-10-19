@@ -17,7 +17,9 @@ interface TextEngineLink : AutoCloseable {
     /** Sends [options]; false when the engine isn't connected or doesn't take them. */
     fun configure(options: Bundle): Boolean
 
-    /** The scores of [candidates] after [context], or null (not connected, no answer, bad answer). */
+    /**
+     * The scores of [candidates] after [context], or null (not connected, no answer, bad answer).
+     */
     fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray?
 
     /** A continuation of [prompt], or null. */
@@ -69,9 +71,10 @@ private class AndroidBinding(private val context: Context, private val component
  * than [MIN_RETRY_MS] after the last try, and the wait doubles with each failure up to
  * [MAX_RETRY_MS].
  *
- * [onConnected] runs on the main thread each time the engine (re)connects, e.g. to send
- * [configure] again; hand the work to another thread.
+ * [onConnected] runs on the main thread each time the engine (re)connects, e.g. to send [configure]
+ * again; hand the work to another thread.
  */
+@Suppress("TooManyFunctions") // The four calls plus the connection's life cycle.
 class EngineConnection
 internal constructor(
     private val binding: ServiceBinding,
@@ -135,8 +138,9 @@ internal constructor(
 
     override fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? =
         call(EngineContract.clampTimeout(timeoutMs)) {
-            it.score(context, candidates.toTypedArray(), timeoutMs)
-        }?.takeIf { it.size == candidates.size && it.none(Float::isNaN) }
+                it.score(context, candidates.toTypedArray(), timeoutMs)
+            }
+            ?.takeIf { it.size == candidates.size && it.none(Float::isNaN) }
 
     override fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? =
         call(EngineContract.clampTimeout(timeoutMs)) { it.generate(prompt, maxTokens, timeoutMs) }
@@ -199,6 +203,7 @@ internal constructor(
         bound = false
     }
 
+    @Suppress("ReturnCount")
     private fun adopt(service: IBinder) {
         val resolved = resolve(service) ?: return
         val live =

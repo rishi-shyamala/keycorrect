@@ -7,6 +7,8 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -65,8 +67,9 @@ sealed interface ImportResult {
  * An import checks the first eight bytes (the "GGUF" signature and version 2 or 3), refuses files
  * over [MAX_MODEL_BYTES] or without room to spare, copies into a temporary file while hashing it,
  * then renames it atomically to `<first 16 hex of the SHA-256>.gguf`, so the same file is stored
- * once. A small properties file (`index.properties`) keeps the display name, size and import time;
- * a model file missing from it is still listed (named by its id). At most [MAX_MODELS] are kept.
+ * once. A small properties file (`index.properties`) keeps the display name and import time (the
+ * size is the file's); a model file missing from it is still listed (named by its id). At most
+ * [MAX_MODELS] are kept.
  *
  * Not safe against two stores on the same directory, but safe for concurrent calls on one.
  */
@@ -97,12 +100,13 @@ internal constructor(
                         index.getProperty("$id.time")?.toLongOrNull() ?: file.lastModified(),
                     )
                 }
-                .sortedWith(compareByDescending<ImportedModel> { it.importedAtMillis }.thenBy { it.id })
+                .sortedWith(
+                    compareByDescending<ImportedModel> { it.importedAtMillis }.thenBy { it.id }
+                )
         }
 
     /** The file of model [id], or null when there is none (the id is checked, never a path). */
-    fun pathOf(id: String): File? =
-        file(id)?.takeIf { it.isFile }
+    fun pathOf(id: String): File? = file(id)?.takeIf { it.isFile }
 
     /** Deletes model [id] and its index entry; false when there was none. */
     fun delete(id: String): Boolean {
@@ -121,7 +125,10 @@ internal constructor(
     /** Imports the file the user picked at [uri] through [resolver]. */
     fun import(resolver: ContentResolver, uri: Uri): ImportResult = import(sourceOf(resolver, uri))
 
-    /** Imports [source]; see the class comment for the checks. Blocking: not for the main thread. */
+    /**
+     * Imports [source]; see the class comment for the checks. Blocking: not for the main thread.
+     */
+    @Suppress("ReturnCount") // Guard clauses, one per refusal.
     fun import(source: ModelSource): ImportResult {
         if (list().size >= MAX_MODELS) return ImportResult.TooManyModels
         val declared = source.sizeBytes?.takeIf { it >= 0 }
@@ -153,6 +160,7 @@ internal constructor(
     }
 
     /** Copies [input] to [temp] if it is a GGUF within limits; otherwise says why not. */
+    @Suppress("ReturnCount") // Guard clauses, one per refusal.
     private fun copyChecked(input: InputStream, temp: File): Copy {
         val header = ByteArray(HEADER_BYTES)
         if (readFully(input, header) < HEADER_BYTES) return Copy.Rejected(ImportResult.NotGguf)
@@ -160,7 +168,7 @@ internal constructor(
             return Copy.Rejected(ImportResult.NotGguf)
         }
         val version = littleEndianInt(header, MAGIC.size)
-        if (version != 2L && version != 3L) {
+        if (version != GGUF_V2 && version != GGUF_V3) {
             return Copy.Rejected(ImportResult.UnsupportedVersion(version))
         }
         val digest = MessageDigest.getInstance("SHA-256").apply { update(header) }
@@ -189,7 +197,10 @@ internal constructor(
             val existing = list()
             when {
                 target.isFile ->
-                    ImportResult.Imported(existing.first { it.id == copy.id }, alreadyPresent = true)
+                    ImportResult.Imported(
+                        existing.first { it.id == copy.id },
+                        alreadyPresent = true,
+                    )
                 existing.size >= MAX_MODELS -> ImportResult.TooManyModels
                 else -> {
                     moveInto(temp, target)
@@ -212,7 +223,8 @@ internal constructor(
         }
     }
 
-    private fun file(id: String): File? = if (ID_PATTERN.matches(id)) File(dir, "$id$EXTENSION") else null
+    private fun file(id: String): File? =
+        if (ID_PATTERN.matches(id)) File(dir, "$id$EXTENSION") else null
 
     private fun readIndex(): Properties {
         val props = Properties()
@@ -261,10 +273,13 @@ internal constructor(
         private const val TEMP_PREFIX = ".import-"
         private const val TEMP_SUFFIX = ".tmp"
         private const val HEADER_BYTES = 8
+        private const val GGUF_V2 = 2L
+        private const val GGUF_V3 = 3L
         private const val ID_BYTES = 8
         private const val COPY_BUFFER = 256 * 1024
         private const val FALLBACK_NAME = "model"
-        private val MAGIC = byteArrayOf('G'.code.toByte(), 'G'.code.toByte(), 'U'.code.toByte(), 'F'.code.toByte())
+        private val MAGIC =
+            byteArrayOf('G'.code.toByte(), 'G'.code.toByte(), 'U'.code.toByte(), 'F'.code.toByte())
         private val ID_PATTERN = Regex("[0-9a-f]{16}")
         private val ID_FILE = Regex("[0-9a-f]{16}\\.gguf")
 
@@ -282,9 +297,8 @@ internal constructor(
         }
 
         private fun littleEndianInt(bytes: ByteArray, at: Int): Long {
-            var value = 0L
-            for (i in 3 downTo 0) value = (value shl 8) or (bytes[at + i].toLong() and 0xFF)
-            return value
+            val raw = ByteBuffer.wrap(bytes, at, Int.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN).int
+            return Integer.toUnsignedLong(raw)
         }
 
         /** Reads until [buffer] is full or the input ends; returns the bytes read. */
@@ -302,7 +316,8 @@ internal constructor(
             var name: String? = null
             var size: Long? = null
             try {
-                resolver.query(
+                resolver
+                    .query(
                         uri,
                         arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
                         null,

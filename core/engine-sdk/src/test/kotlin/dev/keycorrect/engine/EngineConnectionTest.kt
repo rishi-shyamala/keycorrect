@@ -36,7 +36,11 @@ class EngineConnectionTest {
 
         override fun configure(options: Bundle?) = Unit
 
-        override fun score(context: String?, candidates: Array<String>?, timeoutMs: Long): FloatArray? {
+        override fun score(
+            context: String?,
+            candidates: Array<String>?,
+            timeoutMs: Long,
+        ): FloatArray? {
             if (dead) throw DeadObjectException()
             return scores ?: FloatArray(candidates!!.size) { -1f - it }
         }
@@ -50,11 +54,9 @@ class EngineConnectionTest {
     private var connectedCount = 0
     private val name = ComponentName("pkg", "pkg.Service")
 
-    private val conn =
-        EngineConnection(binding, { now }, { engine }, { connectedCount++ })
+    private val conn = EngineConnection(binding, { now }, { engine }, { connectedCount++ })
 
-    @After
-    fun tearDown() = conn.close()
+    @After fun tearDown() = conn.close()
 
     private fun connect() = binding.connection!!.onServiceConnected(name, Binder())
 
@@ -74,8 +76,10 @@ class EngineConnectionTest {
 
         assertThat(connectedCount).isEqualTo(1)
         assertThat(conn.isConnected).isTrue()
-        assertThat(conn.score("c", listOf("a", "b"), 100L)).usingExactEquality()
-            .containsExactly(-1f, -2f).inOrder()
+        assertThat(conn.score("c", listOf("a", "b"), 100L))
+            .usingExactEquality()
+            .containsExactly(-1f, -2f)
+            .inOrder()
         assertThat(conn.generate("p", 3, 100L)).isEqualTo("next")
         assertThat(conn.info()).isNotNull()
         assertThat(conn.configure(Bundle())).isTrue()

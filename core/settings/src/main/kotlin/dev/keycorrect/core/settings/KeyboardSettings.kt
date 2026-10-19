@@ -189,8 +189,9 @@ data class KeyboardSettings(
     /** How much the language model's opinion counts in the reranking, [LM_STRENGTH_RANGE]. */
     val lmStrength: Float = DEFAULT_LM_STRENGTH,
     /**
-     * The imported model the language model runs (the id of an imported model, at most [NEURAL_MODEL_MAX_LENGTH]
-     * characters); empty = the neural pack's default. Never carried by backup or transfer.
+     * The imported model the language model runs (the id of an imported model, at most
+     * [NEURAL_MODEL_MAX_LENGTH] characters); empty = the neural pack's default. Never carried by
+     * backup or transfer.
      */
     val neuralModel: String = "",
 ) {

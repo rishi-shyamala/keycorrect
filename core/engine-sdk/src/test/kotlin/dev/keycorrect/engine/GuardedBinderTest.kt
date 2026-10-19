@@ -8,8 +8,7 @@ import org.junit.Test
 class GuardedBinderTest {
     private val runner = BoundedRunner("test-engine", 2)
 
-    @After
-    fun tearDown() = runner.shutdown()
+    @After fun tearDown() = runner.shutdown()
 
     /** Handlers that record what they were asked and answer with [onScore] / [onGenerate]. */
     private class Handlers(
@@ -23,7 +22,11 @@ class GuardedBinderTest {
 
         override fun configure(options: Bundle) = Unit
 
-        override fun score(context: String, candidates: Array<String>, timeoutMs: Long): FloatArray? {
+        override fun score(
+            context: String,
+            candidates: Array<String>,
+            timeoutMs: Long,
+        ): FloatArray? {
             lastTimeout = timeoutMs
             return onScore(candidates, timeoutMs)
         }

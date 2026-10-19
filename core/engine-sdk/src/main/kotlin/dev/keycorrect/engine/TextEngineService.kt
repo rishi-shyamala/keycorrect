@@ -29,14 +29,20 @@ internal class GuardedBinder(
 ) : ITextEngine.Stub() {
     override fun apiVersion(): Int = EngineContract.API_VERSION
 
-    override fun info(): Bundle? = guarded("info", EngineContract.MAX_TIMEOUT_MS) { handlers.info() }
+    override fun info(): Bundle? =
+        guarded("info", EngineContract.MAX_TIMEOUT_MS) { handlers.info() }
 
     override fun configure(options: Bundle?) {
         if (options == null) return
         guarded("configure", EngineContract.MAX_TIMEOUT_MS) { handlers.configure(options) }
     }
 
-    override fun score(context: String?, candidates: Array<String?>?, timeoutMs: Long): FloatArray? {
+    @Suppress("ReturnCount") // Guard clauses, one per kind of bad input.
+    override fun score(
+        context: String?,
+        candidates: Array<String?>?,
+        timeoutMs: Long,
+    ): FloatArray? {
         if (context == null || candidates == null) return null
         if (candidates.isEmpty() || candidates.size > EngineContract.MAX_CANDIDATES) return null
         val texts = Array(candidates.size) { candidates[it] ?: return null }
@@ -56,6 +62,7 @@ internal class GuardedBinder(
     private fun tooLong(text: String) = text.length > EngineContract.MAX_TEXT_CHARS
 
     /** Runs [block] for at most [limitMs] (plus a short grace); null for any failure. */
+    @Suppress("TooGenericExceptionCaught") // Whatever the engine throws, the answer is null.
     private fun <T : Any> guarded(what: String, limitMs: Long, block: () -> T?): T? =
         runner.run(limitMs + GRACE_MS) {
             try {

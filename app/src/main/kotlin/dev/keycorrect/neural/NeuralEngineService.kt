@@ -21,17 +21,16 @@ import java.util.concurrent.Executors
  *
  * The keyboard sends [configure] with `modelPath` (an imported model, see [ModelStore]) or
  * `useDefault` (the neural pack's model) and `threads`; this process never reads the settings. The
- * model loads on a background thread; [info] reports the status. The model is released under
- * memory pressure and when the service ends. Rules and state are in [NeuralEngineCore].
+ * model loads on a background thread; [info] reports the status. The model is released under memory
+ * pressure and when the service ends. Rules and state are in [NeuralEngineCore].
  */
 class NeuralEngineService : TextEngineService() {
-    private val loader =
-        Executors.newSingleThreadExecutor { task ->
-            Thread(task, "kc-engine-load").apply {
-                isDaemon = true
-                priority = Thread.NORM_PRIORITY - 1
-            }
+    private val loader = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "kc-engine-load").apply {
+            isDaemon = true
+            priority = Thread.NORM_PRIORITY - 1
         }
+    }
 
     private val core by lazy {
         NeuralEngineCore(
@@ -70,7 +69,9 @@ class NeuralEngineService : TextEngineService() {
     override fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? =
         core.generate(prompt, maxTokens, timeoutMs)
 
-    @Suppress("DEPRECATION") // The RUNNING_* levels are deprecated but still what the plan asks for.
+    @Suppress(
+        "DEPRECATION"
+    ) // The RUNNING_* levels are deprecated but still what the plan asks for.
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) core.release()

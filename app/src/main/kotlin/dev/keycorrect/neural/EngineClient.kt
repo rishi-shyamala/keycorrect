@@ -107,7 +107,9 @@ internal constructor(
     private val healLock = Any()
     private var lastHealMs = -HEAL_INTERVAL_MS
 
-    /** Sends the current model choice to the engine; call when the `neuralModel` setting changes. */
+    /**
+     * Sends the current model choice to the engine; call when the `neuralModel` setting changes.
+     */
     fun reconfigure() {
         executor.execute(::sendConfigure)
     }
@@ -133,7 +135,8 @@ internal constructor(
     internal fun choice(): ModelChoice {
         val id = modelId()
         val file = if (id.isEmpty()) null else pathOf(id)
-        return if (file != null) ModelChoice.Imported(file.absolutePath) else ModelChoice.PackDefault
+        return if (file != null) ModelChoice.Imported(file.absolutePath)
+        else ModelChoice.PackDefault
     }
 
     private fun sendConfigure() {

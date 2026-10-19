@@ -147,7 +147,10 @@ class TransferTest {
 
     @Test
     fun theNeuralModelChoiceIsNeverTransferred() {
-        val s = sourceState(settings = mapOf("neural_model" to "0123456789abcdef", "key_height_dp" to 50))
+        val s =
+            sourceState(
+                settings = mapOf("neural_model" to "0123456789abcdef", "key_height_dp" to 50)
+            )
         assertThat(bundleOf(s).settings.values.keys).containsExactly("key_height_dp")
         for (mode in ImportMode.entries) {
             val o = ImportApplier.apply(local(), bundleOf(sourceState()), plan(mode))

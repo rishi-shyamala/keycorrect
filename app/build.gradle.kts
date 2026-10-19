@@ -99,6 +99,8 @@ dependencies {
     implementation(project(":core:emoji"))
     implementation(project(":core:decoder"))
     implementation(project(":core:engine-api"))
+    implementation(project(":core:engine-sdk"))
+    implementation(project(":core:packs"))
     implementation(project(":core:input"))
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))

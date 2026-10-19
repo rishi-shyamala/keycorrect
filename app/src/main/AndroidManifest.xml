@@ -62,6 +62,16 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
+        <!--
+          The built-in language-model engine (docs/PHASE7.md), in its own process so a crash or
+          out-of-memory there never takes the keyboard down. Bound explicitly by the keyboard:
+          no intent filter, not exported.
+        -->
+        <service
+            android:name=".neural.NeuralEngineService"
+            android:exported="false"
+            android:process=":engine" />
+
         <service
             android:name=".ime.KeyCorrectImeService"
             android:exported="true"

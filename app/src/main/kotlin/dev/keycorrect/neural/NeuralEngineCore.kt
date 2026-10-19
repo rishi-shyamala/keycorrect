@@ -79,6 +79,7 @@ internal class NeuralEngineCore(
      * [useDefault] is set, the pack's default; with neither, the current model is released.
      * [threads] <= 0 means the default.
      */
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition") // One decision, in one place.
     fun configure(modelPath: String?, useDefault: Boolean, threads: Int) {
         val count = if (threads > 0) threads.coerceAtMost(MAX_THREADS) else defaultThreads()
         val wanted: Key? =
@@ -92,7 +93,11 @@ internal class NeuralEngineCore(
         val toLoad: Key?
         synchronized(stateLock) {
             val current = state
-            if (wanted != null && wanted == key && (current is State.Ready || current === State.Loading)) {
+            if (
+                wanted != null &&
+                    wanted == key &&
+                    (current is State.Ready || current === State.Loading)
+            ) {
                 return
             }
             job = ++epoch
@@ -123,7 +128,9 @@ internal class NeuralEngineCore(
     fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? =
         withModel(timeoutMs) { model, remaining -> model.generate(prompt, maxTokens, remaining) }
 
-    /** Closes the model and goes to "no model" (memory pressure); a later [configure] reloads it. */
+    /**
+     * Closes the model and goes to "no model" (memory pressure); a later [configure] reloads it.
+     */
     fun release() {
         val old: LoadedModel?
         synchronized(stateLock) {
@@ -135,6 +142,7 @@ internal class NeuralEngineCore(
         old?.let { executor.execute { closeModel(it) } }
     }
 
+    @Suppress("ReturnCount") // Guard clauses, one per reason to give no answer.
     private fun <T : Any> withModel(timeoutMs: Long, use: (LoadedModel, Long) -> T?): T? {
         val ready = state as? State.Ready ?: return null
         val started = System.nanoTime()
@@ -216,7 +224,8 @@ internal class NeuralEngineCore(
             is DefaultModel.Missing -> Missing(found.problem, found.needsRestart)
             is DefaultModel.Found ->
                 try {
-                    rt.openFd(found.fd, found.offset, threads)?.let(::Opened) ?: Missing(LOAD_FAILED)
+                    rt.openFd(found.fd, found.offset, threads)?.let(::Opened)
+                        ?: Missing(LOAD_FAILED)
                 } finally {
                     try {
                         found.closer.close()
@@ -227,6 +236,7 @@ internal class NeuralEngineCore(
         }
 
     /** Why [path] can't be used, or null: it must be a file inside [filesRoot]. */
+    @Suppress("ReturnCount") // Guard clauses, one per way a path can be refused.
     private fun pathProblem(path: String): String? {
         val file = File(path)
         if (!file.isAbsolute) return PATH_REJECTED
@@ -259,7 +269,8 @@ internal class NeuralEngineCore(
         const val LOAD_FAILED = "LoadFailed"
         const val OUT_OF_MEMORY = "OutOfMemory"
 
-        fun defaultThreads() = Runtime.getRuntime().availableProcessors().coerceIn(1, DEFAULT_MAX_THREADS)
+        fun defaultThreads() =
+            Runtime.getRuntime().availableProcessors().coerceIn(1, DEFAULT_MAX_THREADS)
 
         @Suppress("TooGenericExceptionCaught")
         fun describe(model: LoadedModel): String =
