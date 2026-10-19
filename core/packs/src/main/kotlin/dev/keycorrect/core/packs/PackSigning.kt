@@ -19,7 +19,7 @@ internal fun checkPackSigners(packSigners: Set<String>?, ownSigners: Set<String>
     }
 
 /** Lower-case hex SHA-256 of a DER certificate. */
-internal fun certDigest(cert: ByteArray): String =
+fun certDigest(cert: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(cert).joinToString("") {
         "%02x".format(Locale.ROOT, it)
     }

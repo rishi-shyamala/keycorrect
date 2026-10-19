@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -35,7 +36,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     /**
      * Every setting by its stored key, with its current (sanitized) value: Boolean, Int, Float or
-     * String. Settings that were never changed are included at their defaults, so a backup does not
+     * String, or a Set of strings. Settings that were never changed are included at their defaults, so a backup does not
      * depend on this build's defaults.
      */
     suspend fun exportValues(): Map<String, Any> {
@@ -90,6 +91,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             name in FLOAT_KEYS && value is Float -> this[floatPreferencesKey(name)] = value
             name in FLOAT_KEYS && value is Int -> this[floatPreferencesKey(name)] = value.toFloat()
             name in STRING_KEYS && value is String -> this[stringPreferencesKey(name)] = value
+            name in STRING_SET_KEYS && value is Set<*> && value.all { it is String } ->
+                this[stringSetPreferencesKey(name)] = value.filterIsInstance<String>().toSet()
         }
     }
 
@@ -165,6 +168,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
                 lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
                 neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
+                neuralEngine = this[NEURAL_ENGINE] ?: d.neuralEngine,
+                approvedEngines = this[APPROVED_ENGINES] ?: d.approvedEngines,
             )
         }
     }
@@ -223,6 +228,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
         this[NEURAL_MODEL] = s.neuralModel
+        this[NEURAL_ENGINE] = s.neuralEngine
+        this[APPROVED_ENGINES] = s.approvedEngines
     }
 
     private companion object {
@@ -279,6 +286,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEURAL_PHRASES = booleanPreferencesKey("neural_phrases")
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
+        val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
+        val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -343,6 +352,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 CLIPBOARD_RETENTION.name,
                 VOICE_ENGINE.name,
                 NEURAL_MODEL.name,
+                NEURAL_ENGINE.name,
             )
+        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name)
     }
 }

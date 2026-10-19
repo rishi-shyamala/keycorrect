@@ -62,9 +62,12 @@ class DeviceState(
 
 /**
  * Settings that are never exported or imported: incognito is a momentary mode, not a preference,
- * and the language model choice names a file that exists only on this device.
+ * the language model choice names a file that exists only on this device, and the engine choice and
+ * plugin approvals are a trust decision the user makes on each device (a backup file must not be
+ * able to approve a plugin).
  */
-internal val UNTRANSFERRED_SETTINGS: Set<String> = setOf("incognito", "neural_model")
+internal val UNTRANSFERRED_SETTINGS: Set<String> =
+    setOf("incognito", "neural_model", "neural_engine", "approved_engines")
 
 /** Device state to the file's data model, and the pieces back (see docs/TRANSFER.md). */
 @Suppress("TooManyFunctions") // One short mapping per kind of data.

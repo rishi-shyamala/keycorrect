@@ -194,6 +194,17 @@ data class KeyboardSettings(
      * backup or transfer.
      */
     val neuralModel: String = "",
+    /**
+     * Which engine answers: [ENGINE_BUILTIN], or an approved plugin's flattened component name
+     * (at most [ENGINE_ID_MAX_LENGTH] characters). Never carried by backup or transfer.
+     */
+    val neuralEngine: String = ENGINE_BUILTIN,
+    /**
+     * The plugins the user approved, as `<flattened component>|<SHA-256 of the signing
+     * certificate>`: a plugin counts as approved only while both still match. At most
+     * [APPROVED_ENGINES_MAX] entries. Never carried by backup or transfer.
+     */
+    val approvedEngines: Set<String> = emptySet(),
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -239,6 +250,13 @@ data class KeyboardSettings(
                     else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
                 },
             neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
+            neuralEngine = neuralEngine.take(ENGINE_ID_MAX_LENGTH).ifEmpty { ENGINE_BUILTIN },
+            approvedEngines =
+                approvedEngines
+                    .filter { it.length <= APPROVED_ENTRY_MAX_LENGTH }
+                    .sorted()
+                    .take(APPROVED_ENGINES_MAX)
+                    .toSet(),
             lmStrength =
                 if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
                 else lmStrength.coerceIn(LM_STRENGTH_RANGE),
@@ -278,6 +296,12 @@ data class KeyboardSettings(
 
         /** The longest stored model id; a longer value is cut. */
         const val NEURAL_MODEL_MAX_LENGTH = 64
+
+        /** The [neuralEngine] value for the built-in engine. */
+        const val ENGINE_BUILTIN = "builtin"
+        const val ENGINE_ID_MAX_LENGTH = 256
+        const val APPROVED_ENTRY_MAX_LENGTH = 400
+        const val APPROVED_ENGINES_MAX = 16
         const val DEFAULT_LM_STRENGTH = 0.5f
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }
