@@ -711,8 +711,8 @@ class ClassicEngine(
         var phrase: Candidate? = null
         if (request.maxPhraseWords >= 2 && !atDocumentStart && out.isNotEmpty()) {
             val first = out[0]
-            // The phrase gate looks at the language-model probability, not the reranked score.
-            val firstLp = first.breakdown.lm
+            // The phrase gate looks at the score before any rerank bonus.
+            val firstLp = first.score - (request.lmBonus[first.text] ?: 0f)
             if (firstLp >= ln(config.phrase.minStepProbability) + gateDelta) {
                 phrase = buildPhrase(first.text, first.wordId, firstLp, request.maxPhraseWords)
             }

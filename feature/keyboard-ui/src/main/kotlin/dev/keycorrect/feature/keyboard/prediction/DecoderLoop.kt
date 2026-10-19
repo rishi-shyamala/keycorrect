@@ -120,7 +120,8 @@ class DecoderLoop(
         if (counter.get() != seq) return
         val fixed = if (refined.sequence == seq) refined else refined.copy(sequence = seq)
         completed.set(fixed)
-        postToMain { onResult(fixed) }
+        // Most refinements change nothing visible: don't redraw the strip for those.
+        if (!sameVisible(fixed, result)) postToMain { onResult(fixed) }
     }
 
     /**
@@ -399,3 +400,11 @@ class LatencyStats {
         const val LOG_EVERY = 200
     }
 }
+
+/** Whether [a] and [b] would show and apply the same words (scores aside). */
+internal fun sameVisible(a: PredictResult, b: PredictResult): Boolean =
+    a.autocorrect?.text == b.autocorrect?.text &&
+        a.phrase?.text == b.phrase?.text &&
+        a.autocorrectRunnerUp?.text == b.autocorrectRunnerUp?.text &&
+        a.candidates.size == b.candidates.size &&
+        a.candidates.indices.all { a.candidates[it].text == b.candidates[it].text }
