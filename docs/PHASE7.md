@@ -159,10 +159,69 @@ String generate(String prompt, int maxTokens, long timeoutMs);          // null 
   - `neuralRerank` is on.
 - **`Predictor.refine(request, result, stale)`:** returns a `PredictResult?` (default null). `DecoderLoop.submit` calls it after publishing the classic result, on the decoder thread. If it returns a result that isn't stale, that result replaces `completed` and is posted.
   - A separator never waits for it: the classic result is already `completed`.
-- **`NeuralReranker` (app):**
+- **`NeuralReranker` (`:core:decoder`, package `rerank`):**
   - It collects the literal plus the candidates (at most 16) and calls the scorer on its own thread.
-  - The decoder thread polls in 5 ms steps, gives up when stale or after `RERANK_DEADLINE_MS` (40 ms), and allows one call in flight.
-  - It then re-decodes with `lmBonus = lmStrength × LM_WEIGHT × (lp − mean lp)`. `LM_WEIGHT` is tuned on the eval; it starts at 1.0.
+  - The decoder thread polls in 5 ms steps, gives up when stale or after `deadlineMs` (default `RERANK_DEADLINE_MS`, 40 ms), and allows one call in flight.
+  - The tunables are constructor parameters: `lmWeight`, `deadlineMs`, `maxTexts`, `contextWords`, `poolSize`. With `poolSize` above the request's `maxCandidates`, `refine` first re-decodes with `maxCandidates = poolSize` and scores that wider pool; the final re-decode still uses the original size plus the bonus (0 = score only what the classic strip shows).
+  - It then re-decodes with `lmBonus = lmStrength × lmWeight × (lp − mean lp)`. `LM_WEIGHT` (the default) is still the untuned 1.0; see "Eval (reranker arm)" for what the eval says about it.
   - Next-word predictions (no literal) are reranked the same way.
 - **GENERATE:** only when `neuralPhrases` is on, through the same gate and asynchronously after scoring. It completes the top candidate with up to 3 words and returns them as `PredictResult.phrase` (source `Engine`).
 - **Eval:** the reranker arm in `tools/eval` drives the same `NeuralReranker` logic, with `:core:llama` on the desktop.
+
+## Eval (reranker arm)
+
+2026-10-19, branch `worktree-agent-abd033d77c79d0b99` (on `phase-7-neural`). The arm lives in `tools/eval` (`RerankArm.kt`): with `--rerank <model.gguf>` every decode of the tap eval (composing, completion prefixes, next-word) goes through the production `NeuralReranker.refine` with `engineAllowed` forced on, a `CandidateScorer` on a `LlamaSession` (one scorer thread, 4 llama threads), and is compared with the classic result of the same typed words.
+
+- **Flags:** `--rerank`, `--lm-weight A,B`, `--pool A,B`, `--rerank-context-words A,B` (lists run every combination), `--rerank-deadline-ms` (default 1000, so accuracy measures quality; the 40 ms question is answered by the latency numbers), `--llama-lib`, `--llama-threads`, `--rerank-cache` (sweeps only). Use `--threads 1`. Without `--rerank` the output is byte-identical to before (checked on 400 sentences, report, failures and JSON).
+- **Changed decisions** compare per word (same typed input in both arms): corrections gained/lost (typed wrong, final right/wrong), false corrections avoided/introduced (typed right).
+- **Noise floor:** the engine's shared tie-break `Random` is drawn on extra decodes, so even `lmWeight=0` changes a word now and then (1 word in 714 in a smoke run).
+- **Split:** tuned on the dev split (5000 sentences, 36,941 words, `--no-completion --no-next-word` for speed, final decode only), reported on the test split (first 3000 sentences, seed 1, 22,417 words, default options: completion and next-word on, so ~83k scorer calls per run).
+
+### Dev sweep, SmolLM2-135M Q8_0 (classic: accuracy 76.83%, correction rate 62.75%, false corrections 2.14 per 1000 = 79 words)
+
+Cells are accuracy / false corrections per 1000. `ctx` = words of context.
+
+| lmWeight | pool 0, ctx 40 | pool 8, ctx 40 | pool 0, ctx 10 | pool 8, ctx 10 |
+|---:|---|---|---|---|
+| 0.05 | 77.44% / 2.17 | 77.45% / 2.22 | | |
+| 0.1 | 77.78% / 2.27 | 77.80% / 2.52 | | |
+| 0.15 | 77.98% / 2.33 | 77.97% / 2.60 | | |
+| 0.2 | 78.13% / 2.52 | 78.14% / 2.68 | | |
+| 0.25 | 78.15% / 2.60 | 78.18% / 2.68 | 78.15% / 2.60 | 78.18% / 2.68 |
+| 0.5 | 78.46% / 3.00 | **78.51%** / 3.06 | 78.45% / 3.00 | 78.47% / 3.06 |
+| 1 | 78.44% / 4.82 | 78.41% / 4.79 | 78.41% / 4.82 | 78.38% / 4.82 |
+| 2 | 77.86% / 8.15 | 77.52% / 8.53 | 77.82% / 8.20 | 77.49% / 8.58 |
+| 3 | 76.70% / 16.51 | 75.99% / 18.49 | 76.62% / 16.70 | 75.92% / 18.65 |
+
+(0.05 to 0.2 were a second, finer sweep on ctx 40 only.)
+
+- **Context length (10 vs 40 words) and pool (0 vs 8) make no difference** beyond noise (about 0.05 points); the pool slightly raises false corrections, so it is not worth its extra decode.
+- **Accuracy rises with `lmWeight` up to about 0.5 to 1 (+1.6 points) and falls beyond it, but false corrections rise with every weight**: the language model prefers a common word over a correctly typed rare one, and almost every added error is a false correction (dev, lmWeight 0.5: 129 corrections lost, 2 false corrections avoided, 34 introduced).
+- **No configuration meets "false corrections not worse than classic".** The closest is lmWeight 0.05, pool 0, ctx 40: +0.61 points accuracy, 80 false-correction words instead of 79.
+
+### Test split (3000 sentences, 22,417 words; classic: accuracy 77.24%, correction rate 62.96%, false corrections 1.96 per 1000 = 44 words, top-3 recall 84.09%, KSR 26.56%, next-word top-1 17.67%)
+
+| Model, lmWeight (pool 0, ctx 40) | Accuracy | Correction rate | FC / 1000 | Corrections gained / lost | FC avoided / introduced | Top-3 | KSR | Next-word top-1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q8_0, 0.05 | 77.87% (+0.63) | 64.00% | 2.01 | 151 / 9 | 0 / 1 | 84.11% | 26.70% | 18.27% |
+| SmolLM2-135M Q8_0, 0.5 (best accuracy) | 79.09% (+1.85) | 66.08% | 2.54 | 490 / 63 | 2 / 15 | 84.15% | 26.88% | 18.37% |
+| SmolLM2-360M Q4_K_M, 0.05 | 77.87% (+0.63) | 64.00% | 2.01 | 150 / 7 | 0 / 1 | 84.11% | 26.69% | 18.24% |
+| Qwen3-0.6B Q8_0, 0.05 | 77.87% (+0.63) | 63.99% | 2.01 | 151 / 10 | 0 / 1 | 84.11% | 26.64% | 18.25% |
+
+- **The larger models buy nothing here**: at the same weight the three models fix the same words (150 to 151 corrections gained) at several times the scorer latency. The 135M model is the right choice for the SCORE tier.
+- **The reranker does fix more typing mistakes**: 151 corrections gained against 9 lost at lmWeight 0.05, and up to 490 against 63 at 0.5, and it lifts next-word top-1 by 0.6 to 0.7 points. The price is false corrections, which rise from 44 words to 45 (0.05) or 57 (0.5).
+- **Decision: the defaults are unchanged** (`LM_WEIGHT` 1.0, `poolSize` 0, 40 context words, 40 ms). No configuration keeps false corrections at or below classic, so none beats classic under the rule set for this arm. Note that the current default weight of 1.0 is the worst trade measured except for 2 and 3 (dev: +1.6 points accuracy, but false corrections 2.14 to 4.82). If the user accepts one more false-correction word in 22,000 for +0.6 points, `lmWeight` 0.05 is the setting to take; a weight of 0.1 to 0.15 buys about 0.3 points more for 10 to 20% more false corrections. That is a product decision.
+- **Ways to get the accuracy without the false corrections** (not tried): do not give the literal a bonus when it is a dictionary word, or scale the bonus down for typed words that are in the dictionary.
+
+### Scorer latency and the 40 ms deadline
+
+Per `score` call (8 to 16 texts, 40 words of context, prefix reuse), desktop, relative only, 4 llama threads, measured inside the scorer (the decoder thread adds up to 5 ms of polling on top). The first row ran alone; the others ran three at a time, so their numbers are inflated.
+
+| Model | Calls | mean | p50 | p95 | p99 | max | Over 40 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q8_0 (alone) | 81,856 | 5.0 ms | 3.7 | 9.2 | 11.3 | 37.1 | 0.0% |
+| SmolLM2-135M Q8_0 (3 runs at once) | 81,673 | 14.1 ms | 11.2 | 28.4 | 34.9 | 88.8 | 0.5% |
+| SmolLM2-360M Q4_K_M (3 at once) | 81,865 | 22.7 ms | 17.9 | 47.1 | 60.5 | 220.5 | 9.6% |
+| Qwen3-0.6B Q8_0 (3 at once) | 81,898 | 30.1 ms | 26.4 | 64.2 | 81.8 | 215.7 | 20.5% |
+
+The 40 ms deadline would cut nothing with SmolLM2-135M on an idle desktop; on a phone, several times slower, it will cut a real share, which only the device can say. No call timed out at the 1000 ms eval deadline.

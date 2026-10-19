@@ -13,6 +13,7 @@ import dev.keycorrect.core.data.UserWordSnapshot
 import dev.keycorrect.core.decoder.AutocorrectConfig
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
