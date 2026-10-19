@@ -3,14 +3,24 @@ package dev.keycorrect.neural
 import dev.keycorrect.engine.EngineContract
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
+import java.util.Locale
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 
 /** The neural pack's default model, opened for reading in place. */
 internal sealed interface DefaultModel {
-    /** [fd] reads from byte [offset]; [closer] releases it once the model is open. */
-    class Found(val fd: Int, val offset: Long, val closer: AutoCloseable) : DefaultModel
+    /**
+     * [fd] reads from byte [offset]; [closer] releases it once the model is open. [identity] names
+     * this exact copy of the model (pack update time, version, offset) for the crash marker.
+     */
+    class Found(
+        val fd: Int,
+        val offset: Long,
+        val closer: AutoCloseable,
+        val identity: String = "",
+    ) : DefaultModel
 
     /** [problem] is the pack problem's name; [needsRestart] when only a new process can help. */
     class Missing(val problem: String, val needsRestart: Boolean = false) : DefaultModel
@@ -36,6 +46,8 @@ internal class NeuralEngineCore(
     private val defaultModel: DefaultModelSource,
     private val executor: Executor,
     private val restartProcess: () -> Unit = {},
+    /** Where the crash-on-load markers live (the app passes its no-backup directory). */
+    private val markerDir: File = File(filesRoot, "load-markers"),
 ) {
     private sealed interface State {
         data object NoModel : State
@@ -205,11 +217,17 @@ internal class NeuralEngineCore(
         try {
             val rt = runtime()
             val path = wanted.path
-            if (path != null) {
-                rt.openFile(File(path).canonicalPath, wanted.threads)?.let(::Opened)
-                    ?: Missing(LOAD_FAILED)
-            } else {
-                openDefault(rt, wanted.threads)
+            val problem = rt.problem()
+            when {
+                problem != null -> Missing(problem)
+                path != null -> {
+                    val file = File(path).canonicalFile
+                    guarded(identityOf(file)) {
+                        rt.openFile(file.path, wanted.threads)?.let(::Opened)
+                            ?: Missing(LOAD_FAILED)
+                    }
+                }
+                else -> openDefault(rt, wanted.threads)
             }
         } catch (_: OutOfMemoryError) {
             Missing(OUT_OF_MEMORY)
@@ -224,8 +242,10 @@ internal class NeuralEngineCore(
             is DefaultModel.Missing -> Missing(found.problem, found.needsRestart)
             is DefaultModel.Found ->
                 try {
-                    rt.openFd(found.fd, found.offset, threads)?.let(::Opened)
-                        ?: Missing(LOAD_FAILED)
+                    guarded(found.identity) {
+                        rt.openFd(found.fd, found.offset, threads)?.let(::Opened)
+                            ?: Missing(LOAD_FAILED)
+                    }
                 } finally {
                     try {
                         found.closer.close()
@@ -235,7 +255,42 @@ internal class NeuralEngineCore(
                 }
         }
 
-    /** Why [path] can't be used, or null: it must be a file inside [filesRoot]. */
+    /**
+     * Runs [attempt] (the native load of the model named [identity]) between writing and deleting
+     * its marker. A marker found beforehand means an earlier attempt ended the process: this model
+     * is not tried again (a changed file or a new pack has another identity). If the marker can't
+     * be written the load is tried unguarded.
+     */
+    private fun guarded(identity: String, attempt: () -> Outcome): Outcome {
+        val marker = markerFile(identity)
+        if (marker?.exists() == true) return Missing(EngineFailure.CRASHED_ON_LOAD)
+        try {
+            marker?.apply {
+                parentFile?.mkdirs()
+                writeText(identity)
+            }
+        } catch (_: IOException) {
+            // Loading without the guard beats not loading.
+        }
+        try {
+            return attempt()
+        } finally {
+            marker?.delete()
+        }
+    }
+
+    private fun markerFile(identity: String): File? =
+        if (identity.isEmpty()) {
+            null
+        } else {
+            val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
+            File(markerDir, digest.joinToString("") { "%02x".format(Locale.ROOT, it) })
+        }
+
+    /** An imported model's identity: where it is, how big, and when it last changed. */
+    private fun identityOf(file: File) = "file:${file.path}:${file.length()}:${file.lastModified()}"
+
+    /** Why [path] can't be used, or null: it must be a file inside the models directory. */
     @Suppress("ReturnCount") // Guard clauses, one per way a path can be refused.
     private fun pathProblem(path: String): String? {
         val file = File(path)
@@ -248,7 +303,7 @@ internal class NeuralEngineCore(
             }
         val root =
             try {
-                filesRoot.canonicalFile
+                File(filesRoot, ModelStore.DIR_NAME).canonicalFile
             } catch (_: IOException) {
                 return PATH_REJECTED
             }

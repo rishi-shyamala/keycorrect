@@ -47,6 +47,12 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     private val learningHost
         get() = appContainer.learningHost
 
+    private val rerankExecutorLazy = lazy {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "kc-rerank").apply { isDaemon = true }
+        }
+    }
+
     private val neuralHostLazy = lazy { NeuralHost(this, appContainer.modelStore) }
     private val neuralHost by neuralHostLazy
 
@@ -62,9 +68,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             reranker =
                 NeuralReranker(
                     neuralHost,
-                    Executors.newSingleThreadExecutor { task ->
-                        Thread(task, "kc-rerank").apply { isDaemon = true }
-                    },
+                    rerankExecutorLazy.value,
                     lmStrength = { settingsFlow.value.lmStrength },
                     phraseGenerator = neuralHost,
                     phrasesEnabled = { settingsFlow.value.neuralPhrases },
@@ -207,6 +211,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         learningHost.requestFlush(FlushReason.TrimMemory)
         if (predictionHostLazy.isInitialized()) predictionHost.close()
         if (neuralHostLazy.isInitialized()) neuralHost.close()
+        if (rerankExecutorLazy.isInitialized()) rerankExecutorLazy.value.shutdownNow()
         super.onDestroy()
     }
 

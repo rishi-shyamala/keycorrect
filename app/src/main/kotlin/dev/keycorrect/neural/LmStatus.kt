@@ -2,6 +2,20 @@ package dev.keycorrect.neural
 
 import dev.keycorrect.engine.EngineContract
 
+/** Reason codes of the built-in engine's error statuses that no retry can fix. */
+internal object EngineFailure {
+    /** The processor lacks instructions the language-model library needs. */
+    const val UNSUPPORTED_CPU = "UnsupportedCpu"
+
+    /** An earlier attempt to load this very model ended the process. */
+    const val CRASHED_ON_LOAD = "CrashedOnLoad"
+
+    /** Whether [status] is an error that stays until the model or the pack changes. */
+    fun isPermanent(status: String?): Boolean =
+        status == EngineContract.errorStatus(UNSUPPORTED_CPU) ||
+            status == EngineContract.errorStatus(CRASHED_ON_LOAD)
+}
+
 /** What the engine says about itself, for the settings screen. */
 internal data class EngineInfo(val status: String?, val model: String?)
 

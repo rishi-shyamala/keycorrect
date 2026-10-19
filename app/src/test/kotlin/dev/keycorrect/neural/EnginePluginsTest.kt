@@ -47,6 +47,20 @@ class EnginePluginsTest {
     }
 
     @Test
+    fun theVerifierFollowsTheCurrentCertificateEachTimeItIsAsked() {
+        val approved = EngineApprovals.approve(emptySet(), a.component, "c1")
+        val verify = pluginVerifier(plugins, a.component) { approved }
+
+        assertThat(verify()).isTrue()
+        source.facts = listOf(a.copy(certDigests = setOf("other")))
+        assertThat(verify()).isFalse()
+        source.facts = listOf(a)
+        assertThat(verify()).isTrue()
+        source.facts = emptyList()
+        assertThat(verify()).isFalse()
+    }
+
+    @Test
     fun anUnreadableCertificateIsNeverApproved() {
         source.facts = listOf(a.copy(certDigests = emptySet()))
         val approved = setOf("${a.component}|")

@@ -431,7 +431,9 @@ class ClassicEngine(
                 ) {
                     // A real word keeps at least the best candidate's bonus: the model may reorder
                     // the suggestions but never talk the autocorrect out of a correct spelling.
-                    val best = request.lmBonus.values.filter { it.isFinite() }.maxOrNull() ?: 0f
+                    var best = Float.NEGATIVE_INFINITY
+                    for (v in request.lmBonus.values) if (v.isFinite() && v > best) best = v
+                    if (best == Float.NEGATIVE_INFINITY) best = 0f
                     val own = request.lmBonus[text]?.takeIf { it.isFinite() } ?: 0f
                     literal.withScore(literal.score + maxOf(own, best))
                 } else {

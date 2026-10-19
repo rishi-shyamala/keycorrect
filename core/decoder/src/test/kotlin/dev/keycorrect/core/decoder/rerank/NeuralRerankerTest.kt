@@ -276,10 +276,43 @@ class NeuralRerankerTest {
     }
 
     @Test
-    fun lastWordsCutsAtWordBoundaries() {
-        assertThat(NeuralReranker.lastWords("a b c d", 2)).isEqualTo("c d")
-        assertThat(NeuralReranker.lastWords("a  b\n c ", 3)).isEqualTo("a  b\n c")
-        assertThat(NeuralReranker.lastWords("   ", 3)).isEqualTo("")
+    fun contextWindowCutsAtWordBoundaries() {
+        assertThat(NeuralReranker.contextWindow("a b c d", 40)).isEqualTo("a b c d")
+        assertThat(NeuralReranker.contextWindow("  a  b\n c ", 40)).isEqualTo("a  b\n c")
+        assertThat(NeuralReranker.contextWindow("   ", 3)).isEqualTo("")
+    }
+
+    @Test
+    fun contextWindowStartMovesInBlocksAndStaysInBounds() {
+        val max = 8
+        val words = (0 until 60).map { "w$it" }
+        var previousStart = -1
+        for (n in 1..words.size) {
+            val text = words.take(n).joinToString(" ") + " "
+            val window = NeuralReranker.contextWindow(text, max).split(" ")
+            val start = n - window.size
+            assertThat(window.last()).isEqualTo("w${n - 1}")
+            if (n <= max) {
+                assertThat(start).isEqualTo(0)
+            } else {
+                assertThat(window.size).isAtLeast(max / 2)
+                assertThat(window.size).isAtMost(max - 1)
+                assertThat(start % (max / 2)).isEqualTo(0)
+            }
+            assertThat(start).isAtLeast(previousStart) // never moves back
+            previousStart = start
+        }
+    }
+
+    @Test
+    fun contextWindowIsStableWhileWordsAreAppendedWithinABlock() {
+        val base = (0 until 50).joinToString(" ") { "w$it" }
+        val a = NeuralReranker.contextWindow("$base ", 40)
+        val b = NeuralReranker.contextWindow("$base w50 ", 40)
+        val c = NeuralReranker.contextWindow("$base w50 w51 ", 40)
+        assertThat(a.substringBefore(" ")).isEqualTo(b.substringBefore(" "))
+        assertThat(b.substringBefore(" ")).isEqualTo(c.substringBefore(" "))
+        assertThat(c.startsWith(a.substringBefore(" "))).isTrue()
     }
 
     @Test
