@@ -1588,7 +1588,17 @@ internal class PredictiveInput(
             maxPhraseWords = if (settings.phraseCompletion) MAX_PHRASE_WORDS else 0,
             autocorrectAllowed = autocorrectAllowed(typed),
             sequence = seq,
+            engineAllowed = engineAllowed(),
         )
+
+    /**
+     * Whether an optional engine (the neural re-ranker) may see this request: suggestions are on
+     * for the settings and the field, the field is not sensitive, the learning gate is open (so
+     * not incognito, not an e-mail/URL/address field) and neural re-ranking is switched on.
+     * Recorrection requests never ask for one.
+     */
+    private fun engineAllowed(): Boolean =
+        settings.neuralRerank && canPredict() && profile?.sensitive == false && learningGateOpen()
 
     private fun fieldClass(): FieldClass =
         when (profile?.kind) {
@@ -1740,17 +1750,21 @@ internal class PredictiveInput(
      * Closing it drops everything remembered for learning.
      */
     private fun syncGate() {
-        val p = profile
-        val open =
-            canPredict() &&
-                p != null &&
-                p.learningEnabled &&
-                learn.fieldAllowsLearning &&
-                settings.learningEnabled &&
-                !settings.incognito
+        val open = learningGateOpen()
         val wasOpen = learn.open
         learn.configure(open, settings.sentenceBufferEnabled)
         if (wasOpen && !open) wipeLearning()
+    }
+
+    /** The gate's condition, see [syncGate]; also what lets an optional engine see the text. */
+    private fun learningGateOpen(): Boolean {
+        val p = profile
+        return canPredict() &&
+            p != null &&
+            p.learningEnabled &&
+            learn.fieldAllowsLearning &&
+            settings.learningEnabled &&
+            !settings.incognito
     }
 
     private fun wipeLearning() {
