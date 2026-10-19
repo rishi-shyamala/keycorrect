@@ -101,6 +101,7 @@ dependencies {
     implementation(project(":core:engine-api"))
     implementation(project(":core:engine-sdk"))
     implementation(project(":core:packs"))
+    implementation(project(":core:llama"))
     implementation(project(":core:input"))
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
