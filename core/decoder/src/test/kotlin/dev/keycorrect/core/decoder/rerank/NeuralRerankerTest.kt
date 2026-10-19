@@ -167,7 +167,7 @@ class NeuralRerankerTest {
     }
 
     @Test
-    fun theContextIsTheLastFortyWordsWithoutTrailingSpace() {
+    fun theContextIsABlockAlignedWindowOfAtMostFortyWordsWithoutTrailingSpace() {
         var context: String? = null
         val r = reranker { ctx, c, _ ->
             context = ctx
@@ -176,8 +176,8 @@ class NeuralRerankerTest {
         val before = (1..100).joinToString(" ") { "w$it" } + "  "
         r.run(request(before = before))
         val words = context!!.split(" ")
-        assertThat(words).hasSize(40)
-        assertThat(words.first()).isEqualTo("w61")
+        assertThat(words).hasSize(20)
+        assertThat(words.first()).isEqualTo("w81")
         assertThat(words.last()).isEqualTo("w100")
         r.run(request(before = "Hi there. "))
         assertThat(context).isEqualTo("Hi there.")
@@ -328,7 +328,7 @@ class NeuralRerankerTest {
             bonus = it.lmBonus
             redecoded
         }
-        assertThat(seen.single().first).isEqualTo("c d e")
+        assertThat(seen.single().first).isEqualTo("e")
         assertThat(seen.single().second).containsExactly("helli", "hello").inOrder()
         assertThat(seen.single().third).isEqualTo(900L)
         assertThat(bonus!!["helli"]).isWithin(1e-5f).of(2f * 1f)

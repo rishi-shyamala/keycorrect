@@ -105,6 +105,7 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
  * **Threads:** [score] and [generate] wait for the engine, so call them from a background thread;
  * they return null at once when it isn't connected. Everything else is safe from any thread.
  */
+@Suppress("TooManyFunctions") // The calls plus the connection's upkeep.
 class EngineClient
 @Suppress("LongParameterList") // The seams for tests.
 internal constructor(
@@ -119,6 +120,7 @@ internal constructor(
     makeLink: (onConnected: () -> Unit) -> NeuralLink,
 ) : AutoCloseable {
     /** Connects to the built-in engine. [modelStore] resolves the imported model ids. */
+    @Suppress("LongParameterList") // The public entry point; most have defaults.
     constructor(
         context: Context,
         modelStore: ModelStore,

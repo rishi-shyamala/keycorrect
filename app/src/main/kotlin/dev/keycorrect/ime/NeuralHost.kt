@@ -37,6 +37,7 @@ import java.util.concurrent.RejectedExecutionException
  * lookups that choose the engine run on a background thread, and only when a setting that matters
  * changed or the keyboard is shown. [score] runs on the reranker's thread.
  */
+@Suppress("TooManyFunctions") // The window callbacks, the plan, and its steps.
 internal class NeuralHost(
     private val context: Context,
     private val modelStore: ModelStore,

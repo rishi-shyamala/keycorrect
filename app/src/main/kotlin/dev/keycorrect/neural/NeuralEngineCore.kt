@@ -40,6 +40,7 @@ internal fun interface DefaultModelSource {
  * about a loaded or loading model is ignored, so the keyboard may send it on every connect. Models
  * are only taken from inside [filesRoot]. Nothing here handles or logs user text.
  */
+@Suppress("TooManyFunctions") // The rules of one engine, kept together.
 internal class NeuralEngineCore(
     private val filesRoot: File,
     private val runtime: () -> ModelRuntime,

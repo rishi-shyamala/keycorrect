@@ -431,9 +431,7 @@ class ClassicEngine(
                 ) {
                     // A real word keeps at least the best candidate's bonus: the model may reorder
                     // the suggestions but never talk the autocorrect out of a correct spelling.
-                    var best = Float.NEGATIVE_INFINITY
-                    for (v in request.lmBonus.values) if (v.isFinite() && v > best) best = v
-                    if (best == Float.NEGATIVE_INFINITY) best = 0f
+                    val best = maxFinite(request.lmBonus.values)
                     val own = request.lmBonus[text]?.takeIf { it.isFinite() } ?: 0f
                     literal.withScore(literal.score + maxOf(own, best))
                 } else {
@@ -785,4 +783,11 @@ class ClassicEngine(
                 if (byId != 0) byId else a.text.compareTo(b.text)
             }
     }
+}
+
+/** The largest finite value of [values], or 0 when there is none (a loop: no list per decode). */
+private fun maxFinite(values: Collection<Float>): Float {
+    var best = Float.NEGATIVE_INFINITY
+    for (v in values) if (v.isFinite() && v > best) best = v
+    return if (best == Float.NEGATIVE_INFINITY) 0f else best
 }
