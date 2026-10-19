@@ -20,7 +20,12 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Plugin engines (docs/PHASE7.md): services that answer the text-engine action. -->
+        <intent>
+            <action android:name="dev.keycorrect.TEXT_ENGINE" />
+        </intent>
         <package android:name="dev.keycorrect.voice" />
+        <package android:name="dev.keycorrect.neural" />
     </queries>
 
     <application
@@ -60,6 +65,16 @@
             android:authorities="${applicationId}.clips"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!--
+          The built-in language-model engine (docs/PHASE7.md), in its own process so a crash or
+          out-of-memory there never takes the keyboard down. Bound explicitly by the keyboard:
+          no intent filter, not exported.
+        -->
+        <service
+            android:name=".neural.NeuralEngineService"
+            android:exported="false"
+            android:process=":engine" />
 
         <service
             android:name=".ime.KeyCorrectImeService"

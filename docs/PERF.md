@@ -95,6 +95,47 @@ To see where device time goes, add a stack-sampling profile to a run:
 `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling`.
 The `.trace` files land next to the JSON results; open them in Android Studio or Perfetto.
 
+### Phase 7: llama scorer (desktop, relative)
+
+`:core:llama` on x86-64 (16 logical cores), SmolLM2-135M Q8_0, 4 threads, CPU only, 2026-10-19 (re-measured after the chunked prefill: n_batch = n_ubatch = 64, prefill in
+chunks of 32 tokens, candidates capped at 12 tokens).
+One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIntegrationTest.reportLatency`,
+40 calls for cold and same-context, 45 for warm; ARM numbers are pending the Tab S9 NDK build).
+
+| Case | p50 | p95 |
+|---|---|---|
+| Cold: nothing in common with the previous context | 16.8 ms | 18.5 ms |
+| Warm: the previous context plus one word (prefix reused, ~2 new tokens decoded) | 8.9 ms | 9.4 ms |
+| Same context again (no decode: the last-position logits are kept; only the candidates run) | 5.2 ms | 5.8 ms |
+| `generate`, 12 tokens max (a prompt of the same context, stops at punctuation) | 13.3 ms | 13.9 ms |
+| Cold, 60-word context (~60 tokens, two prefill chunks) | 37.7 ms | 45.2 ms |
+
+- A long cold prefill is abortable per chunk: when the deadline hits mid-prefill the finished chunks stay
+  in the cache and the next call continues from them (a 900-token cold context: 870 ms cold, 350 ms
+  into it the call aborts, the retry takes 560 ms instead of starting over). The 60-word cold call is
+  the worst case a keyboard sees after pasting or a context jump; it exceeds the 40 ms deadline on its
+  p50 here, so such a call is cut and the next one finishes the prefill.
+- Prefix reuse roughly halves the call. What is left is mostly the candidate batch (8 sequences, ~16
+  tokens) and one log-softmax per scored position.
+- The log-sum-exp over the 49k-entry vocabulary was the first hotspot: with libm `expf` the same
+  scenarios took 28.9 ms cold and 12.9 ms same-context. A vectorisable polynomial `exp` (relative
+  error 2.4e-7) took that to the table above. Compile with `-O3`; the NDK build must not drop it.
+- Not measured yet: the 40 ms rerank deadline on the device, the effect of repacked weights on ARM.
+
+#### Scorer latency inside the eval (desktop, relative), 2026-10-19
+
+`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/PHASE7.md "Eval (reranker arm)".
+
+| Model | mean | p50 | p95 | p99 | max | Over 40 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q8_0, run alone | 5.0 ms | 3.7 | 9.2 | 11.3 | 37.1 | 0.0% |
+| SmolLM2-360M Q4_K_M, three runs at once | 22.7 ms | 17.9 | 47.1 | 60.5 | 220.5 | 9.6% |
+| Qwen3-0.6B Q8_0, three runs at once | 30.1 ms | 26.4 | 64.2 | 81.8 | 215.7 | 20.5% |
+
+- The eval calls are cheaper than the micro-benchmark above (p50 3.7 ms against 8.6 ms) because consecutive decodes of one word extend the same context, so the prefix cache hits almost every time.
+- The decoder thread polls in 5 ms steps, so the effective latency of a refine is the scorer time rounded up to the next 5 ms plus the re-decode.
+- The 40 ms deadline cuts nothing at SmolLM2-135M on an idle desktop. The larger models would lose 10 to 20% of their answers even here (their rows were measured with two other runs competing for the cores).
+
 ## Findings log
 
 - **2026-10-11 (perf pass):**

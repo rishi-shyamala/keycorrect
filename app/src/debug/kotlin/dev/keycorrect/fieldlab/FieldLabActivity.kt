@@ -83,6 +83,16 @@ class FieldLabActivity : Activity() {
 
         field("Plain text", InputType.TYPE_CLASS_TEXT)
         field(
+            "Search (Enter searches)",
+            InputType.TYPE_CLASS_TEXT,
+            imeOptions = EditorInfo.IME_ACTION_SEARCH,
+        )
+        field(
+            "Chat (Enter sends)",
+            InputType.TYPE_CLASS_TEXT,
+            imeOptions = EditorInfo.IME_ACTION_SEND,
+        )
+        field(
             "Multi-line text",
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
             multiLine = true,

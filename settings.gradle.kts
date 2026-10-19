@@ -41,13 +41,19 @@ include(":core:emoji")
 
 include(":core:engine-api")
 
+include(":core:engine-sdk")
+
 include(":core:ime")
 
 include(":core:input")
 
 include(":core:layout")
 
+include(":core:llama")
+
 include(":core:learning")
+
+include(":core:packs")
 
 include(":core:settings")
 
@@ -58,6 +64,10 @@ include(":core:voice")
 include(":feature:keyboard-ui")
 
 include(":feature:voice-sherpa")
+
+include(":neuralpack")
+
+include(":sampleplugin")
 
 include(":tools:dictbuild")
 

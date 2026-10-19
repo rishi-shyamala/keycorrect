@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "dev.keycorrect.feature.keyboard"
+    defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     // KeystrokeBenchmarkTest runs only when profiling (tools/profile/profile.sh):
     // -Pkeycorrect.bench=true, plus -Pkeycorrect.jfr=<file> to record it with Flight Recorder.
     testOptions.unitTests.all { test ->
@@ -32,4 +33,12 @@ dependencies {
 
     // The real ClassicEngine drives the end-to-end controller test; the app module wires it up.
     testImplementation(project(":core:decoder"))
+
+    // On-device UI tests (what the strip actually draws).
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.compose.ui.test.manifest)
 }

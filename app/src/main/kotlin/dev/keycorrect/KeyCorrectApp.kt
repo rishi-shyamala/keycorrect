@@ -28,6 +28,9 @@ import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
+import dev.keycorrect.neural.LlamaRuntime
+import dev.keycorrect.neural.ModelRuntimes
+import dev.keycorrect.neural.ModelStore
 import dev.keycorrect.transfer.AppTransferStores
 import dev.keycorrect.transfer.CurrentDevice
 import dev.keycorrect.transfer.PrefsImportHistory
@@ -48,12 +51,23 @@ class KeyCorrectApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        // The :engine process (NeuralEngineService) needs none of the keyboard's stores, and
+        // must never open the settings DataStore.
+        if (isEngineProcess()) {
+            val runtime = LlamaRuntime(this)
+            ModelRuntimes.provider = { runtime }
+        } else {
+            container = AppContainer(this)
+        }
     }
+
+    private fun isEngineProcess() = Application.getProcessName().endsWith(":engine")
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) container.onTrimMemory()
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && !isEngineProcess()) {
+            container.onTrimMemory()
+        }
     }
 }
 
@@ -62,6 +76,9 @@ class AppContainer(private val context: Context) {
     /** Outlives any screen: for writes that must complete even if the UI goes away. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
+
+    /** Imported language models (docs/PHASE7.md); the engine process reads them by path. */
+    val modelStore by lazy { ModelStore(context) }
     val keyboardComposer = KeyboardComposer(BuiltInLayouts.repository())
 
     /**

@@ -18,6 +18,11 @@ import java.util.concurrent.atomic.AtomicReference
  * also what the predictor's `stale` lambda checks, so a newer keystroke makes the running decode
  * give up early instead of making the user wait for it.
  *
+ * Refinement: when a request has `engineAllowed`, the decoder thread calls [Predictor.refine] right
+ * after the classic result is published, and a non-null answer for the still-current sequence
+ * replaces it. The classic result is already [completed], so [resultForSeparator] never waits for
+ * the refinement (it returns as soon as the current sequence has a result).
+ *
  * Separator policy ([resultForSeparator]): the main thread must never queue up behind the engine
  * lock that a background decode holds. The decoder thread publishes every finished result in
  * [completed] before posting it to the main thread, so at a separator the result for the current
@@ -79,6 +84,7 @@ class DecoderLoop(
                     completed.set(result)
                     if (counter.get() != seq) return@execute
                     postToMain { onResult(result) }
+                    if (request.engineAllowed) refine(request, result, seq, onResult)
                 } finally {
                     outstanding.decrementAndGet()
                     synchronized(monitor) { monitor.notifyAll() }
@@ -88,6 +94,34 @@ class DecoderLoop(
             outstanding.decrementAndGet()
             throw e
         }
+    }
+
+    /**
+     * Gives the predictor a chance to improve the classic [result] that was just posted. Runs on
+     * the decoder thread after [completed] and the main-thread post, so a separator already has the
+     * classic answer and never waits for this; a newer event ends it early through the `stale`
+     * lambda. A better result replaces [completed] and is posted through the same [onResult].
+     */
+    @Suppress("ReturnCount") // no predictor / no answer / stale
+    private fun refine(
+        request: PredictRequest,
+        result: PredictResult,
+        seq: Long,
+        onResult: (PredictResult) -> Unit,
+    ) {
+        val p = predictor() ?: return
+        val refined =
+            try {
+                p.refine(request, result) { counter.get() != seq }
+            } catch (e: Exception) {
+                Log.w(TAG, "Refine failed: ${e.javaClass.name}")
+                null
+            } ?: return
+        if (counter.get() != seq) return
+        val fixed = if (refined.sequence == seq) refined else refined.copy(sequence = seq)
+        completed.set(fixed)
+        // Most refinements change nothing visible: don't redraw the strip for those.
+        if (!sameVisible(fixed, result)) postToMain { onResult(fixed) }
     }
 
     /**
@@ -366,3 +400,11 @@ class LatencyStats {
         const val LOG_EVERY = 200
     }
 }
+
+/** Whether [a] and [b] would show and apply the same words (scores aside). */
+internal fun sameVisible(a: PredictResult, b: PredictResult): Boolean =
+    a.autocorrect?.text == b.autocorrect?.text &&
+        a.phrase?.text == b.phrase?.text &&
+        a.autocorrectRunnerUp?.text == b.autocorrectRunnerUp?.text &&
+        a.candidates.size == b.candidates.size &&
+        a.candidates.indices.all { a.candidates[it].text == b.candidates[it].text }

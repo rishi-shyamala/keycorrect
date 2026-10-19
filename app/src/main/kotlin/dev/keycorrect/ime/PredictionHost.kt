@@ -13,6 +13,7 @@ import dev.keycorrect.core.data.UserWordSnapshot
 import dev.keycorrect.core.decoder.AutocorrectConfig
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
@@ -55,7 +56,9 @@ import kotlinx.coroutines.sync.withLock
  * retries after a pause, see [LearningHost.onRankingDeferred]) while a typing decode is running or
  * ran within [DecodeActivity.QUIET_NANOS], and capped at [DecodeBudget.MAX_CALLS] decodes per
  * second. A keystroke can therefore wait for at most one learning decode, started when typing was
- * idle. Call [close] when the service goes away so the singleton model drops the engine.
+ * idle. With a [reranker] the predictor's `refine` re-ranks the finished classic result (the
+ * re-decode is tracked like any typing decode). Call [close] when the service goes away so the
+ * singleton model drops the engine.
  */
 class PredictionHost(
     private val assets: AssetManager,
@@ -67,6 +70,11 @@ class PredictionHost(
     private val learning: LearningHost? = null,
     /** `InputProfile.touchKey` of the layout on screen; read on the decoder thread per decode. */
     private val touchKey: () -> String? = { null },
+    /**
+     * The optional language-model re-ranker (docs/PHASE7.md); null means classic results only. A
+     * request is only refined when it has `engineAllowed`.
+     */
+    private val reranker: NeuralReranker? = null,
 ) : PredictionBackend {
     /**
      * Snapshot state: the keyboard reads it while composing (gesture typing is on only with an
@@ -163,6 +171,15 @@ class PredictionHost(
                 override fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult =
                     decodeActivity.track {
                         engine.predictNow(request, stale)
+                    }
+
+                override fun refine(
+                    request: PredictRequest,
+                    result: PredictResult,
+                    stale: () -> Boolean,
+                ): PredictResult? =
+                    reranker?.refine(request, result, stale) {
+                        decodeActivity.track { engine.predictNow(it, stale) }
                     }
 
                 override fun predictGesture(

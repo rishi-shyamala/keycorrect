@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import dev.keycorrect.core.designsystem.KeyCorrectTheme
 import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
@@ -30,6 +31,7 @@ import dev.keycorrect.voice.PackChangeWatcher
 import dev.keycorrect.voice.PackRestartPolicy
 import dev.keycorrect.voice.Restarter
 import dev.keycorrect.voice.killProcess
+import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -45,6 +47,15 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     private val learningHost
         get() = appContainer.learningHost
 
+    private val rerankExecutorLazy = lazy {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "kc-rerank").apply { isDaemon = true }
+        }
+    }
+
+    private val neuralHostLazy = lazy { NeuralHost(this, appContainer.modelStore) }
+    private val neuralHost by neuralHostLazy
+
     private val predictionHostLazy = lazy {
         PredictionHost(
             assets,
@@ -54,6 +65,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             Dispatchers.IO,
             learning = learningHost,
             touchKey = { controller.currentTouchKey },
+            reranker =
+                NeuralReranker(
+                    neuralHost,
+                    rerankExecutorLazy.value,
+                    lmStrength = { settingsFlow.value.lmStrength },
+                    phraseGenerator = neuralHost,
+                    phrasesEnabled = { settingsFlow.value.neuralPhrases },
+                ),
         )
     }
     private val predictionHost by predictionHostLazy
@@ -118,8 +137,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
     }
 
+    override fun onWindowShown() {
+        super.onWindowShown()
+        neuralHost.onWindowShown()
+    }
+
     override fun onWindowHidden() {
         super.onWindowHidden()
+        neuralHost.onWindowHidden()
         packRestart.onKeyboardHidden()
     }
 
@@ -142,6 +167,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
                 predictionHost.applySettings(it)
+                neuralHost.apply(it)
                 appContainer.voiceHost.applySettings(it)
             }
         }
@@ -184,6 +210,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
         learningHost.requestFlush(FlushReason.TrimMemory)
         if (predictionHostLazy.isInitialized()) predictionHost.close()
+        if (neuralHostLazy.isInitialized()) neuralHost.close()
+        if (rerankExecutorLazy.isInitialized()) rerankExecutorLazy.value.shutdownNow()
         super.onDestroy()
     }
 

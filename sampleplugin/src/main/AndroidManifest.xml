@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The KeyCorrect sample engine plugin (docs/PLUGINS.md). Privacy: no permissions at all, and never
+  android.permission.INTERNET; the keyboard warns users about plugins that hold it.
+
+  The service is exported so that the keyboard, which is usually signed with a different key, can
+  bind it. A signature permission would stop that, so any app can bind this service. That is
+  acceptable for a stateless scorer; a plugin that keeps state or secrets must check the caller
+  itself. The keyboard only binds a plugin the user has approved in Settings -> Engines.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="false"
+        android:label="KeyCorrect sample engine">
+
+        <service
+            android:name=".SampleEngineService"
+            android:exported="true"
+            android:label="Sample bigram engine"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="dev.keycorrect.TEXT_ENGINE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

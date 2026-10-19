@@ -1,0 +1,9 @@
+# SHA-256 of the neural (Phase 7) sources in data/raw/neural/. Verified by tools/data/fetch-neural.sh.
+# llama.cpp v0.7.0 source (MIT); candidate GGUF models pinned to the HF commits in fetch-neural.sh;
+# recorded on 2026-10-18.
+55d67acf3ad2ad747a9bbeb75f9f0e173dbcc0d1753a471038a90c819421c5e1  llama.cpp-v0.7.0.tar.gz
+813966e2b5e5aba261f6f198849a13b815db3c77bf4e389e72aa1e0f35a0d455  SmolLM2-135M-Q8_0.gguf
+be3035f2b21abe1038dbb1b9212791353715020bbc71265bde00da129ec320e6  SmolLM2-360M.Q4_K_M.gguf
+771c588a49607f274a2bba3185733607ebe6f74b996ab90e2d6bee0d98bcec52  granite-4.0-350m-Q4_K_M.gguf
+9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031  Qwen3-0.6B-Q8_0.gguf
+e00cf79514204dfe2f4d6943f277ffea7fd8a4c8e955b4b7a869cfc157694881  gemma-3-270m-Q8_0.gguf
