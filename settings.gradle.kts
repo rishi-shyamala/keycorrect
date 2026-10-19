@@ -49,6 +49,8 @@ include(":core:layout")
 
 include(":core:learning")
 
+include(":core:packs")
+
 include(":core:settings")
 
 include(":core:transfer")

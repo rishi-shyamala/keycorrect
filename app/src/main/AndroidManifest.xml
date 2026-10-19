@@ -21,6 +21,7 @@
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <package android:name="dev.keycorrect.voice" />
+        <package android:name="dev.keycorrect.neural" />
     </queries>
 
     <application
