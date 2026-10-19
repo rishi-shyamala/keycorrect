@@ -62,6 +62,11 @@ struct Session {
     int n_ctx = 0;
     int n_vocab = 0;
     std::vector<llama_token> cached;  // tokens of the context in seq 0
+    // Raw logits at the last token of `cached` (what predicts the first candidate token), kept so the
+    // same context again needs no decode. Valid only while seq 0 still holds exactly `cached`:
+    // anything that trims, resets or re-decodes seq 0 clears the flag.
+    std::vector<float> last_logits;
+    bool last_logits_valid = false;
     llama_batch batch{};
     bool has_deadline = false;
     Clock::time_point deadline;
@@ -240,6 +245,7 @@ int decode(Session &s) {
 void reset_cache(Session &s) {
     llama_memory_clear(llama_get_memory(s.ctx), true);
     s.cached.clear();
+    s.last_logits_valid = false;
 }
 
 void remove_scratch_seqs(Session &s) {
@@ -259,6 +265,7 @@ void remove_scratch_seqs(Session &s) {
 // Returns false on abort or error. The cache is not reset (unless it cannot be trimmed at all).
 bool decode_context(Session &s, const std::vector<llama_token> &tokens, size_t p) {
     llama_memory_t mem = llama_get_memory(s.ctx);
+    s.last_logits_valid = false;
     if (p < s.cached.size()) {
         if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(p), -1)) {
             reset_cache(s);
@@ -283,6 +290,10 @@ bool decode_context(Session &s, const std::vector<llama_token> &tokens, size_t p
                         tokens.begin() + static_cast<std::ptrdiff_t>(from + count));
         from += count;
     }
+    const float *logits = llama_get_logits_ith(s.ctx, -1);
+    if (logits == nullptr) return false;
+    s.last_logits.assign(logits, logits + s.n_vocab);
+    s.last_logits_valid = true;
     return true;
 }
 
@@ -356,12 +367,14 @@ bool score_impl(Session &s, const std::string &context, const std::vector<std::s
         }
     }
 
-    const size_t p = std::min(common_prefix(s.cached, ctx_tokens), n - 1);
-    if (!decode_context(s, ctx_tokens, p)) return false;
+    // The same context as last time: its last-position logits are still stored, no decode needed.
+    if (!(s.last_logits_valid && s.cached == ctx_tokens)) {
+        const size_t p = std::min(common_prefix(s.cached, ctx_tokens), n - 1);
+        if (!decode_context(s, ctx_tokens, p)) return false;
+    }
 
     // The first token of every candidate is predicted by the last context token.
-    const float *logits = llama_get_logits_ith(s.ctx, -1);
-    if (logits == nullptr) return false;
+    const float *logits = s.last_logits.data();
     const float first_lse = log_sum_exp(logits, s.n_vocab);
     for (size_t i = 0; i < n_cand; i++) {
         scores[i] = cand_tokens[i].empty() ? kNoScore : logits[cand_tokens[i][0]] - first_lse;

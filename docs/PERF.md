@@ -106,7 +106,7 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
 |---|---|---|
 | Cold: nothing in common with the previous context | 16.8 ms | 18.5 ms |
 | Warm: the previous context plus one word (prefix reused, ~2 new tokens decoded) | 8.9 ms | 9.4 ms |
-| Same context again (1 token re-decoded) | 9.0 ms | 10.6 ms |
+| Same context again (no decode: the last-position logits are kept; only the candidates run) | 5.2 ms | 5.8 ms |
 | `generate`, 12 tokens max (a prompt of the same context, stops at punctuation) | 13.3 ms | 13.9 ms |
 | Cold, 60-word context (~60 tokens, two prefill chunks) | 37.7 ms | 45.2 ms |
 

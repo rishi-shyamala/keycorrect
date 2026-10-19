@@ -112,6 +112,23 @@ class LlamaIntegrationTest {
     }
 
     @Test
+    fun theSameContextTwiceGivesIdenticalScores() {
+        model.newSession(nCtx = 2048).use { session ->
+            for (words in listOf(5, 60, 300)) {
+                val context = (1..words).joinToString(" ") { WORDS[it % WORDS.size] + (it % 11) }
+                val first = session.score(context, CANDIDATES, TIMEOUT_MS)!!
+                val second = session.score(context, CANDIDATES, TIMEOUT_MS)!!
+                val reordered = session.score(context, CANDIDATES.reversed(), TIMEOUT_MS)!!
+                assertThat(second).isEqualTo(first)
+                assertThat(reordered.reversedArray()).usingTolerance(1e-3).containsExactly(first)
+                // generate borrows seq 0 and must not disturb the stored logits.
+                session.generate(context, 4, TIMEOUT_MS)
+                assertThat(session.score(context, CANDIDATES, TIMEOUT_MS)).isEqualTo(first)
+            }
+        }
+    }
+
+    @Test
     fun zeroTimeoutReturnsNullAndTheSessionRecovers() {
         model.newSession().use { session ->
             assertThat(session.score(CAT, CANDIDATES, 0)).isNull()
