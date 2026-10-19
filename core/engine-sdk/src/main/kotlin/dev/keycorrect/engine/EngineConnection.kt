@@ -24,6 +24,16 @@ interface TextEngineLink : AutoCloseable {
 
     /** A continuation of [prompt], or null. */
     fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String?
+
+    /** Counts the engines adopted so far; an engine that reconnects gets a new number. */
+    val generation: Long
+        get() = 0L
+
+    /**
+     * Lets calls through to the engine adopted as [generation] (see `requireAdmission` of
+     * [EngineConnection]); ignored when a newer engine was adopted meanwhile.
+     */
+    fun admit(generation: Long) = Unit
 }
 
 /** Binds and unbinds the engine's service (a seam for tests). */
@@ -73,6 +83,10 @@ private class AndroidBinding(private val context: Context, private val component
  *
  * [onConnected] runs on the main thread each time the engine (re)connects, e.g. to send [configure]
  * again; hand the work to another thread.
+ *
+ * With [requireAdmission] every newly connected engine gets no calls (they give null) until [admit]
+ * is called for it: a plugin is checked (approval, signing certificate) on each connect, because
+ * this connection binds its component again by itself.
  */
 @Suppress("TooManyFunctions") // The four calls plus the connection's life cycle.
 class EngineConnection
@@ -81,28 +95,38 @@ internal constructor(
     private val clock: () -> Long,
     private val resolve: (IBinder) -> ITextEngine?,
     private val onConnected: () -> Unit,
+    private val requireAdmission: Boolean = false,
 ) : TextEngineLink {
     constructor(
         context: Context,
         component: ComponentName,
         onConnected: () -> Unit = {},
+        requireAdmission: Boolean = false,
     ) : this(
         AndroidBinding(context.applicationContext, component),
         System::currentTimeMillis,
         { ITextEngine.Stub.asInterface(it) },
         onConnected,
+        requireAdmission,
     )
 
     private val runner = BoundedRunner("kc-engine-client", MAX_CONCURRENT_CALLS)
     private val lock = Any()
 
     @Volatile private var engine: ITextEngine? = null
+    @Volatile private var admitted = true
+    @Volatile
+    override var generation = 0L
+        private set
+
     private var bound = false
     private var closed = false
+
+    /** The binder [engine] came from, and the recipient linked to it; guarded by [lock]. */
+    private var adoptedBinder: IBinder? = null
+    private var adoptedRecipient: IBinder.DeathRecipient? = null
     private var lastAttemptMs = 0L
     private var failures = 0
-
-    private val deathRecipient = IBinder.DeathRecipient { lost() }
 
     private val connection =
         object : ServiceConnection {
@@ -122,6 +146,10 @@ internal constructor(
 
     init {
         attemptBind()
+    }
+
+    override fun admit(generation: Long) {
+        synchronized(lock) { if (generation == this.generation && engine != null) admitted = true }
     }
 
     /** Whether an engine is connected right now. */
@@ -152,8 +180,7 @@ internal constructor(
             closed = true
             unbindLocked()
         }
-        engine?.asBinder()?.unlinkToDeathQuietly()
-        engine = null
+        lost()
         runner.shutdown()
     }
 
@@ -177,7 +204,7 @@ internal constructor(
     /** The connected engine, or null; binds again first when it is time to. */
     private fun current(): ITextEngine? {
         engine?.let {
-            return it
+            return if (admitted) it else null
         }
         synchronized(lock) {
             if (!closed && engine == null && clock() - lastAttemptMs >= retryDelayMs(failures)) {
@@ -206,9 +233,10 @@ internal constructor(
     @Suppress("ReturnCount")
     private fun adopt(service: IBinder) {
         val resolved = resolve(service) ?: return
+        val recipient = IBinder.DeathRecipient { binderDied(service) }
         val live =
             try {
-                service.linkToDeath(deathRecipient, 0)
+                service.linkToDeath(recipient, 0)
                 true
             } catch (_: RemoteException) {
                 false
@@ -216,25 +244,54 @@ internal constructor(
         if (!live) return
         synchronized(lock) {
             if (closed) {
-                service.unlinkToDeathQuietly()
+                service.unlinkToDeathQuietly(recipient)
                 return
             }
+            // Replacing an earlier engine: drop its link, so its late death notice finds nothing.
+            adoptedBinder?.unlinkToDeathQuietly(adoptedRecipient)
             failures = 0
+            generation++
+            admitted = !requireAdmission
+            adoptedBinder = service
+            adoptedRecipient = recipient
             engine = resolved
         }
         onConnected()
     }
 
-    private fun lost(dead: ITextEngine? = null) {
-        val old = engine
-        if (dead != null && old !== dead) return
-        engine = null
-        old?.asBinder()?.unlinkToDeathQuietly()
+    /**
+     * The death notice of [binder]. A notice for a binder that is no longer the adopted one (a
+     * newer engine replaced it) must not touch the new connection.
+     */
+    internal fun binderDied(binder: IBinder) {
+        synchronized(lock) {
+            if (adoptedBinder !== binder) return
+            dropLocked()
+        }
     }
 
-    private fun IBinder.unlinkToDeathQuietly() {
+    /**
+     * The connection is gone. With [dead] (the engine a call found dead) only when it is still the
+     * adopted one; without, whichever is adopted.
+     */
+    private fun lost(dead: ITextEngine? = null) {
+        synchronized(lock) {
+            if (dead != null && engine !== dead) return
+            dropLocked()
+        }
+    }
+
+    private fun dropLocked() {
+        engine = null
+        adoptedBinder?.unlinkToDeathQuietly(adoptedRecipient)
+        adoptedBinder = null
+        adoptedRecipient = null
+    }
+
+    private fun IBinder.unlinkToDeathQuietly(recipient: IBinder.DeathRecipient?) {
+        if (recipient == null) return
         try {
-            unlinkToDeath(deathRecipient, 0)
+            unlinkToDeath(recipient, 0)
         } catch (_: NoSuchElementException) {
             // Already unlinked.
         }

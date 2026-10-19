@@ -118,6 +118,17 @@ internal class EnginePlugins(private val source: PluginSource) {
     }
 }
 
+/**
+ * The check a plugin connection must pass each time it connects: [component] is still installed as
+ * a plugin and approved (in the current [approved] set) for its current signing certificate. Does
+ * package-manager lookups, so call it off the main thread.
+ */
+internal fun pluginVerifier(
+    plugins: EnginePlugins,
+    component: String,
+    approved: () -> Set<String>,
+): () -> Boolean = { plugins.isApproved(component, approved()) }
+
 /** [PluginSource] over the package manager. Needs the `<queries>` entry for the action. */
 internal class AndroidPluginSource(context: Context) : PluginSource {
     private val pm: PackageManager = context.packageManager

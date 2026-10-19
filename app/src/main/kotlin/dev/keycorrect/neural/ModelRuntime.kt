@@ -5,6 +5,12 @@ package dev.keycorrect.neural
  * until one is installed in [ModelRuntimes] nothing opens and the engine stays without a model.
  */
 interface ModelRuntime {
+    /**
+     * Why this runtime can never open a model on this device (a short code such as
+     * `UnsupportedCpu`, shown as `error:<code>`), or null. Checked before any open.
+     */
+    fun problem(): String? = null
+
     /** Opens the model file at [path]; null when it can't be opened. [threads] is for inference. */
     fun openFile(path: String, threads: Int): LoadedModel?
 

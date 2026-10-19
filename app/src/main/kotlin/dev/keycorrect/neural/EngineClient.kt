@@ -8,7 +8,9 @@ import dev.keycorrect.engine.EngineContract
 import dev.keycorrect.engine.TextEngineLink
 import java.io.File
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 /** Which model the engine is asked to load. */
 internal sealed interface ModelChoice {
@@ -33,6 +35,13 @@ internal interface NeuralLink : AutoCloseable {
     fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray?
 
     fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String?
+
+    /** See [TextEngineLink.generation]. */
+    val generation: Long
+        get() = 0L
+
+    /** See [TextEngineLink.admit]. */
+    fun admit(generation: Long) = Unit
 }
 
 /** [NeuralLink] over a [TextEngineLink]: the options and info as bundles. */
@@ -65,6 +74,11 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
     override fun generate(prompt: String, maxTokens: Int, timeoutMs: Long) =
         link.generate(prompt, maxTokens, timeoutMs)
 
+    override val generation: Long
+        get() = link.generation
+
+    override fun admit(generation: Long) = link.admit(generation)
+
     override fun close() = link.close()
 }
 
@@ -82,9 +96,16 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
  * Whenever a call gets no answer, this checks that status (at most every [HEAL_INTERVAL_MS], off
  * the calling thread) and configures the engine again if it has no model.
  *
+ * A plugin ([configures] false) comes with [verify]: each time it connects, before any call is let
+ * through, [verify] must say it is still approved for its current signing certificate; if not, the
+ * link is closed and [onRejected] runs (on the client's thread) so the keyboard can fall back. An
+ * engine that reports a failure no retry can fix ([EngineFailure.isPermanent]) is not configured
+ * again until [reconfigure] is called.
+ *
  * **Threads:** [score] and [generate] wait for the engine, so call them from a background thread;
  * they return null at once when it isn't connected. Everything else is safe from any thread.
  */
+@Suppress("TooManyFunctions") // The calls plus the connection's upkeep.
 class EngineClient
 @Suppress("LongParameterList") // The seams for tests.
 internal constructor(
@@ -94,9 +115,12 @@ internal constructor(
     private val clock: () -> Long,
     private val executor: Executor,
     private val configures: Boolean = true,
+    private val verify: (() -> Boolean)? = null,
+    private val onRejected: () -> Unit = {},
     makeLink: (onConnected: () -> Unit) -> NeuralLink,
 ) : AutoCloseable {
     /** Connects to the built-in engine. [modelStore] resolves the imported model ids. */
+    @Suppress("LongParameterList") // The public entry point; most have defaults.
     constructor(
         context: Context,
         modelStore: ModelStore,
@@ -104,6 +128,8 @@ internal constructor(
         threads: Int = 0,
         component: ComponentName = ComponentName(context, NeuralEngineService::class.java),
         configures: Boolean = true,
+        verify: (() -> Boolean)? = null,
+        onRejected: () -> Unit = {},
     ) : this(
         modelId,
         modelStore::pathOf,
@@ -116,18 +142,44 @@ internal constructor(
             }
         },
         configures,
-        { onConnected -> BundleLink(EngineConnection(context, component, onConnected)) },
+        verify,
+        onRejected,
+        { onConnected ->
+            BundleLink(
+                EngineConnection(
+                    context,
+                    component,
+                    onConnected,
+                    requireAdmission = verify != null,
+                )
+            )
+        },
     )
 
-    private val link: NeuralLink = makeLink { executor.execute(::sendConfigure) }
+    private val link: NeuralLink = makeLink { post(::onLinkConnected) }
     private val healLock = Any()
     private var lastHealMs = -HEAL_INTERVAL_MS
+
+    /** Set when the engine reported a failure that retrying can't fix. */
+    @Volatile private var blocked = false
 
     /**
      * Sends the current model choice to the engine; call when the `neuralModel` setting changes.
      */
     fun reconfigure() {
-        executor.execute(::sendConfigure)
+        blocked = false
+        post(::sendConfigure)
+    }
+
+    /**
+     * Configures the engine again if it has released its model (it does under memory pressure);
+     * call when the keyboard is shown. Asks off the calling thread.
+     */
+    fun reviveIfReleased() {
+        post {
+            val status = link.status() ?: return@post
+            if (status == EngineContract.STATUS_NO_MODEL) sendConfigure() else noteFailure(status)
+        }
     }
 
     /**
@@ -149,6 +201,7 @@ internal constructor(
 
     override fun close() {
         link.close()
+        (executor as? ExecutorService)?.shutdown()
     }
 
     internal fun choice(): ModelChoice {
@@ -159,8 +212,36 @@ internal constructor(
     }
 
     private fun sendConfigure() {
-        if (!configures) return
+        if (!configures || blocked) return
         link.configure(choice(), threads)
+    }
+
+    /** Runs on the client's thread each time the engine connects. */
+    private fun onLinkConnected() {
+        val check = verify
+        if (check != null) {
+            val generation = link.generation
+            if (!check()) {
+                link.close()
+                onRejected()
+                return
+            }
+            link.admit(generation)
+        }
+        sendConfigure()
+    }
+
+    private fun noteFailure(status: String) {
+        if (EngineFailure.isPermanent(status)) blocked = true
+    }
+
+    /** Hands [task] to the client's thread; nothing after [close]. */
+    private fun post(task: () -> Unit) {
+        try {
+            executor.execute(task)
+        } catch (_: RejectedExecutionException) {
+            // Closed.
+        }
     }
 
     private fun healIfDue() {
@@ -169,8 +250,9 @@ internal constructor(
             if (now - lastHealMs < HEAL_INTERVAL_MS) return
             lastHealMs = now
         }
-        executor.execute {
-            val status = link.status() ?: return@execute
+        post {
+            val status = link.status() ?: return@post
+            noteFailure(status)
             if (status == EngineContract.STATUS_NO_MODEL || EngineContract.isError(status)) {
                 sendConfigure()
             }

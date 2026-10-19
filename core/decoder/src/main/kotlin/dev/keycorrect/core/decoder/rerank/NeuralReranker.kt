@@ -55,7 +55,9 @@ fun interface PhraseGenerator {
  * @param lmWeight scale of the bonus against the classic fused score.
  * @param deadlineMs how long [refine] waits for the scorer before keeping the classic result.
  * @param maxTexts the most texts (literal plus candidates) sent to the scorer in one call.
- * @param contextWords the scorer sees about this many words before the cursor.
+ * @param contextWords the scorer sees between half of this and this many words before the cursor;
+ *   the window's start moves in blocks of half of it, so consecutive keystrokes share their context
+ *   prefix and the engine can reuse its KV cache ([contextWindow]).
  * @param poolSize when above the request's `maxCandidates`, [refine] first re-decodes the request
  *   with `maxCandidates = poolSize`, so the scorer also sees candidates below the classic strip;
  *   the final re-decode still uses the original `maxCandidates` (0 scores only what the classic
@@ -88,7 +90,7 @@ class NeuralReranker(
         val scored = wideResult(request, result, stale, redecode) ?: return null
         val texts = textsToScore(scored)
         if (texts.size < 2) return null // one text has nothing to be compared with
-        val context = lastWords(request.context.before, contextWords)
+        val context = contextWindow(request.context.before, contextWords)
 
         val job = start { scorer.score(context, texts, deadlineMs) } ?: return null
         val lp = await(job, deadlineMs, stale) ?: return null
@@ -143,8 +145,9 @@ class NeuralReranker(
                             null
                         }
                 } finally {
-                    started.done = true
+                    // Free the slot first: a caller that sees done may start the next call at once.
                     busy.set(false)
+                    started.done = true
                 }
             }
         } catch (e: RejectedExecutionException) {
@@ -246,20 +249,30 @@ class NeuralReranker(
         private const val NANOS_PER_MS = 1_000_000L
 
         /**
-         * The last [maxWords] words of [text], cut at a word boundary, without trailing whitespace
-         * (the scorer adds the space before each candidate).
+         * The context the scorer sees: the words of [text] from a start that moves only in blocks.
+         * With `W` words and `W > maxWords` the window starts at word `floor((W - maxWords/2) /
+         * (maxWords/2)) * (maxWords/2)`, so it holds between `maxWords/2` and `maxWords - 1` words
+         * and stays the same while words are appended until the next block boundary (the model's
+         * cached prefix stays valid). Cut at a word boundary, without trailing whitespace (the
+         * scorer adds the space before each candidate).
          */
-        internal fun lastWords(text: CharSequence, maxWords: Int): String {
+        internal fun contextWindow(text: CharSequence, maxWords: Int): String {
             val s = text.toString().trimEnd()
-            var i = s.length
-            var words = 0
-            while (i > 0) {
-                while (i > 0 && !s[i - 1].isWhitespace()) i--
-                words++
-                if (words == maxWords) break
-                while (i > 0 && s[i - 1].isWhitespace()) i--
+            val starts = ArrayList<Int>()
+            var i = 0
+            while (i < s.length) {
+                while (i < s.length && s[i].isWhitespace()) i++
+                if (i >= s.length) break
+                starts.add(i)
+                while (i < s.length && !s[i].isWhitespace()) i++
             }
-            return s.substring(i)
+            val count = starts.size
+            val block = (maxWords / 2).coerceAtLeast(1)
+            return when {
+                count == 0 -> ""
+                count <= maxWords -> s.substring(starts[0])
+                else -> s.substring(starts[(count - block) / block * block])
+            }
         }
     }
 }

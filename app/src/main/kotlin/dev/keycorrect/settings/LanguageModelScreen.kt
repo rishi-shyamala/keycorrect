@@ -30,6 +30,7 @@ import dev.keycorrect.R
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.neural.AndroidPluginSource
 import dev.keycorrect.neural.EngineClient
+import dev.keycorrect.neural.EngineFailure
 import dev.keycorrect.neural.EnginePlugins
 import dev.keycorrect.neural.EngineTarget
 import dev.keycorrect.neural.LmStatus
@@ -187,6 +188,8 @@ internal fun errorMessage(reason: String): Int =
         "FileMissing" -> R.string.lm_status_error_file
         "LoadFailed" -> R.string.lm_status_error_load
         "OutOfMemory" -> R.string.lm_status_error_memory
+        EngineFailure.UNSUPPORTED_CPU -> R.string.lm_status_error_cpu
+        EngineFailure.CRASHED_ON_LOAD -> R.string.lm_status_error_crashed
         else -> R.string.lm_status_error_other
     }
 

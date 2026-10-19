@@ -170,6 +170,55 @@ class EngineConnectionTest {
     }
 
     @Test
+    fun aLateDeathNoticeOfAnOldBinderLeavesTheNewEngineConnected() {
+        val oldBinder = Binder()
+        val newBinder = Binder()
+        val oldEngine = FakeEngine()
+        val newEngine = FakeEngine()
+        val own = FakeBinding()
+        val c =
+            EngineConnection(
+                own,
+                { now },
+                { if (it === oldBinder) oldEngine else newEngine },
+                { connectedCount++ },
+            )
+        own.connection!!.onServiceConnected(name, oldBinder)
+        own.connection!!.onServiceConnected(name, newBinder)
+
+        c.binderDied(oldBinder)
+
+        assertThat(c.isConnected).isTrue()
+        assertThat(c.score("c", listOf("a"), 100L)).isNotNull()
+        // The current binder's own notice does drop it.
+        c.binderDied(newBinder)
+        assertThat(c.isConnected).isFalse()
+        c.close()
+    }
+
+    @Test
+    fun anEngineThatNeedsAdmissionGetsNoCallsUntilAdmittedAndAgainAfterEveryReconnect() {
+        val own = FakeBinding()
+        val c = EngineConnection(own, { now }, { engine }, {}, requireAdmission = true)
+
+        own.connection!!.onServiceConnected(name, Binder())
+        assertThat(c.score("c", listOf("a"), 100L)).isNull()
+        assertThat(c.info()).isNull()
+
+        c.admit(c.generation - 1) // a stale admission does nothing
+        assertThat(c.score("c", listOf("a"), 100L)).isNull()
+        c.admit(c.generation)
+        assertThat(c.score("c", listOf("a"), 100L)).isNotNull()
+
+        // The component binds again by itself: the new engine has to be admitted again.
+        own.connection!!.onServiceConnected(name, Binder())
+        assertThat(c.score("c", listOf("a"), 100L)).isNull()
+        c.admit(c.generation)
+        assertThat(c.score("c", listOf("a"), 100L)).isNotNull()
+        c.close()
+    }
+
+    @Test
     fun aConnectionAfterCloseIsIgnored() {
         conn.close()
         connect()

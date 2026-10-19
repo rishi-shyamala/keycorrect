@@ -2,8 +2,10 @@ package dev.keycorrect.neural
 
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Process
+import androidx.core.content.pm.PackageInfoCompat
 import dev.keycorrect.core.packs.NEURAL_PACK_SPEC
 import dev.keycorrect.core.packs.NeuralPackLayout
 import dev.keycorrect.core.packs.PackProblem
@@ -11,6 +13,7 @@ import dev.keycorrect.core.packs.PackResult
 import dev.keycorrect.core.packs.SignedPackLocator
 import dev.keycorrect.engine.EngineContract
 import dev.keycorrect.engine.TextEngineService
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
 
@@ -39,6 +42,7 @@ class NeuralEngineService : TextEngineService() {
             defaultModel = PackModelSource(this),
             executor = loader,
             restartProcess = { Process.killProcess(Process.myPid()) },
+            markerDir = File(noBackupFilesDir, "load-markers"),
         )
     }
 
@@ -69,12 +73,18 @@ class NeuralEngineService : TextEngineService() {
     override fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? =
         core.generate(prompt, maxTokens, timeoutMs)
 
-    @Suppress(
-        "DEPRECATION"
-    ) // The RUNNING_* levels are deprecated but still what the plan asks for.
+    // Only real pressure releases the model: UI_HIDDEN and BACKGROUND arrive all the time, and a
+    // reload costs more than the memory is worth. The RUNNING_* levels are deprecated but still
+    // what reaches a process that is bound by a visible keyboard.
+    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) core.release()
+        if (
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+        ) {
+            core.release()
+        }
     }
 
     override fun onLowMemory() {
@@ -99,6 +109,17 @@ class NeuralEngineService : TextEngineService() {
 internal class PackModelSource(context: Context) : DefaultModelSource {
     private val locator = SignedPackLocator(context.applicationContext, NEURAL_PACK_SPEC)
 
+    private val pm = context.applicationContext.packageManager
+
+    /** Which build of the pack and where its model starts: a new install is a new identity. */
+    private fun packIdentity(offset: Long): String =
+        try {
+            val info = pm.getPackageInfo(NeuralPackLayout.PACKAGE, 0)
+            "pack:${info.lastUpdateTime}:${PackageInfoCompat.getLongVersionCode(info)}:$offset"
+        } catch (_: PackageManager.NameNotFoundException) {
+            "pack:unknown:$offset"
+        }
+
     override fun open(): DefaultModel =
         when (val found = locator.locate()) {
             is PackResult.Unavailable ->
@@ -109,7 +130,12 @@ internal class PackModelSource(context: Context) : DefaultModelSource {
             is PackResult.Available ->
                 try {
                     val file = found.pack.openAssetFd(NeuralPackLayout.DEFAULT_MODEL)
-                    DefaultModel.Found(file.parcelFileDescriptor.fd, file.startOffset, file)
+                    DefaultModel.Found(
+                        file.parcelFileDescriptor.fd,
+                        file.startOffset,
+                        file,
+                        identity = packIdentity(file.startOffset),
+                    )
                 } catch (_: IOException) {
                     DefaultModel.Missing(PackProblem.AssetsMissing.name)
                 }

@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import java.util.Properties
 import javax.inject.Inject
 import org.gradle.process.ExecOperations
@@ -85,6 +86,24 @@ abstract class AlignApk @Inject constructor(private val exec: ExecOperations) : 
         signed.copyTo(file, overwrite = true)
         signed.delete()
         File(signed.path + ".idsig").delete()
+        verifyAligned(File(tools, "zipalign"), file)
+    }
+
+    /** Fails the build unless every stored entry, the model above all, is 32-byte aligned. */
+    private fun verifyAligned(zipalign: File, file: File) {
+        val out = ByteArrayOutputStream()
+        val result = exec.exec {
+            commandLine(zipalign.path, "-c", "-v", "32", file.path)
+            standardOutput = out
+            isIgnoreExitValue = true
+        }
+        val model = out.toString().lines().firstOrNull { "models/default.gguf" in it }
+        if (result.exitValue != 0 || model == null || "BAD" in model) {
+            throw GradleException(
+                "${file.name} is not 32-byte aligned (model entry: ${model ?: "missing"}); " +
+                    "llama.cpp could not map the model in place."
+            )
+        }
     }
 }
 
@@ -212,7 +231,11 @@ androidComponents {
                 // Nothing to re-sign without a key (CI builds no pack).
                 onlyIf { hasKey }
             }
+        // Runs after packaging; assembling finishes with it and installing waits for it, because
+        // the 4-byte-aligned AGP output would give a pack whose model is read into memory.
+        align.configure { dependsOn("package$taskSuffix") }
         tasks.matching { it.name == "assemble$taskSuffix" }.configureEach { finalizedBy(align) }
+        tasks.matching { it.name == "install$taskSuffix" }.configureEach { dependsOn(align) }
     }
 }
 

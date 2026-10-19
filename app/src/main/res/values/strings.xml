@@ -480,6 +480,8 @@
     <string name="lm_status_error_file">The model file is missing or can\'t be read. Choose another model or import it again.</string>
     <string name="lm_status_error_load">The model could not be loaded. It may be damaged or not a model this version can run.</string>
     <string name="lm_status_error_memory">The model needs more memory than the phone could give. Choose a smaller model.</string>
+    <string name="lm_status_error_cpu">This phone\'s processor isn\'t supported by the language model.</string>
+    <string name="lm_status_error_crashed">This model crashed while loading. Choose another model or reinstall the neural pack.</string>
     <string name="lm_status_error_other">The language model engine reported a problem and is not running.</string>
     <string name="lm_rerank">Rerank suggestions</string>
     <string name="lm_rerank_summary">Let the model reorder suggestions and autocorrections.</string>
