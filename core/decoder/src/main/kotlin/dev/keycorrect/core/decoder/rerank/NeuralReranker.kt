@@ -1,5 +1,7 @@
 package dev.keycorrect.core.decoder.rerank
 
+import dev.keycorrect.core.engineapi.Candidate
+import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import java.util.concurrent.Executor
@@ -46,7 +48,10 @@ fun interface PhraseGenerator {
  * Typed text is never logged here.
  *
  * @param lmStrength the user's LM strength setting, read per call (0 switches the re-ranker off).
- * @param phraseGenerator reserved for phrase completion; unused by the re-ranker itself.
+ * @param phraseGenerator completes the top suggestion with a few words (the GENERATE tier), used
+ *   when [phrasesEnabled] says so: after the rerank, within [PHRASE_DEADLINE_MS], on the same
+ *   scorer thread; the words become the result's phrase.
+ * @param phrasesEnabled the user's phrase-suggestion setting, read per call.
  * @param lmWeight scale of the bonus against the classic fused score.
  * @param deadlineMs how long [refine] waits for the scorer before keeping the classic result.
  * @param maxTexts the most texts (literal plus candidates) sent to the scorer in one call.
@@ -62,6 +67,7 @@ class NeuralReranker(
     private val scorerExecutor: Executor,
     private val lmStrength: () -> Float,
     val phraseGenerator: PhraseGenerator? = null,
+    private val phrasesEnabled: () -> Boolean = { false },
     private val lmWeight: Float = LM_WEIGHT,
     private val deadlineMs: Long = RERANK_DEADLINE_MS,
     private val maxTexts: Int = MAX_TEXTS,
@@ -77,41 +83,62 @@ class NeuralReranker(
         stale: () -> Boolean,
         redecode: (PredictRequest) -> PredictResult,
     ): PredictResult? {
-        if (!request.engineAllowed) return null
-        val strength = lmStrength()
-        if (!(strength > 0f) || !strength.isFinite()) return null
+        val strength = strengthFor(request) ?: return null
         if (busy.get()) return null // a late answer is still running; don't decode for nothing
         val scored = wideResult(request, result, stale, redecode) ?: return null
         val texts = textsToScore(scored)
         if (texts.size < 2) return null // one text has nothing to be compared with
         val context = lastWords(request.context.before, contextWords)
 
-        val job = startScoring(context, texts) ?: return null
-        val lp = awaitScores(job, stale) ?: return null
+        val job = start { scorer.score(context, texts, deadlineMs) } ?: return null
+        val lp = await(job, deadlineMs, stale) ?: return null
         if (lp.size != texts.size || lp.any { !it.isFinite() }) return null
         val mean = lp.average().toFloat()
         val bonus = HashMap<String, Float>(texts.size * 2)
         for (i in texts.indices) bonus[texts[i]] = strength * lmWeight * (lp[i] - mean)
         if (stale()) return null
         val refined = redecode(request.copy(lmBonus = bonus))
-        return if (stale()) null else refined
+        if (stale()) return null
+        return withPhrase(refined, context, stale) ?: refined
     }
 
+    /** The LM strength to apply to [request], or null when it may not or need not be reranked. */
+    private fun strengthFor(request: PredictRequest): Float? =
+        lmStrength().takeIf { request.engineAllowed && it > 0f && it.isFinite() }
+
     /**
-     * Hands the texts to the scorer thread; null when a call is in flight or the thread is gone.
+     * [result] with a phrase from the [phraseGenerator] completing its top suggestion, or null when
+     * phrases are off, there is no answer in time, or the answer isn't a few plain words.
      */
+    @Suppress("ReturnCount") // guard clauses
+    private fun withPhrase(
+        result: PredictResult,
+        context: String,
+        stale: () -> Boolean,
+    ): PredictResult? {
+        val generator = phraseGenerator ?: return null
+        if (!phrasesEnabled()) return null
+        val top = result.candidates.firstOrNull()?.takeIf { !it.isPhrase }?.text ?: return null
+        val job = start { generator.complete(context, top, PHRASE_DEADLINE_MS) } ?: return null
+        val words = await(job, PHRASE_DEADLINE_MS, stale)?.let(::phraseWords) ?: return null
+        if (stale()) return null
+        val phrase = Candidate("$top $words", 0f, CandidateSource.Engine, isPhrase = true)
+        return result.copy(phrase = phrase)
+    }
+
+    /** Runs [call] on the scorer thread; null when a call is in flight or the thread is gone. */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     // a failing scorer or a closed executor just means no answer (never log text)
-    private fun startScoring(context: String, texts: List<String>): Job? {
+    private fun <T : Any> start(call: () -> T?): Job<T>? {
         if (!busy.compareAndSet(false, true)) return null
-        val started = Job()
-        var job: Job? = started
+        val started = Job<T>()
+        var job: Job<T>? = started
         try {
             scorerExecutor.execute {
                 try {
-                    started.scores =
+                    started.answer =
                         try {
-                            scorer.score(context, texts, deadlineMs)
+                            call()
                         } catch (e: Exception) {
                             null
                         }
@@ -142,15 +169,16 @@ class NeuralReranker(
         return if (stale()) null else wide
     }
 
-    private class Job {
+    private class Job<T : Any> {
         @Volatile var done = false
 
-        @Volatile var scores: FloatArray? = null
+        @Volatile var answer: T? = null
     }
 
+    /** [job]'s answer, polled in [POLL_MS] steps; null when [stale] or after [waitMs]. */
     @Suppress("ReturnCount") // deadline / stale exits
-    private fun awaitScores(job: Job, stale: () -> Boolean): FloatArray? {
-        val deadline = System.nanoTime() + deadlineMs * NANOS_PER_MS
+    private fun <T : Any> await(job: Job<T>, waitMs: Long, stale: () -> Boolean): T? {
+        val deadline = System.nanoTime() + waitMs * NANOS_PER_MS
         while (!job.done) {
             if (stale() || System.nanoTime() >= deadline) return null
             try {
@@ -160,7 +188,7 @@ class NeuralReranker(
                 return null
             }
         }
-        return job.scores
+        return job.answer
     }
 
     /** The literal (if any) and the candidates: distinct non-blank texts, at most [maxTexts]. */
@@ -175,6 +203,30 @@ class NeuralReranker(
     }
 
     companion object {
+        /** How long the decoder thread waits for a phrase after the rerank. */
+        const val PHRASE_DEADLINE_MS = 120L
+
+        /** The most words a generated phrase adds after the top suggestion. */
+        const val MAX_PHRASE_WORDS = 3
+
+        /**
+         * The first [MAX_PHRASE_WORDS] plain words of [generated], stopping at the first word that
+         * ends a sentence or clause (its punctuation dropped); null when none is usable.
+         */
+        internal fun phraseWords(generated: String): String? {
+            val out = ArrayList<String>(MAX_PHRASE_WORDS)
+            for (raw in generated.trim().split(WHITESPACE).take(MAX_PHRASE_WORDS)) {
+                val word = raw.trimEnd { it in CLAUSE_END }
+                val plain = word.isNotEmpty() && word.all { it.isLetter() || it == '\'' }
+                if (plain) out.add(word)
+                if (!plain || word.length != raw.length) break
+            }
+            return out.takeIf { it.isNotEmpty() }?.joinToString(" ")
+        }
+
+        private val WHITESPACE = Regex("\\s+")
+        private const val CLAUSE_END = ".,!?;:"
+
         /**
          * Default for how long the decoder thread waits for the scorer before keeping the classic
          * result.

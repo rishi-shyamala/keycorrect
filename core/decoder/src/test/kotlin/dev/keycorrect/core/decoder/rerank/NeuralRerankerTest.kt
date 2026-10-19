@@ -408,4 +408,47 @@ class NeuralRerankerTest {
         release.countDown()
         assertThat(decodes.get()).isEqualTo(0)
     }
+
+    // ------------------------------------------------------------------ phrases (GENERATE)
+
+    private val flatScorer = CandidateScorer { _, c, _ -> FloatArray(c.size) { -it.toFloat() } }
+
+    private fun phraseReranker(enabled: Boolean, generator: PhraseGenerator) =
+        NeuralReranker(flatScorer, pool, { 1f }, generator, phrasesEnabled = { enabled })
+
+    @Test
+    fun aGeneratedPhraseCompletesTheTopSuggestion() {
+        var seen: Pair<String, String>? = null
+        val r =
+            phraseReranker(true) { context, top, _ ->
+                    seen = context to top
+                    " world, how are you"
+                }
+                .run()
+        assertThat(seen).isEqualTo("thank you" to "redecoded")
+        assertThat(r!!.phrase!!.text).isEqualTo("redecoded world")
+        assertThat(r.phrase!!.isPhrase).isTrue()
+        assertThat(r.phrase!!.source).isEqualTo(CandidateSource.Engine)
+    }
+
+    @Test
+    fun phrasesOffOrNoAnswerKeepTheRerankedResult() {
+        val calls = AtomicInteger()
+        val off = phraseReranker(false) { _, _, _ -> "x".also { calls.incrementAndGet() } }.run()
+        assertThat(off).isSameInstanceAs(redecoded)
+        assertThat(calls.get()).isEqualTo(0)
+        val none = phraseReranker(true) { _, _, _ -> null }.run()
+        assertThat(none).isSameInstanceAs(redecoded)
+        val junk = phraseReranker(true) { _, _, _ -> "!!! 42" }.run()
+        assertThat(junk!!.phrase).isNull()
+    }
+
+    @Test
+    fun phraseWordsStopAtPunctuationAndCapAtThree() {
+        assertThat(NeuralReranker.phraseWords(" you are so kind today")).isEqualTo("you are so")
+        assertThat(NeuralReranker.phraseWords("you. Then")).isEqualTo("you")
+        assertThat(NeuralReranker.phraseWords("don't worry")).isEqualTo("don't worry")
+        assertThat(NeuralReranker.phraseWords("  ")).isNull()
+        assertThat(NeuralReranker.phraseWords("2 cats")).isNull()
+    }
 }

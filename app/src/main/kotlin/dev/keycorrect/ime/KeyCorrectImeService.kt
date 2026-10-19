@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import dev.keycorrect.core.designsystem.KeyCorrectTheme
 import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
@@ -65,6 +66,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                         Thread(task, "kc-rerank").apply { isDaemon = true }
                     },
                     lmStrength = { settingsFlow.value.lmStrength },
+                    phraseGenerator = neuralHost,
+                    phrasesEnabled = { settingsFlow.value.neuralPhrases },
                 ),
         )
     }

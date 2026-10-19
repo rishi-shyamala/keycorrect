@@ -148,6 +148,12 @@ data class AutocorrectConfig(
      */
     val nonWordTieRule: Boolean = true,
     /**
+     * Whether a language-model rerank bonus (`PredictRequest.lmBonus`) may autocorrect a word that
+     * is in the dictionary or the user's words. Off: the model only reorders suggestions and helps
+     * choose among corrections of non-words (docs/PHASE7.md, "Eval").
+     */
+    val lmReplacesRealWords: Boolean = false,
+    /**
      * Unknown literal only: if the top two complete-word candidates are within this many ln units
      * of each other the pick between them is random.
      */

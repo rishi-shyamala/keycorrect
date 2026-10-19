@@ -425,7 +425,18 @@ class ClassicEngine(
             ranked.sortWith(RANK_ORDER)
         }
         if (request.lmBonus.isNotEmpty()) {
-            literal = literal.withBonus(request.lmBonus)
+            literal =
+                if (
+                    (literalNode >= 0 || literalIsUser) && !config.autocorrect.lmReplacesRealWords
+                ) {
+                    // A real word keeps at least the best candidate's bonus: the model may reorder
+                    // the suggestions but never talk the autocorrect out of a correct spelling.
+                    val best = request.lmBonus.values.filter { it.isFinite() }.maxOrNull() ?: 0f
+                    val own = request.lmBonus[text]?.takeIf { it.isFinite() } ?: 0f
+                    literal.withScore(literal.score + maxOf(own, best))
+                } else {
+                    literal.withBonus(request.lmBonus)
+                }
             applyBonus(ranked, request.lmBonus)
         }
         if (literalNode < 0 && !literalIsUser) addContraction(key, text, literal, ranked)

@@ -4,6 +4,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import dev.keycorrect.core.decoder.rerank.CandidateScorer
+import dev.keycorrect.core.decoder.rerank.PhraseGenerator
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.neural.AndroidPluginSource
 import dev.keycorrect.neural.EngineClient
@@ -29,7 +31,7 @@ internal class NeuralHost(
     private val context: Context,
     private val modelStore: ModelStore,
     private val plugins: EnginePlugins = EnginePlugins(AndroidPluginSource(context)),
-) : CandidateScorer {
+) : CandidateScorer, PhraseGenerator {
     @Volatile private var client: EngineClient? = null
     @Volatile private var settings = KeyboardSettings()
     private var target: EngineTarget = EngineTarget.None
@@ -69,6 +71,9 @@ internal class NeuralHost(
         unbind()
     }
 
+    override fun complete(context: String, top: String, timeoutMs: Long): String? =
+        client?.generate("$context $top".trimStart(), PHRASE_TOKENS, timeoutMs)
+
     override fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? =
         client?.score(context, candidates, timeoutMs)
 
@@ -107,6 +112,9 @@ internal class NeuralHost(
         )
 
     private companion object {
+        /** Tokens generated for a phrase: about three words. */
+        const val PHRASE_TOKENS = 8
+
         const val IDLE_UNBIND_MS = 2 * 60 * 1000L
     }
 }
