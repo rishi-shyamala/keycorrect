@@ -63,6 +63,8 @@ include(":feature:keyboard-ui")
 
 include(":feature:voice-sherpa")
 
+include(":neuralpack")
+
 include(":tools:dictbuild")
 
 include(":tools:emojibuild")
