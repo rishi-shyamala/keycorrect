@@ -76,6 +76,9 @@ abstract class AlignApk @Inject constructor(private val exec: ExecOperations) : 
                 "true",
                 "--v4-signing-enabled",
                 "false",
+                // Otherwise apksigner re-aligns stored files to 4 bytes, undoing zipalign's 32.
+                "--alignment-preserved",
+                "true",
                 "--out",
                 signed.path,
                 tmp.path,
