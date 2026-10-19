@@ -1,4 +1,4 @@
-package dev.keycorrect.ime
+package dev.keycorrect.core.decoder.rerank
 
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.engineapi.Candidate
@@ -54,8 +54,23 @@ class NeuralRerankerTest {
 
     private fun reranker(
         strength: Float = 1f,
+        lmWeight: Float = NeuralReranker.LM_WEIGHT,
+        deadlineMs: Long = NeuralReranker.RERANK_DEADLINE_MS,
+        maxTexts: Int = NeuralReranker.MAX_TEXTS,
+        contextWords: Int = NeuralReranker.CONTEXT_WORDS,
+        poolSize: Int = 0,
         scorer: CandidateScorer,
-    ) = NeuralReranker(scorer, pool, { strength })
+    ) =
+        NeuralReranker(
+            scorer,
+            pool,
+            { strength },
+            lmWeight = lmWeight,
+            deadlineMs = deadlineMs,
+            maxTexts = maxTexts,
+            contextWords = contextWords,
+            poolSize = poolSize,
+        )
 
     private fun NeuralReranker.run(
         request: PredictRequest = request(),
@@ -265,5 +280,131 @@ class NeuralRerankerTest {
         assertThat(NeuralReranker.lastWords("a b c d", 2)).isEqualTo("c d")
         assertThat(NeuralReranker.lastWords("a  b\n c ", 3)).isEqualTo("a  b\n c")
         assertThat(NeuralReranker.lastWords("   ", 3)).isEqualTo("")
+    }
+
+    @Test
+    fun theTunablesAreConstructorParameters() {
+        val seen = mutableListOf<Triple<String, List<String>, Long>>()
+        val r =
+            reranker(lmWeight = 2f, deadlineMs = 900, maxTexts = 2, contextWords = 3) { ctx, c, t ->
+                seen += Triple(ctx, c, t)
+                floatArrayOf(-1f, -3f)
+            }
+        var bonus: Map<String, Float>? = null
+        r.run(request(before = "a b c d e ")) {
+            bonus = it.lmBonus
+            redecoded
+        }
+        assertThat(seen.single().first).isEqualTo("c d e")
+        assertThat(seen.single().second).containsExactly("helli", "hello").inOrder()
+        assertThat(seen.single().third).isEqualTo(900L)
+        assertThat(bonus!!["helli"]).isWithin(1e-5f).of(2f * 1f)
+        assertThat(bonus!!["hello"]).isWithin(1e-5f).of(2f * -1f)
+    }
+
+    private val wide = result("helli", "hello", "help", "hell", "hallo", "hull")
+
+    @Test
+    fun aPoolRedecodesWiderFirstAndScoresTheWiderResult() {
+        val requests = mutableListOf<PredictRequest>()
+        var texts: List<String>? = null
+        val r =
+            reranker(poolSize = 8) { _, c, _ ->
+                texts = c
+                FloatArray(c.size) { -it.toFloat() }
+            }
+        val out =
+            r.run {
+                requests += it
+                if (it.lmBonus.isEmpty()) wide else redecoded
+            }
+        assertThat(out).isSameInstanceAs(redecoded)
+        assertThat(requests).hasSize(2)
+        // First the wide decode without a bonus, then the final one with the original size.
+        assertThat(requests[0].maxCandidates).isEqualTo(8)
+        assertThat(requests[0].lmBonus).isEmpty()
+        assertThat(requests[1].maxCandidates).isEqualTo(request().maxCandidates)
+        assertThat(requests[1].lmBonus.keys)
+            .containsExactly("helli", "hello", "help", "hell", "hallo", "hull")
+        assertThat(texts).containsExactly("helli", "hello", "help", "hell", "hallo", "hull").inOrder()
+    }
+
+    @Test
+    fun noPoolScoresOnlyTheClassicResultAndDecodesOnce() {
+        var texts: List<String>? = null
+        val requests = mutableListOf<PredictRequest>()
+        val r =
+            reranker(poolSize = 0) { _, c, _ ->
+                texts = c
+                FloatArray(c.size)
+            }
+        r.run {
+            requests += it
+            redecoded
+        }
+        assertThat(texts).containsExactly("helli", "hello", "help").inOrder()
+        assertThat(requests).hasSize(1)
+    }
+
+    @Test
+    fun aPoolNotWiderThanTheRequestAddsNoDecode() {
+        val requests = mutableListOf<PredictRequest>()
+        val r = reranker(poolSize = request().maxCandidates) { _, c, _ -> FloatArray(c.size) }
+        r.run {
+            requests += it
+            redecoded
+        }
+        assertThat(requests).hasSize(1)
+    }
+
+    @Test
+    fun aPoolIsStillCappedAtMaxTexts() {
+        var texts: List<String>? = null
+        val r =
+            reranker(poolSize = 8, maxTexts = 4) { _, c, _ ->
+                texts = c
+                FloatArray(c.size)
+            }
+        r.run { if (it.lmBonus.isEmpty()) wide else redecoded }
+        assertThat(texts).containsExactly("helli", "hello", "help", "hell").inOrder()
+    }
+
+    @Test
+    fun aPoolDecodeThatTurnsStaleStopsBeforeTheScorer() {
+        val calls = AtomicInteger()
+        val r =
+            reranker(poolSize = 8) { _, c, _ ->
+                calls.incrementAndGet()
+                FloatArray(c.size)
+            }
+        var stale = false
+        val out =
+            r.run(stale = { stale }) {
+                stale = true
+                wide
+            }
+        assertThat(out).isNull()
+        assertThat(calls.get()).isEqualTo(0)
+    }
+
+    @Test
+    fun aPoolDoesNotDecodeWhileTheScorerIsStillBusy() {
+        val release = CountDownLatch(1)
+        val r =
+            reranker(poolSize = 8) { _, c, _ ->
+                release.await(5, TimeUnit.SECONDS)
+                FloatArray(c.size)
+            }
+        assertThat(r.run { wide }).isNull() // deadline; the call keeps running
+        val decodes = AtomicInteger()
+        assertThat(
+                r.run {
+                    decodes.incrementAndGet()
+                    wide
+                }
+            )
+            .isNull()
+        release.countDown()
+        assertThat(decodes.get()).isEqualTo(0)
     }
 }

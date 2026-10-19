@@ -18,4 +18,5 @@ dependencies {
     implementation(project(":core:dictionary"))
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
+    implementation(project(":core:llama"))
 }

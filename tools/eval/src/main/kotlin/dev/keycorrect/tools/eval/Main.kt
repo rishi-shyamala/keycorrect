@@ -55,7 +55,13 @@ class EvalMain(private val o: Options) {
         WhatIfPredictor(Predictor { engine.predictNow(it) }, dictionary, o.whatIf)
     }
 
+    private val rerankArm: RerankArm? =
+        if (o.rerankModel == null) null else RerankArm(o, evaluator, episode, ::classicPredictor)
+
+    private fun classicPredictor(): Predictor = factory(baseConfig)()
+
     fun run() {
+        require(o.rerankModel == null || !o.sweep) { "--rerank cannot be combined with --sweep" }
         Files.createDirectories(o.out)
         val started = System.nanoTime()
         val raw =
@@ -90,7 +96,8 @@ class EvalMain(private val o: Options) {
         if (recommended != null)
             configs["recommended"] = ConfigOverrides.apply(baseConfig, recommended)
         for ((name, config) in configs) {
-            val result = evaluator.evaluate(sentences, episode, factory(config))
+            val result =
+                evaluator.evaluate(sentences, episode, factory(config), o.rerankModel != null)
             val latency = latencyFor(sentences, config)
             val title = "Results: $name" + (if (name == "recommended") " ${recommended}" else "")
             val text = Report.text(title, result.metrics, o.nextWord, latency)
@@ -104,6 +111,14 @@ class EvalMain(private val o: Options) {
             if (o.failures > 0) {
                 val file = if (configs.size == 1) "failures.csv" else "failures_$name.csv"
                 Files.writeString(o.out.resolve(file), Report.failuresCsv(result.failures))
+            }
+            if (rerankArm != null && name == "run") {
+                val rerank = rerankArm.run(sentences, result)
+                println(rerank.text)
+                report.append(rerank.text).append('\n')
+                json["rerank"] = rerank.json
+                Files.writeString(o.out.resolve("rerank_sweep.csv"), rerank.sweepCsv)
+                for ((file, csv) in rerank.failuresCsv) Files.writeString(o.out.resolve(file), csv)
             }
         }
         val seconds = (System.nanoTime() - started) / 1e9
@@ -163,7 +178,19 @@ class EvalMain(private val o: Options) {
             "keyboard" to
                 linkedMapOf("widthPx" to keyboard.widthPx, "heightPx" to keyboard.heightPx),
             "label" to o.label,
-        )
+        ) +
+            (if (o.rerankModel == null) emptyMap()
+            else
+                mapOf(
+                    "rerank" to
+                        linkedMapOf(
+                            "model" to o.rerankModel.fileName.toString(),
+                            "lmWeights" to o.lmWeights,
+                            "pools" to o.pools,
+                            "contextWords" to o.rerankContextWords,
+                            "deadlineMs" to o.rerankDeadlineMs,
+                        )
+                ))
 
     private fun latencyFor(
         sentences: List<ParsedSentence>,

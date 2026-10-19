@@ -268,6 +268,18 @@ class NextWordStats {
         get() = if (phrasesOffered == 0L) 0.0 else phraseWordsOffered.toDouble() / phrasesOffered
 }
 
+/**
+ * What one typed word ended as; recorded only for the rerank comparison (opt-in, see
+ * [Metrics.decisions]). Held in memory, never written out.
+ */
+class WordDecision(
+    val sentence: Int,
+    val token: Int,
+    val literalCorrect: Boolean,
+    val finalCorrect: Boolean,
+    val committed: String,
+)
+
 /** One row of the failures CSV. */
 class FailureRow(
     val sentence: Int,
@@ -292,6 +304,9 @@ class Metrics {
     var sentences = 0L
     var skippedTokens = 0L
 
+    /** Per-word outcomes in arrival order; null (the default) when nobody asked for them. */
+    var decisions: ArrayList<WordDecision>? = null
+
     fun record(o: WordOutcome) {
         all.add(o)
         byLength.getValue(lengthBucket(o.target.length)).add(o)
@@ -309,6 +324,7 @@ class Metrics {
         nextWord.merge(o.nextWord)
         sentences += o.sentences
         skippedTokens += o.skippedTokens
+        o.decisions?.let { decisions?.addAll(it) }
     }
 
     companion object {

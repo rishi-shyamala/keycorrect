@@ -1,4 +1,4 @@
-package dev.keycorrect.ime
+package dev.keycorrect.core.decoder.rerank
 
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
@@ -34,8 +34,8 @@ fun interface PhraseGenerator {
  *
  * [refine] runs on the decoder thread right after the classic result was published. It hands the
  * literal and the candidates to the [scorer] on [scorerExecutor] and polls for the answer in
- * [POLL_MS] steps, giving up when the input is [stale] or after [RERANK_DEADLINE_MS]. On success it
- * turns the log-probabilities into `lmBonus = lmStrength * LM_WEIGHT * (lp - mean lp)` (so a
+ * [POLL_MS] steps, giving up when the input is [stale] or after [deadlineMs]. On success it
+ * turns the log-probabilities into `lmBonus = lmStrength * lmWeight * (lp - mean lp)` (so a
  * uniformly likely or unlikely set changes nothing) and re-decodes the request with it; the engine
  * adds the bonus before ranking and the autocorrect decision. Only one scorer call is in flight at
  * a time: while one is still running (a late answer after a deadline), [refine] returns null at
@@ -47,12 +47,25 @@ fun interface PhraseGenerator {
  *
  * @param lmStrength the user's LM strength setting, read per call (0 switches the re-ranker off).
  * @param phraseGenerator reserved for phrase completion; unused by the re-ranker itself.
+ * @param lmWeight scale of the bonus against the classic fused score.
+ * @param deadlineMs how long [refine] waits for the scorer before keeping the classic result.
+ * @param maxTexts the most texts (literal plus candidates) sent to the scorer in one call.
+ * @param contextWords the scorer sees about this many words before the cursor.
+ * @param poolSize when above the request's `maxCandidates`, [refine] first re-decodes the request
+ *   with `maxCandidates = poolSize`, so the scorer also sees candidates below the classic strip; the
+ *   final re-decode still uses the original `maxCandidates` (0 scores only what the classic result
+ *   shows).
  */
 class NeuralReranker(
     private val scorer: CandidateScorer,
     private val scorerExecutor: Executor,
     private val lmStrength: () -> Float,
     val phraseGenerator: PhraseGenerator? = null,
+    private val lmWeight: Float = LM_WEIGHT,
+    private val deadlineMs: Long = RERANK_DEADLINE_MS,
+    private val maxTexts: Int = MAX_TEXTS,
+    private val contextWords: Int = CONTEXT_WORDS,
+    private val poolSize: Int = 0,
 ) {
     private val busy = AtomicBoolean(false)
 
@@ -67,9 +80,15 @@ class NeuralReranker(
         if (!request.engineAllowed) return null
         val strength = lmStrength()
         if (!(strength > 0f) || !strength.isFinite()) return null
-        val texts = textsToScore(result)
+        if (busy.get()) return null // a late answer is still running; don't decode for nothing
+        var scored = result
+        if (poolSize > request.maxCandidates) {
+            scored = redecode(request.copy(maxCandidates = poolSize))
+            if (stale()) return null
+        }
+        val texts = textsToScore(scored)
         if (texts.size < 2) return null // one text has nothing to be compared with
-        val context = lastWords(request.context.before, CONTEXT_WORDS)
+        val context = lastWords(request.context.before, contextWords)
 
         if (!busy.compareAndSet(false, true)) return null
         val job = Job()
@@ -78,7 +97,7 @@ class NeuralReranker(
                 try {
                     job.scores =
                         try {
-                            scorer.score(context, texts, RERANK_DEADLINE_MS)
+                            scorer.score(context, texts, deadlineMs)
                         } catch (e: Exception) {
                             null
                         }
@@ -96,7 +115,7 @@ class NeuralReranker(
         if (lp.size != texts.size || lp.any { !it.isFinite() }) return null
         val mean = lp.average().toFloat()
         val bonus = HashMap<String, Float>(texts.size * 2)
-        for (i in texts.indices) bonus[texts[i]] = strength * LM_WEIGHT * (lp[i] - mean)
+        for (i in texts.indices) bonus[texts[i]] = strength * lmWeight * (lp[i] - mean)
         if (stale()) return null
         val refined = redecode(request.copy(lmBonus = bonus))
         return if (stale()) null else refined
@@ -110,7 +129,7 @@ class NeuralReranker(
 
     @Suppress("ReturnCount") // deadline / stale exits
     private fun awaitScores(job: Job, stale: () -> Boolean): FloatArray? {
-        val deadline = System.nanoTime() + RERANK_DEADLINE_MS * NANOS_PER_MS
+        val deadline = System.nanoTime() + deadlineMs * NANOS_PER_MS
         while (!job.done) {
             if (stale() || System.nanoTime() >= deadline) return null
             try {
@@ -123,28 +142,28 @@ class NeuralReranker(
         return job.scores
     }
 
-    /** The literal (if any) and the candidates: distinct non-blank texts, at most [MAX_TEXTS]. */
+    /** The literal (if any) and the candidates: distinct non-blank texts, at most [maxTexts]. */
     private fun textsToScore(result: PredictResult): List<String> {
         val out = LinkedHashSet<String>()
         result.literal?.text?.let { if (it.isNotBlank()) out.add(it) }
         for (c in result.candidates) {
-            if (out.size >= MAX_TEXTS) break
+            if (out.size >= maxTexts) break
             if (c.text.isNotBlank()) out.add(c.text)
         }
         return out.toList()
     }
 
     companion object {
-        /** How long the decoder thread waits for the scorer before keeping the classic result. */
+        /** Default for how long the decoder thread waits for the scorer before keeping the classic result. */
         const val RERANK_DEADLINE_MS = 40L
 
-        /** Scale of the language-model bonus against the classic fused score; tuned on the eval. */
+        /** Default scale of the language-model bonus against the classic fused score. */
         const val LM_WEIGHT = 1.0f
 
-        /** The most texts sent to the scorer in one call. */
+        /** Default for the most texts sent to the scorer in one call. */
         const val MAX_TEXTS = 16
 
-        /** The scorer sees about this many words before the cursor. */
+        /** Default for how many words before the cursor the scorer sees. */
         const val CONTEXT_WORDS = 40
 
         private const val POLL_MS = 5L

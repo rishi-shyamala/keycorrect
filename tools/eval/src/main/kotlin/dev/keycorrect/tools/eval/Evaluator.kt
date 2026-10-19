@@ -4,7 +4,12 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
-class EvalResult(val metrics: Metrics, val failures: List<FailureRow>)
+class EvalResult(
+    val metrics: Metrics,
+    val failures: List<FailureRow>,
+    /** Per-word outcomes ordered by (sentence, token); empty unless asked for. */
+    val decisions: List<WordDecision> = emptyList(),
+)
 
 /**
  * Runs episodes over many sentences on several threads. Each worker owns a predictor (the engine
@@ -23,6 +28,7 @@ class Evaluator(
         sentences: List<ParsedSentence>,
         options: EpisodeOptions,
         predictorFactory: () -> Predictor,
+        recordDecisions: Boolean = false,
     ): EvalResult {
         val next = AtomicInteger(0)
         val workers = threads.coerceIn(1, maxOf(1, sentences.size))
@@ -32,7 +38,7 @@ class Evaluator(
                 List(workers) {
                     pool.submit(
                         Callable {
-                            val metrics = Metrics()
+                            val metrics = newMetrics(recordDecisions)
                             val failures = ArrayList<FailureRow>()
                             val runner =
                                 EpisodeRunner(
@@ -51,7 +57,7 @@ class Evaluator(
                         }
                     )
                 }
-            val total = Metrics()
+            val total = newMetrics(recordDecisions)
             val rows = ArrayList<FailureRow>()
             for (f in futures) {
                 val (m, r) = f.get()
@@ -63,9 +69,13 @@ class Evaluator(
                 total,
                 if (rows.size > options.failureLimit) rows.subList(0, options.failureLimit)
                 else rows,
+                total.decisions?.sortedWith(compareBy({ it.sentence }, { it.token })).orEmpty(),
             )
         } finally {
             pool.shutdown()
         }
     }
+
+    private fun newMetrics(recordDecisions: Boolean) =
+        Metrics().also { if (recordDecisions) it.decisions = ArrayList() }
 }
