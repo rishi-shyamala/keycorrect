@@ -8,7 +8,9 @@ import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.engineapi.TypingContext
 import org.junit.Test
 
-/** [PredictRequest.lmBonus]: added to the fused score before ranking and the autocorrect decision. */
+/**
+ * [PredictRequest.lmBonus]: added to the fused score before ranking and the autocorrect decision.
+ */
 class LmBonusTest {
     private val engine = ClassicEngine(TestDictionary.dictionary)
 

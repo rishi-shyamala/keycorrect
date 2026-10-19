@@ -21,8 +21,11 @@ fun interface Predictor {
      * null to keep [result]. Must give up quickly (a few tens of ms at most) and return null once
      * [stale] turns true. The default does nothing.
      */
-    fun refine(request: PredictRequest, result: PredictResult, stale: () -> Boolean): PredictResult? =
-        null
+    fun refine(
+        request: PredictRequest,
+        result: PredictResult,
+        stale: () -> Boolean,
+    ): PredictResult? = null
 
     /**
      * Decodes a swipe (docs/PHASE5.md), always on the decoder thread (previews and the final decode

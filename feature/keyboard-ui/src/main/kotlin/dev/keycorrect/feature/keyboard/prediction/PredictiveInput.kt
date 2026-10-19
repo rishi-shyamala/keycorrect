@@ -1593,8 +1593,8 @@ internal class PredictiveInput(
 
     /**
      * Whether an optional engine (the neural re-ranker) may see this request: suggestions are on
-     * for the settings and the field, the field is not sensitive, the learning gate is open (so
-     * not incognito, not an e-mail/URL/address field) and neural re-ranking is switched on.
+     * for the settings and the field, the field is not sensitive, the learning gate is open (so not
+     * incognito, not an e-mail/URL/address field) and neural re-ranking is switched on.
      * Recorrection requests never ask for one.
      */
     private fun engineAllowed(): Boolean =

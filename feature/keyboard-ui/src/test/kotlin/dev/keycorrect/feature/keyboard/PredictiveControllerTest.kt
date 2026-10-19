@@ -1137,6 +1137,52 @@ class PredictiveControllerTest {
         assertThat(editor.composing).isEqualTo("x")
     }
 
+    // ------------------------------------------------------------------ engine gate
+
+    private fun engineAllowedFor(
+        profile: FieldProfile = textField,
+        settings: KeyboardSettings = KeyboardSettings(numberRow = false),
+    ): Boolean? {
+        start(profile, settings)
+        type("hel")
+        return predictor.requests.lastOrNull()?.engineAllowed
+    }
+
+    @Test
+    fun anEngineMayRefineOnlyWhereTheLearningGateAndTheSwitchAreOpen() {
+        assertThat(engineAllowedFor()).isTrue()
+    }
+
+    @Test
+    fun noEngineWhenNeuralRerankIsOff() {
+        assertThat(engineAllowedFor(settings = KeyboardSettings(neuralRerank = false))).isFalse()
+    }
+
+    @Test
+    fun noEngineInIncognitoOrWithLearningOff() {
+        assertThat(engineAllowedFor(settings = KeyboardSettings(incognito = true))).isFalse()
+        assertThat(engineAllowedFor(settings = KeyboardSettings(learningEnabled = false))).isFalse()
+    }
+
+    @Test
+    fun noEngineInAFieldThatForbidsLearning() {
+        assertThat(engineAllowedFor(textField.copy(learningEnabled = false))).isFalse()
+        val email =
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                0,
+            )
+        assertThat(engineAllowedFor(email.copy(suggestionsEnabled = true))).isFalse()
+    }
+
+    @Test
+    fun noEngineRequestInASensitiveFieldOrWithSuggestionsOff() {
+        val forced = textField.copy(sensitive = true, suggestionsEnabled = true)
+        assertThat(engineAllowedFor(forced)).isNull() // nothing is decoded at all
+        assertThat(engineAllowedFor(settings = KeyboardSettings(suggestionsEnabled = false)))
+            .isNull()
+    }
+
     private companion object {
         const val TEXT_CAPS = 0x4000
     }

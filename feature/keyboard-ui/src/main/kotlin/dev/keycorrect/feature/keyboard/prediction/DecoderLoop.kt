@@ -18,10 +18,10 @@ import java.util.concurrent.atomic.AtomicReference
  * also what the predictor's `stale` lambda checks, so a newer keystroke makes the running decode
  * give up early instead of making the user wait for it.
  *
- * Refinement: when a request has `engineAllowed`, the decoder thread calls [Predictor.refine]
- * right after the classic result is published, and a non-null answer for the still-current
- * sequence replaces it. The classic result is already [completed], so [resultForSeparator] never
- * waits for the refinement (it returns as soon as the current sequence has a result).
+ * Refinement: when a request has `engineAllowed`, the decoder thread calls [Predictor.refine] right
+ * after the classic result is published, and a non-null answer for the still-current sequence
+ * replaces it. The classic result is already [completed], so [resultForSeparator] never waits for
+ * the refinement (it returns as soon as the current sequence has a result).
  *
  * Separator policy ([resultForSeparator]): the main thread must never queue up behind the engine
  * lock that a background decode holds. The decoder thread publishes every finished result in
@@ -98,10 +98,11 @@ class DecoderLoop(
 
     /**
      * Gives the predictor a chance to improve the classic [result] that was just posted. Runs on
-     * the decoder thread after [completed] and the main-thread post, so a separator already has
-     * the classic answer and never waits for this; a newer event ends it early through the `stale`
+     * the decoder thread after [completed] and the main-thread post, so a separator already has the
+     * classic answer and never waits for this; a newer event ends it early through the `stale`
      * lambda. A better result replaces [completed] and is posted through the same [onResult].
      */
+    @Suppress("ReturnCount") // no predictor / no answer / stale
     private fun refine(
         request: PredictRequest,
         result: PredictResult,

@@ -347,4 +347,143 @@ class DecoderLoopTest {
             pool.shutdownNow()
         }
     }
+
+    // ------------------------------------------------------------------ refine
+
+    private fun allowed(seq: Long) = request(seq).copy(engineAllowed = true)
+
+    private fun res(seq: Long, text: String) =
+        PredictResult(
+            listOf(Candidate(text, 0f, CandidateSource.Dictionary)),
+            null,
+            null,
+            sequence = seq,
+        )
+
+    @Test
+    fun aRefinedResultReplacesTheClassicOneAndIsPostedAfterIt() {
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean) =
+                    res(request.sequence, "classic")
+
+                override fun refine(
+                    request: PredictRequest,
+                    result: PredictResult,
+                    stale: () -> Boolean,
+                ) = res(request.sequence, "refined")
+            }
+        val seq = loop.advance()
+        loop.submit(allowed(seq)) { delivered += it }
+        executor.runAll()
+        assertThat(delivered.map { it.candidates.single().text })
+            .containsExactly("classic", "refined")
+            .inOrder()
+        assertThat(loop.resultForSeparator(seq) { error("no decode") }?.candidates?.single()?.text)
+            .isEqualTo("refined")
+    }
+
+    @Test
+    fun refineIsOnlyAskedForWhenTheRequestAllowsAnEngine() {
+        var refines = 0
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean) =
+                    res(request.sequence, "classic")
+
+                override fun refine(
+                    request: PredictRequest,
+                    result: PredictResult,
+                    stale: () -> Boolean,
+                ): PredictResult? {
+                    refines++
+                    return null
+                }
+            }
+        loop.submit(request(loop.advance())) { delivered += it }
+        executor.runAll()
+        assertThat(refines).isEqualTo(0)
+        loop.submit(allowed(loop.advance())) { delivered += it }
+        executor.runAll()
+        assertThat(refines).isEqualTo(1)
+        assertThat(delivered).hasSize(2) // a null refine posts nothing more
+    }
+
+    @Test
+    fun aRefinedResultForOldInputIsDropped() {
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean) =
+                    res(request.sequence, "classic")
+
+                override fun refine(
+                    request: PredictRequest,
+                    result: PredictResult,
+                    stale: () -> Boolean,
+                ): PredictResult {
+                    loop.advance() // the user typed while the engine was thinking
+                    return res(request.sequence, "refined")
+                }
+            }
+        val seq = loop.advance()
+        loop.submit(allowed(seq)) { delivered += it }
+        executor.runAll()
+        assertThat(delivered.map { it.candidates.single().text }).containsExactly("classic")
+    }
+
+    @Test
+    fun aFailingRefineKeepsTheClassicResult() {
+        predictor =
+            object : Predictor {
+                override fun predict(request: PredictRequest, stale: () -> Boolean) =
+                    res(request.sequence, "classic")
+
+                override fun refine(
+                    request: PredictRequest,
+                    result: PredictResult,
+                    stale: () -> Boolean,
+                ): PredictResult = throw IllegalStateException("secret typed text")
+            }
+        val seq = loop.advance()
+        loop.submit(allowed(seq)) { delivered += it }
+        executor.runAll()
+        assertThat(delivered.map { it.candidates.single().text }).containsExactly("classic")
+        assertThat(loop.resultForSeparator(seq) { error("no decode") }?.sequence).isEqualTo(seq)
+    }
+
+    @Test
+    fun aSeparatorNeverWaitsForARefineInProgress() {
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val inRefine = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        try {
+            val threaded =
+                DecoderLoop(pool, { it.run() }, separatorWaitMs = 5_000) {
+                    object : Predictor {
+                        override fun predict(request: PredictRequest, stale: () -> Boolean) =
+                            res(request.sequence, "classic")
+
+                        override fun refine(
+                            request: PredictRequest,
+                            result: PredictResult,
+                            stale: () -> Boolean,
+                        ): PredictResult? {
+                            inRefine.countDown()
+                            release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                            return null
+                        }
+                    }
+                }
+            val seq = threaded.advance()
+            threaded.submit(allowed(seq)) { delivered += it }
+            assertThat(inRefine.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+            val start = System.nanoTime()
+            val r = threaded.resultForSeparator(seq) { error("must not decode here") }
+            assertThat(r?.candidates?.single()?.text).isEqualTo("classic")
+            assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(1_000L)
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
 }
