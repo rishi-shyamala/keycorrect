@@ -164,6 +164,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
                 neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
                 lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
+                neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
             )
         }
     }
@@ -221,6 +222,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_RERANK] = s.neuralRerank
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
+        this[NEURAL_MODEL] = s.neuralModel
     }
 
     private companion object {
@@ -276,6 +278,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEURAL_RERANK = booleanPreferencesKey("neural_rerank")
         val NEURAL_PHRASES = booleanPreferencesKey("neural_phrases")
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
+        val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -339,6 +342,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 EMOJI_SKIN_TONE.name,
                 CLIPBOARD_RETENTION.name,
                 VOICE_ENGINE.name,
+                NEURAL_MODEL.name,
             )
     }
 }

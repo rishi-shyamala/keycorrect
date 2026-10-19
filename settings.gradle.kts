@@ -41,6 +41,8 @@ include(":core:emoji")
 
 include(":core:engine-api")
 
+include(":core:engine-sdk")
+
 include(":core:ime")
 
 include(":core:input")
