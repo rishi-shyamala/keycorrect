@@ -146,6 +146,19 @@ class TransferTest {
     }
 
     @Test
+    fun theNeuralModelChoiceIsNeverTransferred() {
+        val s =
+            sourceState(
+                settings = mapOf("neural_model" to "0123456789abcdef", "key_height_dp" to 50)
+            )
+        assertThat(bundleOf(s).settings.values.keys).containsExactly("key_height_dp")
+        for (mode in ImportMode.entries) {
+            val o = ImportApplier.apply(local(), bundleOf(sourceState()), plan(mode))
+            assertThat(o.keepLocalSettings).contains("neural_model")
+        }
+    }
+
+    @Test
     fun invalidEntriesAreDroppedNotFatal() {
         val b = bundleOf(sourceState())
         val bad =
@@ -256,7 +269,7 @@ class TransferTest {
 
         assertThat(o.learning.touch.single().char).isEqualTo(97)
         assertThat(o.settings["key_height_dp"]).isEqualTo(60)
-        assertThat(o.keepLocalSettings).containsExactly("incognito")
+        assertThat(o.keepLocalSettings).containsExactly("incognito", "neural_model")
     }
 
     @Test

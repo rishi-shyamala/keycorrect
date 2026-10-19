@@ -233,6 +233,16 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun neuralModelDefaultsToThePackAndRoundTrips() = runTest {
+        assertThat(repo.settings.first().neuralModel).isEmpty()
+        repo.update { it.copy(neuralModel = "0123456789abcdef") }
+        assertThat(repo.settings.first().neuralModel).isEqualTo("0123456789abcdef")
+        assertThat(repo.exportValues()["neural_model"]).isEqualTo("0123456789abcdef")
+        repo.update { it.copy(neuralModel = "x".repeat(500)) }
+        assertThat(repo.settings.first().neuralModel).hasLength(64)
+    }
+
+    @Test
     fun oldVoiceEngineNamesMigrate() = runTest {
         store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
         assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)

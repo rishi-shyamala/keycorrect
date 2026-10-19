@@ -188,6 +188,12 @@ data class KeyboardSettings(
     val neuralPhrases: Boolean = false,
     /** How much the language model's opinion counts in the reranking, [LM_STRENGTH_RANGE]. */
     val lmStrength: Float = DEFAULT_LM_STRENGTH,
+    /**
+     * The imported model the language model runs (the id of an imported model, at most
+     * [NEURAL_MODEL_MAX_LENGTH] characters); empty = the neural pack's default. Never carried by
+     * backup or transfer.
+     */
+    val neuralModel: String = "",
 ) {
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
@@ -232,6 +238,7 @@ data class KeyboardSettings(
                     voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
                     else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
                 },
+            neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
             lmStrength =
                 if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
                 else lmStrength.coerceIn(LM_STRENGTH_RANGE),
@@ -268,6 +275,9 @@ data class KeyboardSettings(
         const val VOICE_AUTO_STOP_OFF = 0
         const val DEFAULT_VOICE_AUTO_STOP_SECONDS = 10
         val LM_STRENGTH_RANGE = 0f..1f
+
+        /** The longest stored model id; a longer value is cut. */
+        const val NEURAL_MODEL_MAX_LENGTH = 64
         const val DEFAULT_LM_STRENGTH = 0.5f
         private const val DEFAULT_SOUND_VOLUME = 0.5f
     }

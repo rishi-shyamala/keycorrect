@@ -48,12 +48,18 @@ class KeyCorrectApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        // The :engine process (NeuralEngineService) needs none of the keyboard's stores, and
+        // must never open the settings DataStore.
+        if (!isEngineProcess()) container = AppContainer(this)
     }
+
+    private fun isEngineProcess() = Application.getProcessName().endsWith(":engine")
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) container.onTrimMemory()
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && !isEngineProcess()) {
+            container.onTrimMemory()
+        }
     }
 }
 
