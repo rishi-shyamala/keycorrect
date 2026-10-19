@@ -53,6 +53,65 @@ class LlamaIntegrationTest {
     }
 
     @Test
+    fun manyLongCandidatesMatchOneAtATimeScoring() {
+        // 20 candidates of 25 words each (truncated to 12 tokens): several decode groups of <= 64
+        // rows.
+        val many =
+            (1..20).map { i -> (1..25).joinToString(" ") { WORDS[(it * i) % WORDS.size] + it } }
+        model.newSession().use { session ->
+            val all = session.score(CAT, many, TIMEOUT_MS)!!
+            val single = many.map { session.score(CAT, listOf(it), TIMEOUT_MS)!![0] }
+            assertThat(all.toList()).hasSize(20)
+            assertThat(all.all { it.isFinite() }).isTrue()
+            for (i in many.indices) assertThat(all[i]).isWithin(1e-2f).of(single[i])
+        }
+    }
+
+    @Test
+    fun candidatesAreTruncatedAtTwelveTokens() {
+        val head = (1..20).joinToString(" ") { "w$it" }
+        model.newSession().use { session ->
+            val scores =
+                session.score(CAT, listOf(head, "$head and then even more words"), TIMEOUT_MS)!!
+            // Both are cut after the same 12 tokens, so they score the same.
+            assertThat(scores[0]).isWithin(1e-3f).of(scores[1])
+            val short = session.score(CAT, listOf("w1 w2"), TIMEOUT_MS)!![0]
+            assertThat(scores[0]).isLessThan(short)
+        }
+    }
+
+    @Test
+    fun aTimeoutMidPrefillKeepsTheFinishedChunksAndTheNextCallIsWarm() {
+        model.newSession(nCtx = 2048).use { session ->
+            model.newSession(nCtx = 2048).use { fresh ->
+                val context = (1..450).joinToString(" ") { WORDS[it % WORDS.size] + (it % 11) }
+                // Both sessions are warmed up alike (threads, pages), so their chunk boundaries
+                // agree.
+                session.score("warm up", CANDIDATES, TIMEOUT_MS)
+                fresh.score("warm up", CANDIDATES, TIMEOUT_MS)
+                var expected: FloatArray? = null
+                val coldMs = timed { expected = fresh.score(context, CANDIDATES, TIMEOUT_MS) }
+                val limit = maxOf(1L, (coldMs * 0.4).toLong())
+                assertThat(session.score(context, CANDIDATES, limit)).isNull()
+                var after: FloatArray? = null
+                val retryMs = timed { after = session.score(context, CANDIDATES, TIMEOUT_MS) }
+                println(
+                    "prefill cold=%.1f ms abort after %d ms, retry=%.1f ms"
+                        .format(coldMs, limit, retryMs)
+                )
+                assertThat(after).isNotNull()
+                assertThat(after!!).usingTolerance(1e-3).containsExactly(expected!!)
+                // The retry only decodes what the aborted call did not finish.
+                assertThat(retryMs).isLessThan(coldMs * 0.9)
+                // And the cache now holds the whole context: an extension is cheap.
+                val extendedMs =
+                    bestOf(3) { session.score("$context again", CANDIDATES, TIMEOUT_MS) }
+                assertThat(extendedMs).isLessThan(coldMs * 0.5)
+            }
+        }
+    }
+
+    @Test
     fun zeroTimeoutReturnsNullAndTheSessionRecovers() {
         model.newSession().use { session ->
             assertThat(session.score(CAT, CANDIDATES, 0)).isNull()
@@ -102,8 +161,8 @@ class LlamaIntegrationTest {
 
     @Test
     fun aContextBeyondTheCapStillScores() {
-        model.newSession(nCtx = 128).use { session ->
-            val long = (1..400).joinToString(" ") { WORDS[it % WORDS.size] }
+        model.newSession(nCtx = 256).use { session ->
+            val long = (1..800).joinToString(" ") { WORDS[it % WORDS.size] }
             val first = session.score(long, CANDIDATES, TIMEOUT_MS)
             val second = session.score("$long more", CANDIDATES, TIMEOUT_MS)
             assertThat(first).isNotNull()

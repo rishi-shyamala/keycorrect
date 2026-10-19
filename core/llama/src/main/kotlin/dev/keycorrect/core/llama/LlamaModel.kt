@@ -19,13 +19,14 @@ class LlamaModel private constructor(private val backend: LlamaBackend, private 
 
     /**
      * A session with its own KV cache of [nCtx] tokens (the context is capped to the last half), on
-     * [nThreads] threads.
+     * [nThreads] threads. llama.cpp pads the cache to a multiple of 256, so [nCtx] is coerced to a
+     * multiple of 256 in [MIN_CTX]..[MAX_CTX] (rounded up, e.g. 300 gives 512): the session never
+     * ends up with a cache of a different size than the one asked for.
      */
     @Synchronized
     fun newSession(nCtx: Int = DEFAULT_CTX, nThreads: Int = DEFAULT_THREADS): LlamaSession {
-        require(nCtx >= MIN_CTX) { "nCtx must be at least $MIN_CTX" }
         require(nThreads >= 1) { "nThreads must be at least 1" }
-        val ctx = backend.newContext(requireOpen(), nCtx, nThreads)
+        val ctx = backend.newContext(requireOpen(), coerceCtx(nCtx), nThreads)
         if (ctx == 0L) throw LlamaException("could not create a llama context")
         return LlamaSession(backend, ctx, this).also { sessions.add(it) }
     }
@@ -60,7 +61,16 @@ class LlamaModel private constructor(private val backend: LlamaBackend, private 
         /** Default thread count of a session. */
         const val DEFAULT_THREADS = 4
 
-        private const val MIN_CTX = 16
+        /**
+         * Smallest and largest KV cache of a session, in tokens; sizes are multiples of [CTX_STEP].
+         */
+        const val MIN_CTX = 256
+        const val MAX_CTX = 2048
+        const val CTX_STEP = 256
+
+        /** [nCtx] rounded up to a multiple of [CTX_STEP] and clamped to [MIN_CTX]..[MAX_CTX]. */
+        fun coerceCtx(nCtx: Int): Int =
+            ((nCtx.coerceIn(MIN_CTX, MAX_CTX) + CTX_STEP - 1) / CTX_STEP) * CTX_STEP
 
         /** llama.cpp can map a file region only when the tensor data starts 32-byte aligned. */
         const val MMAP_ALIGNMENT = 32L
@@ -97,7 +107,9 @@ class LlamaModel private constructor(private val backend: LlamaBackend, private 
  * One llama context: a KV cache plus the scratch the scorer needs. **Not thread-safe**: use it from
  * one thread at a time (the keyboard keeps one session on its scorer thread) and never call [close]
  * while another thread is inside [score] or [generate]. After [close], every call throws
- * [IllegalStateException].
+ * [IllegalStateException]. The closed flag itself is safe to read and [close] safe to call from any
+ * thread (so a use-after-close check on another thread sees the right answer), but that is all:
+ * scoring stays single-threaded.
  *
  * The session remembers the tokens of the last context it scored, so a call whose context extends
  * the previous one (the usual case while typing) decodes only the new tokens.
@@ -105,9 +117,11 @@ class LlamaModel private constructor(private val backend: LlamaBackend, private 
 class LlamaSession
 internal constructor(
     private val backend: LlamaBackend,
-    private var handle: Long,
+    handle: Long,
     private val owner: LlamaModel,
 ) : AutoCloseable {
+    @Volatile private var handle: Long = handle
+
     /** True once [close] has been called. */
     val isClosed: Boolean
         get() = handle == 0L
@@ -137,9 +151,15 @@ internal constructor(
 
     /** Frees the context. Safe to call twice. */
     override fun close() {
-        if (handle == 0L) return
-        backend.freeContext(handle)
-        handle = 0L
+        // Free under this session's lock, forget outside it: LlamaModel.close holds the model's
+        // lock
+        // while it closes sessions, so taking the model's lock in here would invert the order.
+        synchronized(this) {
+            val h = handle
+            if (h == 0L) return
+            handle = 0L
+            backend.freeContext(h)
+        }
         owner.forget(this)
     }
 

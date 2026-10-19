@@ -40,7 +40,12 @@ namespace {
 constexpr int kMaxCandidateSeqs = 16;                   // candidates decoded per batch
 constexpr llama_seq_id kGenerateSeq = kMaxCandidateSeqs + 1;
 constexpr uint32_t kSeqMax = kGenerateSeq + 1;
-constexpr int kMaxCandidateTokens = 32;                 // longer candidates are truncated
+constexpr int kMaxCandidateTokens = 12;                 // longer candidates are truncated
+// n_batch = n_ubatch: no decode ever holds more tokens (or outputs) than this. llama.cpp pads n_ctx
+// up to a multiple of 256 but leaves n_batch alone, and the logits buffer is n_batch * n_vocab
+// floats (~12 MB for a 49k vocabulary), so a small batch keeps both memory and asserts in check.
+constexpr int kBatchTokens = 64;
+constexpr size_t kPrefillChunk = 32;                    // context tokens per decode (abortable steps)
 constexpr float kNoScore = -1.0e4f;                     // a candidate with no tokens
 constexpr int64_t kMmapAlignment = 32;
 
@@ -58,7 +63,6 @@ struct Session {
     int n_vocab = 0;
     std::vector<llama_token> cached;  // tokens of the context in seq 0
     llama_batch batch{};
-    int batch_cap = 0;
     bool has_deadline = false;
     Clock::time_point deadline;
 
@@ -228,7 +232,10 @@ void batch_add(Session &s, llama_token token, llama_pos pos, llama_seq_id seq, b
 }
 
 // 0 on success. Anything else (abort, no free slot, error) leaves the caller to clean up.
-int decode(Session &s) { return llama_decode(s.ctx, s.batch); }
+int decode(Session &s) {
+    if (s.batch.n_tokens > kBatchTokens) return -1;  // never exceed n_batch (llama.cpp would assert)
+    return llama_decode(s.ctx, s.batch);
+}
 
 void reset_cache(Session &s) {
     llama_memory_clear(llama_get_memory(s.ctx), true);
@@ -240,10 +247,16 @@ void remove_scratch_seqs(Session &s) {
     for (llama_seq_id k = 1; k <= kGenerateSeq; k++) llama_memory_seq_rm(mem, k, -1, -1);
 }
 
-// Brings seq 0 to hold exactly `tokens` except for the part from `p` on, which is decoded now with
-// logits for the last token only. p is the reusable prefix, at most tokens.size() - 1 so that the
-// last token is always decoded (its logits predict the first candidate token).
-// Returns false on abort or error; the cache is then reset.
+// Brings seq 0 to hold exactly `tokens` except for the part from `p` on, which is decoded now in
+// chunks of kPrefillChunk, with logits for the last token only. p is the reusable prefix, at most
+// tokens.size() - 1 so that the last token is always decoded (its logits predict the first
+// candidate token).
+//
+// `cached` advances after every chunk that decodes, so a timeout in the middle of a long cold prefill
+// keeps the finished chunks and the next call continues from there. llama_decode removes the cells of
+// the ubatch that failed or was aborted (src/llama-context.cpp, decode()), but the chunk is also
+// removed here from `cached.size()` on, so the KV contents and `cached` agree whatever it did.
+// Returns false on abort or error. The cache is not reset (unless it cannot be trimmed at all).
 bool decode_context(Session &s, const std::vector<llama_token> &tokens, size_t p) {
     llama_memory_t mem = llama_get_memory(s.ctx);
     if (p < s.cached.size()) {
@@ -256,18 +269,20 @@ bool decode_context(Session &s, const std::vector<llama_token> &tokens, size_t p
     }
     const size_t n = tokens.size();
     for (size_t from = p; from < n;) {
-        const size_t count = std::min<size_t>(n - from, static_cast<size_t>(s.batch_cap));
+        const size_t count = std::min<size_t>(n - from, kPrefillChunk);
         batch_clear(s);
         for (size_t i = 0; i < count; i++) {
             batch_add(s, tokens[from + i], static_cast<llama_pos>(from + i), 0, from + i + 1 == n);
         }
         if (decode(s) != 0) {
-            reset_cache(s);
+            // Seq 0 holds exactly s.cached (tokens before `from`); drop whatever the failed chunk left.
+            if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(s.cached.size()), -1)) reset_cache(s);
             return false;
         }
+        s.cached.insert(s.cached.end(), tokens.begin() + static_cast<std::ptrdiff_t>(from),
+                        tokens.begin() + static_cast<std::ptrdiff_t>(from + count));
         from += count;
     }
-    s.cached = tokens;
     return true;
 }
 
@@ -352,22 +367,22 @@ bool score_impl(Session &s, const std::string &context, const std::vector<std::s
         scores[i] = cand_tokens[i].empty() ? kNoScore : logits[cand_tokens[i][0]] - first_lse;
     }
 
-    // The rest: candidates in batches, each in its own sequence copied from seq 0. Row b of the
-    // output holds the prediction for token (j + 1) of candidate row_cand[b].
+    // The rest: candidates in groups, each in its own sequence copied from seq 0. One decode holds at
+    // most kBatchTokens tokens, and every one of them is an output. Row b of the output holds the
+    // prediction for token (j + 1) of candidate row_cand[b].
     llama_memory_t mem = llama_get_memory(s.ctx);
-    const size_t budget = static_cast<size_t>(s.n_ctx) - n;  // free cells next to the context
     size_t next = 0;
     while (next < n_cand) {
         std::vector<size_t> row_cand;
         std::vector<llama_token> row_target;
         std::vector<size_t> group;
-        size_t cells = 0;
+        size_t rows = 0;
         while (next < n_cand && group.size() < static_cast<size_t>(kMaxCandidateSeqs)) {
             const size_t extra = cand_tokens[next].empty() ? 0 : cand_tokens[next].size() - 1;
-            if (!group.empty() && cells + extra > budget) break;
+            if (rows + extra > static_cast<size_t>(kBatchTokens)) break;  // extra <= 11: never stuck
             if (extra > 0) {
                 group.push_back(next);
-                cells += extra;
+                rows += extra;
             }
             next++;
         }
@@ -427,11 +442,16 @@ bool generate_impl(Session &s, const std::string &prompt, int max_tokens, std::s
 
     llama_memory_seq_rm(mem, kGenerateSeq, -1, -1);
     if (p > 0) llama_memory_seq_cp(mem, 0, kGenerateSeq, 0, static_cast<llama_pos>(p));
-    batch_clear(s);
-    for (size_t i = p; i < n; i++) {
-        batch_add(s, tokens[i], static_cast<llama_pos>(i), kGenerateSeq, i + 1 == n);
+    bool ok = true;
+    for (size_t from = p; ok && from < n;) {
+        const size_t count = std::min<size_t>(n - from, static_cast<size_t>(kBatchTokens));
+        batch_clear(s);
+        for (size_t i = from; i < from + count; i++) {
+            batch_add(s, tokens[i], static_cast<llama_pos>(i), kGenerateSeq, i + 1 == n);
+        }
+        ok = decode(s) == 0;
+        from += count;
     }
-    bool ok = decode(s) == 0;
 
     for (int step = 0; ok && step < max_tokens; step++) {
         const float *logits = llama_get_logits_ith(s.ctx, -1);
@@ -532,7 +552,7 @@ JNIEXPORT jlong JNICALL Java_dev_keycorrect_core_llama_LlamaNative_newContext(
         if (m == nullptr || n_ctx <= 0 || n_threads <= 0) return 0;
         llama_context_params cp = llama_context_default_params();
         cp.n_ctx = static_cast<uint32_t>(n_ctx);
-        cp.n_batch = cp.n_ubatch = static_cast<uint32_t>(n_ctx);
+        cp.n_batch = cp.n_ubatch = kBatchTokens;
         cp.n_seq_max = kSeqMax;
         cp.kv_unified = true;  // all sequences share the n_ctx cells; candidates share the prefix
         cp.n_threads = cp.n_threads_batch = n_threads;
@@ -550,8 +570,7 @@ JNIEXPORT jlong JNICALL Java_dev_keycorrect_core_llama_LlamaNative_newContext(
         s->vocab = llama_model_get_vocab(m->model);
         s->n_ctx = static_cast<int>(llama_n_ctx(s->ctx));
         s->n_vocab = llama_vocab_n_tokens(s->vocab);
-        s->batch_cap = s->n_ctx;
-        s->batch = llama_batch_init(s->batch_cap, 0, 1);
+        s->batch = llama_batch_init(kBatchTokens, 0, 1);
         return reinterpret_cast<jlong>(s);
     } catch (...) {
         return 0;

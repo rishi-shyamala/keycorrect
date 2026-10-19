@@ -21,7 +21,12 @@ class LlamaModelTest {
             return modelHandle
         }
 
-        override fun newContext(model: Long, nCtx: Int, nThreads: Int): Long = contextHandle
+        var lastNCtx = 0
+
+        override fun newContext(model: Long, nCtx: Int, nThreads: Int): Long {
+            lastNCtx = nCtx
+            return contextHandle
+        }
 
         override fun freeContext(ctx: Long) {
             calls += "freeContext"
@@ -100,6 +105,37 @@ class LlamaModelTest {
                 session.score("the", listOf("a"), 10)
             }
             assertThrows(IllegalStateException::class.java) { session.generate("the", 3, 10) }
+            assertThat(backend.calls.count { it == "freeContext" }).isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun contextSizeIsCoercedToAMultipleOf256InRange() {
+        assertThat(LlamaModel.coerceCtx(1)).isEqualTo(256)
+        assertThat(LlamaModel.coerceCtx(256)).isEqualTo(256)
+        assertThat(LlamaModel.coerceCtx(257)).isEqualTo(512)
+        assertThat(LlamaModel.coerceCtx(300)).isEqualTo(512)
+        assertThat(LlamaModel.coerceCtx(2048)).isEqualTo(2048)
+        assertThat(LlamaModel.coerceCtx(5000)).isEqualTo(2048)
+        assertThat(LlamaModel.coerceCtx(-5)).isEqualTo(256)
+        val backend = FakeBackend()
+        LlamaModel.openFile(backend, "/x.gguf").use { model ->
+            model.newSession(nCtx = 300)
+            assertThat(backend.lastNCtx).isEqualTo(512)
+            model.newSession()
+            assertThat(backend.lastNCtx).isEqualTo(LlamaModel.DEFAULT_CTX)
+        }
+    }
+
+    @Test
+    fun closingFromTwoThreadsFreesOnce() {
+        val backend = FakeBackend()
+        LlamaModel.openFile(backend, "/x.gguf").use { model ->
+            val session = model.newSession()
+            val threads = List(4) { Thread { session.close() } }
+            threads.forEach { it.start() }
+            threads.forEach { it.join() }
+            assertThat(session.isClosed).isTrue()
             assertThat(backend.calls.count { it == "freeContext" }).isEqualTo(1)
         }
     }
