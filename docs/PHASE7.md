@@ -163,7 +163,7 @@ String generate(String prompt, int maxTokens, long timeoutMs);          // null 
   - It collects the literal plus the candidates (at most 16) and calls the scorer on its own thread.
   - The decoder thread polls in 5 ms steps, gives up when stale or after `deadlineMs` (default `RERANK_DEADLINE_MS`, 40 ms), and allows one call in flight.
   - The tunables are constructor parameters: `lmWeight`, `deadlineMs`, `maxTexts`, `contextWords`, `poolSize`. With `poolSize` above the request's `maxCandidates`, `refine` first re-decodes with `maxCandidates = poolSize` and scores that wider pool; the final re-decode still uses the original size plus the bonus (0 = score only what the classic strip shows).
-  - It then re-decodes with `lmBonus = lmStrength × lmWeight × (lp − mean lp)`. `LM_WEIGHT` (the default) is still the untuned 1.0; see "Eval (reranker arm)" for what the eval says about it.
+  - It then re-decodes with `lmBonus = lmStrength × lmWeight × (lp − mean lp)`. `LM_WEIGHT` is 0.2, so the default strength of 0.5 gives an effective 0.1 (see "Eval (reranker arm)").
   - Next-word predictions (no literal) are reranked the same way.
 - **GENERATE:** only when `neuralPhrases` is on, through the same gate and asynchronously after scoring. It completes the top candidate with up to 3 words and returns them as `PredictResult.phrase` (source `Engine`).
 - **Eval:** the reranker arm in `tools/eval` drives the same `NeuralReranker` logic, with `:core:llama` on the desktop.
@@ -210,8 +210,45 @@ Cells are accuracy / false corrections per 1000. `ctx` = words of context.
 
 - **The larger models buy nothing here**: at the same weight the three models fix the same words (150 to 151 corrections gained) at several times the scorer latency. The 135M model is the right choice for the SCORE tier.
 - **The reranker does fix more typing mistakes**: 151 corrections gained against 9 lost at lmWeight 0.05, and up to 490 against 63 at 0.5, and it lifts next-word top-1 by 0.6 to 0.7 points. The price is false corrections, which rise from 44 words to 45 (0.05) or 57 (0.5).
-- **Decision: the defaults are unchanged** (`LM_WEIGHT` 1.0, `poolSize` 0, 40 context words, 40 ms). No configuration keeps false corrections at or below classic, so none beats classic under the rule set for this arm. Note that the current default weight of 1.0 is the worst trade measured except for 2 and 3 (dev: +1.6 points accuracy, but false corrections 2.14 to 4.82). If the user accepts one more false-correction word in 22,000 for +0.6 points, `lmWeight` 0.05 is the setting to take; a weight of 0.1 to 0.15 buys about 0.3 points more for 10 to 20% more false corrections. That is a product decision.
-- **Ways to get the accuracy without the false corrections** (not tried): do not give the literal a bonus when it is a dictionary word, or scale the bonus down for typed words that are in the dictionary.
+- The decision is in "Real-word guard and the default (2026-10-19)" below.
+
+### Real-word guard and the default (2026-10-19)
+
+**The guard was tried and dropped.** `AutocorrectConfig.lmReplacesRealWords=false` gives a dictionary or user word at least the best candidate's bonus, so the model can never talk the autocorrect out of it.
+- **Dev results with the guard:**
+  - lmWeight 0.25: 77.57% / 2.60 false corrections per 1000.
+  - lmWeight 0.5: 77.46% / 2.73.
+- **Without the guard, at the same weights:** 78.16% / 2.63 and 78.46% / 3.00.
+- **Why it fails:** the guard halves the accuracy gain, because many of the gains are real-word errors ("form" → "from"). It does not reduce false corrections, because those come from out-of-dictionary words (names, rare terms) that the model "corrects" into common words.
+- **What happens to it:** the flag stays, default on (`true` = the model may correct real words).
+
+**Low-weight sweep without the guard** (dev, 5000 sentences, 36,941 words; classic 76.83% / 2.14):
+
+| lmWeight | Accuracy | FC / 1000 | Top-1 | Corrections gained / lost | FC introduced |
+|---:|---:|---:|---:|---:|---:|
+| 0.05 | 77.43% (+0.60) | 2.17 | 80.14% | 238 / 15 | 1 |
+| 0.10 | 77.78% (+0.94) | 2.27 | 80.31% | 380 / 27 | 5 |
+| 0.15 | 77.98% (+1.14) | 2.33 | 80.38% | 473 / 44 | 7 |
+| 0.25 | 78.16% (+1.33) | 2.63 | 80.36% | 583 / 74 | 18 |
+
+**Decision (user, 2026-10-19):**
+- The effective weight is **0.10** at the default LM strength. `LM_WEIGHT` is 0.2, and the strength slider (default 0.5) scales it from 0 to 0.2.
+- `poolSize` stays 0, context stays 40 words (a window that moves in blocks of 20, for KV reuse), and the deadline stays 40 ms.
+
+**Test-split confirmation** (3000 sentences, 22,417 words, all metrics, `--lm-weight 0.1`):
+
+| | Classic | Reranked | Delta |
+|---|---:|---:|---:|
+| Word accuracy | 77.24% | 78.19% | **+0.95** |
+| Correction rate | 62.96% | 64.52% | +1.56 |
+| False corrections / 1000 | 1.963 | 2.007 | +0.045 (one word) |
+| Top-1 | 80.61% | 80.92% | +0.31 |
+| Keystroke savings | 26.56% | 26.77% | +0.21 |
+| Next-word top-1 | 17.67% | 18.64% | **+0.97** |
+
+- **Changed decisions:** 228 corrections gained, 15 lost, 1 false correction introduced.
+- **Scorer:** p50 3.2 ms, p95 5.9 ms, p99 8.0 ms on the desktop. No call went over 40 ms.
+
 
 ### Scorer latency and the 40 ms deadline
 
