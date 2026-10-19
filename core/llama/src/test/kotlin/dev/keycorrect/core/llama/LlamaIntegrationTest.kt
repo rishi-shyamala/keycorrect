@@ -202,6 +202,14 @@ class LlamaIntegrationTest {
             // The same context again, e.g. a re-rank after the word is replaced: one token decoded.
             val same = (1..rounds).map { timed { session.score(text, CANDIDATES, TIMEOUT_MS) } }
             val gen = (1..10).map { timed { session.generate(text, 12, TIMEOUT_MS) } }
+            // A long cold context: 60 words, nothing shared with the previous call.
+            val sixty = (1..60).map { WORDS[it % WORDS.size] }
+            val long =
+                (1..rounds).map { i ->
+                    val ctx = "w$i " + sixty.joinToString(" ")
+                    timed { session.score(ctx, CANDIDATES, TIMEOUT_MS) }
+                }
+            println("latency cold 60 words: " + stats(long))
             println("latency cold:  " + stats(cold))
             println("latency warm:  " + stats(warm))
             println("latency same:  " + stats(same))

@@ -97,17 +97,24 @@ The `.trace` files land next to the JSON results; open them in Android Studio or
 
 ### Phase 7: llama scorer (desktop, relative)
 
-`:core:llama` on x86-64 (16 logical cores), SmolLM2-135M Q8_0, 4 threads, CPU only, 2026-10-18.
+`:core:llama` on x86-64 (16 logical cores), SmolLM2-135M Q8_0, 4 threads, CPU only, 2026-10-19 (re-measured after the chunked prefill: n_batch = n_ubatch = 64, prefill in
+chunks of 32 tokens, candidates capped at 12 tokens).
 One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIntegrationTest.reportLatency`,
 40 calls for cold and same-context, 45 for warm; ARM numbers are pending the Tab S9 NDK build).
 
 | Case | p50 | p95 |
 |---|---|---|
-| Cold: nothing in common with the previous context | 16.7 ms | 17.8 ms |
-| Warm: the previous context plus one word (prefix reused, ~2 new tokens decoded) | 8.8 ms | 9.2 ms |
-| Same context again (1 token re-decoded) | 8.6 ms | 9.3 ms |
-| `generate`, 12 tokens max (a prompt of the same context, stops at punctuation) | 13.3 ms | 13.6 ms |
+| Cold: nothing in common with the previous context | 16.8 ms | 18.5 ms |
+| Warm: the previous context plus one word (prefix reused, ~2 new tokens decoded) | 8.9 ms | 9.4 ms |
+| Same context again (1 token re-decoded) | 9.0 ms | 10.6 ms |
+| `generate`, 12 tokens max (a prompt of the same context, stops at punctuation) | 13.3 ms | 13.9 ms |
+| Cold, 60-word context (~60 tokens, two prefill chunks) | 37.7 ms | 45.2 ms |
 
+- A long cold prefill is abortable per chunk: when the deadline hits mid-prefill the finished chunks stay
+  in the cache and the next call continues from them (a 900-token cold context: 870 ms cold, 350 ms
+  into it the call aborts, the retry takes 560 ms instead of starting over). The 60-word cold call is
+  the worst case a keyboard sees after pasting or a context jump; it exceeds the 40 ms deadline on its
+  p50 here, so such a call is cut and the next one finishes the prefill.
 - Prefix reuse roughly halves the call. What is left is mostly the candidate batch (8 sequences, ~16
   tokens) and one log-softmax per scored position.
 - The log-sum-exp over the 49k-entry vocabulary was the first hotspot: with libm `expf` the same
