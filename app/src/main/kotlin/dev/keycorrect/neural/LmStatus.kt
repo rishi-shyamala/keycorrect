@@ -37,9 +37,9 @@ internal fun lmStatusOf(info: EngineInfo?): LmStatus {
 
 /**
  * Asks [info] until the engine gives a settled answer: right after connecting, an engine can still
- * say "no model" before it has been configured, so that answer counts only from poll
- * [settlePolls] on; "loading" and no answer are asked again, up to [maxPolls] times, with
- * [pause] between. Returns the last answer when none settles.
+ * say "no model" before it has been configured, so that answer counts only from poll [settlePolls]
+ * on; "loading" and no answer are asked again, up to [maxPolls] times, with [pause] between.
+ * Returns the last answer when none settles.
  */
 internal suspend fun awaitStatus(
     info: () -> EngineInfo?,

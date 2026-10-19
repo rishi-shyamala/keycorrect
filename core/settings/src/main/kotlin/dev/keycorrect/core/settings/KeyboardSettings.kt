@@ -195,8 +195,8 @@ data class KeyboardSettings(
      */
     val neuralModel: String = "",
     /**
-     * Which engine answers: [ENGINE_BUILTIN], or an approved plugin's flattened component name
-     * (at most [ENGINE_ID_MAX_LENGTH] characters). Never carried by backup or transfer.
+     * Which engine answers: [ENGINE_BUILTIN], or an approved plugin's flattened component name (at
+     * most [ENGINE_ID_MAX_LENGTH] characters). Never carried by backup or transfer.
      */
     val neuralEngine: String = ENGINE_BUILTIN,
     /**

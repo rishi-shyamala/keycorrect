@@ -7,7 +7,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class EnginePluginsTest {
-    private val a = PluginFacts("p.a/p.a.Svc", "p.a", "Alpha", setOf("c1"), requestsInternet = false)
+    private val a =
+        PluginFacts("p.a/p.a.Svc", "p.a", "Alpha", setOf("c1"), requestsInternet = false)
     private val b = PluginFacts("p.b/p.b.Svc", "p.b", "beta", setOf("c2"), requestsInternet = true)
 
     private class FakeSource(var facts: List<PluginFacts>) : PluginSource {
@@ -91,7 +92,8 @@ class EnginePluginsTest {
 
     @Test
     fun theCertificateIsShownInGroupsOfFour() {
-        assertThat(EngineApprovals.shortCert("0123456789abcdef0123")).isEqualTo("0123 4567 89ab cdef")
+        assertThat(EngineApprovals.shortCert("0123456789abcdef0123"))
+            .isEqualTo("0123 4567 89ab cdef")
         assertThat(EngineApprovals.shortCert(null)).isEmpty()
     }
 
@@ -103,8 +105,7 @@ class EnginePluginsTest {
         engine: String = KeyboardSettings.ENGINE_BUILTIN,
         builtin: Boolean = true,
         approved: Set<String> = emptySet(),
-    ) =
-        chooseEngine(rerank, strength, engine, { builtin }, { plugins.isApproved(it, approved) })
+    ) = chooseEngine(rerank, strength, engine, { builtin }, { plugins.isApproved(it, approved) })
 
     @Test
     fun builtinIsUsedWhenAvailable() {
@@ -184,7 +185,15 @@ class EnginePluginsTest {
         assertThat(awaitStatus({ noModel }, {})).isEqualTo(LmStatus.NoModel)
 
         var calls = 0
-        val status = awaitStatus({ calls++; null }, {}, maxPolls = 4)
+        val status =
+            awaitStatus(
+                {
+                    calls++
+                    null
+                },
+                {},
+                maxPolls = 4,
+            )
         assertThat(status).isEqualTo(LmStatus.NoAnswer)
         assertThat(calls).isEqualTo(4)
     }

@@ -2,7 +2,11 @@
 
 package dev.keycorrect.settings
 
+import android.content.ComponentName
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
@@ -17,12 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.ui.semantics.Role
 import dev.keycorrect.AppContainer
 import dev.keycorrect.R
 import dev.keycorrect.core.settings.KeyboardSettings
@@ -34,8 +36,6 @@ import dev.keycorrect.neural.LmStatus
 import dev.keycorrect.neural.awaitStatus
 import dev.keycorrect.neural.chooseEngine
 import dev.keycorrect.neural.neuralPackInstalled
-import android.content.ComponentName
-import androidx.compose.foundation.layout.PaddingValues
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -123,8 +123,8 @@ private fun StatusLine(container: AppContainer, settings: KeyboardSettings) {
 }
 
 /**
- * Binds the engine the keyboard would use for [settings] briefly and reads its status. Nothing
- * that was typed is involved.
+ * Binds the engine the keyboard would use for [settings] briefly and reads its status. Nothing that
+ * was typed is involved.
  */
 private suspend fun probeStatus(
     context: android.content.Context,
@@ -197,12 +197,11 @@ internal fun ChoiceRow(
     title: String,
     summary: String?,
     onSelect: () -> Unit,
-    modifier: Modifier = Modifier,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     ) {
         Row(
             verticalAlignment = Alignment.Top,

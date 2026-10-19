@@ -86,6 +86,7 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
  * they return null at once when it isn't connected. Everything else is safe from any thread.
  */
 class EngineClient
+@Suppress("LongParameterList") // The seams for tests.
 internal constructor(
     private val modelId: () -> String,
     private val pathOf: (String) -> File?,
@@ -144,7 +145,7 @@ internal constructor(
     fun status(): String? = link.status()
 
     /** The engine's status and model description, or null; blocks like [score]. */
-    fun info(): EngineInfo? = link.info()
+    internal fun info(): EngineInfo? = link.info()
 
     override fun close() {
         link.close()

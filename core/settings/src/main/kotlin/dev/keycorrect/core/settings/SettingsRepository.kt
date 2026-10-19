@@ -36,8 +36,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     /**
      * Every setting by its stored key, with its current (sanitized) value: Boolean, Int, Float or
-     * String, or a Set of strings. Settings that were never changed are included at their defaults, so a backup does not
-     * depend on this build's defaults.
+     * String, or a Set of strings. Settings that were never changed are included at their defaults,
+     * so a backup does not depend on this build's defaults.
      */
     suspend fun exportValues(): Map<String, Any> {
         val prefs =
@@ -156,22 +156,29 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
         val d = KeyboardSettings()
         return with(p) {
-            copy(
-                voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
-                voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
-                voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
-                voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
-                voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
-                voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
-                voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
-                neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
-                neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
-                lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
-                neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
-                neuralEngine = this[NEURAL_ENGINE] ?: d.neuralEngine,
-                approvedEngines = this[APPROVED_ENGINES] ?: d.approvedEngines,
-            )
-        }
+                copy(
+                    voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+                    voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
+                    voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
+                    voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
+                    voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
+                    voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
+                    voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
+                    neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
+                    neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
+                    lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
+                    neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
+                )
+            }
+            .withEngine(p)
+    }
+
+    private fun KeyboardSettings.withEngine(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return copy(
+            neuralEngine = p[NEURAL_ENGINE] ?: d.neuralEngine,
+            approvedEngines = p[APPROVED_ENGINES] ?: d.approvedEngines,
+        )
     }
 
     private fun MutablePreferences.write(s: KeyboardSettings) {

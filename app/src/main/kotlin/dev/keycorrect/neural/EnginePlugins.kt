@@ -56,7 +56,9 @@ internal object EngineApprovals {
     private const val GROUP = 4
     private const val GROUPS = 4
 
-    /** One value for a plugin's current signers: their digest, or a digest of the sorted digests. */
+    /**
+     * One value for a plugin's current signers: their digest, or a digest of the sorted digests.
+     */
     fun pin(certDigests: Set<String>): String? =
         when (certDigests.size) {
             0 -> null
@@ -129,12 +131,12 @@ internal class AndroidPluginSource(context: Context) : PluginSource {
         }
 
     override fun find(component: String): PluginFacts? {
-        val name = ComponentName.unflattenFromString(component) ?: return null
-        val info =
-            resolve(Intent(EngineContract.ACTION).setComponent(name)).firstOrNull() ?: return null
-        val service = info.serviceInfo ?: return null
-        if (service.packageName == ownPackage) return null
-        return factsOf(service.packageName, service.name, info.loadLabel(pm).toString())
+        val name = ComponentName.unflattenFromString(component)
+        val info = name?.let {
+            resolve(Intent(EngineContract.ACTION).setComponent(it)).firstOrNull()
+        }
+        val service = info?.serviceInfo?.takeIf { it.packageName != ownPackage }
+        return service?.let { factsOf(it.packageName, it.name, info.loadLabel(pm).toString()) }
     }
 
     private fun factsOf(packageName: String, className: String, label: String): PluginFacts? {

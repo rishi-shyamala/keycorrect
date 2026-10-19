@@ -52,43 +52,17 @@ internal fun EnginesSection(
         onSelect = { onUpdate { it.copy(neuralEngine = KeyboardSettings.ENGINE_BUILTIN) } },
     )
     for (plugin in plugins) {
-        val changed =
-            !plugin.approved &&
-                settings.approvedEngines.any { it.startsWith("${plugin.component}|") }
-        ChoiceRow(
+        PluginRow(
+            plugin = plugin,
             selected = plugin.component == active?.component,
-            title = plugin.label,
-            summary = pluginSummary(plugin, changed),
+            certificateChanged =
+                !plugin.approved &&
+                    settings.approvedEngines.any { it.startsWith("${plugin.component}|") },
             onSelect = {
                 if (plugin.approved) onUpdate { it.copy(neuralEngine = plugin.component) }
                 else approving = plugin
             },
-            trailing =
-                if (plugin.approved) {
-                    {
-                        TextButton(
-                            onClick = {
-                                onUpdate {
-                                    it.copy(
-                                        approvedEngines =
-                                            EngineApprovals.revoke(
-                                                it.approvedEngines,
-                                                plugin.component,
-                                            ),
-                                        neuralEngine =
-                                            if (it.neuralEngine == plugin.component) {
-                                                KeyboardSettings.ENGINE_BUILTIN
-                                            } else {
-                                                it.neuralEngine
-                                            },
-                                    )
-                                }
-                            }
-                        ) {
-                            Text(stringResource(R.string.lm_engine_remove))
-                        }
-                    }
-                } else null,
+            onRemove = { onUpdate { it.withoutApproval(plugin.component) } },
         )
     }
     if (plugins.isEmpty()) {
@@ -106,17 +80,50 @@ internal fun EnginesSection(
             onDismiss = { approving = null },
             onApprove = { cert ->
                 approving = null
-                onUpdate {
-                    it.copy(
-                        approvedEngines =
-                            EngineApprovals.approve(it.approvedEngines, plugin.component, cert),
-                        neuralEngine = plugin.component,
-                    )
-                }
+                onUpdate { it.withApproval(plugin.component, cert) }
             },
         )
     }
 }
+
+@Composable
+private fun PluginRow(
+    plugin: EnginePlugin,
+    selected: Boolean,
+    certificateChanged: Boolean,
+    onSelect: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    ChoiceRow(
+        selected = selected,
+        title = plugin.label,
+        summary = pluginSummary(plugin, certificateChanged),
+        onSelect = onSelect,
+        trailing =
+            if (plugin.approved) {
+                {
+                    TextButton(onClick = onRemove) {
+                        Text(stringResource(R.string.lm_engine_remove))
+                    }
+                }
+            } else null,
+    )
+}
+
+/** These settings with [component] approved for [cert] and chosen as the engine. */
+internal fun KeyboardSettings.withApproval(component: String, cert: String): KeyboardSettings =
+    copy(
+        approvedEngines = EngineApprovals.approve(approvedEngines, component, cert),
+        neuralEngine = component,
+    )
+
+/** These settings without the approval of [component]; if it was the engine, built-in is. */
+internal fun KeyboardSettings.withoutApproval(component: String): KeyboardSettings =
+    copy(
+        approvedEngines = EngineApprovals.revoke(approvedEngines, component),
+        neuralEngine =
+            if (neuralEngine == component) KeyboardSettings.ENGINE_BUILTIN else neuralEngine,
+    )
 
 @Composable
 private fun pluginSummary(plugin: EnginePlugin, certificateChanged: Boolean): String {
@@ -130,8 +137,8 @@ private fun pluginSummary(plugin: EnginePlugin, certificateChanged: Boolean): St
 }
 
 /**
- * The approval dialog: who the plugin is, its certificate, and, prominently, whether it can use
- * the internet. Approving pins the package name and certificate.
+ * The approval dialog: who the plugin is, its certificate, and, prominently, whether it can use the
+ * internet. Approving pins the package name and certificate.
  */
 @Composable
 private fun ApprovalDialog(

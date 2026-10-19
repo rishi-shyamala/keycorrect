@@ -18,12 +18,12 @@ import dev.keycorrect.neural.neuralPackInstalled
  * only while it can be useful, and scores for the [NeuralReranker].
  *
  * Which engine: the built-in one (in the `:engine` process), or the plugin the user chose, but a
- * plugin only while it is approved for its current signing certificate (re-checked on every
- * [apply] and [onWindowShown]); otherwise the built-in engine is used. The built-in engine is
- * bound when reranking is on with a non-zero LM strength and there is a model to run (the neural
- * pack is installed, or an imported model is chosen); a plugin needs neither. After the keyboard
- * has been hidden for [IDLE_UNBIND_MS] the engine is unbound so its process can go away.
- * [apply] and the window callbacks run on the main thread; [score] on the reranker's thread.
+ * plugin only while it is approved for its current signing certificate (re-checked on every [apply]
+ * and [onWindowShown]); otherwise the built-in engine is used. The built-in engine is bound when
+ * reranking is on with a non-zero LM strength and there is a model to run (the neural pack is
+ * installed, or an imported model is chosen); a plugin needs neither. After the keyboard has been
+ * hidden for [IDLE_UNBIND_MS] the engine is unbound so its process can go away. [apply] and the
+ * window callbacks run on the main thread; [score] on the reranker's thread.
  */
 internal class NeuralHost(
     private val context: Context,

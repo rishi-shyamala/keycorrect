@@ -477,7 +477,7 @@
     <string name="lm_status_loading">Language model: loading…</string>
     <string name="lm_status_no_model">No model. Install the KeyCorrect neural pack or import a model.</string>
     <string name="lm_status_no_answer">The language model engine is not answering. It may be installed incorrectly, or starting up; open this screen again in a moment.</string>
-    <string name="lm_status_error_file">The model file is missing or can't be read. Choose another model or import it again.</string>
+    <string name="lm_status_error_file">The model file is missing or can\'t be read. Choose another model or import it again.</string>
     <string name="lm_status_error_load">The model could not be loaded. It may be damaged or not a model this version can run.</string>
     <string name="lm_status_error_memory">The model needs more memory than the phone could give. Choose a smaller model.</string>
     <string name="lm_status_error_other">The language model engine reported a problem and is not running.</string>
@@ -486,7 +486,7 @@
     <string name="lm_phrases">Phrase suggestions</string>
     <string name="lm_phrases_summary">Uses more battery</string>
     <string name="lm_strength">LM strength</string>
-    <string name="lm_strength_summary">How much the model's opinion counts against the dictionary.</string>
+    <string name="lm_strength_summary">How much the model\'s opinion counts against the dictionary.</string>
     <string name="lm_strength_off">Off</string>
     <string name="lm_strength_percent">%1$d%%</string>
     <string name="lm_section_models">Model</string>
@@ -517,7 +517,7 @@
     <string name="lm_approve_title">Approve %1$s?</string>
     <string name="lm_approve_package">Package: %1$s</string>
     <string name="lm_approve_cert">Signing certificate (SHA-256): %1$s…</string>
-    <string name="lm_approve_no_cert">This plugin's signing certificate can't be read, so it can't be approved.</string>
+    <string name="lm_approve_no_cert">This plugin\'s signing certificate can\'t be read, so it can\'t be approved.</string>
     <string name="lm_approve_internet">This plugin can send what you type to the internet.</string>
     <string name="lm_approve_body">An approved plugin sees the words around the cursor to score suggestions, but never in password fields, in incognito or where learning is off. The approval is tied to this package and certificate; if either changes, you are asked again.</string>
     <string name="lm_approve_confirm">Approve</string>

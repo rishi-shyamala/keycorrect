@@ -21,8 +21,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Voice : SettingsDestination("voice", R.string.voice_title)
 
-    data object LanguageModel :
-        SettingsDestination("language_model", R.string.lm_title)
+    data object LanguageModel : SettingsDestination("language_model", R.string.lm_title)
 
     data object Clipboard : SettingsDestination("clipboard", R.string.clipboard_title)
 

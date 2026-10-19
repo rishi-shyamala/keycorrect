@@ -2,11 +2,10 @@
 
 package dev.keycorrect.settings
 
-import android.text.format.Formatter
 import android.net.Uri
+import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -84,38 +83,15 @@ internal fun ModelsSection(
         onSelect = { onUpdate { it.copy(neuralModel = "") } },
     )
     for (model in models) {
-        ChoiceRow(
+        ModelRow(
+            model = model,
             selected = model.id == selectedImport?.id,
-            title = model.displayName,
-            summary = Formatter.formatFileSize(context, model.sizeBytes),
             onSelect = { onUpdate { it.copy(neuralModel = model.id) } },
-            trailing = {
-                TextButton(onClick = { deleting = model }) {
-                    Text(
-                        stringResource(R.string.lm_model_delete),
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            },
+            onDelete = { deleting = model },
         )
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Button(
-            enabled = !importing && models.size < ModelStore.MAX_MODELS,
-            onClick = { picker.launch(arrayOf("*/*")) },
-        ) {
-            Text(stringResource(R.string.lm_model_import))
-        }
-        if (importing) {
-            CircularProgressIndicator(modifier = Modifier.padding(start = 16.dp))
-            Text(
-                stringResource(R.string.lm_model_importing),
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
+    ImportControls(enabled = !importing && models.size < ModelStore.MAX_MODELS, importing) {
+        picker.launch(arrayOf("*/*"))
     }
     result?.let { found ->
         Text(
@@ -149,6 +125,48 @@ internal fun ModelsSection(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun ModelRow(
+    model: ImportedModel,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    ChoiceRow(
+        selected = selected,
+        title = model.displayName,
+        summary = Formatter.formatFileSize(LocalContext.current, model.sizeBytes),
+        onSelect = onSelect,
+        trailing = {
+            TextButton(onClick = onDelete) {
+                Text(
+                    stringResource(R.string.lm_model_delete),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun ImportControls(enabled: Boolean, importing: Boolean, onImport: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Button(enabled = enabled, onClick = onImport) {
+            Text(stringResource(R.string.lm_model_import))
+        }
+        if (importing) {
+            CircularProgressIndicator(modifier = Modifier.padding(start = 16.dp))
+            Text(
+                stringResource(R.string.lm_model_importing),
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
     }
 }
 
