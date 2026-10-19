@@ -108,3 +108,60 @@ Qwen 152k) and is not what the shipped scorer would do; the real scorer shares t
 - The final choice is still the user's; this ranking should be re-checked with the real eval arm before
   the pack is built, and the on-device numbers on the Tab S9 (Snapdragon 8 Gen 2) measured with the
   NDK build.
+
+## Implementation (2026-10-18)
+
+The user confirmed the default model, **SmolLM2-135M Q8_0**. The implementation contracts follow; each work package builds against them.
+
+### Modules
+| Module | Kind | What |
+|---|---|---|
+| `:core:llama` | JVM library | `LlamaNative` (JNI `external fun`s) and a Kotlin wrapper `LlamaModel` / `LlamaSession`. The C++ glue `core/llama/src/main/cpp/kc_llama_jni.cpp` and its `CMakeLists.txt` take `-DLLAMA_SRC=<llama.cpp source>`. `tools/llama/build-host.sh` builds the glue plus llama.cpp for the desktop (eval and tests). JVM tests skip unless the host library and a model are present. |
+| `:neuralpack` | Android application `dev.keycorrect.neural` | Like `:voicepack`: no code, no permissions. It builds llama.cpp plus the glue with the NDK (CMake, arm64-v8a and x86_64) into `libkcllama.so` and stores the default GGUF as an **uncompressed asset** `models/default.gguf`. It is built only when `data/raw/neural` has the source and model (CI skips it). `release.sh` attaches it. |
+| `:core:packs` | Android library | The signed-pack locator taken out of `VoicePackLocator`: package name, native libraries and asset list are parameters. It keeps the signature check, the stamp re-check and library hashes with NeedsRestart. `VoicePackLocator` becomes a thin wrapper with the same public API. |
+| `:core:engine-sdk` | Android library (AIDL) | The plugin contract (below) and a client `EngineConnection` that binds a service and exposes synchronous calls with timeouts. Plugins and the built-in engine use it alike. |
+| `:sampleplugin` | Android application `dev.keycorrect.sampleplugin` | A sample engine built on the SDK. |
+
+### Native API (`LlamaNative`, handles are `Long`, 0 means failure)
+- `loadModelFile(path, useMmap)` and `loadModelFd(fd, offset, useMmap)`. The fd variant opens the pack's uncompressed asset through `llama_model_load_from_file_ptr` after seeking to `offset`. It uses mmap only when `offset % 32 == 0`; otherwise it reads the model into memory.
+- `newContext(model, nCtx = 512, nThreads = 4)` and `freeContext` / `freeModel`.
+- `score(ctx, context, candidates[], timeoutMs)` returns `FloatArray?`: for each candidate, the sum of log P over the tokens of `" " + candidate`, given `context`. An empty context starts from BOS.
+  - KV reuse: the tokens of the last context stay in sequence 0. A new call keeps the longest common token prefix, removes the rest and decodes only the new suffix.
+  - The candidates are decoded in one batch, sequence i+1 each (`llama_memory_seq_cp` from sequence 0), and removed afterwards.
+  - It returns null when the timeout fires (llama's abort callback).
+- `generate(ctx, prompt, maxTokens, timeoutMs)` returns `String?`: greedy decoding that stops at a newline or sentence-ending punctuation. It is used for phrase completion.
+- `describe(model)` returns a short description (architecture, parameter count, vocabulary size) for the settings screen.
+
+### Plugin contract (`dev.keycorrect.TEXT_ENGINE`, AIDL `dev.keycorrect.engine.ITextEngine`)
+```
+int apiVersion();                 // 1
+Bundle info();                    // id, name, capabilities (String[] "Score"/"Generate"), languages, status
+void configure(in Bundle options); // engine-specific; the built-in engine takes "modelPath"/"modelFd"
+float[] score(String context, in String[] candidates, long timeoutMs);   // null = no answer
+String generate(String prompt, int maxTokens, long timeoutMs);          // null = no answer
+```
+- **The built-in engine:** `NeuralEngineService` runs in `android:process=":engine"`, is not exported, and implements the same interface.
+- **How a plugin is used:**
+  - It is used only after the user approves it in Settings → Engines. The approval pins the package name plus the SHA-256 of its signing certificate.
+  - A plugin whose certificate changes is unapproved.
+  - The approval screen warns when a plugin holds INTERNET.
+  - Approvals and the model choice are never carried by backup/transfer.
+- **How the engine process loads a model:** it never touches DataStore. The keyboard passes the model through `configure`.
+
+### Pipeline (SCORE tier)
+- **The request:** `PredictRequest.lmBonus: Map<String, Float>` (default empty). `ClassicEngine` adds the bonus to the fused score of the candidate (or literal) with that text, before ranking and the autocorrect policy.
+- **Who may use an engine:** `PredictRequest.engineAllowed` (default false) is set by the keyboard only when all of these hold:
+  - suggestions are on;
+  - the field isn't sensitive;
+  - learning is on for the field and in the settings;
+  - incognito is off;
+  - `neuralRerank` is on.
+- **`Predictor.refine(request, result, stale)`:** returns a `PredictResult?` (default null). `DecoderLoop.submit` calls it after publishing the classic result, on the decoder thread. If it returns a result that isn't stale, that result replaces `completed` and is posted.
+  - A separator never waits for it: the classic result is already `completed`.
+- **`NeuralReranker` (app):**
+  - It collects the literal plus the candidates (at most 16) and calls the scorer on its own thread.
+  - The decoder thread polls in 5 ms steps, gives up when stale or after `RERANK_DEADLINE_MS` (40 ms), and allows one call in flight.
+  - It then re-decodes with `lmBonus = lmStrength × LM_WEIGHT × (lp − mean lp)`. `LM_WEIGHT` is tuned on the eval; it starts at 1.0.
+  - Next-word predictions (no literal) are reranked the same way.
+- **GENERATE:** only when `neuralPhrases` is on, through the same gate and asynchronously after scoring. It completes the top candidate with up to 3 words and returns them as `PredictResult.phrase` (source `Engine`).
+- **Eval:** the reranker arm in `tools/eval` drives the same `NeuralReranker` logic, with `:core:llama` on the desktop.
