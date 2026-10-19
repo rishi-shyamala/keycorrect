@@ -4,6 +4,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import dev.keycorrect.BuildConfig
 import dev.keycorrect.core.decoder.rerank.CandidateScorer
 import dev.keycorrect.core.decoder.rerank.PhraseGenerator
 import dev.keycorrect.core.settings.KeyboardSettings
@@ -91,11 +93,22 @@ internal class NeuralHost(
         lookups.shutdownNow()
     }
 
-    override fun complete(context: String, top: String, timeoutMs: Long): String? =
-        client?.generate("$context $top".trimStart(), PHRASE_TOKENS, timeoutMs)
+    override fun complete(context: String, top: String, timeoutMs: Long): String? {
+        traceCall("generate")
+        return client?.generate("$context $top".trimStart(), PHRASE_TOKENS, timeoutMs)
+    }
 
-    override fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? =
-        client?.score(context, candidates, timeoutMs)
+    override fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? {
+        traceCall("score")
+        return client?.score(context, candidates, timeoutMs)
+    }
+
+    /** Debug builds only: counts engine calls for on-device privacy checks. Never any text. */
+    private fun traceCall(kind: String) {
+        if (BuildConfig.DEBUG) Log.d(TRACE_TAG, "$kind #${calls.incrementAndGet()}")
+    }
+
+    private val calls = java.util.concurrent.atomic.AtomicInteger()
 
     /** Chooses the engine for the current settings and then enacts it on the main thread. */
     private fun plan() {
@@ -192,5 +205,6 @@ internal class NeuralHost(
         const val PHRASE_TOKENS = 8
 
         const val IDLE_UNBIND_MS = 2 * 60 * 1000L
+        const val TRACE_TAG = "KCEngine"
     }
 }
