@@ -1,6 +1,7 @@
 package dev.keycorrect.neural
 
 import com.google.common.truth.Truth.assertThat
+import dev.keycorrect.engine.EngineContract
 import java.io.File
 import java.util.concurrent.Executor
 import org.junit.Test
@@ -52,8 +53,8 @@ class EngineClientTest {
     private val files =
         mutableMapOf("0123456789abcdef" to File("/data/files/models/0123456789abcdef.gguf"))
 
-    private fun client(threads: Int = 3) =
-        EngineClient({ model }, files::get, threads, { now }, queue) { onConnected ->
+    private fun client(threads: Int = 3, configures: Boolean = true) =
+        EngineClient({ model }, files::get, threads, { now }, queue, configures) { onConnected ->
             link.onConnected = onConnected
             link
         }
@@ -68,6 +69,19 @@ class EngineClientTest {
 
         assertThat(link.configured)
             .containsExactly(ModelChoice.PackDefault to 3, ModelChoice.PackDefault to 3)
+    }
+
+    @Test
+    fun aPluginIsNeverSentTheBuiltinOptions() {
+        val c = client(configures = false)
+        link.onConnected()
+        c.reconfigure()
+        link.status = EngineContract.STATUS_NO_MODEL
+        now += EngineClient.HEAL_INTERVAL_MS
+        c.score("a", listOf("b"), 10)
+        queue.runAll()
+
+        assertThat(link.configured).isEmpty()
     }
 
     @Test

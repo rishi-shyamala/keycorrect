@@ -27,6 +27,9 @@ internal interface NeuralLink : AutoCloseable {
     /** The engine's status ([EngineContract.INFO_STATUS]), or null when it doesn't answer. */
     fun status(): String?
 
+    /** The status with the model description; by default only the status. */
+    fun info(): EngineInfo? = status()?.let { EngineInfo(it, null) }
+
     fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray?
 
     fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String?
@@ -48,6 +51,14 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
 
     override fun status(): String? = link.info()?.getString(EngineContract.INFO_STATUS)
 
+    override fun info(): EngineInfo? =
+        link.info()?.let {
+            EngineInfo(
+                it.getString(EngineContract.INFO_STATUS),
+                it.getString(EngineContract.INFO_MODEL),
+            )
+        }
+
     override fun score(context: String, candidates: List<String>, timeoutMs: Long) =
         link.score(context, candidates, timeoutMs)
 
@@ -59,8 +70,9 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
 
 /**
  * What the keyboard process uses to reach the language model: a connection to the built-in
- * [NeuralEngineService] (or, later, an approved plugin) that configures the engine each time it
- * connects and answers [score] and [generate].
+ * [NeuralEngineService] or an approved plugin that answers [score] and [generate]. The built-in
+ * engine is configured each time it connects; a plugin ([configures] false) is not sent the
+ * built-in options (model path, threads), which mean nothing to it.
  *
  * [modelId] gives the current `neuralModel` setting: empty = the neural pack's default, otherwise
  * the id of an imported model ([ModelStore]); an id whose file is gone falls back to the default.
@@ -74,12 +86,14 @@ internal class BundleLink(private val link: TextEngineLink) : NeuralLink {
  * they return null at once when it isn't connected. Everything else is safe from any thread.
  */
 class EngineClient
+@Suppress("LongParameterList") // The seams for tests.
 internal constructor(
     private val modelId: () -> String,
     private val pathOf: (String) -> File?,
     private val threads: Int,
     private val clock: () -> Long,
     private val executor: Executor,
+    private val configures: Boolean = true,
     makeLink: (onConnected: () -> Unit) -> NeuralLink,
 ) : AutoCloseable {
     /** Connects to the built-in engine. [modelStore] resolves the imported model ids. */
@@ -89,6 +103,7 @@ internal constructor(
         modelId: () -> String,
         threads: Int = 0,
         component: ComponentName = ComponentName(context, NeuralEngineService::class.java),
+        configures: Boolean = true,
     ) : this(
         modelId,
         modelStore::pathOf,
@@ -100,6 +115,7 @@ internal constructor(
                 priority = Thread.NORM_PRIORITY - 1
             }
         },
+        configures,
         { onConnected -> BundleLink(EngineConnection(context, component, onConnected)) },
     )
 
@@ -128,6 +144,9 @@ internal constructor(
     /** The engine's status, or null when it isn't connected; blocks like [score]. */
     fun status(): String? = link.status()
 
+    /** The engine's status and model description, or null; blocks like [score]. */
+    internal fun info(): EngineInfo? = link.info()
+
     override fun close() {
         link.close()
     }
@@ -140,6 +159,7 @@ internal constructor(
     }
 
     private fun sendConfigure() {
+        if (!configures) return
         link.configure(choice(), threads)
     }
 

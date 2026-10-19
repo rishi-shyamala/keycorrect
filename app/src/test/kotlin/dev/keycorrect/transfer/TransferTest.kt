@@ -159,6 +159,24 @@ class TransferTest {
     }
 
     @Test
+    fun theEngineChoiceAndPluginApprovalsAreNeverTransferred() {
+        val s =
+            sourceState(
+                settings =
+                    mapOf(
+                        "neural_engine" to "dev.p/dev.p.Svc",
+                        "approved_engines" to setOf("dev.p/dev.p.Svc|abcd"),
+                        "key_height_dp" to 50,
+                    )
+            )
+        assertThat(bundleOf(s).settings.values.keys).containsExactly("key_height_dp")
+        for (mode in ImportMode.entries) {
+            val o = ImportApplier.apply(local(), bundleOf(sourceState()), plan(mode))
+            assertThat(o.keepLocalSettings).containsAtLeast("neural_engine", "approved_engines")
+        }
+    }
+
+    @Test
     fun invalidEntriesAreDroppedNotFatal() {
         val b = bundleOf(sourceState())
         val bad =
@@ -269,7 +287,8 @@ class TransferTest {
 
         assertThat(o.learning.touch.single().char).isEqualTo(97)
         assertThat(o.settings["key_height_dp"]).isEqualTo(60)
-        assertThat(o.keepLocalSettings).containsExactly("incognito", "neural_model")
+        assertThat(o.keepLocalSettings)
+            .containsExactly("incognito", "neural_model", "neural_engine", "approved_engines")
     }
 
     @Test

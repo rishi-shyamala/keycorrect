@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -35,8 +36,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     /**
      * Every setting by its stored key, with its current (sanitized) value: Boolean, Int, Float or
-     * String. Settings that were never changed are included at their defaults, so a backup does not
-     * depend on this build's defaults.
+     * String, or a Set of strings. Settings that were never changed are included at their defaults,
+     * so a backup does not depend on this build's defaults.
      */
     suspend fun exportValues(): Map<String, Any> {
         val prefs =
@@ -90,6 +91,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             name in FLOAT_KEYS && value is Float -> this[floatPreferencesKey(name)] = value
             name in FLOAT_KEYS && value is Int -> this[floatPreferencesKey(name)] = value.toFloat()
             name in STRING_KEYS && value is String -> this[stringPreferencesKey(name)] = value
+            name in STRING_SET_KEYS && value is Set<*> && value.all { it is String } ->
+                this[stringSetPreferencesKey(name)] = value.filterIsInstance<String>().toSet()
         }
     }
 
@@ -153,20 +156,29 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
         val d = KeyboardSettings()
         return with(p) {
-            copy(
-                voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
-                voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
-                voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
-                voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
-                voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
-                voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
-                voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
-                neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
-                neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
-                lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
-                neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
-            )
-        }
+                copy(
+                    voiceEnabled = this[VOICE_ENABLED] ?: d.voiceEnabled,
+                    voiceEngine = VoiceEngineChoice.parse(this[VOICE_ENGINE]) ?: d.voiceEngine,
+                    voiceAutoPunctuation = this[VOICE_AUTO_PUNCTUATION] ?: d.voiceAutoPunctuation,
+                    voicePhraseMs = this[VOICE_PHRASE_MS] ?: d.voicePhraseMs,
+                    voicePauseMs = this[VOICE_PAUSE_MS] ?: d.voicePauseMs,
+                    voiceLiveMs = this[VOICE_LIVE_MS] ?: d.voiceLiveMs,
+                    voiceAutoStopSeconds = this[VOICE_AUTO_STOP_SECONDS] ?: d.voiceAutoStopSeconds,
+                    neuralRerank = this[NEURAL_RERANK] ?: d.neuralRerank,
+                    neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
+                    lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
+                    neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
+                )
+            }
+            .withEngine(p)
+    }
+
+    private fun KeyboardSettings.withEngine(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return copy(
+            neuralEngine = p[NEURAL_ENGINE] ?: d.neuralEngine,
+            approvedEngines = p[APPROVED_ENGINES] ?: d.approvedEngines,
+        )
     }
 
     private fun MutablePreferences.write(s: KeyboardSettings) {
@@ -223,6 +235,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
         this[NEURAL_MODEL] = s.neuralModel
+        this[NEURAL_ENGINE] = s.neuralEngine
+        this[APPROVED_ENGINES] = s.approvedEngines
     }
 
     private companion object {
@@ -279,6 +293,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEURAL_PHRASES = booleanPreferencesKey("neural_phrases")
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
+        val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
+        val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -343,6 +359,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 CLIPBOARD_RETENTION.name,
                 VOICE_ENGINE.name,
                 NEURAL_MODEL.name,
+                NEURAL_ENGINE.name,
             )
+        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name)
     }
 }
