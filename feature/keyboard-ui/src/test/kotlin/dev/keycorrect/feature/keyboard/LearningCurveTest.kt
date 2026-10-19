@@ -142,7 +142,7 @@ class LearningCurveTest {
         )
         sb.appendLine()
         sb.appendLine("Sample of misses in the last pass (two words before, true next | strip left, centre, right):")
-        last.filter { !it.top3 }.take(12).forEach {
+        last.filter { !it.top3 && it.index >= 2 }.take(12).forEach {
             val a = a.words
             sb.appendLine("- ${a[it.index - 2]} ${a[it.index - 1]} -> **${it.expected}** | ${it.describe()}")
         }
@@ -176,18 +176,26 @@ class LearningCurveTest {
         val a = Snippet.load("snippet_a.txt")
         val b = Snippet.load("snippet_b.txt")
         val points = divergencePoints(a, b)
-        val rig = arm.rig()
         val results = ArrayList<Triple<String, PassResult, List<Divergence>>>()
+
+        fun record(label: String, isA: Boolean, r: PassResult) {
+            val here = points.map { it.forSnippet(isA) }
+            results += Triple(label, r, here)
+        }
+        // Control: the base model alone (learning off, fresh model), one pass of each snippet. It
+        // shows how much of the later numbers is just which words the dictionary already favours.
+        val off = KeyboardSettings(learningEnabled = false)
+        record("0 (A, no learning)", true, arm.rig(off).typeSnippet(a.tokens, a.words))
+        record("0 (B, no learning)", false, arm.rig(off).typeSnippet(b.tokens, b.words))
+        val controls = results.size
+        val rig = arm.rig()
         val wall = System.nanoTime()
         repeat(ALTERNATE_ROUNDS * 2) { p ->
             if (p > 0) rig.idle(PASS_GAP_MS)
             val isA = p % 2 == 0
             val s = if (isA) a else b
             val r = rig.typeSnippet(s.tokens, s.words)
-            // Divergence positions of the snippet just typed, with its own and the other word.
-            val here =
-                points.filter { (if (isA) it.indexA else it.indexB) in r.boundaries.map { x -> x.index } }
-            results += Triple(if (isA) "A" else "B", r, here.map { it.forSnippet(isA) })
+            record(if (isA) "A" else "B", isA, r)
             println("[${arm.name}] alternate pass ${p + 1} (${if (isA) "A" else "B"}) done (${secs(wall)} s)")
         }
         arm.close()
@@ -250,12 +258,13 @@ class LearningCurveTest {
         sb.appendLine("|---|---|---|---|---|---|---|---|---|---|")
         rows.forEachIndexed { i, r ->
             sb.appendLine(
-                "| ${i + 1} | ${results[i].first} | ${f(r.bothTop3)} | ${f(r.ownTop3)} | " +
+                "| ${if (i < controls) "" else (i - controls + 1).toString()} | ${results[i].first} | ${f(r.bothTop3)} | ${f(r.ownTop3)} | " +
                     "${f(r.ownTop1)} | ${f(r.otherTop3)} | ${f(r.otherTop1)} | " +
                     "${f(r.ownAbove)} | ${f(r.nonDivTop3)} | ${f(r.accuracy)} |"
             )
         }
         val last = rows.takeLast(4)
+        val prior = rows.take(controls)
         val ownTop1 = last.map { it.ownTop1 }.average()
         val otherTop3 = last.map { it.otherTop3 }.average()
         val otherTop1 = last.map { it.otherTop1 }.average()
@@ -267,6 +276,12 @@ class LearningCurveTest {
         sb.appendLine("- other word in top-3: ${f(otherTop3)}% (target >= 50%): " +
             if (otherTop3 >= 50.0) "OK" else "TOO LOW")
         sb.appendLine("- own word in top-3: ${f(ownTop3)}%, other word top-1 (recency bias): ${f(otherTop1)}%")
+        sb.appendLine(
+            "- for comparison the base model alone (rows 0): own top-1 " +
+                "${f(prior.map { it.ownTop1 }.average())}%, other top-1 " +
+                "${f(prior.map { it.otherTop1 }.average())}%, other in top-3 " +
+                "${f(prior.map { it.otherTop3 }.average())}%"
+        )
         sb.appendLine()
         val totalMs = results.sumOf { it.second.simulatedMs }
         sb.appendLine(
@@ -292,10 +307,10 @@ class LearningCurveTest {
         // Weak sanity bounds only. The pipeline must learn (the typed snippet's own word shows up
         // at divergence points more and more) and must not lock in completely: it never shows
         // only the own word to the exclusion of every alternative.
-        assertThat(rows.last().ownTop3).isGreaterThan(rows.first().ownTop3)
+        assertThat(rows.last().ownTop3).isGreaterThan(rows[controls].ownTop3)
         assertThat(otherTop3).isGreaterThan(0.0)
-        for (i in 1 until rows.size) {
-            assertThat(rows[i].accuracy).isAtLeast(rows[0].accuracy - 2.0)
+        for (i in controls + 1 until rows.size) {
+            assertThat(rows[i].accuracy).isAtLeast(rows[controls].accuracy - 2.0)
         }
     }
 
@@ -307,7 +322,8 @@ class LearningCurveTest {
         val reranker: NeuralReranker?,
         val closer: () -> Unit,
     ) {
-        fun rig() = TypingRig(dictionary, reranker, KeyboardSettings())
+        fun rig(settings: KeyboardSettings = KeyboardSettings()) =
+            TypingRig(dictionary, reranker, settings)
 
         fun close() = closer()
     }
