@@ -127,17 +127,19 @@ class LlamaIntegrationTest {
             // Cold: a different context each call, nothing in common with the previous one.
             val cold =
                 (1..rounds).map { i ->
-                    val ctx = "w$i " + words.drop(1).joinToString(" ")
+                    val ctx = "w$i " + words.take(19).joinToString(" ")
                     timed { session.score(ctx, CANDIDATES, TIMEOUT_MS) }
                 }
-            // Warm: typing on, one more word each time (the previous context is a prefix).
-            val base = words.take(20).joinToString(" ")
-            session.score(base, CANDIDATES, TIMEOUT_MS)
-            val warm =
-                (1..rounds).map { i ->
-                    val ctx = base + (1..i).joinToString("") { " word$it" }
-                    timed { session.score(ctx, CANDIDATES, TIMEOUT_MS) }
+            // Warm: typing on, one more word each time (the previous context is a prefix). Each
+            // round starts at 12 words and grows to 20, so the contexts match the cold ones.
+            val warm = mutableListOf<Double>()
+            repeat(5) { round ->
+                session.score("r$round " + words.take(11).joinToString(" "), CANDIDATES, TIMEOUT_MS)
+                for (n in 12..20) {
+                    val ctx = "r$round " + words.take(n - 1).joinToString(" ")
+                    warm += timed { session.score(ctx, CANDIDATES, TIMEOUT_MS) }
                 }
+            }
             // The same context again, e.g. a re-rank after the word is replaced: one token decoded.
             val same = (1..rounds).map { timed { session.score(text, CANDIDATES, TIMEOUT_MS) } }
             val gen = (1..10).map { timed { session.generate(text, 12, TIMEOUT_MS) } }
