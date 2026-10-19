@@ -12,7 +12,17 @@ Read this first when resuming. Other docs:
 
 ---
 
-## 0. Resume here (2026-10-18, end of session 2)
+## 0. Resume here (2026-10-19)
+
+- **Phase 7 is PR #19 (`phase-7-neural`).** It is complete and awaiting a device pass and the user's merge. Main contains everything through #18 (Enter keeps the last word as typed).
+- **Latest test build:** v0.5.0-test.15, with the app, voice pack and neural pack.
+- **Phase 7 design, decisions and eval:** docs/PHASE7.md. The default weight is an effective 0.1; phrases are off; the real-word guard was dropped.
+- **Next steps:**
+  1. The device pass on the Tab S9. The checklist is in the PR body; add ARM latency and memory numbers to docs/PERF.md.
+  2. Device passes for all PRs since #10.
+  3. Phase 8 per docs/PLAN.md.
+
+## 0a. Previous handoff (2026-10-18, end of session 2)
 
 **Current branch: `phase-7-neural`.** It is based on `voice-live` (#17) and holds only
 `docs/PHASE7.md` so far. It is pushed with this handoff.
