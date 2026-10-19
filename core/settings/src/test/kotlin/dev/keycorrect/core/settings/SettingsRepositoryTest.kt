@@ -73,6 +73,7 @@ class SettingsRepositoryTest {
         assertThat(d.inlineAutofill).isTrue()
         assertThat(d.suggestionsEnabled).isTrue()
         assertThat(d.autocorrectEnabled).isTrue()
+        assertThat(d.enterKeepsTyped).isTrue()
         assertThat(d.nextWordPredictions).isTrue()
         assertThat(d.phraseCompletion).isTrue()
         assertThat(d.autoSpaceAfterPick).isTrue()
@@ -105,6 +106,7 @@ class SettingsRepositoryTest {
                 inlineAutofill = false,
                 suggestionsEnabled = false,
                 autocorrectEnabled = false,
+                enterKeepsTyped = false,
                 nextWordPredictions = false,
                 phraseCompletion = false,
                 autoSpaceAfterPick = false,

@@ -52,6 +52,8 @@
     <string name="text_correction_next_word_summary">Suggest the next word after you finish one</string>
     <string name="text_correction_phrases">Phrase completion</string>
     <string name="text_correction_phrases_summary">Suggest the rest of common phrases as you type</string>
+    <string name="text_correction_enter_as_typed">Keep last word as typed on Enter</string>
+    <string name="text_correction_enter_as_typed_summary">When Enter searches, sends or goes, the word you are typing isn\'t corrected, so the app\'s own suggestions can finish it. New lines still correct.</string>
     <string name="text_correction_auto_space">Add space after suggestion</string>
     <string name="text_correction_auto_space_summary">Insert a space when you tap a suggestion</string>
     <string name="text_correction_requires_suggestions">Turn on suggestions to use this option.</string>
