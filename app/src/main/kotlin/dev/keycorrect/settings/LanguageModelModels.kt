@@ -45,7 +45,7 @@ internal fun ModelsSection(
     settings: KeyboardSettings,
     onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
 ) {
-    val context = LocalContext.current
+    val context = LocalContext.current.applicationContext
     val store = container.modelStore
     var models by remember { mutableStateOf(emptyList<ImportedModel>()) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -63,11 +63,8 @@ internal fun ModelsSection(
                 result = null
                 // The application scope, so a long copy finishes even if the screen is left.
                 container.applicationScope.launch {
-                    val outcome =
-                        withContext(Dispatchers.IO) {
-                            store.import(context.applicationContext.contentResolver, uri)
-                        }
-                    result = outcome
+                    result =
+                        withContext(Dispatchers.IO) { store.import(context.contentResolver, uri) }
                     importing = false
                     refresh++
                 }
@@ -93,6 +90,35 @@ internal fun ModelsSection(
     ImportControls(enabled = !importing && models.size < ModelStore.MAX_MODELS, importing) {
         picker.launch(arrayOf("*/*"))
     }
+    ImportFeedback(result)
+
+    deleting?.let { model ->
+        DeleteModelDialog(
+            model = model,
+            onDismiss = { deleting = null },
+            onConfirm = {
+                deleting = null
+                container.applicationScope.launch {
+                    deleteModel(store, model.id, settings, onUpdate)
+                    refresh++
+                }
+            },
+        )
+    }
+}
+
+private suspend fun deleteModel(
+    store: ModelStore,
+    id: String,
+    settings: KeyboardSettings,
+    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
+) {
+    withContext(Dispatchers.IO) { store.delete(id) }
+    if (settings.neuralModel == id) onUpdate { it.copy(neuralModel = "") }
+}
+
+@Composable
+private fun ImportFeedback(result: ImportResult?) {
     result?.let { found ->
         Text(
             importMessage(found),
@@ -109,23 +135,6 @@ internal fun ModelsSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )
-
-    deleting?.let { model ->
-        DeleteModelDialog(
-            model = model,
-            onDismiss = { deleting = null },
-            onConfirm = {
-                deleting = null
-                container.applicationScope.launch {
-                    withContext(Dispatchers.IO) { store.delete(model.id) }
-                    if (settings.neuralModel == model.id) {
-                        onUpdate { it.copy(neuralModel = "") }
-                    }
-                    refresh++
-                }
-            },
-        )
-    }
 }
 
 @Composable
