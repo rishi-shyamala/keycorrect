@@ -70,7 +70,10 @@ data class Options(
     val swipeNoise: Float = 0.25f,
     /** Rerank arm: the language-model GGUF (null = no rerank arm). */
     val rerankModel: Path? = null,
-    /** Rerank arm: `--lm-weight`, `--pool`, `--rerank-context-words` take lists; all combinations run. */
+    /**
+     * Rerank arm: `--lm-weight`, `--pool`, `--rerank-context-words` take lists; all combinations
+     * run.
+     */
     val lmWeights: List<Float> = listOf(NeuralReranker.LM_WEIGHT),
     val pools: List<Int> = listOf(0),
     val rerankContextWords: List<Int> = listOf(NeuralReranker.CONTEXT_WORDS),
@@ -253,7 +256,8 @@ data class Options(
                             )
                     "--label" -> o = o.copy(label = v())
                     "--rerank" -> o = o.copy(rerankModel = Paths.get(v()))
-                    "--lm-weight" -> o = o.copy(lmWeights = v().split(',').map { it.trim().toFloat() })
+                    "--lm-weight" ->
+                        o = o.copy(lmWeights = v().split(',').map { it.trim().toFloat() })
                     "--pool" -> o = o.copy(pools = v().split(',').map { it.trim().toInt() })
                     "--rerank-context-words" ->
                         o = o.copy(rerankContextWords = v().split(',').map { it.trim().toInt() })

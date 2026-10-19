@@ -34,12 +34,12 @@ fun interface PhraseGenerator {
  *
  * [refine] runs on the decoder thread right after the classic result was published. It hands the
  * literal and the candidates to the [scorer] on [scorerExecutor] and polls for the answer in
- * [POLL_MS] steps, giving up when the input is [stale] or after [deadlineMs]. On success it
- * turns the log-probabilities into `lmBonus = lmStrength * lmWeight * (lp - mean lp)` (so a
- * uniformly likely or unlikely set changes nothing) and re-decodes the request with it; the engine
- * adds the bonus before ranking and the autocorrect decision. Only one scorer call is in flight at
- * a time: while one is still running (a late answer after a deadline), [refine] returns null at
- * once, so typing never queues behind the model.
+ * [POLL_MS] steps, giving up when the input is [stale] or after [deadlineMs]. On success it turns
+ * the log-probabilities into `lmBonus = lmStrength * lmWeight * (lp - mean lp)` (so a uniformly
+ * likely or unlikely set changes nothing) and re-decodes the request with it; the engine adds the
+ * bonus before ranking and the autocorrect decision. Only one scorer call is in flight at a time:
+ * while one is still running (a late answer after a deadline), [refine] returns null at once, so
+ * typing never queues behind the model.
  *
  * Returns null (keep the classic result) when [lmStrength] is zero, the request doesn't allow an
  * engine, there is nothing to compare, the scorer has no answer in time, or the input moved on.
@@ -52,10 +52,11 @@ fun interface PhraseGenerator {
  * @param maxTexts the most texts (literal plus candidates) sent to the scorer in one call.
  * @param contextWords the scorer sees about this many words before the cursor.
  * @param poolSize when above the request's `maxCandidates`, [refine] first re-decodes the request
- *   with `maxCandidates = poolSize`, so the scorer also sees candidates below the classic strip; the
- *   final re-decode still uses the original `maxCandidates` (0 scores only what the classic result
- *   shows).
+ *   with `maxCandidates = poolSize`, so the scorer also sees candidates below the classic strip;
+ *   the final re-decode still uses the original `maxCandidates` (0 scores only what the classic
+ *   result shows).
  */
+@Suppress("LongParameterList") // the tunables are plain constructor parameters
 class NeuralReranker(
     private val scorer: CandidateScorer,
     private val scorerExecutor: Executor,
@@ -69,8 +70,7 @@ class NeuralReranker(
 ) {
     private val busy = AtomicBoolean(false)
 
-    @Suppress("ReturnCount", "TooGenericExceptionCaught", "SwallowedException")
-    // guard clauses; a failing scorer or a closed executor just means no answer (never log text)
+    @Suppress("ReturnCount") // guard clauses
     fun refine(
         request: PredictRequest,
         result: PredictResult,
@@ -81,36 +81,12 @@ class NeuralReranker(
         val strength = lmStrength()
         if (!(strength > 0f) || !strength.isFinite()) return null
         if (busy.get()) return null // a late answer is still running; don't decode for nothing
-        var scored = result
-        if (poolSize > request.maxCandidates) {
-            scored = redecode(request.copy(maxCandidates = poolSize))
-            if (stale()) return null
-        }
+        val scored = wideResult(request, result, stale, redecode) ?: return null
         val texts = textsToScore(scored)
         if (texts.size < 2) return null // one text has nothing to be compared with
         val context = lastWords(request.context.before, contextWords)
 
-        if (!busy.compareAndSet(false, true)) return null
-        val job = Job()
-        try {
-            scorerExecutor.execute {
-                try {
-                    job.scores =
-                        try {
-                            scorer.score(context, texts, deadlineMs)
-                        } catch (e: Exception) {
-                            null
-                        }
-                } finally {
-                    job.done = true
-                    busy.set(false)
-                }
-            }
-        } catch (e: RejectedExecutionException) {
-            busy.set(false)
-            return null
-        }
-
+        val job = startScoring(context, texts) ?: return null
         val lp = awaitScores(job, stale) ?: return null
         if (lp.size != texts.size || lp.any { !it.isFinite() }) return null
         val mean = lp.average().toFloat()
@@ -119,6 +95,51 @@ class NeuralReranker(
         if (stale()) return null
         val refined = redecode(request.copy(lmBonus = bonus))
         return if (stale()) null else refined
+    }
+
+    /**
+     * Hands the texts to the scorer thread; null when a call is in flight or the thread is gone.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    // a failing scorer or a closed executor just means no answer (never log text)
+    private fun startScoring(context: String, texts: List<String>): Job? {
+        if (!busy.compareAndSet(false, true)) return null
+        val started = Job()
+        var job: Job? = started
+        try {
+            scorerExecutor.execute {
+                try {
+                    started.scores =
+                        try {
+                            scorer.score(context, texts, deadlineMs)
+                        } catch (e: Exception) {
+                            null
+                        }
+                } finally {
+                    started.done = true
+                    busy.set(false)
+                }
+            }
+        } catch (e: RejectedExecutionException) {
+            busy.set(false)
+            job = null
+        }
+        return job
+    }
+
+    /**
+     * The result whose texts are scored: [result] itself, or with a [poolSize] a re-decode with a
+     * wider strip; null when the input moved on meanwhile.
+     */
+    private fun wideResult(
+        request: PredictRequest,
+        result: PredictResult,
+        stale: () -> Boolean,
+        redecode: (PredictRequest) -> PredictResult,
+    ): PredictResult? {
+        if (poolSize <= request.maxCandidates) return result
+        val wide = redecode(request.copy(maxCandidates = poolSize))
+        return if (stale()) null else wide
     }
 
     private class Job {
@@ -154,7 +175,10 @@ class NeuralReranker(
     }
 
     companion object {
-        /** Default for how long the decoder thread waits for the scorer before keeping the classic result. */
+        /**
+         * Default for how long the decoder thread waits for the scorer before keeping the classic
+         * result.
+         */
         const val RERANK_DEADLINE_MS = 40L
 
         /** Default scale of the language-model bonus against the classic fused score. */

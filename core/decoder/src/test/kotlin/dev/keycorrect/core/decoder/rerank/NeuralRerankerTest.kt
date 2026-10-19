@@ -313,11 +313,10 @@ class NeuralRerankerTest {
                 texts = c
                 FloatArray(c.size) { -it.toFloat() }
             }
-        val out =
-            r.run {
-                requests += it
-                if (it.lmBonus.isEmpty()) wide else redecoded
-            }
+        val out = r.run {
+            requests += it
+            if (it.lmBonus.isEmpty()) wide else redecoded
+        }
         assertThat(out).isSameInstanceAs(redecoded)
         assertThat(requests).hasSize(2)
         // First the wide decode without a bonus, then the final one with the original size.
@@ -326,7 +325,9 @@ class NeuralRerankerTest {
         assertThat(requests[1].maxCandidates).isEqualTo(request().maxCandidates)
         assertThat(requests[1].lmBonus.keys)
             .containsExactly("helli", "hello", "help", "hell", "hallo", "hull")
-        assertThat(texts).containsExactly("helli", "hello", "help", "hell", "hallo", "hull").inOrder()
+        assertThat(texts)
+            .containsExactly("helli", "hello", "help", "hell", "hallo", "hull")
+            .inOrder()
     }
 
     @Test

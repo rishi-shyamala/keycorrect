@@ -115,6 +115,20 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
   error 2.4e-7) took that to the table above. Compile with `-O3`; the NDK build must not drop it.
 - Not measured yet: the 40 ms rerank deadline on the device, the effect of repacked weights on ARM.
 
+#### Scorer latency inside the eval (desktop, relative), 2026-10-19
+
+`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/PHASE7.md "Eval (reranker arm)".
+
+| Model | mean | p50 | p95 | p99 | max | Over 40 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M Q8_0, run alone | 5.0 ms | 3.7 | 9.2 | 11.3 | 37.1 | 0.0% |
+| SmolLM2-360M Q4_K_M, three runs at once | 22.7 ms | 17.9 | 47.1 | 60.5 | 220.5 | 9.6% |
+| Qwen3-0.6B Q8_0, three runs at once | 30.1 ms | 26.4 | 64.2 | 81.8 | 215.7 | 20.5% |
+
+- The eval calls are cheaper than the micro-benchmark above (p50 3.7 ms against 8.6 ms) because consecutive decodes of one word extend the same context, so the prefix cache hits almost every time.
+- The decoder thread polls in 5 ms steps, so the effective latency of a refine is the scorer time rounded up to the next 5 ms plus the re-decode.
+- The 40 ms deadline cuts nothing at SmolLM2-135M on an idle desktop. The larger models would lose 10 to 20% of their answers even here (their rows were measured with two other runs competing for the cores).
+
 ## Findings log
 
 - **2026-10-11 (perf pass):**

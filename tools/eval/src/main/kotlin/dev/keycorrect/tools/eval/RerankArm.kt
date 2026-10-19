@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // report formatting: percentages, milliseconds
+
 package dev.keycorrect.tools.eval
 
 import dev.keycorrect.core.decoder.rerank.CandidateScorer
@@ -86,8 +88,8 @@ class LlamaScorer(
 }
 
 /**
- * Sends every decode through the production [NeuralReranker], as the keyboard would with the
- * engine allowed everywhere: the classic result is computed first, then refined (re-decoded with the
+ * Sends every decode through the production [NeuralReranker], as the keyboard would with the engine
+ * allowed everywhere: the classic result is computed first, then refined (re-decoded with the
  * language-model bonus) when the scorer answers.
  */
 class RerankingPredictor(
@@ -123,7 +125,10 @@ class Changes(
     val falseCorrectionsIntroduced: Int,
 ) {
     val net
-        get() = correctionsGained + falseCorrectionsAvoided - correctionsLost - falseCorrectionsIntroduced
+        get() =
+            correctionsGained + falseCorrectionsAvoided -
+                correctionsLost -
+                falseCorrectionsIntroduced
 
     companion object {
         fun of(classic: List<WordDecision>, reranked: List<WordDecision>): Changes {
@@ -169,6 +174,10 @@ class RerankArm(
         val sweepCsv: String,
     )
 
+    @Suppress(
+        "LongMethod",
+        "NestedBlockDepth",
+    ) // one linear driver: setup, per-config loop, wrap-up
     fun run(sentences: List<ParsedSentence>, classic: EvalResult): Outcome {
         val modelPath = EvalMain.requireFile(requireNotNull(o.rerankModel), "rerank model")
         val lib = EvalMain.requireFile(o.llamaLib, "llama library (tools/llama/build-host.sh)")
@@ -232,7 +241,9 @@ class RerankArm(
                         }
                         val t0 = System.nanoTime()
                         val result = evaluator.evaluate(sentences, episode, factory, true)
-                        scorerThread.submit {}.get() // a late answer must finish before the next run
+                        scorerThread
+                            .submit {}
+                            .get() // a late answer must finish before the next run
                         val seconds = (System.nanoTime() - t0) / 1e9
                         val changes = Changes.of(classic.decisions, result.decisions)
                         val title = "Results: reranked $config"
@@ -240,7 +251,8 @@ class RerankArm(
                         text.append(comparisonText(config, classic, result, changes, stats))
                         text.append('\n')
                         val latency = stats.latency()
-                        val label = "lw=${fmt(config.lmWeight)} pool=${config.pool} ctx=${config.contextWords}"
+                        val label =
+                            "lw=${fmt(config.lmWeight)} pool=${config.pool} ctx=${config.contextWords}"
                         summary.append(tableRow(label, result.metrics.all, changes, latency))
                         System.err.println(
                             String.format(
@@ -390,6 +402,7 @@ class RerankArm(
             stats.decodes.get(),
         )
 
+    @Suppress("LongMethod") // a table of rows
     private fun comparisonText(
         config: RerankConfig,
         classic: EvalResult,
@@ -416,16 +429,41 @@ class RerankArm(
                 )
             )
         }
-        sb.append(String.format(Locale.ROOT, "  %-40s %10s %10s %10s\n", "", "classic", "reranked", "delta"))
+        sb.append(
+            String.format(
+                Locale.ROOT,
+                "  %-40s %10s %10s %10s\n",
+                "",
+                "classic",
+                "reranked",
+                "delta",
+            )
+        )
         row("word accuracy", a.wordAccuracy, b.wordAccuracy, true)
         row("correction rate", a.correctionRate, b.correctionRate, true)
-        row("false corrections per 1000", a.falseCorrectionsPer1000, b.falseCorrectionsPer1000, false)
+        row(
+            "false corrections per 1000",
+            a.falseCorrectionsPer1000,
+            b.falseCorrectionsPer1000,
+            false,
+        )
         row("top-3 recall", a.top3Recall, b.top3Recall, true)
         row("top-1", a.top1Recall, b.top1Recall, true)
-        if (a.completionWords > 0) row("keystroke savings (completion)", a.ksrCompletion, b.ksrCompletion, true)
+        if (a.completionWords > 0)
+            row("keystroke savings (completion)", a.ksrCompletion, b.ksrCompletion, true)
         if (o.nextWord) {
-            row("next word top-1", classic.metrics.nextWord.top1Rate, reranked.metrics.nextWord.top1Rate, true)
-            row("next word top-3", classic.metrics.nextWord.top3Rate, reranked.metrics.nextWord.top3Rate, true)
+            row(
+                "next word top-1",
+                classic.metrics.nextWord.top1Rate,
+                reranked.metrics.nextWord.top1Rate,
+                true,
+            )
+            row(
+                "next word top-3",
+                classic.metrics.nextWord.top3Rate,
+                reranked.metrics.nextWord.top3Rate,
+                true,
+            )
         }
         sb.append(
             "  changed decisions over ${c.words} words: committed word differs ${c.changed}; " +

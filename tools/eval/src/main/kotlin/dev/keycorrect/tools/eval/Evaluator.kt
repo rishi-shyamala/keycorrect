@@ -76,6 +76,5 @@ class Evaluator(
         }
     }
 
-    private fun newMetrics(recordDecisions: Boolean) =
-        Metrics().also { if (recordDecisions) it.decisions = ArrayList() }
+    private fun newMetrics(recordDecisions: Boolean) = Metrics(recordDecisions)
 }

@@ -293,7 +293,7 @@ class FailureRow(
 )
 
 /** All measurements of one evaluation run; mergeable across worker threads. */
-class Metrics {
+class Metrics(recordDecisions: Boolean = false) {
     val all = Stats()
     val byLength: Map<String, Stats> = LENGTH_BUCKETS.associateWith { Stats() }
     val byVocab: Map<String, Stats> =
@@ -305,7 +305,7 @@ class Metrics {
     var skippedTokens = 0L
 
     /** Per-word outcomes in arrival order; null (the default) when nobody asked for them. */
-    var decisions: ArrayList<WordDecision>? = null
+    val decisions: MutableList<WordDecision>? = if (recordDecisions) ArrayList() else null
 
     fun record(o: WordOutcome) {
         all.add(o)

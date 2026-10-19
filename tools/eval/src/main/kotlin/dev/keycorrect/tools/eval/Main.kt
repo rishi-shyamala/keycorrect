@@ -60,6 +60,7 @@ class EvalMain(private val o: Options) {
 
     private fun classicPredictor(): Predictor = factory(baseConfig)()
 
+    @Suppress("LongMethod") // linear driver
     fun run() {
         require(o.rerankModel == null || !o.sweep) { "--rerank cannot be combined with --sweep" }
         Files.createDirectories(o.out)
