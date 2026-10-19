@@ -20,6 +20,10 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Plugin engines (docs/PHASE7.md): services that answer the text-engine action. -->
+        <intent>
+            <action android:name="dev.keycorrect.TEXT_ENGINE" />
+        </intent>
         <package android:name="dev.keycorrect.voice" />
         <package android:name="dev.keycorrect.neural" />
     </queries>

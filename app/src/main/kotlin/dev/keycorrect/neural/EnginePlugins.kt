@@ -209,34 +209,3 @@ internal fun neuralPackInstalled(pm: PackageManager): Boolean =
     } catch (_: PackageManager.NameNotFoundException) {
         false
     }
-
-/** What the engine says about itself, for the settings screen. */
-internal data class EngineInfo(val status: String?, val model: String?)
-
-/** The language-model status line, before it is turned into words. */
-internal sealed interface LmStatus {
-    data class Ready(val model: String?) : LmStatus
-
-    data object Loading : LmStatus
-
-    data object NoModel : LmStatus
-
-    /** The engine failed; [reason] is a short code from the engine, never user text. */
-    data class Error(val reason: String) : LmStatus
-
-    /** The engine isn't connected or doesn't answer. */
-    data object NoAnswer : LmStatus
-}
-
-internal fun lmStatusOf(info: EngineInfo?): LmStatus {
-    val status = info?.status
-    return when {
-        status == null -> LmStatus.NoAnswer
-        status == EngineContract.STATUS_READY -> LmStatus.Ready(info.model?.takeIf { it.isNotBlank() })
-        status == EngineContract.STATUS_LOADING -> LmStatus.Loading
-        status == EngineContract.STATUS_NO_MODEL -> LmStatus.NoModel
-        EngineContract.isError(status) ->
-            LmStatus.Error(status.removePrefix(EngineContract.STATUS_ERROR_PREFIX))
-        else -> LmStatus.NoAnswer
-    }
-}
