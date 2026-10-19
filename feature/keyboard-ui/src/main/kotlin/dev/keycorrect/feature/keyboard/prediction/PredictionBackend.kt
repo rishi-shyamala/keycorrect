@@ -15,6 +15,19 @@ fun interface Predictor {
     fun predict(request: PredictRequest, stale: () -> Boolean): PredictResult
 
     /**
+     * Optionally improves a finished classic [result] for [request], on the decoder thread right
+     * after [result] was published (so a separator never waits for it); only called when
+     * [PredictRequest.engineAllowed] is set. Returns a replacement result for the same request, or
+     * null to keep [result]. Must give up quickly (a few tens of ms at most) and return null once
+     * [stale] turns true. The default does nothing.
+     */
+    fun refine(
+        request: PredictRequest,
+        result: PredictResult,
+        stale: () -> Boolean,
+    ): PredictResult? = null
+
+    /**
      * Decodes a swipe (docs/PHASE5.md), always on the decoder thread (previews and the final decode
      * on lift, which the main thread only waits for briefly). [stale] works as in [predict]. The
      * default knows no gestures: an empty result, so nothing is committed.

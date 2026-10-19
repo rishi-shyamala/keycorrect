@@ -106,6 +106,20 @@ data class PredictRequest(
     val maxPhraseWords: Int = 0,
     val autocorrectAllowed: Boolean = true,
     val sequence: Long = 0,
+    /**
+     * Language-model re-ranking: a score to add to the candidate (or the literal) whose text equals
+     * the key, after the fused score is computed and before the final ranking and the autocorrect
+     * decision, so a bonus can change both the strip order and whether a correction is applied.
+     * Positive favours a text, negative demotes it; texts not listed are untouched. Empty (the
+     * default) leaves the decode exactly as without it.
+     */
+    val lmBonus: Map<String, Float> = emptyMap(),
+    /**
+     * True when the keyboard lets an optional engine (a neural scorer, a plugin) see this request's
+     * text. Set only for ordinary, non-sensitive, learning-enabled, non-incognito fields with the
+     * feature switched on; the classic engine ignores it.
+     */
+    val engineAllowed: Boolean = false,
 )
 
 /**
