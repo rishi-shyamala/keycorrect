@@ -102,6 +102,15 @@ too.
     That is also why a debug keyboard needs a debug-signed pack (`./gradlew :voicepack:installDebug`
     after `tools/data/fetch-voice.sh`) and a release keyboard the release pack. Updates install
     over it. After updating the pack, restart the keyboard (or the phone) to use the new one.
+  - **Neural pack (optional):** the release may also have `keycorrect-neural-<version>.apk`
+    (`dev.keycorrect.neural`, about 140 MB with the default model). It
+    holds the offline language model (SmolLM2-135M) and the llama.cpp native library that rerank
+    suggestions, has no code and no permissions (not even INTERNET), and is needed only for the
+    neural features: without it they stay off. Install it the same way, in any order. It must be
+    signed with the same key as the keyboard: the keyboard checks that and ignores a pack that
+    isn't. A debug keyboard needs a debug-signed pack (`./gradlew :neuralpack:assembleDebug` and `adb install -r`, after
+    `tools/data/fetch-neural.sh`) and a release keyboard the release pack. Updates install over
+    it. After updating the pack, restart the keyboard (or the phone) to use the new one.
   - An older `dev.keycorrect` signed with a different key (e.g. the debug key) has to be
     uninstalled first.
 - **Making one** (needs a clean, pushed commit):
@@ -119,7 +128,9 @@ tools/release/release.sh publish
 `publish` also builds and attaches the signed voice pack when its files are downloaded
 (`tools/data/fetch-voice.sh`, which fills the git-ignored `data/raw/voice/`); otherwise it says so
 and publishes the keyboard alone. To build the pack by itself: `./gradlew :voicepack:assembleRelease`
-(it is not part of `assembleDebug` or CI).
+(it is not part of `assembleDebug` or CI). The neural pack is handled the same way: `publish`
+attaches it when `tools/data/fetch-neural.sh` has filled `data/raw/neural/` (it also needs the
+Android NDK, see docs/SETUP.md), and `./gradlew :neuralpack:assembleRelease` builds it by itself.
 
 ## 3. Turn the keyboard on
 
