@@ -28,13 +28,31 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
         map.put(context, (listOf(word) + old.filter { it != word }).take(MAX_NEXT_PER_CONTEXT))
     }
 
-    /** Rebuilds the next-word lists from the tables (order: by key; only after bulk changes). */
-    private fun rebuildNext() {
+    /**
+     * Rebuilds the next-word lists from the tables, only after bulk changes: each context keeps its
+     * [MAX_NEXT_PER_CONTEXT] heaviest followers at active time [now], strongest first (ties by key).
+     */
+    private fun rebuildNext(now: Long) {
         next1.clear()
         next2.clear()
-        bi.forEach { k, _ -> noteNext(next1, k.substringBefore(' '), k.substringAfter(' ')) }
-        tri.forEach { k, _ ->
-            noteNext(next2, k.substringBeforeLast(' '), k.substringAfterLast(' '))
+        fillNext(bi, next1, now) { it.substringBefore(' ') to it.substringAfter(' ') }
+        fillNext(tri, next2, now) { it.substringBeforeLast(' ') to it.substringAfterLast(' ') }
+    }
+
+    private inline fun fillNext(
+        table: ShardedMap<Cell>,
+        into: ShardedMap<List<String>>,
+        now: Long,
+        split: (String) -> Pair<String, String>,
+    ) {
+        val byContext = HashMap<String, MutableList<Pair<String, Double>>>()
+        table.forEach { k, c ->
+            val (context, word) = split(k)
+            byContext.getOrPut(context) { ArrayList() } += word to decay.value(c, now)
+        }
+        for ((context, followers) in byContext) {
+            followers.sortWith(compareBy({ -it.second }, { it.first }))
+            into.put(context, followers.take(MAX_NEXT_PER_CONTEXT).map { it.first })
         }
     }
 
@@ -70,7 +88,7 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
         evict(uni, cfg.maxUnigrams, now) { _, v -> uniTotal = decay.add(uniTotal, -v, now) }
         evict(bi, cfg.maxBigrams, now) { k, v -> bump(ctx1, k.substringBefore(' '), -v, now) }
         evict(tri, cfg.maxTrigrams, now) { k, v -> bump(ctx2, k.substringBeforeLast(' '), -v, now) }
-        if (over) rebuildNext()
+        if (over) rebuildNext(now)
     }
 
     private inline fun evict(
@@ -184,7 +202,7 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
                 }
             }
         }
-        rebuildNext()
+        rebuildNext(now)
     }
 
     private companion object {

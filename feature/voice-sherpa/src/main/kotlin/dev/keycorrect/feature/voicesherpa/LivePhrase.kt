@@ -62,12 +62,15 @@ internal object LiveTuning {
      * Moonshine repeat itself ("cars, cars, cars...", "the ones who are the ones who are...") at
      * rates [MAX_WORDS_PER_SECOND] can't tell from speech.
      */
-    const val LOOP_REPEATS = 4
-    const val LOOP_GROUP_REPEATS = 3
+    const val LOOP_REPEATS = 5
+    const val LOOP_GROUP_REPEATS = 4
     const val LOOP_MAX_GROUP = 5
 
     /** A looping segment longer than this is split and retried; shorter ones just collapse. */
     const val LOOP_SPLIT_MIN_SAMPLES = RATE * 2
+
+    /** A looping decode is split at most this many levels deep (about 7 decodes per segment). */
+    const val LOOP_SPLIT_DEPTH = 2
 
     /** A phrase that hits the limit is cut in its second half (from this fraction on). */
     const val CUT_FROM = 0.5f
@@ -201,32 +204,43 @@ internal fun fitsSegment(text: String, samples: Int): Boolean {
  * the same way, as shorter audio often frees the decoder; what still repeats is collapsed, so a
  * loop never reaches the text.
  */
-internal fun recognizeSplitting(recognizer: SegmentRecognizer, segment: FloatArray): String {
+internal fun recognizeSplitting(
+    recognizer: SegmentRecognizer,
+    segment: FloatArray,
+    depth: Int = 0,
+): String {
     val text = recognizeBounded(recognizer, segment)
     return when {
-        hasLoop(text) -> retryLoop(recognizer, segment, withoutLoops(text))
+        hasLoop(text) -> retryLoop(recognizer, segment, withoutLoops(text), depth)
         segment.size <= LiveTuning.SPLIT_MIN_SAMPLES || !nearlyEmpty(text, segment.size) -> text
-        else -> decodeHalves(recognizer, segment).takeIf { wordCount(it) > wordCount(text) } ?: text
+        else ->
+            decodeHalves(recognizer, segment, depth).takeIf { wordCount(it) > wordCount(text) }
+                ?: text
     }
 }
 
-/** The text of a [segment] whose decode looped; [collapsed] when a split gives nothing better. */
+/**
+ * The text of a [segment] whose decode looped, at split level [depth]; [collapsed] when a split
+ * gives nothing better (fewer words) or the split limit is reached.
+ */
 private fun retryLoop(
     recognizer: SegmentRecognizer,
     segment: FloatArray,
     collapsed: String,
-): String =
-    if (segment.size <= LiveTuning.LOOP_SPLIT_MIN_SAMPLES) {
-        collapsed
-    } else {
-        withoutLoops(decodeHalves(recognizer, segment)).ifEmpty { collapsed }
+    depth: Int,
+): String {
+    if (segment.size <= LiveTuning.LOOP_SPLIT_MIN_SAMPLES || depth >= LiveTuning.LOOP_SPLIT_DEPTH) {
+        return collapsed
     }
+    val split = withoutLoops(decodeHalves(recognizer, segment, depth))
+    return if (wordCount(split) >= wordCount(collapsed)) split else collapsed
+}
 
 /** [segment] cut at its quietest point near the middle, each half decoded, the texts joined. */
-private fun decodeHalves(recognizer: SegmentRecognizer, segment: FloatArray): String {
+private fun decodeHalves(recognizer: SegmentRecognizer, segment: FloatArray, depth: Int): String {
     val cut = quietestPoint(segment, 0.25f, 0.75f, prefer = segment.size / 2)
-    val left = recognizeSplitting(recognizer, segment.copyOfRange(0, cut))
-    val right = recognizeSplitting(recognizer, segment.copyOfRange(cut, segment.size))
+    val left = recognizeSplitting(recognizer, segment.copyOfRange(0, cut), depth + 1)
+    val right = recognizeSplitting(recognizer, segment.copyOfRange(cut, segment.size), depth + 1)
     return joinHalves(left, right)
 }
 

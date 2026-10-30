@@ -60,7 +60,6 @@ internal class StripPrompts(
     }
 
     private companion object {
-        const val ADD_WORD_PROMPT_MS = 3_000L
         const val NEVER_PROMPT_MS = 10_000L
     }
 }

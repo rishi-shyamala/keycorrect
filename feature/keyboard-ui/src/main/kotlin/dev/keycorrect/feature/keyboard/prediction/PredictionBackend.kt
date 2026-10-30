@@ -40,7 +40,7 @@ fun interface Predictor {
 }
 
 /** A text-expansion shortcut as the keyboard needs it. */
-data class ShortcutRule(val expansion: String, val autoExpand: Boolean)
+data class ShortcutRule(val expansion: String)
 
 /**
  * What prediction needs from the rest of the app, so this module never sees SQLite, assets or

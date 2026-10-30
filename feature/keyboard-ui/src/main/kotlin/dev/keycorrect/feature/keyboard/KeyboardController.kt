@@ -262,15 +262,20 @@ class KeyboardController(
     var fieldMode: FieldMode? by mutableStateOf(null)
         private set
 
-    private fun effectiveProfile(): FieldProfile =
-        when (fieldMode) {
-            FieldMode.Email -> declaredProfile.withKind(FieldKind.Email)
-            FieldMode.Url -> declaredProfile.withKind(FieldKind.Url)
-            FieldMode.Number -> declaredProfile.withKind(FieldKind.Number)
-            FieldMode.Phone -> declaredProfile.withKind(FieldKind.Phone)
+    private fun effectiveProfile(): FieldProfile {
+        // Ignoring "no suggestions" comes first so a kind the user picked still wins over it.
+        val declared =
+            if (settings.ignoreNoSuggestions) declaredProfile.ignoringNoSuggestions()
+            else declaredProfile
+        return when (fieldMode) {
+            FieldMode.Email -> declared.withKind(FieldKind.Email)
+            FieldMode.Url -> declared.withKind(FieldKind.Url)
+            FieldMode.Number -> declared.withKind(FieldKind.Number)
+            FieldMode.Phone -> declared.withKind(FieldKind.Phone)
             FieldMode.Text,
-            null -> declaredProfile
-        }.let { if (settings.ignoreNoSuggestions) it.ignoringNoSuggestions() else it }
+            null -> declared
+        }
+    }
 
     /**
      * Keyboard height in row units (multiples of the key height setting), the same on every layer
@@ -932,8 +937,6 @@ class KeyboardController(
         composingNow = input.isComposing
         updateAutoCapitalize()
     }
-
-    /** The "Add word to dictionary" prompt was tapped. */
 
     /**
      * A suggestion was long-pressed: asks, inline in the strip, whether to never suggest it. Does

@@ -194,10 +194,8 @@ class PredictionHost(
     }
 
     override fun shortcutFor(trigger: String): ShortcutRule? =
-        shortcutStore.snapshot[trigger]?.let {
-            // A shortcut only ever expands when its suggestion is tapped (user's decision).
-            ShortcutRule(it.expansion, autoExpand = false)
-        }
+        // A shortcut only ever expands when its suggestion is tapped (user's decision).
+        shortcutStore.snapshot[trigger]?.let { ShortcutRule(it.expansion) }
 
     /**
      * Apostrophes are normalised (curly and modifier forms to `'`) and the user's words are

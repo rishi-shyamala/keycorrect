@@ -240,11 +240,8 @@ internal class PredictiveInput(
         val replacedCorrection: Tracked?,
     )
 
-    private sealed interface Decision {
-        data class Correct(val text: String, val runnerUp: String?) : Decision
-
-        data class Expand(val expansion: Expansion) : Decision
-    }
+    /** An autocorrection to apply at a separator: [text] for the typed word. */
+    private data class Correction(val text: String, val runnerUp: String?)
 
     /**
      * The single gate for everything that reads the field's text, composes or talks to an engine:
@@ -802,9 +799,8 @@ internal class PredictiveInput(
 
     /**
      * Ends the composing word. [separator] (null for Enter, which the caller performs) is committed
-     * after it. Applies the autocorrect/expansion of the freshest result when allowed. [asTyped]
-     * (an Enter that isn't a line break) keeps the word as typed: no autocorrect (a shortcut still
-     * expands), no buzz, and a word that looks like the start of a longer one, which the app's
+     * after it. Applies the autocorrect of the freshest result when allowed. [asTyped]
+     * (an Enter that isn't a line break) keeps the word as typed: no autocorrect, no buzz, and a word that looks like the start of a longer one, which the app's
      * autocomplete finishes, is neither learned nor recorded.
      */
     private fun finishWord(separator: String?, allowUndo: Boolean, asTyped: Boolean = false) {
@@ -812,7 +808,7 @@ internal class PredictiveInput(
         val keptAsTyped = userKeepsAsTyped(typed)
         val touchList = ArrayList(touches)
         val pre = capturePre()
-        val decision = decide(typed).takeUnless { asTyped && it is Decision.Correct }
+        val decision = decide(typed).takeUnless { asTyped }
         val unlearned = asTyped && decision == null && !keptAsTyped && looksPartial(typed)
         composing.setLength(0)
         touches.clear()
@@ -821,43 +817,22 @@ internal class PredictiveInput(
 
         var committed = typed
         var method = CommitMethod.Typed
-        var cursorInside = false
-        var tail = ""
         editor.batchEdit {
-            when (decision) {
-                null -> editor.finishComposingText()
-                is Decision.Correct -> {
-                    editor.commitText(decision.text)
-                    committed = decision.text
-                    method = CommitMethod.Autocorrect
-                }
-                is Decision.Expand -> {
-                    val e = decision.expansion
-                    method = CommitMethod.Expansion
-                    if (e.cursor in 0 until e.text.length) {
-                        editor.commitText(e.head)
-                        editor.commitText(e.tail, 0)
-                        committed = e.head
-                        tail = e.tail
-                        cursorInside = true
-                    } else {
-                        editor.commitText(e.text)
-                        committed = e.text
-                    }
-                }
+            if (decision == null) {
+                editor.finishComposingText()
+            } else {
+                editor.commitText(decision.text)
+                committed = decision.text
+                method = CommitMethod.Autocorrect
             }
-            if (separator != null && !cursorInside) editor.commitText(separator)
+            if (separator != null) editor.commitText(separator)
         }
         cache.appendBefore(committed)
-        if (cursorInside) {
-            cache.prependAfter(tail)
-        } else if (separator != null) {
-            cache.appendBefore(separator)
-        }
-        val canUndo = allowUndo && decision != null && separator != null && !cursorInside
+        if (separator != null) cache.appendBefore(separator)
+        val canUndo = allowUndo && decision != null && separator != null
         val correction =
-            if (decision is Decision.Expand || unlearned) {
-                abandonWord() // expansions and as-typed unknown words are not learned from
+            if (unlearned) {
+                abandonWord() // as-typed unknown words are not learned from
                 null
             } else {
                 completeWord(
@@ -867,9 +842,9 @@ internal class PredictiveInput(
                     null,
                     pre,
                     touchList,
-                    (decision as? Decision.Correct)?.runnerUp,
+                    decision?.runnerUp,
                     SentenceContext.endsSentence(separator),
-                    canUndo && decision is Decision.Correct,
+                    canUndo,
                 )
             }
         undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
@@ -885,19 +860,17 @@ internal class PredictiveInput(
      * anything that isn't a plain word (digits, symbols, addresses) stay silent.
      */
     private fun wordFeedback(
-        decision: Decision?,
+        decision: Correction?,
         typed: String,
         separator: String?,
         keptAsTyped: Boolean,
     ) {
         val kind =
-            when (decision) {
-                is Decision.Correct -> FeedbackKind.Autocorrected
-                is Decision.Expand -> return
-                null ->
-                    if (!keptAsTyped && !startsAddress(separator) && isUnknownPlainWord(typed)) {
-                        FeedbackKind.UnknownWord
-                    } else return
+            when {
+                decision != null -> FeedbackKind.Autocorrected
+                !keptAsTyped && !startsAddress(separator) && isUnknownPlainWord(typed) ->
+                    FeedbackKind.UnknownWord
+                else -> return
             }
         if (hapticWanted(kind, settings)) onWordFeedback(kind)
     }
@@ -932,15 +905,11 @@ internal class PredictiveInput(
     /**
      * What to do with [typed] at a separator, from the freshest result (decoding now if needed).
      */
-    private fun decide(typed: String): Decision? {
+    private fun decide(typed: String): Correction? {
         if (backend.predictor == null) return null
         val result = freshResult(typed) ?: return null
         val pending = pendingCorrection(result, typed) ?: return null
-        return if (pending.source == CandidateSource.Shortcut) {
-            Decision.Expand(env.expander.expand(pending.text))
-        } else {
-            Decision.Correct(pending.text, result.autocorrectRunnerUp?.text)
-        }
+        return Correction(pending.text, result.autocorrectRunnerUp?.text)
     }
 
     private fun freshResult(typed: String): PredictResult? {
@@ -954,24 +923,15 @@ internal class PredictiveInput(
     }
 
     /**
-     * The candidate that [result] would apply at a separator: an auto-expanding shortcut, or the
-     * autocorrect when both the setting and the field allow it and the user hasn't rejected it.
+     * The candidate that [result] would apply at a separator: the autocorrect when both the setting
+     * and the field allow it and the user hasn't rejected it. A shortcut's trigger is never
+     * corrected: space keeps it and only a tap on its suggestion expands it.
      */
     private fun pendingCorrection(result: PredictResult, typed: String): Candidate? {
         if (typed.isEmpty()) return null
-        val first = result.candidates.firstOrNull()
-        if (
-            first != null &&
-                first.source == CandidateSource.Shortcut &&
-                first.text != typed &&
-                retypeGuard?.let { sameWord(it, typed) } != true &&
-                backend.shortcutFor(typed)?.autoExpand == true
-        ) {
-            return first
-        }
         // A shortcut's trigger is the user's own word: space keeps it, a tap expands it.
         if (!autocorrectAllowed(typed)) return null
-        if (backend.shortcutFor(typed)?.autoExpand == false) return null
+        if (backend.shortcutFor(typed) != null) return null
         return result.autocorrect?.takeIf { it.text != typed }
     }
 
@@ -1210,8 +1170,8 @@ internal class PredictiveInput(
         )
         retypeGuard = null // the literal is kept (and remembered in revertedWords)
         publish(StripModel.Empty)
-        if (canAddWords() && typed.any { it.isLetter() } && !backend.isKnownWord(typed)) {
-            // A tap on the typed word adds it, the first time it is typed.
+        if (canAddWords() && isUnknownPlainWord(typed)) {
+            // A tap on the typed word adds it when the strip offered the "+" for it.
             backend.addWord(typed)
             learn.emit(
                 UserAction(learn.stamp(), learn.profile, UserAction.Kind.AddToDictionary, typed)

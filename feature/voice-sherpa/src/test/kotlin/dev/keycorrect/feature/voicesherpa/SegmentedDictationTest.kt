@@ -637,13 +637,21 @@ class SegmentedDictationTest {
         assertThat(withoutLoops("so we went on and on and on and on and on"))
             .isEqualTo("so we went on and on")
         // Loops the real model produced on overlapping voices.
-        assertThat(withoutLoops("All of us are the ones who are the ones who are the ones who are"))
+        assertThat(withoutLoops(
+                    "All of us are the ones who are the ones who are the ones who are " +
+                        "the ones who are the ones who are"
+                )
+            )
             .isEqualTo("All of us are the ones who are")
         assertThat(withoutLoops("I'm 100,000, I'm 100,000, I'm 100,000, I'm 100,000,"))
             .isEqualTo("I'm 100,000,")
-        // Up to three in a row is speech.
+        // Up to four in a row, and three of a group, is speech.
         assertThat(hasLoop("no no no that is very very good")).isFalse()
-        assertThat(withoutLoops("no no no")).isEqualTo("no no no")
+        assertThat(withoutLoops("no no no no")).isEqualTo("no no no no")
+        assertThat(withoutLoops("I know I know I know")).isEqualTo("I know I know I know")
+        // Symbols that are not music are text.
+        assertThat(withoutLoops("Tom & Jerry")).isEqualTo("Tom & Jerry")
+        assertThat(hasLoop("well - maybe")).isFalse()
         assertThat(hasLoop("Ask what you can do for your country.")).isFalse()
         // Noise written as symbols is not text.
         assertThat(withoutLoops("♪♪♪♪♪♪")).isEmpty()
@@ -681,8 +689,28 @@ class SegmentedDictationTest {
     }
 
     @Test
+    fun aLoopRetrySplitsAtMostTwoLevelsDeep() {
+        var calls = 0
+        val loop = "speaking speaking speaking speaking speaking speaking"
+        val text = recognizeSplitting({ calls++; loop }, FloatArray(8 * 16000) { 0.5f })
+        assertThat(calls).isAtMost(7)
+        assertThat(text).isEqualTo("speaking")
+    }
+
+    @Test
+    fun aSplitWithFewerWordsThanTheCollapsedTextIsNotPreferred() {
+        val loop = "so we went on cars cars cars cars cars cars"
+        val text =
+            recognizeSplitting(
+                { if (it.size > 6 * 16000) loop else "so" },
+                FloatArray(8 * 16000) { 0.5f },
+            )
+        assertThat(text).isEqualTo("so we went on cars")
+    }
+
+    @Test
     fun liveWordsInALoopAreNotShown() {
-        assertThat(plausible("speaking speaking speaking speaking", 16000 * 4)).isFalse()
+        assertThat(plausible("speaking speaking speaking speaking speaking", 16000 * 4)).isFalse()
         assertThat(plausible("the words I was saying", 16000 * 4)).isTrue()
     }
 

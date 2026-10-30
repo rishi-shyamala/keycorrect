@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.voicesherpa
 
+private const val MUSIC_SYMBOLS = "♪♫♩♬"
+
 /** [word] without punctuation, lower-cased: how repeats are compared. */
 private fun loopKey(word: String) = word.filter { it.isLetterOrDigit() }.lowercase()
 
@@ -20,12 +22,12 @@ private fun loopEnd(keys: List<String>, from: Int, group: Int): Int {
 }
 
 /**
- * [text] with each decoder loop collapsed to one copy and tokens with no letter or digit (the model
- * writes noise as "♪♪♪") removed. Text without either comes back unchanged.
+ * [text] with each decoder loop collapsed to one copy and tokens made only of music symbols (the
+ * model writes noise as "♪♪♪") removed. Text without either comes back unchanged.
  */
 internal fun withoutLoops(text: String): String {
     val tokens = text.split(' ').filter { it.isNotEmpty() }
-    val words = tokens.filter { w -> w.any { it.isLetterOrDigit() } }
+    val words = tokens.filter { w -> !w.all { it in MUSIC_SYMBOLS } }
     val keys = words.map(::loopKey)
     val out = ArrayList<String>(words.size)
     var i = 0
