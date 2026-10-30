@@ -955,6 +955,7 @@ class PredictiveControllerTest {
         assertThat(slot.kind).isEqualTo(SlotKind.Literal)
         assertThat(slot.text).isEqualTo("+ zzq")
         assertThat(slot.insert).isEqualTo("zzq")
+        assertThat(slot.labelRes()).isEqualTo(R.string.strip_add_word)
         controller.onSuggestionTap(slot)
         assertThat(text()).isEqualTo("zzq ")
         assertThat(backend.added).containsExactly("zzq")

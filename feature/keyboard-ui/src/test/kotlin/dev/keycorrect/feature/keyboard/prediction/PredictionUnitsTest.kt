@@ -69,6 +69,8 @@ class StripBuilderTest {
         assertThat(StripSlot("a", SlotKind.Suggestion).labelRes())
             .isEqualTo(R.string.strip_suggestion)
         assertThat(StripSlot("a", SlotKind.Literal).labelRes()).isEqualTo(R.string.strip_literal)
+        assertThat(StripSlot("a", SlotKind.Literal, addsWord = true).labelRes())
+            .isEqualTo(R.string.strip_add_word)
         assertThat(StripSlot("a", SlotKind.Shortcut).labelRes()).isEqualTo(R.string.strip_shortcut)
         assertThat(StripSlot("a", SlotKind.Shortcut, bold = true).labelRes())
             .isEqualTo(R.string.strip_autocorrect)

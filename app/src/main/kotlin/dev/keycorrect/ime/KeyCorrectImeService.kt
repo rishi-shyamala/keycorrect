@@ -265,7 +265,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
-        appContainer.lastField = describeField(editorInfo)
+        if (shouldRecordField(editorInfo.inputType, editorInfo.packageName, packageName)) {
+            appContainer.lastField = describeField(editorInfo)
+        }
         // The controller first: super resumes the lifecycle, which lets Compose draw, and the
         // first frame should show this field's state (layer, shift, strip), not the last one's.
         controller.onStartInput(
@@ -328,3 +330,12 @@ private fun describeField(info: EditorInfo): String {
     val hex = "inputType 0x${type.toString(16)}, imeOptions 0x${info.imeOptions.toString(16)}"
     return "${info.packageName}: ${FieldProfile.from(info).kind}$note ($hex)"
 }
+
+/**
+ * Whether a started field is worth recording as the "last text field". Opening this app's own
+ * Settings starts the input view with an empty EditorInfo (no input type, our package), which would
+ * overwrite the real field the user was diagnosing; a real field of this app, or a no-type field of
+ * another app, is still recorded.
+ */
+internal fun shouldRecordField(inputType: Int, fieldPackage: String?, ownPackage: String): Boolean =
+    !(inputType == InputType.TYPE_NULL && fieldPackage == ownPackage)

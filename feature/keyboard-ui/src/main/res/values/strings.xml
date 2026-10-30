@@ -8,6 +8,7 @@
     <string name="strip_suggestion">Suggestion: %1$s</string>
     <string name="strip_autocorrect">Autocorrect to %1$s</string>
     <string name="strip_literal">Keep %1$s as typed</string>
+    <string name="strip_add_word">Add %1$s to dictionary</string>
     <string name="strip_phrase">Phrase suggestion: %1$s</string>
     <string name="strip_shortcut">Shortcut expansion: %1$s</string>
 

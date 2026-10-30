@@ -44,6 +44,8 @@ data class StripSlot(
     val bold: Boolean = false,
     /** What the accessibility label names: [text], or the emoji's CLDR name for an emoji slot. */
     val label: String = text,
+    /** A literal whose tap also adds the word to the dictionary ("+ word"). */
+    val addsWord: Boolean = false,
 )
 
 /**
@@ -79,7 +81,7 @@ internal fun StripSlot.labelRes(): Int =
     when (kind) {
         SlotKind.Suggestion -> R.string.strip_suggestion
         SlotKind.Autocorrect -> R.string.strip_autocorrect
-        SlotKind.Literal -> R.string.strip_literal
+        SlotKind.Literal -> if (addsWord) R.string.strip_add_word else R.string.strip_literal
         SlotKind.Phrase -> R.string.strip_phrase
         SlotKind.Shortcut -> if (bold) R.string.strip_autocorrect else R.string.strip_shortcut
         SlotKind.Emoji -> R.string.strip_emoji
@@ -162,7 +164,13 @@ internal object StripBuilder {
         when {
             typed.isEmpty() -> null
             unknownWord ->
-                StripSlot("$ADD_WORD_MARK$text", SlotKind.Literal, insert = text, label = text)
+                StripSlot(
+                    "$ADD_WORD_MARK$text",
+                    SlotKind.Literal,
+                    insert = text,
+                    label = text,
+                    addsWord = true,
+                )
             else -> StripSlot(text, SlotKind.Literal)
         }
 
