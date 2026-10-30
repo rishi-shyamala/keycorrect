@@ -36,8 +36,10 @@ class RecorrectionTest {
 
     private val textField = FieldProfile.from(InputType.TYPE_CLASS_TEXT, 0)
 
-    private fun start(profile: FieldProfile = textField) =
-        controller.onStartInput(profile, KeyboardSettings(), false, null, 0, 0)
+    private fun start(
+        profile: FieldProfile = textField,
+        settings: KeyboardSettings = KeyboardSettings(),
+    ) = controller.onStartInput(profile, settings, false, null, 0, 0)
 
     /** The user taps the text to put the cursor at [at]. */
     private fun tapInto(text: String, at: Int) {
@@ -122,7 +124,8 @@ class RecorrectionTest {
             FieldProfile.from(
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
                 0,
-            )
+            ),
+            KeyboardSettings(ignoreNoSuggestions = false),
         )
         tapInto("say teh", 7)
         assertThat(predictor.requests).isEmpty()

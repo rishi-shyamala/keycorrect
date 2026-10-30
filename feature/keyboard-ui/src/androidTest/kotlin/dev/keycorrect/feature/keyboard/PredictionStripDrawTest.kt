@@ -33,7 +33,6 @@ class PredictionStripDrawTest {
             PredictionStrip(
                 strip = { model },
                 onSlot = {},
-                onAddWord = {},
                 modifier = Modifier.testTag("strip").width(360.dp).height(48.dp),
             )
         }

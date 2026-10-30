@@ -177,6 +177,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private fun KeyboardSettings.withEngine(p: Preferences): KeyboardSettings {
         val d = KeyboardSettings()
         return copy(
+            ignoreNoSuggestions = p[IGNORE_NO_SUGGESTIONS] ?: d.ignoreNoSuggestions,
             neuralEngine = p[NEURAL_ENGINE] ?: d.neuralEngine,
             approvedEngines = p[APPROVED_ENGINES] ?: d.approvedEngines,
         )
@@ -202,6 +203,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[SUGGESTIONS_ENABLED] = s.suggestionsEnabled
         this[AUTOCORRECT_ENABLED] = s.autocorrectEnabled
         this[ENTER_KEEPS_TYPED] = s.enterKeepsTyped
+        this[IGNORE_NO_SUGGESTIONS] = s.ignoreNoSuggestions
         this[NEXT_WORD_PREDICTIONS] = s.nextWordPredictions
         this[PHRASE_COMPLETION] = s.phraseCompletion
         this[AUTO_SPACE_AFTER_PICK] = s.autoSpaceAfterPick
@@ -261,6 +263,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val SUGGESTIONS_ENABLED = booleanPreferencesKey("suggestions_enabled")
         val AUTOCORRECT_ENABLED = booleanPreferencesKey("autocorrect_enabled")
         val ENTER_KEEPS_TYPED = booleanPreferencesKey("enter_keeps_typed")
+        val IGNORE_NO_SUGGESTIONS = booleanPreferencesKey("ignore_no_suggestions")
         val NEXT_WORD_PREDICTIONS = booleanPreferencesKey("next_word_predictions")
         val PHRASE_COMPLETION = booleanPreferencesKey("phrase_completion")
         val AUTO_SPACE_AFTER_PICK = booleanPreferencesKey("auto_space_after_pick")
@@ -310,6 +313,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 SUGGESTIONS_ENABLED.name,
                 AUTOCORRECT_ENABLED.name,
                 ENTER_KEEPS_TYPED.name,
+                IGNORE_NO_SUGGESTIONS.name,
                 NEXT_WORD_PREDICTIONS.name,
                 PHRASE_COMPLETION.name,
                 AUTO_SPACE_AFTER_PICK.name,

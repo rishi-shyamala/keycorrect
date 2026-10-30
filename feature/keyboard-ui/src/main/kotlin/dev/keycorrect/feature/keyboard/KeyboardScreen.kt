@@ -227,7 +227,6 @@ private fun StripContent(
         PredictionStrip(
             strip = remember(controller) { { controller.strip } },
             onSlot = remember(controller) { controller::onSuggestionTap },
-            onAddWord = remember(controller) { controller::onAddWordTap },
             onSlotLongPress = remember(controller) { controller::onSuggestionLongPress },
             onNeverYes = remember(controller) { controller::onNeverSuggestConfirm },
             onNeverCancel = remember(controller) { controller::onNeverSuggestCancel },

@@ -272,7 +272,7 @@ class PredictiveControllerTest {
         assertThat(controller.strip.centre?.text).isEqualTo("the")
         assertThat(controller.strip.centre?.bold).isTrue()
         assertThat(controller.strip.centre?.labelRes()).isEqualTo(R.string.strip_autocorrect)
-        assertThat(controller.strip.left?.text).isEqualTo("teh")
+        assertThat(controller.strip.left?.text).isEqualTo("+ teh")
         space()
         assertThat(text()).isEqualTo("the ")
         assertThat(editor.composing).isEmpty()
@@ -735,51 +735,14 @@ class PredictiveControllerTest {
     }
 
     @Test
-    fun tappingTheLiteralKeepsTheWordAndOffersToAddIt() {
-        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
-        start()
-        type("zzq")
-        val literal = controller.strip.left!!
-        assertThat(literal.kind).isEqualTo(SlotKind.Literal)
-        controller.onSuggestionTap(literal)
-        assertThat(text()).isEqualTo("zzq ")
-        assertThat(controller.strip.addWord).isEqualTo("zzq")
-        assertThat(scheduler.pending.single().delayMs).isEqualTo(3_000L)
-        controller.onAddWordTap()
-        assertThat(backend.added).containsExactly("zzq")
-        assertThat(controller.strip.addWord).isNull()
-        // And it is not corrected when typed again.
-        backspace()
-        space()
-        assertThat(text()).isEqualTo("zzq ")
-    }
-
-    @Test
-    fun theAddWordChipGoesAwayByItselfAndWithTheNextKey() {
-        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
-        start()
-        type("zzq")
-        controller.onSuggestionTap(controller.strip.left!!)
-        scheduler.fireAll()
-        assertThat(controller.strip.addWord).isNull()
-
-        predictor.word("qqz", listOf("quiz"), autocorrect = "quiz")
-        type("qqz")
-        controller.onSuggestionTap(controller.strip.left!!)
-        assertThat(controller.strip.addWord).isNotNull()
-        type("a")
-        assertThat(controller.strip.addWord).isNull()
-    }
-
-    @Test
-    fun noChipForAKnownWord() {
+    fun tappingAKnownTypedWordAddsNothing() {
         backend.known += "hello"
         predictor.word("hello", listOf("hello"), autocorrect = "help")
         start()
         type("hello")
         controller.onSuggestionTap(controller.strip.left!!)
         assertThat(text()).isEqualTo("hello ")
-        assertThat(controller.strip.addWord).isNull()
+        assertThat(backend.added).isEmpty()
     }
 
     // ------------------------------------------------------------------ shortcuts
@@ -805,6 +768,28 @@ class PredictiveControllerTest {
         assertThat(text()).isEqualTo("omw")
         assertThat(editor.composing).isEqualTo("omw")
         space() // kept as typed: not expanded again
+        assertThat(text()).isEqualTo("omw ")
+    }
+
+    @Test
+    fun aShortcutTakesTheMiddleAndExpandsOnlyWhenTapped() {
+        shortcut("email", "me@example.com", auto = false)
+        start()
+        type("email")
+        val slot = controller.strip.centre!!
+        assertThat(slot.kind).isEqualTo(SlotKind.Shortcut)
+        assertThat(slot.text).isEqualTo("me@example.com")
+        controller.onSuggestionTap(slot)
+        assertThat(text()).startsWith("me@example.com")
+    }
+
+    @Test
+    fun spaceKeepsAShortcutsTriggerEvenIfItLooksLikeATypo() {
+        backend.shortcuts["omw"] = ShortcutRule("on my way", false)
+        predictor.word("omw", listOf("now"), autocorrect = "now")
+        start()
+        type("omw")
+        space()
         assertThat(text()).isEqualTo("omw ")
     }
 
@@ -959,71 +944,88 @@ class PredictiveControllerTest {
         assertThat(editor.readCalls).isEqualTo(2)
     }
 
-    // ------------------------------------------------------------------ add-word chip
+    // ------------------------------------------------------------------ adding a word
 
-    private fun showChip() {
+    @Test
+    fun anUnknownWordIsMarkedAndATapAddsItTheFirstTime() {
         predictor.word("zzq", listOf("zap"), autocorrect = "zap")
+        start()
         type("zzq")
-        controller.onSuggestionTap(controller.strip.left!!)
-        assertThat(controller.strip.addWord).isEqualTo("zzq")
-    }
-
-    @Test
-    fun theChipDoesNotSurviveAMoveToAPasswordField() {
-        start()
-        showChip()
-        start(
-            FieldProfile.from(
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
-                0,
-            )
-        )
-        assertThat(controller.strip.addWord).isNull()
-        assertThat(scheduler.pending).isEmpty()
-        controller.onAddWordTap()
-        assertThat(backend.added).isEmpty()
-        start() // and back to a text field: still gone
-        controller.onAddWordTap()
-        assertThat(backend.added).isEmpty()
-    }
-
-    @Test
-    fun theChipGoesWhenInputFinishesOrSuggestionsAreSwitchedOff() {
-        start()
-        showChip()
-        controller.onFinishInput()
-        assertThat(controller.strip.addWord).isNull()
-        controller.onAddWordTap()
-        assertThat(backend.added).isEmpty()
-
-        start()
-        editor.setText("")
-        showChip()
-        controller.updateSettings(KeyboardSettings(suggestionsEnabled = false))
-        assertThat(controller.strip.addWord).isNull()
-        controller.onAddWordTap()
-        assertThat(backend.added).isEmpty()
-    }
-
-    @Test
-    fun tappingTheChipAddsTheWordOnlyWhereLearningIsAllowed() {
-        start()
-        showChip()
-        controller.onAddWordTap()
+        val slot = controller.strip.left!!
+        assertThat(slot.kind).isEqualTo(SlotKind.Literal)
+        assertThat(slot.text).isEqualTo("+ zzq")
+        assertThat(slot.insert).isEqualTo("zzq")
+        controller.onSuggestionTap(slot)
+        assertThat(text()).isEqualTo("zzq ")
         assertThat(backend.added).containsExactly("zzq")
     }
 
     @Test
-    fun noChipWhereLearningIsOff() {
+    fun anUnknownWordStaysOnTheStripWhenNothingContinuesIt() {
+        predictor.word("priy", listOf("pray", "prey", "pry"))
+        start()
+        type("priy")
+        assertThat(controller.strip.left?.text).isEqualTo("+ priy")
+        assertThat(controller.strip.centre?.text).isEqualTo("pray")
+    }
+
+    @Test
+    fun aWordStillBeingTypedDoesNotPushOutACompletion() {
+        predictor.word("hel", listOf("hello", "help", "held"))
+        start()
+        type("hel")
+        assertThat(controller.strip.centre?.text).isEqualTo("hello")
+        assertThat(controller.strip.left?.text).isEqualTo("help")
+    }
+
+    @Test
+    fun aWordCannotBeAddedInIncognitoOrAPasswordField() {
+        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
+        start(settings = KeyboardSettings(numberRow = false, incognito = true))
+        type("zzq")
+        assertThat(controller.strip.left?.text).isEqualTo("zzq")
+        controller.onSuggestionTap(controller.strip.left!!)
+        assertThat(backend.added).isEmpty()
+    }
+
+    // ------------------------------------------------------------------ "no suggestions" fields
+
+    private val noSuggestions =
+        FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, 0)
+
+    @Test
+    fun aFieldAskingForNoSuggestionsGetsThemAnywayByDefault() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start(noSuggestions)
+        type("teh")
+        assertThat(controller.strip.centre?.text).isEqualTo("the")
+        space()
+        assertThat(text()).isEqualTo("the ")
+        assertThat(predictor.requests.last().engineAllowed).isFalse()
+    }
+
+    @Test
+    fun theFieldsRequestIsObeyedWithTheSwitchOff() {
+        predictor.word("teh", listOf("the"), autocorrect = "the")
+        start(noSuggestions, KeyboardSettings(numberRow = false, ignoreNoSuggestions = false))
+        type("teh")
+        space()
+        assertThat(text()).isEqualTo("teh ")
+        assertThat(predictor.requests).isEmpty()
+    }
+
+    @Test
+    fun aPasswordFieldIsNeverOpenedUpByTheSwitch() {
         start(
             FieldProfile.from(
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
                 0,
             )
         )
-        predictor.word("zzq", listOf("zap"), autocorrect = "zap")
-        type("zzq")
-        assertThat(controller.strip.isEmpty).isTrue()
+        type("teh")
+        assertThat(predictor.requests).isEmpty()
     }
 
     // ------------------------------------------------------------------ undo and recompose safety

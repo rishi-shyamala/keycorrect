@@ -1026,20 +1026,6 @@ class LearningEventsTest {
     // ------------------------------------------------------------------ UserAction
 
     @Test
-    fun theAddWordChipReportsAnAddToDictionary() {
-        predictor.word("zorp", listOf("zap"), autocorrect = "zap")
-        start()
-        type("zorp")
-        tap(controller.strip.left) // literal: the add-word chip appears
-        assertThat(controller.strip.addWord).isEqualTo("zorp")
-        controller.onAddWordTap()
-        assertThat(backend.added).containsExactly("zorp")
-        val a = sink.of<UserAction>().single()
-        assertThat(a.kind).isEqualTo(UserAction.Kind.AddToDictionary)
-        assertThat(a.word).isEqualTo("zorp")
-    }
-
-    @Test
     fun longPressingASuggestionAsksInlineAndYesBlocksIt() {
         predictor.word("hel", listOf("help", "hello", "held"))
         start()

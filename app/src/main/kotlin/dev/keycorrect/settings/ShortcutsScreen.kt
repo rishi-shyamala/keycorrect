@@ -21,9 +21,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -221,7 +218,6 @@ private fun ShortcutDialog(
 ) {
     var trigger by rememberSaveable { mutableStateOf(initial?.trigger.orEmpty()) }
     var expansion by rememberSaveable { mutableStateOf(initial?.expansion.orEmpty()) }
-    var autoExpand by rememberSaveable { mutableStateOf(initial?.mode == ShortcutMode.AUTO_EXPAND) }
     var submitted by rememberSaveable { mutableStateOf(false) }
 
     val normalized = Validation.normalizeTrigger(trigger)
@@ -234,11 +230,7 @@ private fun ShortcutDialog(
     val save = {
         submitted = true
         if (validation == null && !duplicate) {
-            onConfirm(
-                normalized,
-                expansion,
-                if (autoExpand) ShortcutMode.AUTO_EXPAND else ShortcutMode.SUGGEST,
-            )
+            onConfirm(normalized, expansion, ShortcutMode.SUGGEST)
         }
     }
     AlertDialog(
@@ -290,26 +282,7 @@ private fun ShortcutDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    stringResource(R.string.shortcuts_mode_label),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    val modes = listOf(ShortcutMode.SUGGEST, ShortcutMode.AUTO_EXPAND)
-                    modes.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = (mode == ShortcutMode.AUTO_EXPAND) == autoExpand,
-                            onClick = { autoExpand = mode == ShortcutMode.AUTO_EXPAND },
-                            shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                        ) {
-                            Text(stringResource(mode.labelRes()))
-                        }
-                    }
-                }
-                Text(
-                    stringResource(
-                        if (autoExpand) R.string.shortcuts_mode_auto_expand_help
-                        else R.string.shortcuts_mode_suggest_help
-                    ),
+                    stringResource(R.string.shortcuts_mode_suggest_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

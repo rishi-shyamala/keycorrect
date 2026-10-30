@@ -303,7 +303,6 @@ internal class PredictiveInput(
         }
         if (was && !predictionOn) {
             finishAsTyped()
-            prompts.cancelAddWord()
             prompts.cancelNever()
         }
         val relevant =
@@ -632,7 +631,7 @@ internal class PredictiveInput(
                 "",
                 null,
                 null,
-                env.expander::preview,
+                preview = env.expander::preview,
             )
         if (strip.isEmpty) {
             recorrect = null
@@ -752,22 +751,6 @@ internal class PredictiveInput(
     /** "Cancel" on the never-suggest prompt. */
     fun onNeverCancel() {
         prompts.declineNever()
-    }
-
-    /**
-     * The "Add word to dictionary" prompt was tapped. The word is added only if the field still
-     * allows suggestions and learning; a prompt that outlived either is dropped.
-     */
-    fun onAddWordTap() {
-        val word = prompts.addWord ?: return
-        val allowed = canPredict() && profile?.learningEnabled == true
-        prompts.dismiss()
-        if (allowed) {
-            backend.addWord(word)
-            learn.emit(
-                UserAction(learn.stamp(), learn.profile, UserAction.Kind.AddToDictionary, word)
-            )
-        }
     }
 
     // ------------------------------------------------------------------ composing
@@ -934,6 +917,9 @@ internal class PredictiveInput(
         return backend.shortcutFor(word) == null && !isKnown(word)
     }
 
+    /** Whether a tap may add a word here: an explicit act, but never in incognito. */
+    private fun canAddWords() = profile?.wordsCanBeAdded == true && !settings.incognito
+
     /** The user has explicitly said to keep [word] as typed: no need to buzz about it. */
     private fun userKeepsAsTyped(word: String): Boolean {
         val editing = edit?.tracked
@@ -983,7 +969,9 @@ internal class PredictiveInput(
         ) {
             return first
         }
+        // A shortcut's trigger is the user's own word: space keeps it, a tap expands it.
         if (!autocorrectAllowed(typed)) return null
+        if (backend.shortcutFor(typed)?.autoExpand == false) return null
         return result.autocorrect?.takeIf { it.text != typed }
     }
 
@@ -1222,12 +1210,12 @@ internal class PredictiveInput(
         )
         retypeGuard = null // the literal is kept (and remembered in revertedWords)
         publish(StripModel.Empty)
-        if (
-            profile?.learningEnabled == true &&
-                typed.any { it.isLetter() } &&
-                !backend.isKnownWord(typed)
-        ) {
-            prompts.showAddWord(typed)
+        if (canAddWords() && typed.any { it.isLetter() } && !backend.isKnownWord(typed)) {
+            // A tap on the typed word adds it, the first time it is typed.
+            backend.addWord(typed)
+            learn.emit(
+                UserAction(learn.stamp(), learn.profile, UserAction.Kind.AddToDictionary, typed)
+            )
         }
         requestNextWord()
     }
@@ -1630,6 +1618,7 @@ internal class PredictiveInput(
                 typed,
                 pendingCorrection(visible, typed),
                 emojiFor(typed)?.let { EmojiSuggestion(emojiForm(it), it.name) },
+                canAddWords() && isUnknownPlainWord(typed),
                 env.expander::preview,
             )
         )
@@ -1708,7 +1697,6 @@ internal class PredictiveInput(
         endEdit()
         shown.clear()
         loop.advance()
-        prompts.cancelAddWord()
         prompts.cancelNever()
         prompts.base = StripModel.Empty
         onStrip(StripModel.Empty)

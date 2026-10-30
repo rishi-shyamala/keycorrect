@@ -105,6 +105,11 @@ data class KeyboardSettings(
      * unless it is a known word. Lets the app's own autocomplete finish a partial word.
      */
     val enterKeepsTyped: Boolean = true,
+    /**
+     * Suggest and correct even where an app asks for no suggestions (many chat boxes do). Password
+     * and number fields are never affected.
+     */
+    val ignoreNoSuggestions: Boolean = true,
     /** Suggest the next word after a word is finished. */
     val nextWordPredictions: Boolean = true,
     /** Offer multi-word completions (docs/PLAN.md §3.2). */

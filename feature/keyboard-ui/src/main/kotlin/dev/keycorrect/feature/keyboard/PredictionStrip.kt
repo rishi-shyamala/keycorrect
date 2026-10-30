@@ -53,14 +53,11 @@ import dev.keycorrect.feature.keyboard.prediction.labelRes
  * (see [slotWeight]). [strip] is a lambda so the state behind it is read here, in this composable
  * only; it recomposes when the suggestions change and for no other reason (typing in a field
  * without suggestions never gets here at all). Empty slots keep a minimum space.
- *
- * While the model carries an add-word prompt, a single chip takes over the whole strip.
  */
 @Composable
 internal fun PredictionStrip(
     strip: () -> StripModel,
     onSlot: (StripSlot) -> Unit,
-    onAddWord: () -> Unit,
     modifier: Modifier = Modifier,
     onSlotLongPress: (StripSlot) -> Unit = {},
     onNeverYes: () -> Unit = {},
@@ -72,11 +69,6 @@ internal fun PredictionStrip(
     val never = model.neverSuggest
     if (never != null) {
         NeverSuggestPrompt(never, onNeverYes, onNeverCancel, modifier)
-        return
-    }
-    val word = model.addWord
-    if (word != null) {
-        AddWordChip(word, onAddWord, modifier)
         return
     }
     val blockable = canBlock()
@@ -283,35 +275,6 @@ internal fun slotWeight(slot: StripSlot?): Float {
     if (slot == null) return MIN_SLOT_WEIGHT
     val extra = if (slot.kind == SlotKind.Phrase) PHRASE_HINT.length else 0
     return (slot.text.length + extra).toFloat().coerceIn(MIN_SLOT_WEIGHT, MAX_SLOT_WEIGHT)
-}
-
-@Composable
-private fun AddWordChip(word: String, onAddWord: () -> Unit, modifier: Modifier) {
-    val description = stringResource(R.string.strip_add_word_description, word)
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(SlotCorner))
-                .clickable(role = Role.Button, onClick = onAddWord)
-                .clearAndSetSemantics {
-                    contentDescription = description
-                    role = Role.Button
-                    onClick {
-                        onAddWord()
-                        true
-                    }
-                }
-                .padding(horizontal = SlotPadding),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            stringResource(R.string.strip_add_word, word),
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
 private const val PHRASE_HINT = " →"

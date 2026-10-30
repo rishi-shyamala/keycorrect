@@ -76,6 +76,8 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             override fun userLogProb(context: List<String>, word: String) =
                 ref.get().userLogProb(context, word)
 
+            override fun userNextWords(context: List<String>) = ref.get().userNextWords(context)
+
             override fun correctionBias(typed: String, candidate: String, contextBucket: String) =
                 ref.get().correctionBias(typed, candidate, contextBucket)
 

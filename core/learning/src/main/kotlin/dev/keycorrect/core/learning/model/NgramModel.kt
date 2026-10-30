@@ -16,6 +16,28 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
     private val tri = ShardedMap<Cell>()
     private val ctx1 = ShardedMap<Cell>()
     private val ctx2 = ShardedMap<Cell>()
+
+    // Words seen after each context, latest first: what the next-word pool can't get from the
+    // weight tables without scanning them. Stale entries are harmless (the view checks weights).
+    private val next1 = ShardedMap<List<String>>()
+    private val next2 = ShardedMap<List<String>>()
+
+    private fun noteNext(map: ShardedMap<List<String>>, context: String, word: String) {
+        val old = map[context].orEmpty()
+        if (old.firstOrNull() == word) return
+        map.put(context, (listOf(word) + old.filter { it != word }).take(MAX_NEXT_PER_CONTEXT))
+    }
+
+    /** Rebuilds the next-word lists from the tables (order: by key; only after bulk changes). */
+    private fun rebuildNext() {
+        next1.clear()
+        next2.clear()
+        bi.forEach { k, _ -> noteNext(next1, k.substringBefore(' '), k.substringAfter(' ')) }
+        tri.forEach { k, _ ->
+            noteNext(next2, k.substringBeforeLast(' '), k.substringAfterLast(' '))
+        }
+    }
+
     private var uniTotal = Cell(0.0, 0)
 
     private fun bump(map: ShardedMap<Cell>, key: String, delta: Double, now: Long) {
@@ -32,19 +54,23 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
             val a = context.last()
             bump(bi, "$a $word", delta, now)
             bump(ctx1, a, delta, now)
+            if (delta > 0.0) noteNext(next1, a, word)
             if (context.size >= 2) {
                 val k2 = "${context[context.size - 2]} $a"
                 bump(tri, "$k2 $word", delta, now)
                 bump(ctx2, k2, delta, now)
+                if (delta > 0.0) noteNext(next2, k2, word)
             }
         }
     }
 
     /** Evicts the lowest decayed weights from any table over its cap (down to 90% of the cap). */
     fun enforceCaps(now: Long) {
+        val over = bi.size > cfg.maxBigrams || tri.size > cfg.maxTrigrams
         evict(uni, cfg.maxUnigrams, now) { _, v -> uniTotal = decay.add(uniTotal, -v, now) }
         evict(bi, cfg.maxBigrams, now) { k, v -> bump(ctx1, k.substringBefore(' '), -v, now) }
         evict(tri, cfg.maxTrigrams, now) { k, v -> bump(ctx2, k.substringBeforeLast(' '), -v, now) }
+        if (over) rebuildNext()
     }
 
     private inline fun evict(
@@ -116,6 +142,8 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
             tri.freeze(),
             ctx1.freeze(),
             ctx2.freeze(),
+            next1.freeze(),
+            next2.freeze(),
             uniTotal,
             decay,
             now,
@@ -156,6 +184,12 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
                 }
             }
         }
+        rebuildNext()
+    }
+
+    private companion object {
+        /** Words remembered per context; the strip shows three. */
+        const val MAX_NEXT_PER_CONTEXT = 8
     }
 }
 
@@ -166,6 +200,8 @@ internal class FrozenNgrams(
     private val tri: FrozenMap<Cell>,
     private val ctx1: FrozenMap<Cell>,
     private val ctx2: FrozenMap<Cell>,
+    private val next1: FrozenMap<List<String>>,
+    private val next2: FrozenMap<List<String>>,
     private val uniTotal: Cell,
     private val decay: Decay,
     private val now: Long,
@@ -209,6 +245,35 @@ internal class FrozenNgrams(
             }
         }
         return ContextFactors(context.toList(), bi, tri).also { lastContext = it }
+    }
+
+    /**
+     * The keys of words seen after [context] with enough evidence for [logProb] to speak for them
+     * (the longer context's first). Empty for an unknown context, and cheap: it is called per
+     * next-word and phrase step.
+     */
+    fun nextWords(context: List<String>): List<String> {
+        val f = factors(context)
+        val out = ArrayList<String>()
+        if (total >= cfg.minTotalEvidence) {
+            collectNext(out, next2, tri, f.tri)
+            collectNext(out, next1, bi, f.bi)
+        }
+        return out
+    }
+
+    private fun collectNext(
+        out: MutableList<String>,
+        next: FrozenMap<List<String>>,
+        table: FrozenMap<Cell>,
+        level: Level,
+    ) {
+        if (level.total <= 0.0) return
+        for (w in next[level.prefix.trimEnd()].orEmpty()) {
+            if (w !in out && v(table, level.prefix + w) > 0.0 && v(uni, w) >= cfg.minWordEvidence) {
+                out += w
+            }
+        }
     }
 
     fun logProb(context: List<String>, word: String): Float? {

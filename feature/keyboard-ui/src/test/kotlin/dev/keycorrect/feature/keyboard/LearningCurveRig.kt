@@ -279,8 +279,9 @@ internal class TypingRig(
         for ((i, token) in tokens.withIndex()) {
             if (i > 0) {
                 val s = strip()
-                fun slot(x: dev.keycorrect.feature.keyboard.prediction.StripSlot?) =
-                    x?.let { it.text.lowercase() to it.kind }
+                fun slot(x: dev.keycorrect.feature.keyboard.prediction.StripSlot?) = x?.let {
+                    it.text.lowercase() to it.kind
+                }
                 boundaries +=
                     Boundary(
                         i,

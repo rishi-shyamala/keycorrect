@@ -237,6 +237,23 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
         else base
     }
 
+    /** Whether the user has typed anything known after the current context. */
+    val hasUserNextWords: Boolean
+        get() = user?.userNextWords(userContext)?.isNotEmpty() == true
+
+    /**
+     * What a phrase step is judged by: [logProb], or the user's own estimate when higher. The blend
+     * weighs the user at [UserDataConfig.userNgramWeight], below the phrase gate, so a phrase of
+     * the user's own words could otherwise never be offered, however often it is typed.
+     */
+    fun phraseStepLogProb(id: Int): Float {
+        val blended = logProb(id)
+        val own =
+            if (id < Dictionary.FIRST_WORD_ID) null
+            else user?.userLogProb(userContext, dict.word(id))
+        return if (own != null && own > blended) own else blended
+    }
+
     /** [logProb] without the personal n-gram. */
     fun baseLogProb(id: Int): Float {
         var penalty = 0f
@@ -273,7 +290,7 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
      */
     fun nextWords(want: Int, outIds: IntArray, outLogProbs: FloatArray, allowEnd: Boolean): Int {
         val perSource = minOf(POOL, want * 4 + 4)
-        var n = 0
+        var n = addUserNextWords()
         if (w2 >= 0 && w1 >= 0) {
             val c = dict.topSuccessors(w2, w1, perSource, tmpIds, tmpLp)
             for (j in 0 until c) n = addToPool(n, tmpIds[j])
@@ -301,6 +318,19 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
             j++
         }
         return out
+    }
+
+    /**
+     * Starts the pool with what the user typed after this context, as the pool has a limit: those
+     * words may be nowhere in the dictionary's own lists, and blending can only raise a word that
+     * is in the pool. Returns the pool's size.
+     */
+    private fun addUserNextWords(): Int {
+        var n = 0
+        user?.userNextWords(userContext)?.forEach { key ->
+            for (id in dict.idsForKey(key)) n = addToPool(n, id)
+        }
+        return n
     }
 
     private fun suggestable(id: Int): Boolean =

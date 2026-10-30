@@ -41,17 +41,13 @@ import org.junit.Test
 class LearningCurveTest {
     private val enabled = System.getProperty("keycorrect.learncurve") == "true"
 
-    @Test
-    fun repeatingTheSameSnippet() = runRepeat(neural = false)
+    @Test fun repeatingTheSameSnippet() = runRepeat(neural = false)
 
-    @Test
-    fun alternatingTwoSimilarSnippets() = runAlternate(neural = false)
+    @Test fun alternatingTwoSimilarSnippets() = runAlternate(neural = false)
 
-    @Test
-    fun repeatingTheSameSnippetNeural() = runRepeat(neural = true)
+    @Test fun repeatingTheSameSnippetNeural() = runRepeat(neural = true)
 
-    @Test
-    fun alternatingTwoSimilarSnippetsNeural() = runAlternate(neural = true)
+    @Test fun alternatingTwoSimilarSnippetsNeural() = runAlternate(neural = true)
 
     // ---------------------------------------------------------------------------------- test 1
 
@@ -79,18 +75,17 @@ class LearningCurveTest {
             val accuracy: Double,
         )
 
-        val rows =
-            passes.map { r ->
-                val n = r.boundaries.size
-                Row(
-                    pct(r.boundaries.count { it.top1 }, n),
-                    pct(r.boundaries.count { it.top3 }, n),
-                    pct(r.boundaries.count { it.top3WordsOnly }, n),
-                    pct(r.boundaries.count { it.phraseOffered }, n),
-                    pct(r.boundaries.count { it.phraseCorrect }, n),
-                    pct(r.tokensCorrect, r.tokens),
-                )
-            }
+        val rows = passes.map { r ->
+            val n = r.boundaries.size
+            Row(
+                pct(r.boundaries.count { it.top1 }, n),
+                pct(r.boundaries.count { it.top3 }, n),
+                pct(r.boundaries.count { it.top3WordsOnly }, n),
+                pct(r.boundaries.count { it.phraseOffered }, n),
+                pct(r.boundaries.count { it.phraseCorrect }, n),
+                pct(r.tokensCorrect, r.tokens),
+            )
+        }
         fun firstPass(limit: Double, v: (Row) -> Double): String =
             rows.indexOfFirst { v(it) > limit }.let { if (it < 0) "never" else "pass ${it + 1}" }
 
@@ -141,11 +136,18 @@ class LearningCurveTest {
                 "offered in any pass: ${last.size - everOffered}."
         )
         sb.appendLine()
-        sb.appendLine("Sample of misses in the last pass (two words before, true next | strip left, centre, right):")
-        last.filter { !it.top3 && it.index >= 2 }.take(12).forEach {
-            val a = a.words
-            sb.appendLine("- ${a[it.index - 2]} ${a[it.index - 1]} -> **${it.expected}** | ${it.describe()}")
-        }
+        sb.appendLine(
+            "Sample of misses in the last pass (two words before, true next | strip left, centre, right):"
+        )
+        last
+            .filter { !it.top3 && it.index >= 2 }
+            .take(12)
+            .forEach {
+                val a = a.words
+                sb.appendLine(
+                    "- ${a[it.index - 2]} ${a[it.index - 1]} -> **${it.expected}** | ${it.describe()}"
+                )
+            }
         val damage = passes.flatMap { it.damaged }
         if (damage.isNotEmpty()) {
             sb.appendLine()
@@ -171,7 +173,7 @@ class LearningCurveTest {
 
     // ---------------------------------------------------------------------------------- test 2
 
-    private fun runAlternate(neural: Boolean) {
+    private fun runAlternate(neural: Boolean, startWithA: Boolean = true) {
         val arm = arm(neural)
         val a = Snippet.load("snippet_a.txt")
         val b = Snippet.load("snippet_b.txt")
@@ -192,11 +194,13 @@ class LearningCurveTest {
         val wall = System.nanoTime()
         repeat(ALTERNATE_ROUNDS * 2) { p ->
             if (p > 0) rig.idle(PASS_GAP_MS)
-            val isA = p % 2 == 0
+            val isA = (p % 2 == 0) == startWithA
             val s = if (isA) a else b
             val r = rig.typeSnippet(s.tokens, s.words)
             record(if (isA) "A" else "B", isA, r)
-            println("[${arm.name}] alternate pass ${p + 1} (${if (isA) "A" else "B"}) done (${secs(wall)} s)")
+            println(
+                "[${arm.name}] alternate pass ${p + 1} (${if (isA) "A" else "B"}) done (${secs(wall)} s)"
+            )
         }
         arm.close()
 
@@ -213,39 +217,40 @@ class LearningCurveTest {
             val accuracy: Double,
         )
 
-        val rows =
-            results.map { (_, r, divs) ->
-                val byIndex = r.boundaries.associateBy { it.index }
-                val ds = divs.map { it to byIndex.getValue(it.index) }
-                val n = ds.size
-                val divIdx = divs.map { it.index }.toSet()
-                val nonDiv = r.boundaries.filter { it.index !in divIdx }
-                Row(
-                    pct(ds.count { (d, bd) -> bd.rankOf(d.own) > 0 && bd.rankOf(d.other) > 0 }, n),
-                    pct(ds.count { (d, bd) -> bd.rankOf(d.own) > 0 }, n),
-                    pct(ds.count { (d, bd) -> bd.rankOf(d.own) == 1 }, n),
-                    pct(ds.count { (d, bd) -> bd.rankOf(d.other) > 0 }, n),
-                    pct(ds.count { (d, bd) -> bd.rankOf(d.other) == 1 }, n),
-                    pct(
-                        ds.count { (d, bd) ->
-                            val o = bd.rankOf(d.own)
-                            val x = bd.rankOf(d.other)
-                            o > 0 && (x == 0 || o < x)
-                        },
-                        n,
-                    ),
-                    pct(nonDiv.count { it.top3 }, nonDiv.size),
-                    pct(r.tokensCorrect, r.tokens),
-                )
-            }
+        val rows = results.map { (_, r, divs) ->
+            val byIndex = r.boundaries.associateBy { it.index }
+            val ds = divs.map { it to byIndex.getValue(it.index) }
+            val n = ds.size
+            val divIdx = divs.map { it.index }.toSet()
+            val nonDiv = r.boundaries.filter { it.index !in divIdx }
+            Row(
+                pct(ds.count { (d, bd) -> bd.rankOf(d.own) > 0 && bd.rankOf(d.other) > 0 }, n),
+                pct(ds.count { (d, bd) -> bd.rankOf(d.own) > 0 }, n),
+                pct(ds.count { (d, bd) -> bd.rankOf(d.own) == 1 }, n),
+                pct(ds.count { (d, bd) -> bd.rankOf(d.other) > 0 }, n),
+                pct(ds.count { (d, bd) -> bd.rankOf(d.other) == 1 }, n),
+                pct(
+                    ds.count { (d, bd) ->
+                        val o = bd.rankOf(d.own)
+                        val x = bd.rankOf(d.other)
+                        o > 0 && (x == 0 || o < x)
+                    },
+                    n,
+                ),
+                pct(nonDiv.count { it.top3 }, nonDiv.size),
+                pct(r.tokensCorrect, r.tokens),
+            )
+        }
 
         val sb = StringBuilder()
-        sb.appendLine("## Test 2 (alternate), ${arm.name}: A,B x $ALTERNATE_ROUNDS")
+        val order = if (startWithA) "A,B" else "B,A"
+        sb.appendLine("## Test 2 (alternate), ${arm.name}: $order x $ALTERNATE_ROUNDS")
         sb.appendLine()
         sb.appendLine(
             "Snippets: ${a.words.size} / ${b.words.size} words, ${points.size} divergence points " +
                 "(same two preceding words, a different next word in A and B), " +
-                f(100.0 * sharedTrigrams(a, b)) + "% of A's word trigrams also occur in B. " +
+                f(100.0 * sharedTrigrams(a, b)) +
+                "% of A's word trigrams also occur in B. " +
                 "At a divergence point `own` is the next word of the snippet being typed, " +
                 "`other` the word the other snippet has there. Ranks: centre 1, left 2, right 3 " +
                 "(a phrase slot counts by its first word)."
@@ -271,11 +276,17 @@ class LearningCurveTest {
         val ownTop3 = last.map { it.ownTop3 }.average()
         sb.appendLine()
         sb.appendLine("Bias check, last 4 passes (5-8), mean over divergence points:")
-        sb.appendLine("- own word top-1: ${f(ownTop1)}% (target roughly <= 75%): " +
-            if (ownTop1 <= 75.0) "OK" else "TOO STRONG")
-        sb.appendLine("- other word in top-3: ${f(otherTop3)}% (target >= 50%): " +
-            if (otherTop3 >= 50.0) "OK" else "TOO LOW")
-        sb.appendLine("- own word in top-3: ${f(ownTop3)}%, other word top-1 (recency bias): ${f(otherTop1)}%")
+        sb.appendLine(
+            "- own word top-1: ${f(ownTop1)}% (target roughly <= 75%): " +
+                if (ownTop1 <= 75.0) "OK" else "TOO STRONG"
+        )
+        sb.appendLine(
+            "- other word in top-3: ${f(otherTop3)}% (target >= 50%): " +
+                if (otherTop3 >= 50.0) "OK" else "TOO LOW"
+        )
+        sb.appendLine(
+            "- own word in top-3: ${f(ownTop3)}%, other word top-1 (recency bias): ${f(otherTop1)}%"
+        )
         sb.appendLine(
             "- for comparison the base model alone (rows 0): own top-1 " +
                 "${f(prior.map { it.ownTop1 }.average())}%, other top-1 " +
@@ -302,7 +313,7 @@ class LearningCurveTest {
                         .joinToString("; ") { "${it.key.first} -> ${it.key.second} x${it.value}" }
             )
         }
-        Report.put("2-${arm.name}", sb.toString())
+        Report.put("2-${arm.name}-$order", sb.toString())
 
         // Weak sanity bounds only. The pipeline must learn (the typed snippet's own word shows up
         // at divergence points more and more) and must not lock in completely: it never shows
@@ -383,8 +394,7 @@ class LearningCurveTest {
     private class Snippet(val tokens: List<String>, val words: List<String>) {
         companion object {
             fun load(name: String): Snippet {
-                val text =
-                    LearningCurveTest::class.java.getResource("/learning/$name")!!.readText()
+                val text = LearningCurveTest::class.java.getResource("/learning/$name")!!.readText()
                 val tokens = text.trim().split(Regex("\\s+"))
                 val words = tokens.map { t -> t.filter { it.isLetter() }.lowercase(Locale.ROOT) }
                 return Snippet(tokens, words)
@@ -414,7 +424,9 @@ class LearningCurveTest {
         for ((ctx, ia) in ca) {
             val ib = cb[ctx] ?: continue
             // Only unambiguous contexts: one next word within each snippet.
-            if (ia.map { a.words[it] }.toSet().size != 1 || ib.map { b.words[it] }.toSet().size != 1)
+            if (
+                ia.map { a.words[it] }.toSet().size != 1 || ib.map { b.words[it] }.toSet().size != 1
+            )
                 continue
             if (a.words[ia[0]] == b.words[ib[0]]) continue
             ia.forEach { i ->
@@ -446,9 +458,7 @@ class LearningCurveTest {
         const val PASS_GAP_MS = 5_000L
         const val NEURAL_DEADLINE_MS = 2_000L
 
-        @AfterClass
-        @JvmStatic
-        fun writeReport() = Report.write()
+        @AfterClass @JvmStatic fun writeReport() = Report.write()
     }
 }
 

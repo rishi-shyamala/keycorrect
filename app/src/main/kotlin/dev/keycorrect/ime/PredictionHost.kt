@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import dev.keycorrect.core.data.ShortcutMode
 import dev.keycorrect.core.data.ShortcutSnapshot
 import dev.keycorrect.core.data.ShortcutStore
 import dev.keycorrect.core.data.UserDictionaryStore
@@ -196,7 +195,8 @@ class PredictionHost(
 
     override fun shortcutFor(trigger: String): ShortcutRule? =
         shortcutStore.snapshot[trigger]?.let {
-            ShortcutRule(it.expansion, it.mode == ShortcutMode.AUTO_EXPAND)
+            // A shortcut only ever expands when its suggestion is tapped (user's decision).
+            ShortcutRule(it.expansion, autoExpand = false)
         }
 
     /**

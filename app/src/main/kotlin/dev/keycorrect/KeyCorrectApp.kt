@@ -77,6 +77,12 @@ class AppContainer(private val context: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
 
+    /**
+     * The app and declared type of the last field typed in, for Settings to explain why a field
+     * behaves as it does. Never its text; in memory only, never logged.
+     */
+    @Volatile var lastField: String? = null
+
     /** Imported language models (docs/PHASE7.md); the engine process reads them by path. */
     val modelStore by lazy { ModelStore(context) }
     val keyboardComposer = KeyboardComposer(BuiltInLayouts.repository())

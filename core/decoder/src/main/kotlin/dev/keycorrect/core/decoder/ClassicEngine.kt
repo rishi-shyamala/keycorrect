@@ -68,6 +68,7 @@ import kotlin.random.Random
  * @param touchKey `InputProfile.touchKey` of the current layout/device, or null when unknown (then
  *   no personal touch offsets are applied).
  */
+@Suppress("LargeClass") // The decode pipeline; its steps already live in their own classes.
 class ClassicEngine(
     private val dictionary: Dictionary,
     val config: ClassicConfig = ClassicConfig(),
@@ -723,7 +724,11 @@ class ClassicEngine(
         if (request.maxPhraseWords >= 2 && !atDocumentStart && out.isNotEmpty()) {
             val first = out[0]
             // The phrase gate looks at the score before any rerank bonus.
-            val firstLp = first.score - (request.lmBonus[first.text] ?: 0f)
+            val firstLp =
+                maxOf(
+                    first.score - (request.lmBonus[first.text] ?: 0f),
+                    lm.phraseStepLogProb(first.wordId),
+                )
             if (firstLp >= ln(config.phrase.minStepProbability) + gateDelta) {
                 phrase = buildPhrase(first.text, first.wordId, firstLp, request.maxPhraseWords)
             }
@@ -754,9 +759,13 @@ class ClassicEngine(
         var total = anchoredLogProb
         lm.setContext(lm.w1, firstId)
         while (words < maxWords) {
-            val n = lm.nextWords(1, phraseIds, phraseLogProbs, allowEnd = true)
-            if (n == 0 || phraseIds[0] == Dictionary.EOS_ID || phraseLogProbs[0] < minStep) break
-            total += phraseLogProbs[0]
+            // A likely sentence end doesn't stop a phrase the user has typed on from here.
+            val n = lm.nextWords(1, phraseIds, phraseLogProbs, allowEnd = !lm.hasUserNextWords)
+            val step =
+                if (n == 0 || phraseIds[0] == Dictionary.EOS_ID) Float.NEGATIVE_INFINITY
+                else lm.phraseStepLogProb(phraseIds[0])
+            if (step < minStep) break
+            total += step
             sb.append(' ').append(dictionary.word(phraseIds[0]))
             words++
             lm.setContext(lm.w1, phraseIds[0])

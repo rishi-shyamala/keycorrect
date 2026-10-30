@@ -15,6 +15,31 @@ class NgramModelTest {
     }
 
     @Test
+    fun wordsSeenAfterAContextAreListedOnceTheyHaveEvidence() {
+        val m = PersonalModel(testConfig())
+        m.applyAt(
+            0,
+            *Array(10) { used("booked", "finally") },
+            used("rare", "finally"),
+            *Array(10) { used("filler") },
+        )
+        val s = m.snapshot()
+        assertThat(s.userNextWords(listOf("finally"))).containsExactly("booked")
+        assertThat(s.userNextWords(listOf("unknown"))).isEmpty()
+        assertThat(s.userNextWords(emptyList())).isEmpty()
+        assertThat(PersonalModel().snapshot().userNextWords(listOf("finally"))).isEmpty()
+    }
+
+    @Test
+    fun theNextWordListSurvivesExportAndImport() {
+        val m = PersonalModel(testConfig())
+        m.applyAt(0, *Array(30) { used("booked", "finally") })
+        val copy = PersonalModel(testConfig())
+        copy.import(m.export(), emptyList(), 0L)
+        assertThat(copy.snapshot().userNextWords(listOf("finally"))).containsExactly("booked")
+    }
+
+    @Test
     fun nothingLearnedYieldsNull() {
         assertThat(PersonalModel().snapshot().userLogProb(listOf("a"), "b")).isNull()
         assertThat(PersonalModel().personalization.userLogProb(emptyList(), "b")).isNull()

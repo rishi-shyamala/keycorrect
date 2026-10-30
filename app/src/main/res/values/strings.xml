@@ -54,6 +54,8 @@
     <string name="text_correction_phrases_summary">Suggest the rest of common phrases as you type</string>
     <string name="text_correction_enter_as_typed">Keep last word as typed on Enter</string>
     <string name="text_correction_enter_as_typed_summary">When Enter searches, sends or goes, the word you are typing isn\'t corrected, so the app\'s own suggestions can finish it. New lines still correct.</string>
+    <string name="text_correction_ignore_no_suggestions">Suggest in every app</string>
+    <string name="text_correction_ignore_no_suggestions_summary">Show suggestions and fix typos even where an app asks keyboards not to. Passwords are never affected.</string>
     <string name="text_correction_auto_space">Add space after suggestion</string>
     <string name="text_correction_auto_space_summary">Insert a space when you tap a suggestion</string>
     <string name="text_correction_requires_suggestions">Turn on suggestions to use this option.</string>
@@ -78,11 +80,9 @@
     <string name="shortcuts_edit_dialog_title">Edit shortcut</string>
     <string name="shortcuts_trigger_label">Trigger</string>
     <string name="shortcuts_expansion_label">Expands to</string>
-    <string name="shortcuts_mode_label">When you type the trigger</string>
     <string name="shortcuts_mode_suggest">Suggest</string>
     <string name="shortcuts_mode_auto_expand">Auto-expand</string>
-    <string name="shortcuts_mode_suggest_help">The expansion appears as a suggestion you can tap.</string>
-    <string name="shortcuts_mode_auto_expand_help">The trigger is replaced when you press space.</string>
+    <string name="shortcuts_mode_suggest_help">The expansion appears in the middle of the suggestion bar. Tap it to use it; pressing space keeps what you typed.</string>
     <string name="shortcuts_variables_help">Variables: {date} {time} {cursor} {clipboard}. {cursor} marks where the cursor ends up.</string>
     <string name="shortcuts_empty_title">No shortcuts yet</string>
     <string name="shortcuts_empty_body">Create a shortcut to expand a short trigger into longer text. For example: omw → On my way!</string>
@@ -151,6 +151,8 @@
         <item quantity="other">%1$d undos</item>
     </plurals>
     <string name="advanced_stop_at_least_note">Can\'t be lower than the number of undos needed to add a word.</string>
+    <string name="advanced_section_last_field">Last text field</string>
+    <string name="advanced_last_field_none">None since the keyboard started.</string>
     <string name="advanced_section_autocorrect">Autocorrect</string>
     <string name="advanced_tie_rule">Pick the best guess for unknown words</string>
     <string name="advanced_tie_rule_summary">When you type a word that isn\'t in the dictionary and two or more corrections are almost equally likely, correct to the best guess instead of leaving the word as typed.</string>

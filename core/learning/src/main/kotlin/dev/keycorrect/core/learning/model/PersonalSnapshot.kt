@@ -27,6 +27,8 @@ internal constructor(
     override fun userLogProb(context: List<String>, word: String): Float? =
         ngrams?.logProb(context, word)
 
+    override fun userNextWords(context: List<String>) = ngrams?.nextWords(context).orEmpty()
+
     override fun correctionBias(typed: String, candidate: String, contextBucket: String): Float =
         corrections?.bias(typed, candidate, contextBucket) ?: 0f
 

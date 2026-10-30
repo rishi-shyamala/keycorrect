@@ -270,7 +270,7 @@ class KeyboardController(
             FieldMode.Phone -> declaredProfile.withKind(FieldKind.Phone)
             FieldMode.Text,
             null -> declaredProfile
-        }
+        }.let { if (settings.ignoreNoSuggestions) it.ignoringNoSuggestions() else it }
 
     /**
      * Keyboard height in row units (multiples of the key height setting), the same on every layer
@@ -306,9 +306,9 @@ class KeyboardController(
         this.identity = identity
         declaredProfile = profile
         if (!sameField || profile.kind != FieldKind.Text) fieldMode = null
+        this.settings = settings
         val effective = effectiveProfile()
         this.profile = effective
-        this.settings = settings
         if (initialSelection.known || !sameField) selection = initialSelection
         enterAction = profile.enterAction
         input.onStartInput(effective, settings, newField = !sameField, selectionState())
@@ -934,7 +934,6 @@ class KeyboardController(
     }
 
     /** The "Add word to dictionary" prompt was tapped. */
-    fun onAddWordTap() = input.onAddWordTap()
 
     /**
      * A suggestion was long-pressed: asks, inline in the strip, whether to never suggest it. Does

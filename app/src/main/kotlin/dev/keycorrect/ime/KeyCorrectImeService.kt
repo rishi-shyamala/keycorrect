@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -264,6 +265,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        appContainer.lastField = describeField(editorInfo)
         // The controller first: super resumes the lifecycle, which lets Compose draw, and the
         // first frame should show this field's state (layer, shift, strip), not the last one's.
         controller.onStartInput(
@@ -316,4 +318,13 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         /** How long to wait for the learned data to be saved before restarting the process. */
         const val RESTART_FLUSH_MS = 2_000L
     }
+}
+
+/** What [KeyCorrectApp]'s Settings shows about a field: its app and declared type, never text. */
+private fun describeField(info: EditorInfo): String {
+    val type = info.inputType
+    val noSuggestions = type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0
+    val note = if (noSuggestions) ", asks for no suggestions" else ""
+    val hex = "inputType 0x${type.toString(16)}, imeOptions 0x${info.imeOptions.toString(16)}"
+    return "${info.packageName}: ${FieldProfile.from(info).kind}$note ($hex)"
 }

@@ -115,6 +115,10 @@ class FieldLabActivity : Activity() {
             InputType.TYPE_CLASS_TEXT,
             imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING,
         )
+        field(
+            "App asks for no suggestions",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+        )
 
         label("Image field (accepts images; logs what it receives)")
         addImageField(column)
