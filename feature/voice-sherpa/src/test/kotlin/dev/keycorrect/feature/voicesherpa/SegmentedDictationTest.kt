@@ -689,13 +689,20 @@ class SegmentedDictationTest {
         assertThat(hasLoop(final)).isFalse()
     }
 
+    private fun recognizer(decode: (FloatArray) -> String) =
+        object : SegmentRecognizer {
+            override fun recognize(segment: FloatArray) = decode(segment)
+
+            override fun release() = Unit
+        }
+
     @Test
     fun aLoopRetrySplitsAtMostTwoLevelsDeep() {
         var calls = 0
         val loop = "speaking speaking speaking speaking speaking speaking"
         val text =
             recognizeSplitting(
-                {
+                recognizer {
                     calls++
                     loop
                 },
@@ -710,7 +717,7 @@ class SegmentedDictationTest {
         val loop = "so we went on cars cars cars cars cars cars"
         val text =
             recognizeSplitting(
-                { if (it.size > 6 * 16000) loop else "so" },
+                recognizer { if (it.size > 6 * 16000) loop else "so" },
                 FloatArray(8 * 16000) { 0.5f },
             )
         assertThat(text).isEqualTo("so we went on cars")

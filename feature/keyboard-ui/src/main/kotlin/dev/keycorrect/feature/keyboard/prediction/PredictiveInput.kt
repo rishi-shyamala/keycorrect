@@ -241,7 +241,7 @@ internal class PredictiveInput(
     )
 
     /** An autocorrection to apply at a separator: [text] for the typed word. */
-    private data class Correction(val text: String, val runnerUp: String?)
+    private data class Autocorrection(val text: String, val runnerUp: String?)
 
     /**
      * The single gate for everything that reads the field's text, composes or talks to an engine:
@@ -861,7 +861,7 @@ internal class PredictiveInput(
      * anything that isn't a plain word (digits, symbols, addresses) stay silent.
      */
     private fun wordFeedback(
-        decision: Correction?,
+        decision: Autocorrection?,
         typed: String,
         separator: String?,
         keptAsTyped: Boolean,
@@ -906,11 +906,13 @@ internal class PredictiveInput(
     /**
      * What to do with [typed] at a separator, from the freshest result (decoding now if needed).
      */
-    private fun decide(typed: String): Correction? {
-        if (backend.predictor == null) return null
-        val result = freshResult(typed) ?: return null
-        val pending = pendingCorrection(result, typed) ?: return null
-        return Correction(pending.text, result.autocorrectRunnerUp?.text)
+    private fun decide(typed: String): Autocorrection? {
+        val result = if (backend.predictor == null) null else freshResult(typed)
+        return result?.let { r ->
+            pendingCorrection(r, typed)?.let {
+                Autocorrection(it.text, r.autocorrectRunnerUp?.text)
+            }
+        }
     }
 
     private fun freshResult(typed: String): PredictResult? {

@@ -206,9 +206,8 @@ class PersonalizationTest {
                     }
                 },
             )
-        val phrase = engine(user).predictNow(request).phrase
-        // Without the rule the phrase would be "keys keys keys keys".
-        assertThat(phrase?.text?.split(' ')?.zipWithNext()?.none { (a, b) -> a == b }).isTrue()
+        // "keys" would be followed by "keys" again ("keys keys keys ..."): no phrase at all.
+        assertThat(engine(user).predictNow(request).phrase).isNull()
     }
 
     @Test
