@@ -747,8 +747,8 @@ class PredictiveControllerTest {
 
     // ------------------------------------------------------------------ shortcuts
 
-    private fun shortcut(trigger: String, expansion: String, auto: Boolean = true) {
-        backend.shortcuts[trigger] = ShortcutRule(expansion, auto)
+    private fun shortcut(trigger: String, expansion: String) {
+        backend.shortcuts[trigger] = ShortcutRule(expansion)
         predictor.words[trigger] =
             PredictResult(
                 listOf(Candidate(expansion, 0f, CandidateSource.Shortcut)),
@@ -758,22 +758,17 @@ class PredictiveControllerTest {
     }
 
     @Test
-    fun anAutoExpandShortcutExpandsOnSpaceAndCanBeUndone() {
+    fun aTappedShortcutExpands() {
         shortcut("omw", "on my way")
         start()
         type("omw")
-        space()
+        controller.onSuggestionTap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("on my way ")
-        backspace()
-        assertThat(text()).isEqualTo("omw")
-        assertThat(editor.composing).isEqualTo("omw")
-        space() // kept as typed: not expanded again
-        assertThat(text()).isEqualTo("omw ")
     }
 
     @Test
     fun aShortcutTakesTheMiddleAndExpandsOnlyWhenTapped() {
-        shortcut("email", "me@example.com", auto = false)
+        shortcut("email", "me@example.com")
         start()
         type("email")
         val slot = controller.strip.centre!!
@@ -785,7 +780,7 @@ class PredictiveControllerTest {
 
     @Test
     fun spaceKeepsAShortcutsTriggerEvenIfItLooksLikeATypo() {
-        backend.shortcuts["omw"] = ShortcutRule("on my way", false)
+        backend.shortcuts["omw"] = ShortcutRule("on my way")
         predictor.word("omw", listOf("now"), autocorrect = "now")
         start()
         type("omw")
@@ -795,7 +790,7 @@ class PredictiveControllerTest {
 
     @Test
     fun aSuggestOnlyShortcutIsNotExpandedAutomatically() {
-        shortcut("omw", "on my way", auto = false)
+        shortcut("omw", "on my way")
         start()
         type("omw")
         space()
@@ -816,7 +811,7 @@ class PredictiveControllerTest {
         shortcut("dt", "{date} at {time} {clipboard}")
         start()
         type("dt")
-        space()
+        controller.onSuggestionTap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("9 Oct at 14:05 {clipboard} ")
     }
 
@@ -825,7 +820,7 @@ class PredictiveControllerTest {
         shortcut("sig", "Best,{cursor} Rishi")
         start()
         type("sig")
-        space()
+        controller.onSuggestionTap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("Best, Rishi")
         assertThat(editor.cursor).isEqualTo("Best,".length)
     }

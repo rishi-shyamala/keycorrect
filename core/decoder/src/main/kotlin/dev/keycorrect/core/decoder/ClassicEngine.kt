@@ -757,6 +757,7 @@ class ClassicEngine(
         val sb = StringBuilder(firstText)
         var words = 1
         var total = anchoredLogProb
+        var previousId = firstId
         lm.setContext(lm.w1, firstId)
         while (words < maxWords) {
             // A likely sentence end doesn't stop a phrase the user has typed on from here.
@@ -765,6 +766,8 @@ class ClassicEngine(
                 if (n == 0 || phraseIds[0] == Dictionary.EOS_ID) Float.NEGATIVE_INFINITY
                 else lm.phraseStepLogProb(phraseIds[0])
             if (step < minStep) break
+            if (phraseIds[0] == previousId) break // "ha ha ha" is not a phrase
+            previousId = phraseIds[0]
             total += step
             sb.append(' ').append(dictionary.word(phraseIds[0]))
             words++

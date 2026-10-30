@@ -799,9 +799,10 @@ internal class PredictiveInput(
 
     /**
      * Ends the composing word. [separator] (null for Enter, which the caller performs) is committed
-     * after it. Applies the autocorrect of the freshest result when allowed. [asTyped]
-     * (an Enter that isn't a line break) keeps the word as typed: no autocorrect, no buzz, and a word that looks like the start of a longer one, which the app's
-     * autocomplete finishes, is neither learned nor recorded.
+     * after it. Applies the autocorrect of the freshest result when allowed. [asTyped] (an Enter
+     * that isn't a line break) keeps the word as typed: no autocorrect, no buzz, and a word that
+     * looks like the start of a longer one, which the app's autocomplete finishes, is neither
+     * learned nor recorded.
      */
     private fun finishWord(separator: String?, allowUndo: Boolean, asTyped: Boolean = false) {
         val typed = composing.toString()

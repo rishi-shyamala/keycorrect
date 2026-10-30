@@ -80,8 +80,6 @@
     <string name="shortcuts_edit_dialog_title">Edit shortcut</string>
     <string name="shortcuts_trigger_label">Trigger</string>
     <string name="shortcuts_expansion_label">Expands to</string>
-    <string name="shortcuts_mode_suggest">Suggest</string>
-    <string name="shortcuts_mode_auto_expand">Auto-expand</string>
     <string name="shortcuts_mode_suggest_help">The expansion appears in the middle of the suggestion bar. Tap it to use it; pressing space keeps what you typed.</string>
     <string name="shortcuts_variables_help">Variables: {date} {time} {cursor} {clipboard}. {cursor} marks where the cursor ends up.</string>
     <string name="shortcuts_empty_title">No shortcuts yet</string>

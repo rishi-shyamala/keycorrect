@@ -132,12 +132,12 @@ class WordHapticsTest {
 
     @Test
     fun aShortcutTriggerIsSilent() {
-        backend.shortcuts["omw"] = ShortcutRule("on my way", autoExpand = true)
+        backend.shortcuts["omw"] = ShortcutRule("on my way")
         start()
         type("omw")
         space()
         assertThat(played).isEmpty()
-        backend.shortcuts["brb"] = ShortcutRule("be right back", autoExpand = false)
+        backend.shortcuts["brb"] = ShortcutRule("be right back")
         type("brb")
         space()
         assertThat(played).isEmpty()

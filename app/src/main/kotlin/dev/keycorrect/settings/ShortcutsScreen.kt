@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -24,7 +22,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -167,17 +164,14 @@ private fun ShortcutList(
                         Text(shortcut.expansion, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     },
                     trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ModeBadge(shortcut.mode)
-                            DeleteButton(
-                                description =
-                                    stringResource(
-                                        R.string.shortcuts_delete_description,
-                                        shortcut.trigger,
-                                    ),
-                                onClick = { onDelete(shortcut) },
-                            )
-                        }
+                        DeleteButton(
+                            description =
+                                stringResource(
+                                    R.string.shortcuts_delete_description,
+                                    shortcut.trigger,
+                                ),
+                            onClick = { onDelete(shortcut) },
+                        )
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     modifier = Modifier.clickable(role = Role.Button) { onEdit(shortcut) },
@@ -186,27 +180,6 @@ private fun ShortcutList(
         }
     }
 }
-
-@Composable
-private fun ModeBadge(mode: ShortcutMode) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Text(
-            stringResource(mode.labelRes()),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-        )
-    }
-}
-
-private fun ShortcutMode.labelRes(): Int =
-    when (this) {
-        ShortcutMode.SUGGEST -> R.string.shortcuts_mode_suggest
-        ShortcutMode.AUTO_EXPAND -> R.string.shortcuts_mode_auto_expand
-    }
 
 /** Add ([initial] null) or edit dialog. [takenTriggers] are normalised triggers already stored. */
 @Composable

@@ -637,7 +637,8 @@ class SegmentedDictationTest {
         assertThat(withoutLoops("so we went on and on and on and on and on"))
             .isEqualTo("so we went on and on")
         // Loops the real model produced on overlapping voices.
-        assertThat(withoutLoops(
+        assertThat(
+                withoutLoops(
                     "All of us are the ones who are the ones who are the ones who are " +
                         "the ones who are the ones who are"
                 )
@@ -692,7 +693,14 @@ class SegmentedDictationTest {
     fun aLoopRetrySplitsAtMostTwoLevelsDeep() {
         var calls = 0
         val loop = "speaking speaking speaking speaking speaking speaking"
-        val text = recognizeSplitting({ calls++; loop }, FloatArray(8 * 16000) { 0.5f })
+        val text =
+            recognizeSplitting(
+                {
+                    calls++
+                    loop
+                },
+                FloatArray(8 * 16000) { 0.5f },
+            )
         assertThat(calls).isAtMost(7)
         assertThat(text).isEqualTo("speaking")
     }

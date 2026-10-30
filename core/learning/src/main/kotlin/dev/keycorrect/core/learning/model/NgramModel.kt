@@ -30,7 +30,8 @@ internal class NgramModel(private val cfg: PersonalModelConfig, private val deca
 
     /**
      * Rebuilds the next-word lists from the tables, only after bulk changes: each context keeps its
-     * [MAX_NEXT_PER_CONTEXT] heaviest followers at active time [now], strongest first (ties by key).
+     * [MAX_NEXT_PER_CONTEXT] heaviest followers at active time [now], strongest first (ties by
+     * key).
      */
     private fun rebuildNext(now: Long) {
         next1.clear()

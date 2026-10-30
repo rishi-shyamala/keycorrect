@@ -179,6 +179,39 @@ class PersonalizationTest {
     }
 
     @Test
+    fun aPhraseNeverRepeatsTheWordBeforeIt() {
+        val request =
+            PredictRequest(
+                TypingContext("the old woman child "),
+                ComposingInput.Empty,
+                TestKeyboard.layout,
+                maxPhraseWords = 4,
+            )
+        val user =
+            Fake(
+                userLp = { ctx, w ->
+                    when (ctx.lastOrNull()?.lowercase() to w.lowercase()) {
+                        "child" to "keys",
+                        "keys" to "keys",
+                        "keys" to "school" -> ln(0.9f)
+                        else -> null
+                    }
+                },
+                // "keys" is followed by itself first, then by "school".
+                userNext = { ctx ->
+                    when (ctx.lastOrNull()?.lowercase()) {
+                        "child" -> listOf("keys")
+                        "keys" -> listOf("keys", "school")
+                        else -> emptyList()
+                    }
+                },
+            )
+        val phrase = engine(user).predictNow(request).phrase
+        // Without the rule the phrase would be "keys keys keys keys".
+        assertThat(phrase?.text?.split(' ')?.zipWithNext()?.none { (a, b) -> a == b }).isTrue()
+    }
+
+    @Test
     fun userNgramShapesNextWordPredictionsAndPhrases() {
         val req = request(ComposingInput.Empty, before = "thank you ", maxCandidates = 3)
         val base = plain.predictNow(req)
