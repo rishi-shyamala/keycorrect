@@ -45,9 +45,14 @@ class LearningCurveTest {
 
     @Test fun alternatingTwoSimilarSnippets() = runAlternate(neural = false)
 
+    /** Same as above but B is typed first: the section "B,A" of the report, to compare orders. */
+    @Test fun alternatingStartingWithB() = runAlternate(neural = false, startWithA = false)
+
     @Test fun repeatingTheSameSnippetNeural() = runRepeat(neural = true)
 
     @Test fun alternatingTwoSimilarSnippetsNeural() = runAlternate(neural = true)
+
+    @Test fun alternatingStartingWithBNeural() = runAlternate(neural = true, startWithA = false)
 
     // ---------------------------------------------------------------------------------- test 1
 
@@ -242,8 +247,27 @@ class LearningCurveTest {
             )
         }
 
-        val sb = StringBuilder()
         val order = if (startWithA) "A,B" else "B,A"
+        // For the order comparison: per pass (controls first), the ranks of word A and word B at
+        // every divergence point, whichever snippet was typed.
+        val ranks = results.map { (_, r, divs) ->
+            val byIndex = r.boundaries.associateBy { it.index }
+            points.indices.map { k ->
+                val bd = byIndex.getValue(divs[k].index)
+                bd.rankOf(points[k].wordA) to bd.rankOf(points[k].wordB)
+            }
+        }
+        OrderRuns.put(arm.name, startWithA, controls, ranks)
+        // The dictionary's own preference as a proxy: the word with the higher unigram log-prob.
+        val unigram = points.map {
+            val ia = arm.dictionary.idsForKey(it.wordA).firstOrNull()
+            val ib = arm.dictionary.idsForKey(it.wordB).firstOrNull()
+            if (ia == null || ib == null) '-'
+            else if (arm.dictionary.logProb(ia) >= arm.dictionary.logProb(ib)) 'A' else 'B'
+        }
+        OrderRuns.report(arm.name, points.map { it.wordA to it.wordB }, unigram)
+
+        val sb = StringBuilder()
         sb.appendLine("## Test 2 (alternate), ${arm.name}: $order x $ALTERNATE_ROUNDS")
         sb.appendLine()
         sb.appendLine(
@@ -459,6 +483,97 @@ class LearningCurveTest {
         const val NEURAL_DEADLINE_MS = 2_000L
 
         @AfterClass @JvmStatic fun writeReport() = Report.write()
+    }
+}
+
+/**
+ * Which word is favoured at the divergence points when the same snippets are typed in the other
+ * order. Filled by the two alternate tests of an arm; the section is written by whichever finishes
+ * second.
+ */
+internal object OrderRuns {
+    private class Run(val controls: Int, val ranks: List<List<Pair<Int, Int>>>)
+
+    private val runs = HashMap<String, Run>()
+
+    @Synchronized
+    fun put(arm: String, startWithA: Boolean, controls: Int, ranks: List<List<Pair<Int, Int>>>) {
+        runs["$arm/${if (startWithA) "AB" else "BA"}"] = Run(controls, ranks)
+    }
+
+    /** `A`, `B`, or `-` when the two words are not told apart (both missing from the strip). */
+    private fun favoured(r: Pair<Int, Int>): Char {
+        val (a, b) = r
+        return when {
+            a == b -> '-'
+            a > 0 && (b == 0 || a < b) -> 'A'
+            else -> 'B'
+        }
+    }
+
+    @Synchronized
+    fun report(arm: String, words: List<Pair<String, String>>, unigram: List<Char>) {
+        val ab = runs["$arm/AB"] ?: return
+        val ba = runs["$arm/BA"] ?: return
+        val c = ab.controls
+        val sb = StringBuilder()
+        sb.appendLine("## Test 3 (order or dictionary?), $arm")
+        sb.appendLine()
+        sb.appendLine(
+            "At each of ${words.size} divergence points, at the equal-count passes 5 and 7 " +
+                "(2+2 and 3+3 snippets typed before; with A,B the last typed was B, with B,A it " +
+                "was A), which word ranks higher in the strip. Both orders see the same text, so " +
+                "a difference between them can only come from the order. `unigram` = the word " +
+                "with the higher unigram log-prob in the dictionary, a proxy for what the base " +
+                "model prefers."
+        )
+        sb.appendLine()
+        sb.appendLine(
+            "| pass | same word in both orders | same and = unigram | first typed | last typed | " +
+                "undecided in one order |"
+        )
+        sb.appendLine("|---|---|---|---|---|---|")
+        for (p in listOf(5, 7)) {
+            var first = 0
+            var last = 0
+            var same = 0
+            var sameUni = 0
+            var neither = 0
+            words.indices.forEach { k ->
+                val fa = favoured(ab.ranks[c + p - 1][k])
+                val fb = favoured(ba.ranks[c + p - 1][k])
+                when {
+                    fa == '-' || fb == '-' -> neither++
+                    fa == fb -> {
+                        same++
+                        if (fa == unigram[k]) sameUni++
+                    }
+                    fa == 'A' -> first++ // A,B favours A (typed first), B,A favours B (first)
+                    else -> last++
+                }
+            }
+            sb.appendLine("| $p | $same | $sameUni | $first | $last | $neither |")
+        }
+        sb.appendLine()
+        sb.appendLine(
+            "Per point: word A / word B, the unigram preference, the favoured word (A, B, - for " +
+                "no difference) for the base model alone (rows 0: A pass, B pass), then passes " +
+                "5 to 8 for A,B and for B,A. Passes 5 and 7 have equal counts; at 6 and 8 the " +
+                "snippet typed more often so far should win."
+        )
+        sb.appendLine()
+        sb.appendLine("| A / B | unigram | base | A,B 5-8 | B,A 5-8 |")
+        sb.appendLine("|---|---|---|---|---|")
+        words.forEachIndexed { k, (wa, wb) ->
+            fun seq(r: Run) =
+                (5..8).map { favoured(r.ranks[r.controls + it - 1][k]) }.joinToString("")
+            sb.appendLine(
+                "| $wa / $wb | ${unigram[k]} | " +
+                    "${favoured(ab.ranks[0][k])}${favoured(ab.ranks[1][k])} | " +
+                    "${seq(ab)} | ${seq(ba)} |"
+            )
+        }
+        Report.put("3-$arm-order", sb.toString())
     }
 }
 

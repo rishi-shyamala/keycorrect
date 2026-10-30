@@ -262,3 +262,104 @@ Per `score` call (8 to 16 texts, 40 words of context, prefix reuse), desktop, re
 | Qwen3-0.6B Q8_0 (3 at once) | 81,898 | 30.1 ms | 26.4 | 64.2 | 81.8 | 215.7 | 20.5% |
 
 The 40 ms deadline would cut nothing with SmolLM2-135M on an idle desktop; on a phone, several times slower, it will cut a real share, which only the device can say. No call timed out at the 1000 ms eval deadline.
+
+
+## Learning curves (2026-10-30)
+
+How fast does the whole typing pipeline (shipped dictionary, real decoder, real `OutcomeClassifier` and `PersonalModel`, tap at key centres) pick up what the user types, and does it favour one of two similar texts too strongly? `LearningCurveTest` types about 500 words key by key and measures the strip before every word. Text: `feature/keyboard-ui/src/test/resources/learning/snippet_a.txt` (493 words) and `snippet_b.txt` (492 words; 37 places with the same two preceding words and a different next word, 67% of A's trigrams also in B).
+
+### How to run
+
+```
+./gradlew :feature:keyboard-ui:testDebugUnitTest --tests "*LearningCurveTest*" \
+    -Pkeycorrect.learncurve=true --rerun
+```
+
+Without the property every test is skipped. About 1 minute for the classic tests plus about 9 minutes for the neural ones (they need `build/llama-host/libkcllama.so` and `data/raw/neural/SmolLM2-135M-Q8_0.gguf`, found from a worktree too; otherwise skipped). Output: `feature/keyboard-ui/build/learning-curve/report.md`, sections `Test 1` (repeat), `Test 2` (alternate, A,B and B,A: `alternatingTwoSimilarSnippets`, `alternatingStartingWithB`) and `Test 3` (order or dictionary?, written when both orders of an arm have run). Earlier the B,A section was missing because no test called `runAlternate(startWithA = false)`; `alternatingStartingWithB` now does.
+
+Columns: top-1 = the true next word is in the centre slot, top-3 = in any slot (a phrase slot counts by its first word), phrase offered = a phrase slot is shown, phrase correct = its first 2+ words are the next true words. Simulated time per pass is 13 minutes; passes are 5 s apart.
+
+### Test 1: the same snippet eight times (% of 492 positions)
+
+| pass | classic top-1 | top-3 | phrase offered | phrase correct | neural top-1 | top-3 | phrase offered | phrase correct |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 15.4 | 31.7 | 4.7 | 0.8 | 18.9 | 31.7 | 4.7 | 0.8 |
+| 2 | 33.9 | 56.1 | 10.8 | 4.5 | 37.0 | 56.1 | 11.4 | 5.3 |
+| 3 | 42.1 | 62.0 | 19.9 | 10.6 | 43.7 | 62.2 | 20.3 | 11.4 |
+| 4 | 64.6 | 89.8 | 48.8 | 35.2 | 65.7 | 90.7 | 47.6 | 35.2 |
+| 5 | 67.1 | 89.6 | 54.3 | 39.6 | 67.5 | 90.7 | 53.0 | 40.2 |
+| 6 | 67.7 | 89.8 | 57.3 | 41.9 | 69.1 | 90.7 | 56.1 | 42.9 |
+| 7 | 68.5 | 90.2 | 59.1 | 43.7 | 70.5 | 90.7 | 57.7 | 44.3 |
+| 8 | 68.5 | 90.7 | 58.9 | 43.5 | 71.3 | 91.1 | 58.1 | 44.7 |
+
+Top-3 passes 50% at pass 2 and 80% at pass 4; phrase correct passes 25% at pass 4 and never reaches 50%. Every typed word stayed as typed (committed ok 100% in all passes). 449 of 492 true next words (91%) were offered in at least one pass; the 43 never offered are listed in part in the report's sample of misses (mostly the strip showing function words such as "the", "i", "he" instead). The neural re-ranker changes the curve only a little (top-1 +3 points at pass 8); learning, not the re-ranker, drives it.
+
+### Test 2: two similar snippets alternately (37 divergence points)
+
+`own` is the next word of the snippet being typed at a divergence point, `other` the word the other snippet has there. All numbers are % of the 37 points. The strip is measured before the pass, so pass n shows what passes 1 to n-1 taught. Rows 0 (base model alone, learning off): own top-3 16.2% for A and 2.7% for B, own top-1 8.1% and 0%, other top-3 2.7% and 16.2%: the dictionary slightly prefers A's words.
+
+Classic, A,B:
+
+| pass | typed | both in top-3 | own top-3 | own top-1 | other top-3 | other top-1 |
+|---:|:--:|---:|---:|---:|---:|---:|
+| 1 | A | 2.7 | 16.2 | 5.4 | 2.7 | 0.0 |
+| 2 | B | 2.7 | 2.7 | 0.0 | 35.1 | 16.2 |
+| 3 | A | 8.1 | 37.8 | 13.5 | 16.2 | 2.7 |
+| 4 | B | 5.4 | 16.2 | 2.7 | 37.8 | 18.9 |
+| 5 | A | 13.5 | 37.8 | 13.5 | 27.0 | 5.4 |
+| 6 | B | 16.2 | 16.2 | 0.0 | 100.0 | 59.5 |
+| 7 | A | 73.0 | 94.6 | 32.4 | 78.4 | 10.8 |
+| 8 | B | 54.1 | 54.1 | 0.0 | 100.0 | 62.2 |
+
+Classic, B,A:
+
+| pass | typed | both in top-3 | own top-3 | own top-1 | other top-3 | other top-1 |
+|---:|:--:|---:|---:|---:|---:|---:|
+| 1 | B | 2.7 | 2.7 | 0.0 | 16.2 | 5.4 |
+| 2 | A | 5.4 | 16.2 | 8.1 | 5.4 | 0.0 |
+| 3 | B | 8.1 | 16.2 | 2.7 | 37.8 | 13.5 |
+| 4 | A | 5.4 | 27.0 | 10.8 | 27.0 | 16.2 |
+| 5 | B | 13.5 | 27.0 | 5.4 | 37.8 | 13.5 |
+| 6 | A | 24.3 | 24.3 | 8.1 | 100.0 | 45.9 |
+| 7 | B | 73.0 | 78.4 | 10.8 | 94.6 | 32.4 |
+| 8 | A | 54.1 | 59.5 | 13.5 | 94.6 | 45.9 |
+
+Neural, passes 5 to 8 (earlier passes within 3 points of classic):
+
+| order | pass | typed | both in top-3 | own top-3 | own top-1 | other top-3 | other top-1 |
+|---|---:|:--:|---:|---:|---:|---:|---:|
+| A,B | 5 | A | 13.5 | 37.8 | 18.9 | 27.0 | 5.4 |
+| A,B | 6 | B | 13.5 | 13.5 | 0.0 | 100.0 | 59.5 |
+| A,B | 7 | A | 70.3 | 89.2 | 35.1 | 81.1 | 18.9 |
+| A,B | 8 | B | 54.1 | 54.1 | 2.7 | 100.0 | 56.8 |
+| B,A | 5 | B | 13.5 | 27.0 | 8.1 | 37.8 | 13.5 |
+| B,A | 6 | A | 24.3 | 24.3 | 13.5 | 100.0 | 40.5 |
+| B,A | 7 | B | 73.0 | 81.1 | 16.2 | 91.9 | 37.8 |
+| B,A | 8 | A | 59.5 | 67.6 | 27.0 | 91.9 | 32.4 |
+
+Reading it: the strip follows counts, not the last word typed. In the even passes (6 and 8) the snippet typed one more time so far (3 vs 2, 4 vs 3) owns the strip, so the word of the snippet that is being typed (the one typed fewer times so far) is mostly absent from the top-3 and the other word is top-3 in 100% of cases. At equal counts (pass 7) both words are offered in about 73% of the points. The bias check passes in every arm (own top-1 over passes 5 to 8: 9.5 to 16.2%, target at most 75%; other word in top-3: 76 to 82%, target at least 50%). Committed ok stays 100%.
+
+### Test 3: at equal counts, does the order decide?
+
+At the passes with equal counts (5: 2+2, 7: 3+3 typed before), the last typed snippet is B with A,B and A with B,A. For each of the 37 points, which of the two words ranks higher, with A,B and with B,A (`unigram` = the word with the higher unigram log-prob in the dictionary, a proxy for the base model):
+
+| arm | pass | same word in both orders | same and = unigram | first typed favoured | last typed favoured | one order undecided |
+|---|---:|---:|---:|---:|---:|---:|
+| classic | 5 | 19 | 12 | 0 | 0 | 18 |
+| classic | 7 | 36 | 28 | 0 | 1 | 0 |
+| neural | 5 | 18 | 12 | 1 | 0 | 18 |
+| neural | 7 | 33 | 22 | 2 | 2 | 0 |
+
+Answer: the dictionary decides, not the order. At pass 7 the same word wins in both orders at 36 of 37 points (classic; 33 of 37 neural), and in 28 (22) of those it is the word the dictionary favours. A typed-first or typed-last effect shows at 1 (classic) to 4 (neural) points in total. At pass 5 (2+2) half of the points are undecided because neither word is offered yet (the counts are too low); where both orders decide, they agree (19 of 19 classic). So once the counts are equal, a tie goes to the base model's word whichever snippet was typed last; the more frequently typed snippet wins the strip (see even passes above), which is the intended behaviour. The per-point table is in the report.
+
+### Causes fixed (36002bf)
+
+- Next-word candidates came only from the dictionary's lists, so a learned pair could never enter the pool: top-3 plateaued at 57% over 8 passes of one text; now 91% by pass 4. `LanguageModel.nextWords` starts the pool with `addUserNextWords()`.
+- Phrase steps are judged by the user's own estimate as well. The phrase gate (30%) was above the 25% blend weight of the personal model, so even a fully learned phrase never reached it: correct phrases 2% to 44%.
+
+### Known limits
+
+- A word that is not in the base dictionary cannot yet be offered as a next word. `LanguageModel.nextWords` builds its pool from dictionary ids only (`addUserNextWords` maps the learned keys with `dict.idsForKey(key)`, which returns nothing for an unknown word; the other pool sources are the dictionary's trigram, bigram and unigram lists), and its output is dictionary ids. Whether any of the 43 never-offered words of Test 1 are such cases was not checked.
+- Phrase correct stays under 50% (43.5% at pass 8): a phrase is only offered when each step clears the gate, and function words after a learned word often still outrank the learned next word.
+- With two similar texts the strip always favours the more frequently typed one (even passes: the text typed fewer times so far has its own word in top-3 in only 14 to 68% of the points); the equal-count tie goes to the dictionary's word.
+- Desktop, synchronous learning: the real app learns on a queue with a 1.5 s publish delay, so real learning is a little slower than these curves.
