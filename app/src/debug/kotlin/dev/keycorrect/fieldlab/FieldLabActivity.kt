@@ -38,6 +38,7 @@ private const val SAMPLE_PARAGRAPH =
 
 /** Debug-only screen with one field per input type, plus a TYPE_NULL terminal-style view. */
 class FieldLabActivity : Activity() {
+    @Suppress("LongMethod") // A debug screen: one flat list of fields.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "KeyCorrect field lab"
