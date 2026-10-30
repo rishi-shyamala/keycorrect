@@ -14,6 +14,20 @@ android {
         providers.gradleProperty("keycorrect.jfr").orNull?.let {
             test.jvmArgs("-XX:StartFlightRecording=filename=$it,settings=profile")
         }
+        // LearningCurveTest (slow, key-by-key learning curves) runs only with
+        // -Pkeycorrect.learncurve=true; the neural arm also needs the host build of the native
+        // library and a GGUF (found in the main checkout; override with
+        // -Pkeycorrect.learncurve.lib / .model).
+        providers.gradleProperty("keycorrect.learncurve").orNull?.let {
+            test.systemProperty("keycorrect.learncurve", it)
+            providers.gradleProperty("keycorrect.learncurve.lib").orNull?.let { lib ->
+                test.systemProperty("keycorrect.learncurve.lib", lib)
+            }
+            providers.gradleProperty("keycorrect.learncurve.model").orNull?.let { model ->
+                test.systemProperty("keycorrect.learncurve.model", model)
+            }
+            test.maxHeapSize = "2g"
+        }
     }
 }
 
@@ -33,6 +47,8 @@ dependencies {
 
     // The real ClassicEngine drives the end-to-end controller test; the app module wires it up.
     testImplementation(project(":core:decoder"))
+    // The learning-curve test's optional neural arm (reranker over a host llama session).
+    testImplementation(project(":core:llama"))
 
     // On-device UI tests (what the strip actually draws).
     androidTestImplementation(platform(libs.compose.bom))
