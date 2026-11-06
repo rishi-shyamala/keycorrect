@@ -1,6 +1,5 @@
 package dev.keycorrect.settings
 
-import android.content.res.Configuration
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,12 +15,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.R
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.settings.SizeProfile
 import dev.keycorrect.core.settings.SizeSettings
+import dev.keycorrect.ime.DisplaySizeProfile
 import kotlin.math.roundToInt
 
 private const val PERCENT = 100
@@ -77,11 +78,9 @@ fun KeyboardSettingsScreen(
 /** The profile of the screen this device is on now. */
 @Composable
 private fun currentSizeProfile(): SizeProfile {
-    val config = LocalConfiguration.current
-    return SizeProfile.of(
-        config.smallestScreenWidthDp,
-        config.orientation == Configuration.ORIENTATION_LANDSCAPE,
-    )
+    // Reading the configuration makes a rotation recompose; the profile itself is display-level.
+    LocalConfiguration.current
+    return DisplaySizeProfile.of(LocalContext.current)
 }
 
 @StringRes

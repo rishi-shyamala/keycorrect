@@ -197,9 +197,10 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     /** Tells the keyboard what we run on; its input profile feeds both events and the decoder. */
     private fun updateDevice(config: Configuration) {
         val profile = DeviceProfile.from(config)
-        if (profile.sizeProfile != sizeProfile) {
+        val display = DisplaySizeProfile.of(this)
+        if (display != sizeProfile) {
             // Rotation, folding or moving to a tablet: the keyboard takes that profile's sizes.
-            sizeProfile = profile.sizeProfile
+            sizeProfile = display
             val sized = storedSettings.forProfile(sizeProfile)
             settingsFlow.value = sized
             controller.updateSettings(sized)
