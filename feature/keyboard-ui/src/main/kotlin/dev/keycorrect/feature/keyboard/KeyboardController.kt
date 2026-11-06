@@ -798,7 +798,8 @@ class KeyboardController(
     /** Shows the full on-screen keyboard, or goes back to the slim bar. */
     fun toggleFullKeyboard() {
         fullKeyboardShown = !fullKeyboardShown
-        if (!fullKeyboardShown && panel != KeyboardPanel.Keys) showPanelKeepingLayer(KeyboardPanel.Keys)
+        if (!fullKeyboardShown && panel != KeyboardPanel.Keys)
+            showPanelKeepingLayer(KeyboardPanel.Keys)
     }
 
     /**
@@ -808,28 +809,35 @@ class KeyboardController(
      * off, or when [physicalMode] is off.
      */
     fun onPhysicalKey(key: PhysicalKey): Boolean {
-        val active = physicalMode && key != PhysicalKey.Ignore && !profile.sensitive
-        if (!active || profile.kind == FieldKind.Terminal) return false
+        if (!physicalKeysHandled(key)) return false
         voice.stopNow()
-        if (searching) return onPhysicalSearchKey(key)
-        if (!input.canPredict()) return false
-        input.settlePendingSwipe()
-        val handled =
-            when (key) {
-                is PhysicalKey.Text -> true.also { input.onText(key.text, null) }
-                PhysicalKey.Space -> true.also { input.onSeparator(" ") }
-                PhysicalKey.Backspace -> true.also { input.onBackspace() }
-                PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
-                PhysicalKey.Shortcut -> false.also { input.finishWordAsTyped() }
-                PhysicalKey.Ignore -> false
-            }
+        val handled = if (searching) onPhysicalSearchKey(key) else onPhysicalTypingKey(key)
         composingNow = input.isComposing
-        if (handled && key != PhysicalKey.Backspace) {
+        if (handled && !searching && key != PhysicalKey.Backspace) {
             sawText = true
             zeroChecked = false
             if (fieldEmpty) fieldEmpty = false
         }
         return handled
+    }
+
+    private fun physicalKeysHandled(key: PhysicalKey): Boolean =
+        physicalMode &&
+            key != PhysicalKey.Ignore &&
+            !profile.sensitive &&
+            profile.kind != FieldKind.Terminal &&
+            (searching || input.canPredict())
+
+    private fun onPhysicalTypingKey(key: PhysicalKey): Boolean {
+        input.settlePendingSwipe()
+        return when (key) {
+            is PhysicalKey.Text -> true.also { input.onText(key.text, null) }
+            PhysicalKey.Space -> true.also { input.onSeparator(" ") }
+            PhysicalKey.Backspace -> true.also { input.onBackspace() }
+            PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
+            PhysicalKey.Shortcut -> false.also { input.finishWordAsTyped() }
+            PhysicalKey.Ignore -> false
+        }
     }
 
     private fun onPhysicalSearchKey(key: PhysicalKey): Boolean {

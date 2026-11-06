@@ -64,14 +64,13 @@ internal fun toolsFor(
     sensitive: Boolean,
     clipboardAvailable: Boolean,
     keyboardToggle: Boolean = false,
-): List<StripTool> =
-    buildList {
-        add(StripTool.Edit)
-        if (!sensitive) add(StripTool.Emoji)
-        add(StripTool.Settings)
-        if (clipboardAvailable && !sensitive) add(StripTool.Clipboard)
-        if (keyboardToggle) add(StripTool.Keyboard)
-    }
+): List<StripTool> = buildList {
+    add(StripTool.Edit)
+    if (!sensitive) add(StripTool.Emoji)
+    add(StripTool.Settings)
+    if (clipboardAvailable && !sensitive) add(StripTool.Clipboard)
+    if (keyboardToggle) add(StripTool.Keyboard)
+}
 
 /**
  * Whether the tools sit small at the edges: the field has text ([fieldHasText]; they spread out
