@@ -1,7 +1,5 @@
 package dev.keycorrect.feature.keyboard.emoji
 
-import dev.keycorrect.core.designsystem.onBackgroundColor
-import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +27,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
+import dev.keycorrect.core.designsystem.onBackgroundColor
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.R
 

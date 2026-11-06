@@ -1,6 +1,5 @@
 package dev.keycorrect.feature.keyboard.emoji
 
-import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import android.graphics.Paint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -50,6 +49,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.R

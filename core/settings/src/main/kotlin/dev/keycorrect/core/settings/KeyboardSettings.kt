@@ -304,68 +304,73 @@ data class KeyboardSettings(
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
         copy(
-            sizes = sizes.mapValues { it.value.sanitized() },
-            clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
-            keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
-            bottomKeyWidth =
-                if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
-                else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
-            modeEnterKeyWidth =
-                if (modeEnterKeyWidth.isNaN()) DEFAULT_MODE_ENTER_KEY_WIDTH
-                else modeEnterKeyWidth.coerceIn(MODE_ENTER_KEY_WIDTH_RANGE),
-            edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
-            keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
-            longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
-            hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
-            hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
-            autocorrectPulseMs = autocorrectPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
-            unknownWordPulseMs = unknownWordPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
-            implicitAddReverts = implicitAddReverts.coerceIn(REVERTS_RANGE),
-            suppressCorrectionReverts =
-                suppressCorrectionReverts
-                    .coerceIn(REVERTS_RANGE)
-                    .coerceAtLeast(implicitAddReverts.coerceIn(REVERTS_RANGE)),
-            soundVolume =
-                if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
-                else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
-            voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
-            // Never more than half the phrase: a longer pause would not fit in it.
-            voicePauseMs =
-                voicePauseMs
-                    .coerceIn(VOICE_PAUSE_MS_RANGE)
-                    .coerceAtMost(voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE) / 2),
-            voiceLiveMs =
-                when {
-                    voiceLiveMs < 0 -> VOICE_LIVE_OFF
-                    voiceLiveMs == VOICE_LIVE_AUTO -> VOICE_LIVE_AUTO
-                    else -> voiceLiveMs.coerceIn(VOICE_LIVE_MS_RANGE)
-                },
-            voiceAutoStopSeconds =
-                when {
-                    voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
-                    else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
-                },
+                sizes = sizes.mapValues { it.value.sanitized() },
+                clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
+                keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
+                bottomKeyWidth =
+                    if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
+                    else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
+                modeEnterKeyWidth =
+                    if (modeEnterKeyWidth.isNaN()) DEFAULT_MODE_ENTER_KEY_WIDTH
+                    else modeEnterKeyWidth.coerceIn(MODE_ENTER_KEY_WIDTH_RANGE),
+                edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
+                keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
+                longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
+                hapticDurationMs = hapticDurationMs.coerceIn(HAPTIC_DURATION_MS_RANGE),
+                hapticStrength = hapticStrength.coerceIn(HAPTIC_STRENGTH_RANGE),
+                autocorrectPulseMs = autocorrectPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
+                unknownWordPulseMs = unknownWordPulseMs.coerceIn(HAPTIC_PULSE_MS_RANGE),
+                implicitAddReverts = implicitAddReverts.coerceIn(REVERTS_RANGE),
+                suppressCorrectionReverts =
+                    suppressCorrectionReverts
+                        .coerceIn(REVERTS_RANGE)
+                        .coerceAtLeast(implicitAddReverts.coerceIn(REVERTS_RANGE)),
+                soundVolume =
+                    if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
+                    else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
+                voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
+                // Never more than half the phrase: a longer pause would not fit in it.
+                voicePauseMs =
+                    voicePauseMs
+                        .coerceIn(VOICE_PAUSE_MS_RANGE)
+                        .coerceAtMost(voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE) / 2),
+                voiceLiveMs =
+                    when {
+                        voiceLiveMs < 0 -> VOICE_LIVE_OFF
+                        voiceLiveMs == VOICE_LIVE_AUTO -> VOICE_LIVE_AUTO
+                        else -> voiceLiveMs.coerceIn(VOICE_LIVE_MS_RANGE)
+                    },
+                voiceAutoStopSeconds =
+                    when {
+                        voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
+                        else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
+                    },
+                neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
+                neuralEngine = neuralEngine.take(ENGINE_ID_MAX_LENGTH).ifEmpty { ENGINE_BUILTIN },
+                approvedEngines =
+                    approvedEngines
+                        .filter { it.length <= APPROVED_ENTRY_MAX_LENGTH }
+                        .sorted()
+                        .take(APPROVED_ENGINES_MAX)
+                        .toSet(),
+                fitDismissals =
+                    fitDismissals
+                        .filter { e -> e.length <= APPROVED_ENTRY_MAX_LENGTH && e.contains('|') }
+                        .sorted()
+                        .take(SizeProfile.ALL.size)
+                        .toSet(),
+                lmStrength =
+                    if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
+                    else lmStrength.coerceIn(LM_STRENGTH_RANGE),
+            )
+            .sanitizedLook()
+
+    private fun sanitizedLook(): KeyboardSettings =
+        copy(
             keyRadiusDp = keyRadiusDp.coerceIn(KEY_RADIUS_DP_RANGE),
             labelScale = if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
-            neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
-            neuralEngine = neuralEngine.take(ENGINE_ID_MAX_LENGTH).ifEmpty { ENGINE_BUILTIN },
-            approvedEngines =
-                approvedEngines
-                    .filter { it.length <= APPROVED_ENTRY_MAX_LENGTH }
-                    .sorted()
-                    .take(APPROVED_ENGINES_MAX)
-                    .toSet(),
-            fitDismissals =
-                fitDismissals
-                    .filter { e -> e.length <= APPROVED_ENTRY_MAX_LENGTH && e.contains('|') }
-                    .sorted()
-                    .take(SizeProfile.ALL.size)
-                    .toSet(),
-            lmStrength =
-                if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
-                else lmStrength.coerceIn(LM_STRENGTH_RANGE),
         )
 
     companion object {

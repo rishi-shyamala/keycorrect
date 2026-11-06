@@ -476,7 +476,8 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
             )
         }
     } else {
-        d.text.label(slot.index, key, slot.right - slot.left - gap - 2 * d.labelPad)?.let { layout ->
+        d.text.label(slot.index, key, slot.right - slot.left - gap - 2 * d.labelPad)?.let { layout
+            ->
             drawText(
                 layout,
                 color = keyContent(key, shaded, shiftState, colors, latch),

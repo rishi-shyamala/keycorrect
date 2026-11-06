@@ -112,7 +112,8 @@ private fun PreviewRow(
 internal class PreviewStyle(settings: KeyboardSettings) {
     /** The corner radius in preview dp: the real one scaled to the preview's key height. */
     val radius =
-        (settings.keyRadiusDp * PREVIEW_KEY_DP / (settings.keyHeightDp - settings.keyGapDp).coerceAtLeast(1))
+        (settings.keyRadiusDp * PREVIEW_KEY_DP /
+                (settings.keyHeightDp - settings.keyGapDp).coerceAtLeast(1))
             .coerceAtMost(PREVIEW_KEY_DP / 2)
     val border = settings.keyBorder
     val labelScale = settings.labelScale

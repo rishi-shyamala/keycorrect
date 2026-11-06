@@ -20,7 +20,8 @@ val LocalThemePalette = staticCompositionLocalOf<ThemePalette?> { null }
 
 /** The color of text on the suggestion strip. */
 @Composable
-fun stripTextColor(): Color = LocalThemePalette.current?.stripText ?: MaterialTheme.colorScheme.onSurface
+fun stripTextColor(): Color =
+    LocalThemePalette.current?.stripText ?: MaterialTheme.colorScheme.onSurface
 
 /** Text and icons drawn straight on the keyboard background (panel titles, empty-state hints). */
 @Composable
@@ -48,7 +49,10 @@ fun accentOnKeyColor(): Color =
  * each time the keyboard is shown).
  */
 @Composable
-fun rememberDynamicScheme(darkTheme: Boolean = isSystemInDarkTheme(), refresh: Int = 0): ColorScheme {
+fun rememberDynamicScheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    refresh: Int = 0,
+): ColorScheme {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     return remember(context, darkTheme, configuration, refresh) {

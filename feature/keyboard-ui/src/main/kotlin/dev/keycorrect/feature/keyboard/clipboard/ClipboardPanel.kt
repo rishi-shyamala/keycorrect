@@ -1,9 +1,5 @@
 package dev.keycorrect.feature.keyboard.clipboard
 
-import dev.keycorrect.core.designsystem.onBackgroundColor
-import dev.keycorrect.core.designsystem.accentOnBackgroundColor
-import dev.keycorrect.core.designsystem.accentOnKeyColor
-import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -49,6 +45,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
+import dev.keycorrect.core.designsystem.accentOnKeyColor
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
+import dev.keycorrect.core.designsystem.onBackgroundColor
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardPanel
 import dev.keycorrect.feature.keyboard.R
@@ -122,7 +122,6 @@ internal fun ClipboardPanel(
 @Composable
 internal fun ClipboardTitleStrip(controller: KeyboardController, onPress: () -> Unit) {
     val state = controller.clipboardPanel
-    val colors = MaterialTheme.colorScheme
     val canClear = controller.clipboard.clips.any { !it.pinned }
     Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
         if (state.confirmingClear) {

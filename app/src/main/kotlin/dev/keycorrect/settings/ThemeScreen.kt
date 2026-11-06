@@ -42,18 +42,16 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.R
+import dev.keycorrect.core.designsystem.ContrastPair
 import dev.keycorrect.core.designsystem.KeyboardColors
 import dev.keycorrect.core.designsystem.ThemeRole
-import dev.keycorrect.core.designsystem.ContrastPair
 import dev.keycorrect.core.designsystem.contrastProblems
-import dev.keycorrect.core.designsystem.toSeedArgb
 import dev.keycorrect.core.designsystem.resolveKeyboardTheme
+import dev.keycorrect.core.designsystem.toSeedArgb
 import dev.keycorrect.core.settings.KeyboardSettings
-import dev.keycorrect.core.settings.PressStyle
 import dev.keycorrect.core.settings.ThemeColors
 import dev.keycorrect.core.settings.ThemeSource
 import java.util.Locale
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -112,7 +110,12 @@ fun ThemeScreen(
 
         if (source == ThemeSource.Custom) {
             val stored = if (editDark) settings.customDarkColors else settings.customLightColors
-            CustomEditor(colorsFor(editDark), stored, editDark, role, { role = it }, onUpdate)
+            CustomEditor(
+                CustomEdit(colorsFor(editDark), stored, editDark),
+                role,
+                { role = it },
+                onUpdate,
+            )
         }
 
         KeyShapeSection(settings, onUpdate)
@@ -120,111 +123,15 @@ fun ThemeScreen(
     }
 }
 
-/** The corner radius, border and press highlight of the keys. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun KeyShapeSection(
-    settings: KeyboardSettings,
-    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
-) {
-    SectionHeader(stringResource(R.string.theme_section_keys))
-    val pillAt = (settings.keyHeightDp - settings.keyGapDp).coerceAtLeast(0) / 2f
-    SliderRow(
-        title = stringResource(R.string.theme_key_radius),
-        supportingText = stringResource(R.string.theme_key_radius_summary),
-        value = settings.keyRadiusDp.toFloat(),
-        valueRange = KeyboardSettings.KEY_RADIUS_DP_RANGE.let { it.first.toFloat()..it.last.toFloat() },
-        valueLabel = {
-            if (it >= pillAt) {
-                stringResource(R.string.theme_key_radius_pill)
-            } else {
-                stringResource(R.string.value_dp, it.roundToInt())
-            }
-        },
-        onValueCommitted = { v -> onUpdate { it.copy(keyRadiusDp = v.roundToInt()) } },
-        snap = { it.roundToInt().toFloat() },
-    )
-    SwitchRow(
-        title = stringResource(R.string.theme_key_border),
-        supportingText = stringResource(R.string.theme_key_border_summary),
-        checked = settings.keyBorder,
-        onCheckedChange = { v -> onUpdate { it.copy(keyBorder = v) } },
-    )
-    Text(
-        stringResource(R.string.theme_press_style),
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
-    )
-    SingleChoiceSegmentedButtonRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        PressStyle.entries.forEachIndexed { index, style ->
-            SegmentedButton(
-                selected = settings.pressStyle == style,
-                onClick = { onUpdate { it.copy(pressStyle = style) } },
-                shape = SegmentedButtonDefaults.itemShape(index, PressStyle.entries.size),
-            ) {
-                Text(stringResource(pressLabel(style)))
-            }
-        }
-    }
-}
-
-/** The label size and weight, the corner hints and the key preview popup. */
-@Composable
-private fun KeyLabelsSection(
-    settings: KeyboardSettings,
-    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
-) {
-    SectionHeader(stringResource(R.string.theme_section_labels))
-    SliderRow(
-        title = stringResource(R.string.theme_label_size),
-        value = settings.labelScale,
-        valueRange = KeyboardSettings.LABEL_SCALE_RANGE,
-        valueLabel = { stringResource(R.string.value_percent, (it * PERCENT).roundToInt()) },
-        onValueCommitted = { v -> onUpdate { it.copy(labelScale = v) } },
-        snap = { (it * LABEL_STEPS).roundToInt() / LABEL_STEPS },
-    )
-    SwitchRow(
-        title = stringResource(R.string.theme_bold_labels),
-        checked = settings.boldLabels,
-        onCheckedChange = { v -> onUpdate { it.copy(boldLabels = v) } },
-    )
-    SwitchRow(
-        title = stringResource(R.string.theme_hint_labels),
-        supportingText = stringResource(R.string.theme_hint_labels_summary),
-        checked = settings.symbolHints,
-        onCheckedChange = { v -> onUpdate { it.copy(symbolHints = v) } },
-    )
-    SwitchRow(
-        title = stringResource(R.string.theme_key_preview),
-        supportingText = stringResource(R.string.theme_key_preview_summary),
-        checked = settings.keyPreview,
-        onCheckedChange = { v -> onUpdate { it.copy(keyPreview = v) } },
-    )
-}
-
-@StringRes
-private fun pressLabel(style: PressStyle): Int =
-    when (style) {
-        PressStyle.Shade -> R.string.theme_press_shade
-        PressStyle.Outline -> R.string.theme_press_outline
-        PressStyle.None -> R.string.theme_press_none
-    }
-
-private const val PERCENT = 100
-private const val LABEL_STEPS = 20f
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CustomEditor(
-    colors: KeyboardColors,
-    stored: List<Int>,
-    editDark: Boolean,
+    edit: CustomEdit,
     role: ThemeRole,
     onRole: (ThemeRole) -> Unit,
     onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
 ) {
+    val (colors, stored, editDark) = edit
     SectionHeader(stringResource(R.string.theme_section_custom))
     FlowRow(
         modifier = Modifier.padding(horizontal = 16.dp),
@@ -249,28 +156,30 @@ private fun CustomEditor(
             modifier = Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite },
         )
     }
-    fun store(list: List<Int>) =
-        onUpdate { s ->
-            if (editDark) s.copy(customDarkColors = list) else s.copy(customLightColors = list)
-        }
+    fun store(list: List<Int>) = onUpdate { s ->
+        if (editDark) s.copy(customDarkColors = list) else s.copy(customLightColors = list)
+    }
     ColorPicker(
         current = colors[role],
         key = "$editDark/$role",
         onPick = { picked ->
-            store(
-                colors.toStoredWith(stored, role, picked.toArgb())
-            )
+            store(colors.toStoredWith(stored, role, picked.toArgb()))
         },
     )
     if (role !in MAIN_ROLES && stored.getOrNull(role.ordinal) != ThemeColors.AUTO) {
         TextButton(
-            onClick = { store(stored.toMutableList().also { it[role.ordinal] = ThemeColors.AUTO }) },
+            onClick = {
+                store(stored.toMutableList().also { it[role.ordinal] = ThemeColors.AUTO })
+            },
             modifier = Modifier.padding(horizontal = 8.dp),
         ) {
             Text(stringResource(R.string.theme_role_automatic))
         }
     }
 }
+
+/** What the custom editor shows: the [colors] in effect, the [stored] entries, light or dark. */
+private data class CustomEdit(val colors: KeyboardColors, val stored: List<Int>, val dark: Boolean)
 
 /** The roles every custom theme sets itself; the others follow from them until changed. */
 private val MAIN_ROLES =

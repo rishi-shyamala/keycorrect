@@ -7,6 +7,7 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyCodes
 import dev.keycorrect.core.layout.KeyModifier
 import dev.keycorrect.core.layout.ResolvedKey
+import dev.keycorrect.core.settings.KeyboardSettings
 import org.junit.Test
 
 class KeyDrawingTest {
@@ -151,22 +152,25 @@ class KeyDrawingTest {
 
 class KeyCornerTest {
     @Test
-    fun defaultFractionIsAboutTenDp() {
-        val dp =
-            keyCornerDp(dev.keycorrect.core.settings.KeyboardSettings.DEFAULT_KEY_RADIUS, 54, 6)
-        assertThat(dp).isWithin(0.2f).of(10f)
+    fun defaultIsTenDpAtEverySize() {
+        for (height in listOf(40, 54, 80)) {
+            assertThat(keyCornerDp(KeyboardSettings.DEFAULT_KEY_RADIUS_DP, height, 6))
+                .isEqualTo(10f)
+        }
     }
 
     @Test
     fun squareAndPill() {
-        assertThat(keyCornerDp(0f, 54, 6)).isEqualTo(0f)
-        assertThat(keyCornerDp(0.5f, 54, 6)).isEqualTo(24f)
+        assertThat(keyCornerDp(0, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(40, 54, 6)).isEqualTo(24f)
+        assertThat(isPill(24, 54, 6)).isTrue()
+        assertThat(isPill(23, 54, 6)).isFalse()
     }
 
     @Test
     fun outOfRangeIsClamped() {
-        assertThat(keyCornerDp(-1f, 54, 6)).isEqualTo(0f)
-        assertThat(keyCornerDp(3f, 54, 6)).isEqualTo(24f)
-        assertThat(keyCornerDp(0.2f, 4, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(-1, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(99, 54, 6)).isEqualTo(24f)
+        assertThat(keyCornerDp(10, 4, 6)).isEqualTo(0f)
     }
 }

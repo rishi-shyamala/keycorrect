@@ -35,7 +35,8 @@ object ThemeColors {
     private const val MAX_ENCODED = COUNT * (HEX_DIGITS + 1)
 
     fun sanitize(colors: List<Int>): List<Int> =
-        if (colors.size == COUNT) colors.map { if (it == AUTO) AUTO else it or OPAQUE } else emptyList()
+        if (colors.size == COUNT) colors.map { if (it == AUTO) AUTO else it or OPAQUE }
+        else emptyList()
 
     fun encode(colors: List<Int>): String =
         sanitize(colors).joinToString(",") {

@@ -1,6 +1,5 @@
 package dev.keycorrect.feature.keyboard
 
-import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -32,6 +31,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 
 /**
  * The strip shown in place of the predictions while a range is selected (docs/PHASE4.md, feedback

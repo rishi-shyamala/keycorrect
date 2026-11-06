@@ -3,6 +3,7 @@ package dev.keycorrect.core.designsystem
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.settings.ThemeSource
 import org.junit.Test
@@ -103,5 +104,67 @@ class KeyboardThemeTest {
         assertThat(onColor(Color.White)).isEqualTo(Color.Black)
         assertThat(onColor(Color.Black)).isEqualTo(Color.White)
         assertThat(onColor(Color(0xFF1A6FE0))).isEqualTo(Color.White)
+    }
+
+    @Test
+    fun highContrastKeysStandOutFromTheBackgroundAndTextIsAaa() {
+        for (dark in listOf(false, true)) {
+            val k = resolveKeyboardTheme(ThemeSource.HighContrast, dark, light).colors
+            assertThat(contrastRatio(k.key.toArgb(), k.background.toArgb())).isAtLeast(3.0)
+            assertThat(k.keyContrast()).isAtLeast(7.0)
+        }
+    }
+
+    @Test
+    fun hintOnThePressedKeyReadsInEveryPreset() {
+        for (source in ThemeSource.entries) {
+            for (dark in listOf(false, true)) {
+                val theme = resolveKeyboardTheme(source, dark, if (dark) this.dark else light)
+                val p = theme.palette ?: continue
+                assertThat(contrastRatio(p.onPressed.toArgb(), theme.colors.pressedKey.toArgb()))
+                    .isAtLeast(3.0)
+            }
+        }
+    }
+
+    @Test
+    fun customRolesLeftAutomaticAreDerivedAndReadable() {
+        // Keys #1A73E8 with white text on a white board; everything else automatic.
+        val stored =
+            ThemeRole.entries.map {
+                when (it) {
+                    ThemeRole.Background -> 0xFFFFFFFF.toInt()
+                    ThemeRole.Key -> 0xFF1A73E8.toInt()
+                    ThemeRole.KeyText -> 0xFFFFFFFF.toInt()
+                    ThemeRole.Accent -> 0xFF1A73E8.toInt()
+                    else -> 0
+                }
+            }
+        val theme = resolveKeyboardTheme(ThemeSource.Custom, false, light, stored)
+        val k = theme.colors
+        val p = theme.palette!!
+        assertThat(k.modifierKey).isNotEqualTo(k.key)
+        assertThat(k.pressedKey).isNotEqualTo(k.key)
+        fun ratio(a: Color, b: Color) = contrastRatio(a.toArgb(), b.toArgb())
+        assertThat(ratio(p.onKey, k.key)).isAtLeast(4.5)
+        assertThat(ratio(p.onModifier, k.modifierKey)).isAtLeast(4.5)
+        assertThat(ratio(p.onPressed, k.pressedKey)).isAtLeast(4.5)
+        assertThat(ratio(p.onBackground, k.background)).isAtLeast(4.5)
+        assertThat(ratio(p.stripText, k.background)).isAtLeast(4.5)
+        assertThat(ratio(p.hintOnKey, k.key)).isAtLeast(3.0)
+        assertThat(ratio(p.accentOnBackground, k.background)).isAtLeast(3.0)
+        assertThat(k.contrastProblems()).isEmpty()
+    }
+
+    @Test
+    fun whiteTextOnWhiteKeysIsReportedByPairAndRenderedBlack() {
+        val stored =
+            ThemeRole.entries.map {
+                if (it == ThemeRole.Key || it == ThemeRole.KeyText) 0xFFFFFFFF.toInt()
+                else 0xFF336699.toInt()
+            }
+        val theme = resolveKeyboardTheme(ThemeSource.Custom, false, light, stored)
+        assertThat(theme.colors.contrastProblems().map { it.pair }).contains(ContrastPair.KeyText)
+        assertThat(theme.palette!!.onKey).isEqualTo(Color.Black)
     }
 }

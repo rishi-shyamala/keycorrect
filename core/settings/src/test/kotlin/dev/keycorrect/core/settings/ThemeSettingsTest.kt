@@ -104,7 +104,11 @@ class ThemeSettingsTest {
 
     @Test
     fun autoRolesSurviveStorageAndSanitizing() = runTest {
-        val partly = colors.toMutableList().also { it[2] = ThemeColors.AUTO; it[6] = ThemeColors.AUTO }
+        val partly =
+            colors.toMutableList().also {
+                it[2] = ThemeColors.AUTO
+                it[6] = ThemeColors.AUTO
+            }
         repo.update { it.copy(customLightColors = partly) }
         assertThat(repo.settings.first().customLightColors).isEqualTo(partly)
         assertThat(ThemeColors.sanitize(partly)[2]).isEqualTo(ThemeColors.AUTO)
