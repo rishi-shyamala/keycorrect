@@ -15,7 +15,7 @@ Scope: PLAN.md section 15, PHASE9.md decisions P9-1 and P9-2. Audited at the hea
 
 ## CI guard
 
-`app/src/test/kotlin/dev/keycorrect/security/ManifestSecurityTest.kt` runs in `testDebugUnitTest`. The app module's tests depend on `processReleaseMainManifest` (app and sampleplugin) and read the merged release manifest. It fails on: any permission outside the approved set (so INTERNET), any exported component beyond the IME service (with BIND_INPUT_METHOD) and the launcher activity, an exported provider, a component without an explicit `exported`, `allowBackup` other than false, missing `dataExtractionRules`, `directBootAware`, debuggable or cleartext, Field Lab in release, and any permission or component in the pack manifests.
+`app/src/test/kotlin/dev/keycorrect/security/ManifestSecurityTest.kt` runs in `testDebugUnitTest`. The app module's tests depend on `processReleaseMainManifest` (app and sampleplugin) and read the merged release manifest. It fails on: any permission outside the approved set (so INTERNET), any exported component beyond the IME service (with BIND_INPUT_METHOD) and the launcher activity (the one allowed extra is androidx `ProfileInstallReceiver`, which must keep `android.permission.DUMP`), an exported provider, a component without an explicit `exported`, `allowBackup` other than false, missing `dataExtractionRules`, `directBootAware`, debuggable or cleartext, Field Lab in release, and any permission or component in the pack manifests.
 
 ## Follow-ups
 
