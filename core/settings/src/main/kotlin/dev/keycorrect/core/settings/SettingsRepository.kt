@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-/** Reads and writes [KeyboardSettings] in a Preferences [DataStore]. */
+/**
+ * Reads and writes [KeyboardSettings] in a Preferences [DataStore]. Once any value of a size
+ * profile is stored, that profile no longer follows the global fallback.
+ */
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     /** Current settings, always sanitized; falls back to defaults if the store is unreadable. */
     val settings: Flow<KeyboardSettings> =
@@ -172,6 +175,56 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 )
             }
             .withEngine(p)
+            .withSizes(p)
+    }
+
+    /** The per-profile sizes stored in [p]; a missing value falls back to the global one. */
+    private fun KeyboardSettings.withSizes(p: Preferences): KeyboardSettings {
+        val g = globalSizes
+        val stored =
+            SizeProfile.ALL.mapNotNull { profile ->
+                val at = profile.id
+                val size =
+                    StoredSizes(
+                        keyHeightDp = p[intPreferencesKey(sized(KEY_HEIGHT_DP, at))],
+                        bottomKeyWidth = p[floatPreferencesKey(sized(BOTTOM_KEY_WIDTH, at))],
+                        modeEnterKeyWidth = p[floatPreferencesKey(sized(MODE_ENTER_KEY_WIDTH, at))],
+                        edgePaddingDp = p[intPreferencesKey(sized(EDGE_PADDING_DP, at))],
+                        keyGapDp = p[intPreferencesKey(sized(KEY_GAP_DP, at))],
+                        numberRow = p[booleanPreferencesKey(sized(NUMBER_ROW, at))],
+                    )
+                size.takeIf { it.any }?.let { profile to it.resolve(g) }
+            }
+        return copy(sizes = stored.toMap())
+    }
+
+    /** The stored (possibly missing) sizes of one profile. */
+    private class StoredSizes(
+        val keyHeightDp: Int?,
+        val bottomKeyWidth: Float?,
+        val modeEnterKeyWidth: Float?,
+        val edgePaddingDp: Int?,
+        val keyGapDp: Int?,
+        val numberRow: Boolean?,
+    ) {
+        val any: Boolean
+            get() =
+                keyHeightDp != null ||
+                    bottomKeyWidth != null ||
+                    modeEnterKeyWidth != null ||
+                    edgePaddingDp != null ||
+                    keyGapDp != null ||
+                    numberRow != null
+
+        fun resolve(g: SizeSettings) =
+            SizeSettings(
+                keyHeightDp ?: g.keyHeightDp,
+                bottomKeyWidth ?: g.bottomKeyWidth,
+                modeEnterKeyWidth ?: g.modeEnterKeyWidth,
+                edgePaddingDp ?: g.edgePaddingDp,
+                keyGapDp ?: g.keyGapDp,
+                numberRow ?: g.numberRow,
+            )
     }
 
     private fun KeyboardSettings.withEngine(p: Preferences): KeyboardSettings {
@@ -241,9 +294,28 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_MODEL] = s.neuralModel
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
+        writeSizes(s.sizes)
+    }
+
+    private fun MutablePreferences.writeSizes(sizes: Map<SizeProfile, SizeSettings>) {
+        for ((profile, size) in sizes) {
+            val at = profile.id
+            this[intPreferencesKey(sized(KEY_HEIGHT_DP, at))] = size.keyHeightDp
+            this[floatPreferencesKey(sized(BOTTOM_KEY_WIDTH, at))] = size.bottomKeyWidth
+            this[floatPreferencesKey(sized(MODE_ENTER_KEY_WIDTH, at))] = size.modeEnterKeyWidth
+            this[intPreferencesKey(sized(EDGE_PADDING_DP, at))] = size.edgePaddingDp
+            this[intPreferencesKey(sized(KEY_GAP_DP, at))] = size.keyGapDp
+            this[booleanPreferencesKey(sized(NUMBER_ROW, at))] = size.numberRow
+        }
     }
 
     private companion object {
+        /** The stored name of a per-profile size, e.g. `key_height_dp@phone_landscape`. */
+        fun sized(base: Preferences.Key<*>, profileId: String) = "${base.name}@$profileId"
+
+        fun perProfile(vararg bases: Preferences.Key<*>) =
+            SizeProfile.ALL.flatMap { p -> bases.map { sized(it, p.id) } }
+
         val KEY_HEIGHT_DP = intPreferencesKey("key_height_dp")
         val BOTTOM_KEY_WIDTH = floatPreferencesKey("bottom_key_width")
         val MODE_ENTER_KEY_WIDTH = floatPreferencesKey("mode_enter_key_width")
@@ -334,7 +406,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_AUTO_PUNCTUATION.name,
                 NEURAL_RERANK.name,
                 NEURAL_PHRASES.name,
-            )
+            ) + perProfile(NUMBER_ROW)
         val INT_KEYS =
             setOf(
                 KEY_HEIGHT_DP.name,
@@ -352,14 +424,14 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_PAUSE_MS.name,
                 VOICE_LIVE_MS.name,
                 VOICE_AUTO_STOP_SECONDS.name,
-            )
+            ) + perProfile(KEY_HEIGHT_DP, EDGE_PADDING_DP, KEY_GAP_DP)
         val FLOAT_KEYS =
             setOf(
                 BOTTOM_KEY_WIDTH.name,
                 MODE_ENTER_KEY_WIDTH.name,
                 SOUND_VOLUME.name,
                 LM_STRENGTH.name,
-            )
+            ) + perProfile(BOTTOM_KEY_WIDTH, MODE_ENTER_KEY_WIDTH)
         val STRING_KEYS =
             setOf(
                 CURSOR_SPEED.name,

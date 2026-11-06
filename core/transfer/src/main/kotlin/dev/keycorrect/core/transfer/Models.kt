@@ -74,15 +74,27 @@ data class SettingsSection(val values: Map<String, SettingValue>) {
         get() = values.keys.filterTo(HashSet()) { it in SCREEN_TIED_KEYS }
 
     companion object {
-        /** Sizes that only make sense on the screen they were tuned for (decision T-4). */
-        val SCREEN_TIED_KEYS: Set<String> =
-            setOf(
+        private val SIZE_KEYS =
+            listOf(
                 "key_height_dp",
                 "edge_padding_dp",
                 "key_gap_dp",
                 "bottom_key_width",
                 "mode_enter_key_width",
             )
+
+        /**
+         * The ids of the size profiles (core/settings `SizeProfile.id`; a test keeps them in sync).
+         */
+        private val SIZE_PROFILE_IDS =
+            listOf("phone_portrait", "phone_landscape", "tablet_portrait", "tablet_landscape")
+
+        /**
+         * Sizes, global and per profile (`key_height_dp@phone_landscape`), that only make sense on
+         * the screen they were tuned for (decision T-4).
+         */
+        val SCREEN_TIED_KEYS: Set<String> =
+            SIZE_KEYS.flatMap { key -> listOf(key) + SIZE_PROFILE_IDS.map { "$key@$it" } }.toSet()
     }
 }
 

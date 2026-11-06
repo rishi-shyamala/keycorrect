@@ -1,6 +1,7 @@
 package dev.keycorrect.ime
 
 import android.content.res.Configuration
+import dev.keycorrect.core.settings.SizeProfile
 
 /**
  * What kind of screen and input the keyboard is on, from a [Configuration]. The keyboard controller
@@ -12,9 +13,12 @@ data class DeviceProfile(
     val landscape: Boolean,
     val hardwareKeyboard: Boolean,
 ) {
+    /** Which per-profile keyboard sizes apply here (docs/PHASE8.md, P8-2). */
+    val sizeProfile: SizeProfile
+        get() = SizeProfile(tablet, landscape)
 
     companion object {
-        const val TABLET_MIN_SMALLEST_WIDTH_DP = 600
+        const val TABLET_MIN_SMALLEST_WIDTH_DP = SizeProfile.TABLET_MIN_SMALLEST_WIDTH_DP
 
         fun from(
             smallestScreenWidthDp: Int,

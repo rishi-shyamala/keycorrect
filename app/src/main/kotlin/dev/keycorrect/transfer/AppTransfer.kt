@@ -11,6 +11,7 @@ import dev.keycorrect.core.data.UserDictionaryStore
 import dev.keycorrect.core.data.UserWord
 import dev.keycorrect.core.settings.SettingsRepository
 import dev.keycorrect.core.transfer.DeviceProfile
+import dev.keycorrect.ime.DisplaySizeProfile
 import kotlinx.coroutines.flow.first
 
 /** [TransferStores] on the app's stores. */
@@ -39,6 +40,7 @@ internal object CurrentDevice {
         val keyboard = settings.settings.first()
         val bounds = context.getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
         val resources = context.resources
+        val sizes = keyboard.sizeFor(DisplaySizeProfile.of(context))
         return DeviceProfile(
             model =
                 listOf(Build.MANUFACTURER, Build.MODEL)
@@ -48,8 +50,8 @@ internal object CurrentDevice {
             screenHeightPx = bounds.height(),
             densityDpi = resources.displayMetrics.densityDpi,
             smallestWidthDp = resources.configuration.smallestScreenWidthDp,
-            keyHeightDp = keyboard.keyHeightDp,
-            numberRow = keyboard.numberRow,
+            keyHeightDp = sizes.keyHeightDp,
+            numberRow = sizes.numberRow,
         )
     }
 }

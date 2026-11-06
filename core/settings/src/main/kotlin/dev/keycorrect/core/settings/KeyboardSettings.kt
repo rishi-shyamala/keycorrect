@@ -216,10 +216,54 @@ data class KeyboardSettings(
      * [APPROVED_ENGINES_MAX] entries. Never carried by backup or transfer.
      */
     val approvedEngines: Set<String> = emptySet(),
+    /**
+     * Sizes set for a particular [SizeProfile]. A profile without an entry uses the six global
+     * fields above ([globalSizes]); read through [sizeFor], write through [withSizes].
+     */
+    val sizes: Map<SizeProfile, SizeSettings> = emptyMap(),
 ) {
+    /** The six size settings held in the global fields: the value of any profile not in [sizes]. */
+    val globalSizes: SizeSettings
+        get() =
+            SizeSettings(
+                keyHeightDp,
+                bottomKeyWidth,
+                modeEnterKeyWidth,
+                edgePaddingDp,
+                keyGapDp,
+                numberRow,
+            )
+
+    /** The sizes to use on [profile]. */
+    fun sizeFor(profile: SizeProfile): SizeSettings = sizes[profile] ?: globalSizes
+
+    /** A copy with [profile]'s sizes replaced by [size]. */
+    fun withSizes(profile: SizeProfile, size: SizeSettings): KeyboardSettings =
+        copy(sizes = sizes + (profile to size))
+
+    /**
+     * A copy with [profile]'s sizes changed by [transform] (the helper the settings screen uses).
+     */
+    fun updateSizes(profile: SizeProfile, transform: (SizeSettings) -> SizeSettings) =
+        withSizes(profile, transform(sizeFor(profile)))
+
+    /** The settings the keyboard runs with on [profile]: the global fields hold its sizes. */
+    fun forProfile(profile: SizeProfile): KeyboardSettings {
+        val s = sizeFor(profile)
+        return copy(
+            keyHeightDp = s.keyHeightDp,
+            bottomKeyWidth = s.bottomKeyWidth,
+            modeEnterKeyWidth = s.modeEnterKeyWidth,
+            edgePaddingDp = s.edgePaddingDp,
+            keyGapDp = s.keyGapDp,
+            numberRow = s.numberRow,
+        )
+    }
+
     /** Returns a copy with every value clamped into its valid range. */
     fun sanitized(): KeyboardSettings =
         copy(
+            sizes = sizes.mapValues { it.value.sanitized() },
             clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
             keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
             bottomKeyWidth =
