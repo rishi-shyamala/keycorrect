@@ -8,6 +8,7 @@ import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.ResolvedKey
+import dev.keycorrect.core.settings.KeyboardSettings
 
 /**
  * Space between neighbouring keys at its default; each key is drawn inset by half of the gap
@@ -15,14 +16,19 @@ import dev.keycorrect.core.layout.ResolvedKey
  */
 internal val KeyGap = 6.dp
 
-private const val MAX_RADIUS_FRACTION = 0.5f
-
 /**
  * Corner radius in dp of a key whose slot is [keyHeightDp] tall with [gapDp] between keys: the
- * [fraction] (0 square .. 0.5 pill) of the drawn key's height.
+ * chosen [radiusDp], but at most half the drawn key's height (a pill).
  */
-internal fun keyCornerDp(fraction: Float, keyHeightDp: Int, gapDp: Int): Float =
-    fraction.coerceIn(0f, MAX_RADIUS_FRACTION) * (keyHeightDp - gapDp).coerceAtLeast(0)
+internal fun keyCornerDp(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Float =
+    radiusDp
+        .coerceIn(KeyboardSettings.KEY_RADIUS_DP_RANGE)
+        .toFloat()
+        .coerceAtMost((keyHeightDp - gapDp).coerceAtLeast(0) / 2f)
+
+/** Whether [radiusDp] makes the keys pills at this key height and gap. */
+internal fun isPill(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Boolean =
+    radiusDp >= (keyHeightDp - gapDp).coerceAtLeast(0) / 2f
 
 /** The key corner radius for panels that draw their own buttons (provided by the keyboard). */
 internal val LocalKeyRadius = androidx.compose.runtime.compositionLocalOf { 10.dp }

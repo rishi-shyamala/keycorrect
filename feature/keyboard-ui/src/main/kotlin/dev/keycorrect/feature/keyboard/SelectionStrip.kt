@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -141,7 +142,7 @@ private fun RowScope.StripAction(
         Icon(
             icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = accentOnBackgroundColor(),
             modifier = Modifier.size(StripActionIcon),
         )
     }

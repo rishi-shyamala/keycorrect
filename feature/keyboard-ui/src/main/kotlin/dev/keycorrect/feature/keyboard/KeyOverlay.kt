@@ -65,17 +65,16 @@ private const val TRAIL_MIN_WIDTH = 0.35f
  * input. It reads [touch] and [shift] only while drawing, so showing and moving them never
  * recomposes.
  */
-@Suppress("LongParameterList")
 @Composable
 internal fun KeyOverlay(
     touch: KeyboardTouchState,
     shift: () -> ShiftState,
     enterLabel: String,
     keyGap: Dp,
-    keyRadius: Dp,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val keyRadius = LocalKeyRadius.current
     val textMeasurer = rememberTextMeasurer(cacheSize = 32)
     val cache = remember(textMeasurer) { OverlayCache(textMeasurer) }
     // Its own layer: a preview, popup or trail frame redraws this and nothing else.
@@ -128,7 +127,7 @@ private class OverlayCache(private val measurer: TextMeasurer) {
 }
 
 /** The last [Stroke] made, reused while the width stays the same. */
-private class StrokeMemo(
+internal class StrokeMemo(
     private val cap: StrokeCap = StrokeCap.Butt,
     private val join: StrokeJoin = StrokeJoin.Miter,
 ) {
@@ -259,7 +258,8 @@ private fun DrawScope.drawPopup(
     val panel = popup.panel
     // Shift down rather than leave the overlay when the key is in the top row.
     val top = max(panel.top + origin.y, 0f)
-    val left = panel.left + origin.x
+    // Inside the overlay's width, whatever the panel was placed against.
+    val left = (panel.left + origin.x).coerceIn(0f, max(0f, size.width - panel.width))
     val bounds = Rect(left, top, left + panel.width, top + panel.cellHeight)
     drawElevated(bounds, radius, colors.surfaceContainerHighest, colors, cache)
     val inset = PopupCellInset.toPx()
@@ -297,6 +297,7 @@ private fun DrawScope.drawElevated(
     cache: OverlayCache,
 ) {
     val spread = ShadowSpread.toPx()
+    val corner = radius.coerceAtMost(bounds.height / 2f)
     val shadowColor = Color.Black.copy(alpha = SHADOW_ALPHA)
     for (layer in SHADOW_LAYERS downTo 1) {
         val grow = spread * layer
@@ -304,20 +305,20 @@ private fun DrawScope.drawElevated(
             color = shadowColor,
             topLeft = Offset(bounds.left - grow, bounds.top),
             size = Size(bounds.width + 2 * grow, bounds.height + 2 * grow),
-            cornerRadius = CornerRadius(radius + grow),
+            cornerRadius = CornerRadius(corner + grow),
         )
     }
     drawRoundRect(
         color = fill,
         topLeft = bounds.topLeft,
         size = bounds.size,
-        cornerRadius = CornerRadius(radius),
+        cornerRadius = CornerRadius(corner),
     )
     drawRoundRect(
         color = colors.outlineVariant,
         topLeft = bounds.topLeft,
         size = bounds.size,
-        cornerRadius = CornerRadius(radius),
+        cornerRadius = CornerRadius(corner),
         style = cache.hairline(1.dp.toPx()),
     )
 }

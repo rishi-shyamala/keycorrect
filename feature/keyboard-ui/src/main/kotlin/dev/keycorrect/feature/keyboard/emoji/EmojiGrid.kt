@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard.emoji
 
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import android.graphics.Paint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -196,7 +197,7 @@ internal fun KaomojiGrid(
                     Text(
                         group.name,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = accentOnBackgroundColor(),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }

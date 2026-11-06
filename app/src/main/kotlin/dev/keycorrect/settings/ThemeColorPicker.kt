@@ -76,7 +76,7 @@ internal fun ColorPicker(current: Color, key: String, onPick: (Color) -> Unit) {
             val description = stringResource(R.string.theme_color_description, hex)
             val selected = argb == currentArgb
             Box(
-                Modifier.size(44.dp)
+                Modifier.size(SWATCH_SIZE)
                     .background(Color(argb), RoundedCornerShape(8.dp))
                     .border(
                         BorderStroke(
@@ -100,16 +100,24 @@ internal fun ColorPicker(current: Color, key: String, onPick: (Color) -> Unit) {
 @Composable
 private fun HueBrightnessSliders(currentArgb: Int, key: String, onPick: (Color) -> Unit) {
     val hsv = remember(key, currentArgb) { hsvOf(currentArgb) }
-    var hue by remember(key, currentArgb) { mutableFloatStateOf(hsv[0]) }
+    // A grey, white or black has no hue of its own: keep the one the sliders last had.
+    val lastHue = remember(key) { floatArrayOf(hsv[0]) }
+    val neutral = hsv[1] < NEUTRAL || hsv[2] < NEUTRAL
+    if (!neutral) lastHue[0] = hsv[0]
+    var hue by remember(key, currentArgb) { mutableFloatStateOf(lastHue[0]) }
     var value by remember(key, currentArgb) { mutableFloatStateOf(hsv[2]) }
-    val saturation = if (hsv[1] < MIN_SATURATION) DEFAULT_SATURATION else hsv[1]
+    var saturation by remember(key, currentArgb) { mutableFloatStateOf(hsv[1]) }
     val hueLabel = stringResource(R.string.theme_hue)
     val brightnessLabel = stringResource(R.string.theme_brightness)
     fun picked() = Color.hsv(hue, saturation, value)
     Text(hueLabel, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
     Slider(
         value = hue,
-        onValueChange = { hue = it },
+        onValueChange = {
+            hue = it
+            // Moving the hue of a neutral colour is asking for a color; brightness never is.
+            if (saturation < NEUTRAL) saturation = DEFAULT_SATURATION
+        },
         onValueChangeFinished = { onPick(picked()) },
         valueRange = 0f..HUE_MAX,
         modifier =
@@ -135,7 +143,8 @@ private fun HueBrightnessSliders(currentArgb: Int, key: String, onPick: (Color) 
 private const val RGB_MASK = 0xFFFFFF
 private const val HUE_MAX = 360f
 private const val PERCENT = 100
-private const val MIN_SATURATION = 0.05f
+private val SWATCH_SIZE = 48.dp
+private const val NEUTRAL = 0.02f
 private const val DEFAULT_SATURATION = 0.8f
 
 private fun hsvOf(argb: Int): FloatArray {

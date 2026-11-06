@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard.emoji
 
+import dev.keycorrect.core.designsystem.onBackgroundColor
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +57,7 @@ internal fun EmojiSearchRow(controller: KeyboardController, onPress: () -> Unit)
             if (results.isEmpty() && query.isNotBlank()) {
                 Text(
                     stringResource(R.string.emoji_search_empty),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = hintOnBackgroundColor(),
                     maxLines = 1,
                 )
             } else {
@@ -107,7 +109,7 @@ private fun QueryBox(query: String) {
     ) {
         Text(
             text = query.ifEmpty { stringResource(R.string.emoji_search_hint) },
-            color = if (query.isEmpty()) colors.onSurfaceVariant else colors.onSurface,
+            color = if (query.isEmpty()) hintOnBackgroundColor() else onBackgroundColor(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

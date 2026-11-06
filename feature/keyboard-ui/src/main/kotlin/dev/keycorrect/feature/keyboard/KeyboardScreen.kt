@@ -59,7 +59,7 @@ fun KeyboardScreen(
     val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
     val touch = remember { KeyboardTouchState() }
-    val keyRadius = keyCornerDp(settings.keyRadius, settings.keyHeightDp, settings.keyGapDp).dp
+    val keyRadius = keyCornerDp(settings.keyRadiusDp, settings.keyHeightDp, settings.keyGapDp).dp
     CompositionLocalProvider(LocalKeyRadius provides keyRadius) {
         Column(
             modifier =
@@ -85,7 +85,6 @@ fun KeyboardScreen(
                     shift = shift,
                     enterLabel = enterLabel,
                     keyGap = settings.keyGapDp.dp,
-                    keyRadius = keyRadius,
                     modifier = Modifier.matchParentSize(),
                 )
             }

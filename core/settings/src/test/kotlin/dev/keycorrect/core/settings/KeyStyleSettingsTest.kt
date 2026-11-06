@@ -38,7 +38,7 @@ class KeyStyleSettingsTest {
     @Test
     fun defaultsKeepTodaysLook() = runTest {
         val s = repo.settings.first()
-        assertThat(s.keyRadius).isEqualTo(KeyboardSettings.DEFAULT_KEY_RADIUS)
+        assertThat(s.keyRadiusDp).isEqualTo(10)
         assertThat(s.keyBorder).isFalse()
         assertThat(s.labelScale).isEqualTo(1f)
         assertThat(s.boldLabels).isFalse()
@@ -49,7 +49,7 @@ class KeyStyleSettingsTest {
     fun roundTrips() = runTest {
         repo.update {
             it.copy(
-                keyRadius = 0.5f,
+                keyRadiusDp = 40,
                 keyBorder = true,
                 labelScale = 1.2f,
                 boldLabels = true,
@@ -57,7 +57,7 @@ class KeyStyleSettingsTest {
             )
         }
         val s = repo.settings.first()
-        assertThat(s.keyRadius).isEqualTo(0.5f)
+        assertThat(s.keyRadiusDp).isEqualTo(40)
         assertThat(s.keyBorder).isTrue()
         assertThat(s.labelScale).isEqualTo(1.2f)
         assertThat(s.boldLabels).isTrue()
@@ -65,15 +65,14 @@ class KeyStyleSettingsTest {
     }
 
     @Test
-    fun sanitizeClampsAndFixesNaN() {
-        val low = KeyboardSettings(keyRadius = -1f, labelScale = 0.1f).sanitized()
-        assertThat(low.keyRadius).isEqualTo(0f)
+    fun sanitizeClampsTheRadiusAndLabelScale() {
+        val low = KeyboardSettings(keyRadiusDp = -1, labelScale = 0.1f).sanitized()
+        assertThat(low.keyRadiusDp).isEqualTo(0)
         assertThat(low.labelScale).isEqualTo(0.8f)
-        val high = KeyboardSettings(keyRadius = 9f, labelScale = 5f).sanitized()
-        assertThat(high.keyRadius).isEqualTo(0.5f)
+        val high = KeyboardSettings(keyRadiusDp = 99, labelScale = 5f).sanitized()
+        assertThat(high.keyRadiusDp).isEqualTo(40)
         assertThat(high.labelScale).isEqualTo(1.3f)
-        val nan = KeyboardSettings(keyRadius = Float.NaN, labelScale = Float.NaN).sanitized()
-        assertThat(nan.keyRadius).isEqualTo(KeyboardSettings.DEFAULT_KEY_RADIUS)
+        val nan = KeyboardSettings(labelScale = Float.NaN).sanitized()
         assertThat(nan.labelScale).isEqualTo(1f)
     }
 

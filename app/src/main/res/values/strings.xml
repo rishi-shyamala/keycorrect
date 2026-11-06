@@ -427,6 +427,13 @@
     <string name="theme_section_keys">Keys</string>
     <string name="theme_key_radius">Corner roundness</string>
     <string name="theme_key_radius_summary">From square keys to pill-shaped keys</string>
+    <string name="theme_key_radius_pill">Pill</string>
+    <string name="theme_section_labels">Labels</string>
+    <string name="theme_role_automatic">Set automatically</string>
+    <string name="theme_pair_key_text">Key text on the keys</string>
+    <string name="theme_pair_modifier_text">Key text on the modifier keys</string>
+    <string name="theme_pair_hint">Hint text on the keys</string>
+    <string name="theme_pair_strip_text">Suggestion text on the background</string>
     <string name="theme_key_border">Key borders</string>
     <string name="theme_key_border_summary">Draw a thin outline around every key</string>
     <string name="theme_label_size">Label size</string>
@@ -451,7 +458,7 @@
     <string name="theme_color_description">Color %1$s</string>
     <string name="theme_hue">Hue</string>
     <string name="theme_brightness">Brightness</string>
-    <string name="theme_contrast_warning">Key text is hard to read on the keys (contrast %1$s to 1; 4.5 to 1 or more is recommended).</string>
+    <string name="theme_contrast_warning">%1$s is hard to read (contrast %2$s to 1; 4.5 to 1 or more is recommended, 3 to 1 for hints). The keyboard shows black or white there instead.</string>
     <string name="emoji_title">Emoji</string>
     <string name="emoji_summary">Suggestions and default skin tone</string>
     <string name="emoji_section_suggestions">Suggestions</string>

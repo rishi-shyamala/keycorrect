@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard.emoji
 
+import dev.keycorrect.core.designsystem.accentOnKeyColor
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -83,7 +85,7 @@ internal fun EmojiPanel(
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         stringResource(R.string.emoji_loading),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = hintOnBackgroundColor(),
                     )
                 }
             } else {
@@ -159,7 +161,7 @@ private fun EmptyMessage(text: Int) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
             stringResource(text),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = hintOnBackgroundColor(),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(16.dp),
         )
@@ -202,7 +204,8 @@ private fun EmojiTabRow(tabs: List<EmojiTab>, selected: String, onSelect: (Strin
             for (tab in tabs) {
                 val on = tab.key == selected
                 val description = tab.label?.let { stringResource(it) } ?: tab.key
-                val tint = if (on) colors.primary else colors.onSurfaceVariant
+                val accent = accentOnKeyColor()
+                val tint = if (on) accent else colors.onSurfaceVariant
                 Box(
                     modifier =
                         Modifier.weight(1f)
@@ -240,7 +243,7 @@ private fun EmojiTabRow(tabs: List<EmojiTab>, selected: String, onSelect: (Strin
                                 .width(TabIndicatorWidth)
                                 .height(TabIndicatorHeight)
                                 .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                                .background(colors.primary)
+                                .background(accent)
                         )
                     }
                 }

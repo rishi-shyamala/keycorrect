@@ -86,7 +86,110 @@ data class KeyboardColors(
  * A resolved theme: its [colors], and whether it is built on the system's dynamic scheme, in which
  * case the colors it does not set (text on the accent, latched modifier keys) come from there.
  */
-data class KeyboardTheme(val colors: KeyboardColors, val dynamic: Boolean)
+data class KeyboardTheme(val colors: KeyboardColors, val dynamic: Boolean) {
+    /**
+     * The readable text, hint and icon colors on each fill; null for a dynamic theme, which keeps
+     * the Material roles it was built from.
+     */
+    val palette: ThemePalette? = if (dynamic) null else colors.palette()
+}
+
+/**
+ * What to draw on each fill of a theme so that it can always be read: the user's key text where it
+ * has 4.5:1 on the fill, else black or white; hints at 3:1 or more.
+ */
+data class ThemePalette(
+    val onBackground: Color,
+    val hintOnBackground: Color,
+    val accentOnBackground: Color,
+    val onKey: Color,
+    val hintOnKey: Color,
+    val accentOnKey: Color,
+    val onModifier: Color,
+    val onPressed: Color,
+    val onAccent: Color,
+    val stripText: Color,
+)
+
+/** Minimum contrast for hint text and large or graphic elements (WCAG AA). */
+const val MIN_HINT_CONTRAST = 3.0
+private const val HINT_ALPHA = 0.7f
+private const val HINT_ALPHA_STEP = 0.1f
+private const val TONE_SHIFT = 0.12f
+private const val PRESS_SHIFT = 0.25f
+private const val LIGHT_FILL = 0.4
+
+/** The user's key text where it reads on [fill] (4.5:1), else black or white. */
+fun KeyboardColors.textOn(fill: Color): Color =
+    if (contrastRatio(keyText.toArgb(), fill.toArgb()) >= MIN_TEXT_CONTRAST) {
+        keyText
+    } else {
+        onColor(fill)
+    }
+
+/** [text] faded towards [fill] (70 %), but never below 3:1 against it. */
+fun hintOn(text: Color, fill: Color): Color {
+    var alpha = HINT_ALPHA
+    var mixed = lerp(fill, text, alpha)
+    while (contrastRatio(mixed.toArgb(), fill.toArgb()) < MIN_HINT_CONTRAST && alpha < 1f) {
+        alpha = minOf(1f, alpha + HINT_ALPHA_STEP)
+        mixed = lerp(fill, text, alpha)
+    }
+    return mixed
+}
+
+private fun Color.orIfFaint(fill: Color, minimum: Double, fallback: Color): Color =
+    if (contrastRatio(toArgb(), fill.toArgb()) >= minimum) this else fallback
+
+/** A shade of [fill] a step lighter (on a dark one) or darker (on a light one). */
+fun tonalShift(fill: Color, amount: Float = TONE_SHIFT): Color =
+    lerp(fill, if (relativeLuminance(fill.toArgb()) > LIGHT_FILL) Color.Black else Color.White, amount)
+
+/** The colors to draw on every fill of these theme colors. */
+fun KeyboardColors.palette(): ThemePalette {
+    val onBackground = textOn(background)
+    val onKey = textOn(key)
+    return ThemePalette(
+        onBackground = onBackground,
+        hintOnBackground = hintOn(onBackground, background),
+        accentOnBackground = accent.orIfFaint(background, MIN_HINT_CONTRAST, onBackground),
+        onKey = onKey,
+        hintOnKey = hintText.orIfFaint(key, MIN_HINT_CONTRAST, hintOn(onKey, key)),
+        accentOnKey = accent.orIfFaint(key, MIN_HINT_CONTRAST, onKey),
+        onModifier = textOn(modifierKey),
+        onPressed = textOn(pressedKey),
+        onAccent = textOn(accent),
+        stripText = stripText.orIfFaint(background, MIN_TEXT_CONTRAST, onBackground),
+    )
+}
+
+/** The pairs of colors the custom editor checks. */
+enum class ContrastPair {
+    KeyText,
+    ModifierText,
+    Hint,
+    StripText,
+}
+
+/** A [pair] of the theme colors that is hard to read, at contrast [ratio] to 1. */
+data class ContrastProblem(val pair: ContrastPair, val ratio: Double)
+
+/**
+ * The pairs of the user's colors that are too faint: key text on keys and on modifier keys and
+ * suggestion text on the background (below 4.5:1), hints on keys (below 3:1). The keyboard shows
+ * black or white instead where one of them fails, but it is not what was asked for.
+ */
+fun KeyboardColors.contrastProblems(): List<ContrastProblem> =
+    buildList {
+        fun check(pair: ContrastPair, a: Color, b: Color, minimum: Double) {
+            val ratio = contrastRatio(a.toArgb(), b.toArgb())
+            if (ratio < minimum) add(ContrastProblem(pair, ratio))
+        }
+        check(ContrastPair.KeyText, keyText, key, MIN_TEXT_CONTRAST)
+        check(ContrastPair.ModifierText, keyText, modifierKey, MIN_TEXT_CONTRAST)
+        check(ContrastPair.Hint, hintText, key, MIN_HINT_CONTRAST)
+        check(ContrastPair.StripText, stripText, background, MIN_TEXT_CONTRAST)
+    }
 
 /** Black or white, whichever reads better on [background]. */
 fun onColor(background: Color): Color =
@@ -169,25 +272,27 @@ private val SamsungDark =
         stripText = c(0xF2F2F5),
     )
 
+/** Light: white keys on a mid-grey board (3.4:1), black text 21:1 on them. */
 private val HighContrastLight =
     KeyboardColors(
-        background = c(0xFFFFFF),
-        key = c(0xF0F0F0),
-        modifierKey = c(0xC8C8C8),
+        background = c(0x8A8A8A),
+        key = c(0xFFFFFF),
+        modifierKey = c(0x1A1A1A),
         keyText = c(0x000000),
         hintText = c(0x2E2E2E),
-        accent = c(0x0033CC),
+        accent = c(0x001F99),
         pressedKey = c(0xFFD60A),
         stripText = c(0x000000),
     )
 
+/** Dark: light keys on black (17:1), black text on them. */
 private val HighContrastDark =
     KeyboardColors(
         background = c(0x000000),
-        key = c(0x262626),
-        modifierKey = c(0x4A4A4A),
-        keyText = c(0xFFFFFF),
-        hintText = c(0xD0D0D0),
+        key = c(0xF0F0F0),
+        modifierKey = c(0xBDBDBD),
+        keyText = c(0x000000),
+        hintText = c(0x2E2E2E),
         accent = c(0xFFD60A),
         pressedKey = c(0x0A84FF),
         stripText = c(0xFFFFFF),
@@ -228,13 +333,48 @@ fun resolveKeyboardTheme(
         ThemeSource.HighContrast ->
             KeyboardTheme(if (dark) HighContrastDark else HighContrastLight, false)
         ThemeSource.Custom ->
-            KeyboardColors.fromArgb(custom)?.let { KeyboardTheme(it, dynamic = false) }
-                ?: KeyboardTheme(wallpaperColors(dynamic, dark), dynamic = true)
+            customColors(custom, wallpaperColors(dynamic, dark))?.let {
+                KeyboardTheme(it, dynamic = false)
+            } ?: KeyboardTheme(wallpaperColors(dynamic, dark), dynamic = true)
     }
+
+private val BASE_ROLES =
+    setOf(ThemeRole.Background, ThemeRole.Key, ThemeRole.KeyText, ThemeRole.Accent)
+
+/** The colors of a new custom theme: only the main four set, the others left to be derived. */
+fun KeyboardColors.toSeedArgb(): List<Int> =
+    ThemeRole.entries.map { if (it in BASE_ROLES) this[it].toArgb() or OPAQUE_INT else ThemeColors.AUTO }
+
+private const val OPAQUE_INT = 0xFF000000.toInt()
+
+/**
+ * The colors for [stored] custom entries (one per [ThemeRole]); an [ThemeColors.AUTO] one is worked
+ * out from the others: modifier keys and the pressed key are tonal shifts of the keys, hints are
+ * the key text faded (3:1 or more), suggestion text reads on the background. Null unless [stored]
+ * has an entry for every role. The roles missing from the main four come from [fallback].
+ */
+fun customColors(stored: List<Int>, fallback: KeyboardColors): KeyboardColors? {
+    if (stored.size != ThemeColors.COUNT) return null
+    fun raw(role: ThemeRole): Color? =
+        stored[role.ordinal].takeIf { it != ThemeColors.AUTO }?.let { Color(it or OPAQUE_INT) }
+    val background = raw(ThemeRole.Background) ?: fallback.background
+    val key = raw(ThemeRole.Key) ?: fallback.key
+    val accent = raw(ThemeRole.Accent) ?: fallback.accent
+    val keyText = raw(ThemeRole.KeyText) ?: onColor(key)
+    val base = fallback.copy(background = background, key = key, keyText = keyText, accent = accent)
+    return base.copy(
+        modifierKey = raw(ThemeRole.ModifierKey) ?: tonalShift(key),
+        pressedKey = raw(ThemeRole.PressedKey) ?: tonalShift(key, PRESS_SHIFT),
+        hintText = raw(ThemeRole.HintText) ?: hintOn(base.textOn(key), key),
+        stripText = raw(ThemeRole.StripText) ?: base.textOn(background),
+    )
+}
 
 /**
  * The Material scheme the keyboard's panels and renderer read: [base] (the dynamic scheme) with the
- * theme's roles laid over it. Classic comes out equal to [base].
+ * theme's roles laid over it. Classic comes out equal to [base]. Without a dynamic base, the text
+ * roles come from the [KeyboardTheme.palette]: `onSurface` is the text on keys, `onBackground` the
+ * text on the board, `onSurfaceVariant` the hint on keys.
  */
 fun KeyboardTheme.toColorScheme(base: ColorScheme): ColorScheme {
     val k = colors
@@ -251,21 +391,21 @@ fun KeyboardTheme.toColorScheme(base: ColorScheme): ColorScheme {
             primary = k.accent,
             primaryContainer = k.pressedKey,
         )
-    return when {
-        dynamic && k == classicColors(base) -> base
-        dynamic -> themed
-        else -> {
-            val latched = lerp(k.modifierKey, k.accent, LATCH_BLEND)
-            themed.copy(
-                onPrimary = onColor(k.accent),
-                onPrimaryContainer = onColor(k.pressedKey),
-                tertiary = k.accent,
-                onTertiary = onColor(k.accent),
-                tertiaryContainer = latched,
-                onTertiaryContainer = onColor(latched),
-                surfaceContainerLowest = k.background,
-                surfaceContainerHigh = k.key,
-            )
-        }
-    }
+    val p = palette
+    if (p == null) return if (k == classicColors(base)) base else themed
+    val latched = lerp(k.modifierKey, k.accent, LATCH_BLEND)
+    return themed.copy(
+        onSurface = p.onKey,
+        onBackground = p.onBackground,
+        onSurfaceVariant = p.hintOnKey,
+        onSecondaryContainer = p.onModifier,
+        onPrimary = p.onAccent,
+        onPrimaryContainer = p.onPressed,
+        tertiary = k.accent,
+        onTertiary = p.onAccent,
+        tertiaryContainer = latched,
+        onTertiaryContainer = k.textOn(latched),
+        surfaceContainerLowest = k.background,
+        surfaceContainerHigh = k.key,
+    )
 }

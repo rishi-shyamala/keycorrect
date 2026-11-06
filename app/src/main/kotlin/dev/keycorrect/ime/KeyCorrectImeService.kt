@@ -12,6 +12,8 @@ import android.view.inputmethod.InlineSuggestionsResponse
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
 import dev.keycorrect.core.decoder.rerank.NeuralReranker
@@ -145,6 +147,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        // The wallpaper colors may have changed while the keyboard was hidden.
+        colorRefresh++
         neuralHost.onWindowShown()
     }
 
@@ -215,6 +219,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
     }
 
+    /** Bumped each time the keyboard is shown, so the dynamic (wallpaper) colors are read again. */
+    private var colorRefresh by mutableIntStateOf(0)
+
     override fun onDestroy() {
         // The microphone and the recognizer are closed with the service.
         controller.voice.stopNow()
@@ -234,7 +241,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     @Composable
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
-        KeyboardLook(settings) {
+        KeyboardLook(settings, refresh = colorRefresh) {
             KeyboardScreen(
                 controller,
                 settings,

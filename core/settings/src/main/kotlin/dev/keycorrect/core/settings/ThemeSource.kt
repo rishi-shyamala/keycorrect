@@ -19,10 +19,15 @@ enum class ThemeSource {
 
 /**
  * Custom theme colors as a list of [COUNT] opaque ARGB ints (the order of the theme roles), stored
- * as one short hex string. An empty list means "not edited yet".
+ * as one short hex string. An empty list means "not edited yet". An entry may be [AUTO] (0): the
+ * user did not set that role, so it is derived from the others.
  */
 object ThemeColors {
     const val COUNT = 8
+
+    /** A role the user left to the theme to work out. Never a real color (those are opaque). */
+    const val AUTO = 0
+    private const val AUTO_TEXT = "xxxxxx"
     private const val OPAQUE = 0xFF000000.toInt()
     private const val HEX_RADIX = 16
     private const val HEX_DIGITS = 6
@@ -30,16 +35,18 @@ object ThemeColors {
     private const val MAX_ENCODED = COUNT * (HEX_DIGITS + 1)
 
     fun sanitize(colors: List<Int>): List<Int> =
-        if (colors.size == COUNT) colors.map { it or OPAQUE } else emptyList()
+        if (colors.size == COUNT) colors.map { if (it == AUTO) AUTO else it or OPAQUE } else emptyList()
 
     fun encode(colors: List<Int>): String =
         sanitize(colors).joinToString(",") {
+            if (it == AUTO) return@joinToString AUTO_TEXT
             (it and RGB_MASK).toString(HEX_RADIX).padStart(HEX_DIGITS, '0')
         }
 
     fun decode(text: String?): List<Int> {
         val parts = text?.takeIf { it.length <= MAX_ENCODED }?.split(',').orEmpty()
         val colors = parts.mapNotNull { part ->
+            if (part == AUTO_TEXT) return@mapNotNull AUTO
             part.takeIf { it.length == HEX_DIGITS }?.toIntOrNull(HEX_RADIX)?.or(OPAQUE)
         }
         return if (parts.size == COUNT && colors.size == COUNT) colors else emptyList()

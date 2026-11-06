@@ -158,7 +158,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /** The voice and neural fields; split from [toSettings] to keep it readable. */
-    @Suppress("CyclomaticComplexMethod")
     private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
         val d = KeyboardSettings()
         return with(p) {
@@ -174,18 +173,28 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                     neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
                     lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
                     neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
-                    keyRadius = this[KEY_RADIUS] ?: d.keyRadius,
-                    keyBorder = this[KEY_BORDER] ?: d.keyBorder,
-                    labelScale = this[LABEL_SCALE] ?: d.labelScale,
-                    boldLabels = this[BOLD_LABELS] ?: d.boldLabels,
-                    pressStyle = PressStyle.parse(this[PRESS_STYLE]) ?: d.pressStyle,
-                    themeSource = ThemeSource.parse(this[THEME_SOURCE]) ?: d.themeSource,
-                    customLightColors = ThemeColors.decode(this[CUSTOM_LIGHT_COLORS]),
-                    customDarkColors = ThemeColors.decode(this[CUSTOM_DARK_COLORS]),
                 )
             }
+            .withLook(p)
             .withEngine(p)
             .withSizes(p)
+    }
+
+    /** The theme and key style fields; split from [withVoiceAndNeural] to keep both short. */
+    private fun KeyboardSettings.withLook(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return with(p) {
+            copy(
+                keyRadiusDp = this[KEY_RADIUS_DP] ?: d.keyRadiusDp,
+                keyBorder = this[KEY_BORDER] ?: d.keyBorder,
+                labelScale = this[LABEL_SCALE] ?: d.labelScale,
+                boldLabels = this[BOLD_LABELS] ?: d.boldLabels,
+                pressStyle = PressStyle.parse(this[PRESS_STYLE]) ?: d.pressStyle,
+                themeSource = ThemeSource.parse(this[THEME_SOURCE]) ?: d.themeSource,
+                customLightColors = ThemeColors.decode(this[CUSTOM_LIGHT_COLORS]),
+                customDarkColors = ThemeColors.decode(this[CUSTOM_DARK_COLORS]),
+            )
+        }
     }
 
     /** The per-profile sizes stored in [p]; a missing value falls back to the global one. */
@@ -309,7 +318,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     private fun MutablePreferences.writeLookAndEngines(s: KeyboardSettings) {
-        this[KEY_RADIUS] = s.keyRadius
+        this[KEY_RADIUS_DP] = s.keyRadiusDp
         this[KEY_BORDER] = s.keyBorder
         this[LABEL_SCALE] = s.labelScale
         this[BOLD_LABELS] = s.boldLabels
@@ -397,7 +406,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
-        val KEY_RADIUS = floatPreferencesKey("key_radius")
+        val KEY_RADIUS_DP = intPreferencesKey("key_radius_dp")
         val KEY_BORDER = booleanPreferencesKey("key_border")
         val LABEL_SCALE = floatPreferencesKey("label_scale")
         val BOLD_LABELS = booleanPreferencesKey("bold_labels")
@@ -446,6 +455,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val INT_KEYS =
             setOf(
                 KEY_HEIGHT_DP.name,
+                KEY_RADIUS_DP.name,
                 EDGE_PADDING_DP.name,
                 KEY_GAP_DP.name,
                 LONG_PRESS_DELAY_MS.name,
@@ -467,7 +477,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 MODE_ENTER_KEY_WIDTH.name,
                 SOUND_VOLUME.name,
                 LM_STRENGTH.name,
-                KEY_RADIUS.name,
                 LABEL_SCALE.name,
             ) + perProfile(BOTTOM_KEY_WIDTH, MODE_ENTER_KEY_WIDTH)
         val STRING_KEYS =

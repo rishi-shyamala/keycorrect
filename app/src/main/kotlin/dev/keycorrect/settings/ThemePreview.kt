@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.keycorrect.R
 import dev.keycorrect.core.designsystem.KeyboardColors
-import dev.keycorrect.core.designsystem.onColor
+import dev.keycorrect.core.designsystem.palette
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.settings.PressStyle
 
@@ -33,6 +33,7 @@ import dev.keycorrect.core.settings.PressStyle
 @Composable
 internal fun ThemePreview(colors: KeyboardColors, settings: KeyboardSettings) {
     val style = PreviewStyle(settings)
+    val pal = colors.palette()
     val description = stringResource(R.string.theme_preview_description)
     Column(
         modifier =
@@ -49,27 +50,27 @@ internal fun ThemePreview(colors: KeyboardColors, settings: KeyboardSettings) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             for (word in listOf("hello", "help", "held")) {
-                Text(word, color = colors.stripText, fontSize = 14.sp)
+                Text(word, color = pal.stripText, fontSize = 14.sp)
             }
         }
         PreviewRow("qwertyuiop".map { it.toString() }, colors, style, pressedIndex = 4)
         PreviewRow("asdfghjkl".map { it.toString() }, colors, style, hint = "1")
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val mod = colors.modifierKey
-            PreviewKey("⇧", mod, colors.keyText, style, Modifier.weight(WIDE_WEIGHT))
+            PreviewKey("⇧", mod, pal.onModifier, style, Modifier.weight(WIDE_WEIGHT))
             for (c in "zxcvbnm") {
-                PreviewKey(c.toString(), colors.key, colors.keyText, style, Modifier.weight(1f))
+                PreviewKey(c.toString(), colors.key, pal.onKey, style, Modifier.weight(1f))
             }
-            PreviewKey("⌫", mod, colors.keyText, style, Modifier.weight(WIDE_WEIGHT))
+            PreviewKey("⌫", mod, pal.onModifier, style, Modifier.weight(WIDE_WEIGHT))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val mod = colors.modifierKey
-            PreviewKey("?123", mod, colors.keyText, style, Modifier.weight(WIDE_WEIGHT))
-            PreviewKey("", colors.key, colors.keyText, style, Modifier.weight(SPACE_WEIGHT))
+            PreviewKey("?123", mod, pal.onModifier, style, Modifier.weight(WIDE_WEIGHT))
+            PreviewKey("", colors.key, pal.onKey, style, Modifier.weight(SPACE_WEIGHT))
             PreviewKey(
                 "⏎",
                 colors.accent,
-                onColor(colors.accent),
+                pal.onAccent,
                 style,
                 Modifier.weight(ENTER_WEIGHT),
             )
@@ -85,18 +86,19 @@ private fun PreviewRow(
     pressedIndex: Int = -1,
     hint: String? = null,
 ) {
+    val pal = colors.palette()
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         letters.forEachIndexed { index, letter ->
             val pressed = index == pressedIndex
             PreviewKey(
                 letter,
                 if (pressed && style.press == PressStyle.Shade) colors.pressedKey else colors.key,
-                colors.keyText,
+                if (pressed && style.press == PressStyle.Shade) pal.onPressed else pal.onKey,
                 style,
                 Modifier.weight(1f),
                 hint =
                     if (hint != null && index == 0 && style.hints) {
-                        PreviewHint(hint, colors.hintText)
+                        PreviewHint(hint, pal.hintOnKey)
                     } else {
                         null
                     },
@@ -108,7 +110,10 @@ private fun PreviewRow(
 
 /** The key style settings the preview shows. */
 internal class PreviewStyle(settings: KeyboardSettings) {
-    val radius = settings.keyRadius
+    /** The corner radius in preview dp: the real one scaled to the preview's key height. */
+    val radius =
+        (settings.keyRadiusDp * PREVIEW_KEY_DP / (settings.keyHeightDp - settings.keyGapDp).coerceAtLeast(1))
+            .coerceAtMost(PREVIEW_KEY_DP / 2)
     val border = settings.keyBorder
     val labelScale = settings.labelScale
     val bold = settings.boldLabels
@@ -135,7 +140,7 @@ private fun PreviewKey(
     hint: PreviewHint? = null,
     outline: Color? = null,
 ) {
-    val shape = RoundedCornerShape((style.radius * PREVIEW_KEY_DP).dp)
+    val shape = RoundedCornerShape(style.radius.dp)
     var box = modifier.height(PREVIEW_KEY_DP.dp).background(fill, shape)
     if (style.border) box = box.border(1.dp, text.copy(alpha = 0.45f), shape)
     if (outline != null) box = box.border(2.5.dp, outline, shape)

@@ -1,5 +1,9 @@
 package dev.keycorrect.feature.keyboard.clipboard
 
+import dev.keycorrect.core.designsystem.onBackgroundColor
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
+import dev.keycorrect.core.designsystem.accentOnKeyColor
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -73,7 +77,7 @@ internal fun ClipboardPanel(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         stringResource(R.string.clipboard_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = hintOnBackgroundColor(),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(16.dp),
                     )
@@ -130,7 +134,7 @@ internal fun ClipboardTitleStrip(controller: KeyboardController, onPress: () -> 
                         liveRegion = LiveRegionMode.Polite
                         contentDescription = question
                     },
-                color = colors.onSurface,
+                color = onBackgroundColor(),
                 maxLines = 1,
             )
             TitleButton(
@@ -151,7 +155,7 @@ internal fun ClipboardTitleStrip(controller: KeyboardController, onPress: () -> 
             Text(
                 stringResource(R.string.clipboard_title),
                 modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                color = colors.onSurface,
+                color = onBackgroundColor(),
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
             )
@@ -186,7 +190,7 @@ private fun TitleButton(label: String, description: String, onClick: () -> Unit)
                 .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        Text(label, color = accentOnBackgroundColor(), maxLines = 1)
     }
 }
 
@@ -426,7 +430,7 @@ private fun ActionButton(label: String, modifier: Modifier, onClick: () -> Unit)
     ) {
         Text(
             label,
-            color = MaterialTheme.colorScheme.primary,
+            color = accentOnKeyColor(),
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -140,7 +141,7 @@ private fun PromptButton(label: String, description: String, onClick: () -> Unit
                 .padding(horizontal = PromptButtonPadding),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        Text(label, color = accentOnBackgroundColor(), maxLines = 1)
     }
 }
 
@@ -227,7 +228,7 @@ private fun RowScope.Slot(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(PHRASE_HINT, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                Text(PHRASE_HINT, color = accentOnBackgroundColor(), maxLines = 1)
             }
         } else {
             ShrinkingText(slot, measurer, color, weight)

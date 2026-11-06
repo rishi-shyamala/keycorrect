@@ -1,5 +1,7 @@
 package dev.keycorrect.feature.keyboard
 
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -234,8 +236,7 @@ private fun ToolButton(
             icon,
             contentDescription = null,
             tint =
-                if (selected == true) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+                if (selected == true) accentOnBackgroundColor() else hintOnBackgroundColor(),
             modifier =
                 Modifier.size(IDLE_ICON_DP.dp).graphicsLayer {
                     val scale = lerp(1f, BUSY_ICON_DP / IDLE_ICON_DP, progress.value)
