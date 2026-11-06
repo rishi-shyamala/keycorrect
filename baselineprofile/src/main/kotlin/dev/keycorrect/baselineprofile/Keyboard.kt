@@ -13,7 +13,7 @@ import java.io.FileInputStream
 internal class Keyboard(targetPackage: String) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     val device: UiDevice = UiDevice.getInstance(instrumentation)
-    private val imeId = "$targetPackage/dev.keycorrect.ime.KeyCorrectImeService"
+    private val imeId = "$targetPackage/.ime.KeyCorrectImeService"
 
     private fun shell(cmd: String): String =
         instrumentation.uiAutomation.executeShellCommand(cmd).use { fd ->
@@ -70,28 +70,28 @@ internal class Keyboard(targetPackage: String) {
     fun type(bounds: Rect, text: String) {
         for (c in text) {
             if (c == ' ') {
-                tap(bounds, 0.5f, 0.93f)
+                tap(bounds, 0.54f, 0.78f)
                 continue
             }
             val r = ROWS.indexOfFirst { c in it }
             if (r < 0) continue
             val row = ROWS[r]
             val inset = (10 - row.length) / 20f
-            tap(bounds, inset + (row.indexOf(c) + 0.5f) / 10f, 0.30f + 0.17f * r)
+            tap(bounds, inset + (row.indexOf(c) + 0.5f) / 10f, 0.33f + 0.15f * r)
         }
     }
 
     fun swipe(bounds: Rect) {
         val x0 = bounds.left + (bounds.width() * 0.15f).toInt()
         val x1 = bounds.left + (bounds.width() * 0.85f).toInt()
-        val y0 = bounds.top + (bounds.height() * 0.30f).toInt()
-        val y1 = bounds.top + (bounds.height() * 0.64f).toInt()
+        val y0 = bounds.top + (bounds.height() * 0.33f).toInt()
+        val y1 = bounds.top + (bounds.height() * 0.63f).toInt()
         device.swipe(x0, y0, x1, y1, 30)
     }
 
     /** Bottom-left utility key opens the emoji panel in the Samsung-style layout. */
     fun openEmoji(bounds: Rect) {
-        tap(bounds, 0.17f, 0.93f)
+        tap(bounds, 0.16f, 0.78f)
     }
 
     private companion object {
