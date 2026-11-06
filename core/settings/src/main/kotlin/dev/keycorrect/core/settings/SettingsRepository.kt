@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-/** Reads and writes [KeyboardSettings] in a Preferences [DataStore]. */
+/**
+ * Reads and writes [KeyboardSettings] in a Preferences [DataStore]. Once any value of a size
+ * profile is stored, that profile no longer follows the global fallback.
+ */
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     /** Current settings, always sanitized; falls back to defaults if the store is unreadable. */
     val settings: Flow<KeyboardSettings> =
