@@ -230,6 +230,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ignoreNoSuggestions = p[IGNORE_NO_SUGGESTIONS] ?: d.ignoreNoSuggestions,
             neuralEngine = p[NEURAL_ENGINE] ?: d.neuralEngine,
             approvedEngines = p[APPROVED_ENGINES] ?: d.approvedEngines,
+            fitDismissals = p[FIT_DISMISSALS] ?: d.fitDismissals,
         )
     }
 
@@ -291,6 +292,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_MODEL] = s.neuralModel
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
+        this[FIT_DISMISSALS] = s.fitDismissals
         writeSizes(s.sizes)
     }
 
@@ -370,6 +372,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
         val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
+        val FIT_DISMISSALS = stringSetPreferencesKey("fit_dismissals")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -438,6 +441,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 NEURAL_MODEL.name,
                 NEURAL_ENGINE.name,
             )
-        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name)
+        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name, FIT_DISMISSALS.name)
     }
 }
