@@ -9,6 +9,12 @@ interface Personalization {
     /** ln P_user(word | context) from the personal n-gram cache, or null with too little data. */
     fun userLogProb(context: List<String>, word: String): Float?
 
+    /**
+     * Words the user has typed after [context] and [userLogProb] knows, so next-word suggestions
+     * can offer what the base dictionary has no entry for. Keys (lowercase), most relevant first.
+     */
+    fun userNextWords(context: List<String>): List<String> = emptyList()
+
     /** Learned bias for correcting [typed] to [candidate] (ln units; > 0 favours). */
     fun correctionBias(typed: String, candidate: String, contextBucket: String): Float
 

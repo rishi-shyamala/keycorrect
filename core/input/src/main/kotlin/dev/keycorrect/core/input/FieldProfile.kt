@@ -43,6 +43,10 @@ data class FieldProfile(
     val sensitive: Boolean,
     val signedNumber: Boolean,
     val decimalNumber: Boolean,
+    /** What the field allows if its "no suggestions" request is ignored; null if it made none. */
+    val withoutNoSuggestions: NoSuggestionsOverride? = null,
+    /** Whether the user may add a word by hand here: not in sensitive or no-learning fields. */
+    val wordsCanBeAdded: Boolean = learningEnabled,
 ) {
     /**
      * This profile as if the field had declared [asKind] instead (the user switched a plain text
@@ -72,6 +76,20 @@ data class FieldProfile(
                 )
             else -> this
         }
+
+    /**
+     * This field with its "no suggestions" request ignored; itself when it made none. Suggestions
+     * and corrections work but nothing is learned and no engine sees the text: the app may have a
+     * reason for asking.
+     */
+    fun ignoringNoSuggestions(): FieldProfile =
+        withoutNoSuggestions?.let {
+            copy(
+                suggestionsEnabled = it.suggestions,
+                autocorrectEnabled = it.autocorrect,
+                learningEnabled = false,
+            )
+        } ?: this
 
     companion object {
         /** Derives a profile from the [EditorInfo] of the focused field. */
@@ -120,7 +138,6 @@ data class FieldProfile(
             val noSuggestions = isText && inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0
             val suggestions =
                 !sensitive &&
-                    !noSuggestions &&
                     when (kind) {
                         FieldKind.Number,
                         FieldKind.Phone,
@@ -129,7 +146,6 @@ data class FieldProfile(
                     }
             val autocorrect =
                 !sensitive &&
-                    !noSuggestions &&
                     when (kind) {
                         FieldKind.Email,
                         FieldKind.Url,
@@ -169,12 +185,15 @@ data class FieldProfile(
                 enterAction = enter,
                 autoCapitalize = autoCapitalize,
                 multiLine = isMultiLine(inputType),
-                suggestionsEnabled = suggestions,
-                autocorrectEnabled = autocorrect,
+                suggestionsEnabled = suggestions && !noSuggestions,
+                autocorrectEnabled = autocorrect && !noSuggestions,
                 learningEnabled = learning,
                 sensitive = sensitive,
                 signedNumber = isNumber && inputType and InputType.TYPE_NUMBER_FLAG_SIGNED != 0,
                 decimalNumber = isNumber && inputType and InputType.TYPE_NUMBER_FLAG_DECIMAL != 0,
+                withoutNoSuggestions =
+                    if (noSuggestions) NoSuggestionsOverride(suggestions, autocorrect) else null,
+                wordsCanBeAdded = learning,
             )
         }
 
@@ -201,3 +220,6 @@ data class FieldProfile(
             }
     }
 }
+
+/** What a field that asked for no suggestions otherwise allows (false for passwords, numbers). */
+data class NoSuggestionsOverride(val suggestions: Boolean, val autocorrect: Boolean)

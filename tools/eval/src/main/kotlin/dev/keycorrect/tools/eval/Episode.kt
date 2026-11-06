@@ -155,6 +155,9 @@ class EpisodeRunner(
                     keysWithNextWord = if (options.nextWord) keysNextWord else null,
                 )
             metrics.record(outcome)
+            metrics.decisions?.add(
+                WordDecision(sentenceIndex, k, outcome.literalCorrect, outcome.finalCorrect, word)
+            )
             val category = outcome.failure()
             if (category != null && failures != null && failures.size < options.failureLimit) {
                 failures.add(

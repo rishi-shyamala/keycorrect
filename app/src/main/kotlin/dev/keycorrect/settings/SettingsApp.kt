@@ -98,6 +98,8 @@ fun SettingsApp(
                 SettingsDestination.Editing -> EditingSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Emoji -> EmojiSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Voice -> VoiceSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.LanguageModel ->
+                    LanguageModelScreen(padding, container, settings, onUpdate)
                 SettingsDestination.Clipboard ->
                     ClipboardSettingsScreen(padding, container, settings, onUpdate)
                 SettingsDestination.TextCorrection ->

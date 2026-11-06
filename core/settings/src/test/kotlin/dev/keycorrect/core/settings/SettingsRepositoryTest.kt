@@ -214,6 +214,79 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun neuralSettingsDefaultRoundTripAndClamp() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.neuralRerank).isTrue()
+        assertThat(d.neuralPhrases).isFalse()
+        assertThat(d.lmStrength).isEqualTo(0.5f)
+        repo.update { it.copy(neuralRerank = false, neuralPhrases = true, lmStrength = 0.8f) }
+        var s = repo.settings.first()
+        assertThat(s.neuralRerank).isFalse()
+        assertThat(s.neuralPhrases).isTrue()
+        assertThat(s.lmStrength).isEqualTo(0.8f)
+        assertThat(store.data.first()[booleanPreferencesKey("neural_rerank")]).isFalse()
+        repo.update { it.copy(lmStrength = 7f) }
+        assertThat(repo.settings.first().lmStrength).isEqualTo(1f)
+        store.edit { it[floatPreferencesKey("lm_strength")] = Float.NaN }
+        assertThat(repo.settings.first().lmStrength).isEqualTo(0.5f)
+        store.edit { it[floatPreferencesKey("lm_strength")] = -2f }
+        s = repo.settings.first()
+        assertThat(s.lmStrength).isEqualTo(0f)
+    }
+
+    @Test
+    fun engineChoiceDefaultsToBuiltinAndRoundTrips() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.neuralEngine).isEqualTo(KeyboardSettings.ENGINE_BUILTIN)
+        assertThat(d.approvedEngines).isEmpty()
+        repo.update {
+            it.copy(neuralEngine = "dev.p/dev.p.Svc", approvedEngines = setOf("dev.p/dev.p.Svc|ab"))
+        }
+        val s = repo.settings.first()
+        assertThat(s.neuralEngine).isEqualTo("dev.p/dev.p.Svc")
+        assertThat(s.approvedEngines).containsExactly("dev.p/dev.p.Svc|ab")
+        assertThat(repo.exportValues()["neural_engine"]).isEqualTo("dev.p/dev.p.Svc")
+        assertThat(repo.exportValues()["approved_engines"]).isEqualTo(setOf("dev.p/dev.p.Svc|ab"))
+    }
+
+    @Test
+    fun engineSettingsAreSanitized() = runTest {
+        repo.update {
+            it.copy(
+                neuralEngine = "",
+                approvedEngines = (1..40).map { n -> "c$n|x" }.toSet() + "y".repeat(500),
+            )
+        }
+        val s = repo.settings.first()
+        assertThat(s.neuralEngine).isEqualTo(KeyboardSettings.ENGINE_BUILTIN)
+        assertThat(s.approvedEngines).hasSize(KeyboardSettings.APPROVED_ENGINES_MAX)
+        assertThat(s.approvedEngines.none { it.length > 400 }).isTrue()
+    }
+
+    @Test
+    fun applyValuesKeepsTheLocalEngineSettings() = runTest {
+        repo.update { it.copy(neuralEngine = "a/b", approvedEngines = setOf("a/b|1")) }
+        repo.applyValues(
+            mapOf("neural_engine" to "evil/x", "approved_engines" to setOf("evil/x|2")),
+            replace = true,
+            keepLocal = setOf("neural_engine", "approved_engines"),
+        )
+        val s = repo.settings.first()
+        assertThat(s.neuralEngine).isEqualTo("a/b")
+        assertThat(s.approvedEngines).containsExactly("a/b|1")
+    }
+
+    @Test
+    fun neuralModelDefaultsToThePackAndRoundTrips() = runTest {
+        assertThat(repo.settings.first().neuralModel).isEmpty()
+        repo.update { it.copy(neuralModel = "0123456789abcdef") }
+        assertThat(repo.settings.first().neuralModel).isEqualTo("0123456789abcdef")
+        assertThat(repo.exportValues()["neural_model"]).isEqualTo("0123456789abcdef")
+        repo.update { it.copy(neuralModel = "x".repeat(500)) }
+        assertThat(repo.settings.first().neuralModel).hasLength(64)
+    }
+
+    @Test
     fun oldVoiceEngineNamesMigrate() = runTest {
         store.edit { it[stringPreferencesKey("voice_engine")] = "Automatic" }
         assertThat(repo.settings.first().voiceEngine).isEqualTo(VoiceEngineChoice.BuiltIn)

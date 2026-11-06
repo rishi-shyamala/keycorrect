@@ -1,5 +1,6 @@
 package dev.keycorrect.tools.eval
 
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -67,6 +68,21 @@ data class Options(
     val classifierConfig: Map<String, String> = emptyMap(),
     /** Swipe mode: jitter of every letter's control point, in key widths. */
     val swipeNoise: Float = 0.25f,
+    /** Rerank arm: the language-model GGUF (null = no rerank arm). */
+    val rerankModel: Path? = null,
+    /**
+     * Rerank arm: `--lm-weight`, `--pool`, `--rerank-context-words` take lists; all combinations
+     * run.
+     */
+    val lmWeights: List<Float> = listOf(NeuralReranker.LM_WEIGHT),
+    val pools: List<Int> = listOf(0),
+    val rerankContextWords: List<Int> = listOf(NeuralReranker.CONTEXT_WORDS),
+    /** Rerank arm: generous by default, so accuracy runs measure quality, not the 40 ms budget. */
+    val rerankDeadlineMs: Long = 1000,
+    val llamaLib: Path = Paths.get("build/llama-host/libkcllama.so"),
+    val llamaThreads: Int = 4,
+    /** Rerank arm: reuse scorer answers across configs (sweeps); latency counts real calls only. */
+    val rerankCache: Boolean = false,
 ) {
     enum class Mode {
         Eval,
@@ -121,6 +137,17 @@ data class Options(
               --target-fc F        false corrections per 1000 words allowed by the recommendation (3)
               --what-if A,B        post-process answers to size a decoder change: ${WhatIf.entries.joinToString { it.flag }}
               --label TEXT         free text stored in the JSON
+
+              --rerank MODEL.gguf  rerank arm: classic vs the production NeuralReranker (core:decoder) on every
+                                   decode, scored by a llama model; prints deltas, changed decisions, scorer latency
+              --lm-weight A,B      reranker lmWeight(s) (default ${NeuralReranker.LM_WEIGHT}); lists run every combination
+              --pool A,B           poolSize(s): wider candidate pool scored first (default 0 = classic strip only)
+              --rerank-context-words A,B  words of left context scored (default ${NeuralReranker.CONTEXT_WORDS})
+              --rerank-deadline-ms N  scorer deadline (default 1000: measure quality; production uses ${NeuralReranker.RERANK_DEADLINE_MS})
+              --llama-lib FILE     libkcllama (default build/llama-host/libkcllama.so, tools/llama/build-host.sh)
+              --llama-threads N    threads of the llama session (default 4)
+              --rerank-cache       reuse scorer answers across configs (sweeps); latency stats count real calls only
+                                   (use --threads 1 with --rerank; incompatible with --sweep)
 
               --mode misspell      cognitive-misspelling eval (+ joint spatial run); options:
               --misspell-file F    wikipedia-misspellings list (default data/raw/wikipedia-misspellings-1199637275.txt)
@@ -228,6 +255,16 @@ data class Options(
                                 whatIf = o.whatIf + v().split(',').map { WhatIf.parse(it.trim()) }
                             )
                     "--label" -> o = o.copy(label = v())
+                    "--rerank" -> o = o.copy(rerankModel = Paths.get(v()))
+                    "--lm-weight" ->
+                        o = o.copy(lmWeights = v().split(',').map { it.trim().toFloat() })
+                    "--pool" -> o = o.copy(pools = v().split(',').map { it.trim().toInt() })
+                    "--rerank-context-words" ->
+                        o = o.copy(rerankContextWords = v().split(',').map { it.trim().toInt() })
+                    "--rerank-deadline-ms" -> o = o.copy(rerankDeadlineMs = v().toLong())
+                    "--llama-lib" -> o = o.copy(llamaLib = Paths.get(v()))
+                    "--llama-threads" -> o = o.copy(llamaThreads = v().toInt())
+                    "--rerank-cache" -> o = o.copy(rerankCache = true)
                     "--misspell-file" -> o = o.copy(misspellFile = Paths.get(v()))
                     "--misspell-sigma" -> o = o.copy(misspellSigma = v().toFloat())
                     "--misspell-draws" -> o = o.copy(misspellDraws = v().toInt())

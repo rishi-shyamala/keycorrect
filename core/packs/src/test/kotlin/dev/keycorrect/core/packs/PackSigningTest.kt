@@ -1,9 +1,9 @@
-package dev.keycorrect.feature.voicesherpa
+package dev.keycorrect.core.packs
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
-class VoicePackSigningTest {
+class PackSigningTest {
     private val own = setOf("aa", "bb")
 
     @Test
@@ -13,28 +13,28 @@ class VoicePackSigningTest {
 
     @Test
     fun differentSignerIsRefused() {
-        assertThat(checkPackSigners(setOf("cc"), own)).isEqualTo(VoicePackProblem.SignatureMismatch)
+        assertThat(checkPackSigners(setOf("cc"), own)).isEqualTo(PackProblem.SignatureMismatch)
     }
 
     @Test
     fun supersetOrSubsetIsRefused() {
-        assertThat(checkPackSigners(setOf("aa"), own)).isEqualTo(VoicePackProblem.SignatureMismatch)
+        assertThat(checkPackSigners(setOf("aa"), own)).isEqualTo(PackProblem.SignatureMismatch)
         assertThat(checkPackSigners(setOf("aa", "bb", "cc"), own))
-            .isEqualTo(VoicePackProblem.SignatureMismatch)
+            .isEqualTo(PackProblem.SignatureMismatch)
     }
 
     @Test
     fun unreadableOrEmptyPackSignaturesAreRefused() {
-        assertThat(checkPackSigners(null, own)).isEqualTo(VoicePackProblem.SignatureMismatch)
-        assertThat(checkPackSigners(emptySet(), own)).isEqualTo(VoicePackProblem.SignatureMismatch)
+        assertThat(checkPackSigners(null, own)).isEqualTo(PackProblem.SignatureMismatch)
+        assertThat(checkPackSigners(emptySet(), own)).isEqualTo(PackProblem.SignatureMismatch)
     }
 
     @Test
     fun unknownOwnSignersRefuseEvenAnEmptyMatch() {
         assertThat(checkPackSigners(emptySet(), emptySet()))
-            .isEqualTo(VoicePackProblem.SignatureMismatch)
+            .isEqualTo(PackProblem.SignatureMismatch)
         assertThat(checkPackSigners(setOf("aa"), emptySet()))
-            .isEqualTo(VoicePackProblem.SignatureMismatch)
+            .isEqualTo(PackProblem.SignatureMismatch)
     }
 
     @Test

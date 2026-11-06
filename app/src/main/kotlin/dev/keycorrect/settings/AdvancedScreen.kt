@@ -7,10 +7,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.keycorrect.R
+import dev.keycorrect.appContainer
 import dev.keycorrect.core.settings.KeyboardSettings
 
 @Composable
@@ -75,5 +77,20 @@ fun AdvancedScreen(
             checked = settings.nonWordTieRule,
             onCheckedChange = { v -> onUpdate { it.copy(nonWordTieRule = v) } },
         )
+
+        LastFieldSection()
     }
+}
+
+/** What the last field declared, for telling why the keyboard behaves as it does there. */
+@Composable
+private fun LastFieldSection() {
+    SectionHeader(stringResource(R.string.advanced_section_last_field))
+    Text(
+        LocalContext.current.appContainer.lastField
+            ?: stringResource(R.string.advanced_last_field_none),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }

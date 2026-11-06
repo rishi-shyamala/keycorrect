@@ -15,6 +15,47 @@ class NgramModelTest {
     }
 
     @Test
+    fun wordsSeenAfterAContextAreListedOnceTheyHaveEvidence() {
+        val m = PersonalModel(testConfig())
+        m.applyAt(
+            0,
+            *Array(10) { used("booked", "finally") },
+            used("rare", "finally"),
+            *Array(10) { used("filler") },
+        )
+        val s = m.snapshot()
+        assertThat(s.userNextWords(listOf("finally"))).containsExactly("booked")
+        assertThat(s.userNextWords(listOf("unknown"))).isEmpty()
+        assertThat(s.userNextWords(emptyList())).isEmpty()
+        assertThat(PersonalModel().snapshot().userNextWords(listOf("finally"))).isEmpty()
+    }
+
+    @Test
+    fun theNextWordListSurvivesExportAndImport() {
+        val m = PersonalModel(testConfig())
+        m.applyAt(0, *Array(30) { used("booked", "finally") })
+        val copy = PersonalModel(testConfig())
+        copy.import(m.export(), emptyList(), 0L)
+        assertThat(copy.snapshot().userNextWords(listOf("finally"))).containsExactly("booked")
+    }
+
+    @Test
+    fun anImportedContextKeepsItsHeaviestFollowersNotAnyEight() {
+        val m = PersonalModel(testConfig())
+        // w00 is the least used and w11 the most; the lightest ones were used last.
+        for (i in 11 downTo 0) {
+            val word = "w" + i.toString().padStart(2, '0')
+            m.applyAt(0, *Array(3 + i) { used(word, "finally") })
+        }
+        val copy = PersonalModel(testConfig())
+        copy.import(m.export(), emptyList(), 0L)
+        val next = copy.snapshot().userNextWords(listOf("finally"))
+        assertThat(next)
+            .containsExactly("w11", "w10", "w09", "w08", "w07", "w06", "w05", "w04")
+            .inOrder()
+    }
+
+    @Test
     fun nothingLearnedYieldsNull() {
         assertThat(PersonalModel().snapshot().userLogProb(listOf("a"), "b")).isNull()
         assertThat(PersonalModel().personalization.userLogProb(emptyList(), "b")).isNull()

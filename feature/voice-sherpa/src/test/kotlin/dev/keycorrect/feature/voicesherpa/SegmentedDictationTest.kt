@@ -629,6 +629,107 @@ class SegmentedDictationTest {
     }
 
     @Test
+    fun loopsCollapseAndOrdinaryRepetitionStays() {
+        assertThat(withoutLoops("I'm a fan of cars, cars, cars, cars, cars, cars"))
+            .isEqualTo("I'm a fan of cars")
+        assertThat(withoutLoops("speaking speaking speaking speaking speaking."))
+            .isEqualTo("speaking.")
+        assertThat(withoutLoops("so we went on and on and on and on and on"))
+            .isEqualTo("so we went on and on")
+        // Loops the real model produced on overlapping voices.
+        assertThat(
+                withoutLoops(
+                    "All of us are the ones who are the ones who are the ones who are " +
+                        "the ones who are the ones who are"
+                )
+            )
+            .isEqualTo("All of us are the ones who are")
+        assertThat(withoutLoops("I'm 100,000, I'm 100,000, I'm 100,000, I'm 100,000,"))
+            .isEqualTo("I'm 100,000,")
+        // Up to four in a row, and three of a group, is speech.
+        assertThat(hasLoop("no no no that is very very good")).isFalse()
+        assertThat(withoutLoops("no no no no")).isEqualTo("no no no no")
+        assertThat(withoutLoops("I know I know I know")).isEqualTo("I know I know I know")
+        // Symbols that are not music are text.
+        assertThat(withoutLoops("Tom & Jerry")).isEqualTo("Tom & Jerry")
+        assertThat(hasLoop("well - maybe")).isFalse()
+        assertThat(hasLoop("Ask what you can do for your country.")).isFalse()
+        // Noise written as symbols is not text.
+        assertThat(withoutLoops("♪♪♪♪♪♪")).isEmpty()
+        assertThat(withoutLoops("hello ♪♪ there")).isEqualTo("hello there")
+        assertThat(plausible("cars cars cars cars cars", 16000 * 7)).isFalse()
+    }
+
+    @Test
+    fun aLoopingDecodeIsSplitAndRetriedAndNeverReachesTheText() {
+        val samples = 16000
+        val segment = FloatArray(6 * samples) { 0.5f }
+        var n = 0
+        val h =
+            Direct({
+                when {
+                    it.size > 4 * samples -> "speaking speaking speaking speaking speaking speaking"
+                    n++ == 0 -> "the words I"
+                    else -> "was saying"
+                }
+            })
+        h.detector.segments += segment
+        h.session.finish()
+        assertThat(h.results.last()).isEqualTo(SttResult.Final("the words I was saying"))
+    }
+
+    @Test
+    fun aDecodeThatKeepsLoopingCollapsesToOneCopy() {
+        val samples = 16000
+        val h = Direct({ "speaking speaking speaking speaking speaking" })
+        h.detector.segments += FloatArray(6 * samples) { 0.5f }
+        h.session.finish()
+        val final = (h.results.last() as SttResult.Final).text
+        assertThat(final.split(' ').count { it.startsWith("speaking") }).isAtMost(3)
+        assertThat(hasLoop(final)).isFalse()
+    }
+
+    private fun recognizer(decode: (FloatArray) -> String) =
+        object : SegmentRecognizer {
+            override fun recognize(segment: FloatArray) = decode(segment)
+
+            override fun release() = Unit
+        }
+
+    @Test
+    fun aLoopRetrySplitsAtMostTwoLevelsDeep() {
+        var calls = 0
+        val loop = "speaking speaking speaking speaking speaking speaking"
+        val text =
+            recognizeSplitting(
+                recognizer {
+                    calls++
+                    loop
+                },
+                FloatArray(8 * 16000) { 0.5f },
+            )
+        assertThat(calls).isAtMost(7)
+        assertThat(text).isEqualTo("speaking")
+    }
+
+    @Test
+    fun aSplitWithFewerWordsThanTheCollapsedTextIsNotPreferred() {
+        val loop = "so we went on cars cars cars cars cars cars"
+        val text =
+            recognizeSplitting(
+                recognizer { if (it.size > 6 * 16000) loop else "so" },
+                FloatArray(8 * 16000) { 0.5f },
+            )
+        assertThat(text).isEqualTo("so we went on cars")
+    }
+
+    @Test
+    fun liveWordsInALoopAreNotShown() {
+        assertThat(plausible("speaking speaking speaking speaking speaking", 16000 * 4)).isFalse()
+        assertThat(plausible("the words I was saying", 16000 * 4)).isTrue()
+    }
+
+    @Test
     fun aSplitDropsAWordRepeatedByAMidWordCut() {
         assertThat(joinHalves("so the brothel", "brothel owner")).isEqualTo("so the brothel owner")
         assertThat(joinHalves("hello.", "Hello again")).isEqualTo("hello. again")

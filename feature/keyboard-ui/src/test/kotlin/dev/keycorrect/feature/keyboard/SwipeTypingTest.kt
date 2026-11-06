@@ -113,7 +113,13 @@ class SwipeTypingTest {
         assertThat(active(InputType.TYPE_CLASS_PHONE)).isFalse()
         assertThat(active(InputType.TYPE_CLASS_DATETIME)).isFalse()
         assertThat(active(InputType.TYPE_NULL)).isFalse()
-        assertThat(active(text or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)).isFalse()
+        assertThat(
+                active(
+                    text or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                    KeyboardSettings(ignoreNoSuggestions = false),
+                )
+            )
+            .isFalse()
     }
 
     @Test

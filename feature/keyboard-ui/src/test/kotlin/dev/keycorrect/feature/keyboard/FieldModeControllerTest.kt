@@ -148,6 +148,19 @@ class FieldModeControllerTest {
     }
 
     @Test
+    fun aKindPickedInANoSuggestionsFieldKeepsWhatItTurnsOff() {
+        val noSuggestions =
+            Field(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
+        start(noSuggestions) // ignoreNoSuggestions is on by default
+        assertThat(controller.profile.autocorrectEnabled).isTrue()
+        pick(FieldMode.Email)
+        assertThat(controller.profile.autocorrectEnabled).isFalse()
+        pick(FieldMode.Number)
+        assertThat(controller.profile.autocorrectEnabled).isFalse()
+        assertThat(controller.profile.suggestionsEnabled).isFalse()
+    }
+
+    @Test
     fun pickingEmailGivesTheEmailBottomRowAndRulesUntilTheFieldChanges() {
         start()
         pick(FieldMode.Email)

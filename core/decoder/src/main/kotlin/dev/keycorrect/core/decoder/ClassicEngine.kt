@@ -68,6 +68,7 @@ import kotlin.random.Random
  * @param touchKey `InputProfile.touchKey` of the current layout/device, or null when unknown (then
  *   no personal touch offsets are applied).
  */
+@Suppress("LargeClass") // The decode pipeline; its steps already live in their own classes.
 class ClassicEngine(
     private val dictionary: Dictionary,
     val config: ClassicConfig = ClassicConfig(),
@@ -424,6 +425,21 @@ class ClassicEngine(
             }
             ranked.sortWith(RANK_ORDER)
         }
+        if (request.lmBonus.isNotEmpty()) {
+            literal =
+                if (
+                    (literalNode >= 0 || literalIsUser) && !config.autocorrect.lmReplacesRealWords
+                ) {
+                    // A real word keeps at least the best candidate's bonus: the model may reorder
+                    // the suggestions but never talk the autocorrect out of a correct spelling.
+                    val best = maxFinite(request.lmBonus.values)
+                    val own = request.lmBonus[text]?.takeIf { it.isFinite() } ?: 0f
+                    literal.withScore(literal.score + maxOf(own, best))
+                } else {
+                    literal.withBonus(request.lmBonus)
+                }
+            applyBonus(ranked, request.lmBonus)
+        }
         if (literalNode < 0 && !literalIsUser) addContraction(key, text, literal, ranked)
 
         // Candidate strip: shortcut first, then the capitalised pronoun fix, then the ranking.
@@ -477,6 +493,21 @@ class ClassicEngine(
             }
         }
         return RankedPrediction(literal, out, autocorrect, phrase, decision.runnerUp)
+    }
+
+    /** [c] with the [bonus] for its text (if any) added to its score; [c] itself when none. */
+    private fun RankedCandidate.withBonus(bonus: Map<String, Float>): RankedCandidate {
+        val b = bonus[text] ?: return this
+        return if (b.isFinite()) withScore(score + b) else this
+    }
+
+    /**
+     * Adds the [PredictRequest.lmBonus] of each candidate's text to its score and re-sorts [list].
+     * Only called for a non-empty bonus map, so the plain decode never gets here.
+     */
+    private fun applyBonus(list: MutableList<RankedCandidate>, bonus: Map<String, Float>) {
+        for (i in list.indices) list[i] = list[i].withBonus(bonus)
+        list.sortWith(RANK_ORDER)
     }
 
     private fun literalBreakdown(spatial: Float, lmValue: Float, rightLm: Float) =
@@ -688,11 +719,18 @@ class ClassicEngine(
                     .also { it.rank = out.size }
             )
         }
+        if (request.lmBonus.isNotEmpty()) applyBonus(out, request.lmBonus)
         var phrase: Candidate? = null
         if (request.maxPhraseWords >= 2 && !atDocumentStart && out.isNotEmpty()) {
             val first = out[0]
-            if (first.score >= ln(config.phrase.minStepProbability) + gateDelta) {
-                phrase = buildPhrase(first.text, first.wordId, first.score, request.maxPhraseWords)
+            // The phrase gate looks at the score before any rerank bonus.
+            val firstLp =
+                maxOf(
+                    first.score - (request.lmBonus[first.text] ?: 0f),
+                    lm.phraseStepLogProb(first.wordId),
+                )
+            if (firstLp >= ln(config.phrase.minStepProbability) + gateDelta) {
+                phrase = buildPhrase(first.text, first.wordId, firstLp, request.maxPhraseWords)
             }
         }
         return RankedPrediction(null, out, null, phrase)
@@ -719,11 +757,18 @@ class ClassicEngine(
         val sb = StringBuilder(firstText)
         var words = 1
         var total = anchoredLogProb
+        var previousId = firstId
         lm.setContext(lm.w1, firstId)
         while (words < maxWords) {
-            val n = lm.nextWords(1, phraseIds, phraseLogProbs, allowEnd = true)
-            if (n == 0 || phraseIds[0] == Dictionary.EOS_ID || phraseLogProbs[0] < minStep) break
-            total += phraseLogProbs[0]
+            // A likely sentence end doesn't stop a phrase the user has typed on from here.
+            val n = lm.nextWords(1, phraseIds, phraseLogProbs, allowEnd = !lm.hasUserNextWords)
+            val step =
+                if (n == 0 || phraseIds[0] == Dictionary.EOS_ID) Float.NEGATIVE_INFINITY
+                else lm.phraseStepLogProb(phraseIds[0])
+            // A repeat of the previous word ("ha ha ha") is not a phrase.
+            if (step < minStep || phraseIds[0] == previousId) break
+            previousId = phraseIds[0]
+            total += step
             sb.append(' ').append(dictionary.word(phraseIds[0]))
             words++
             lm.setContext(lm.w1, phraseIds[0])
@@ -750,4 +795,11 @@ class ClassicEngine(
                 if (byId != 0) byId else a.text.compareTo(b.text)
             }
     }
+}
+
+/** The largest finite value of [values], or 0 when there is none (a loop: no list per decode). */
+private fun maxFinite(values: Collection<Float>): Float {
+    var best = Float.NEGATIVE_INFINITY
+    for (v in values) if (v.isFinite() && v > best) best = v
+    return if (best == Float.NEGATIVE_INFINITY) 0f else best
 }

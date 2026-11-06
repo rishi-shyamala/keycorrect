@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -13,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
+import dev.keycorrect.core.decoder.rerank.NeuralReranker
 import dev.keycorrect.core.designsystem.KeyCorrectTheme
 import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
@@ -30,6 +32,7 @@ import dev.keycorrect.voice.PackChangeWatcher
 import dev.keycorrect.voice.PackRestartPolicy
 import dev.keycorrect.voice.Restarter
 import dev.keycorrect.voice.killProcess
+import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -45,6 +48,15 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     private val learningHost
         get() = appContainer.learningHost
 
+    private val rerankExecutorLazy = lazy {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "kc-rerank").apply { isDaemon = true }
+        }
+    }
+
+    private val neuralHostLazy = lazy { NeuralHost(this, appContainer.modelStore) }
+    private val neuralHost by neuralHostLazy
+
     private val predictionHostLazy = lazy {
         PredictionHost(
             assets,
@@ -54,6 +66,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             Dispatchers.IO,
             learning = learningHost,
             touchKey = { controller.currentTouchKey },
+            reranker =
+                NeuralReranker(
+                    neuralHost,
+                    rerankExecutorLazy.value,
+                    lmStrength = { settingsFlow.value.lmStrength },
+                    phraseGenerator = neuralHost,
+                    phrasesEnabled = { settingsFlow.value.neuralPhrases },
+                ),
         )
     }
     private val predictionHost by predictionHostLazy
@@ -118,8 +138,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
     }
 
+    override fun onWindowShown() {
+        super.onWindowShown()
+        neuralHost.onWindowShown()
+    }
+
     override fun onWindowHidden() {
         super.onWindowHidden()
+        neuralHost.onWindowHidden()
         packRestart.onKeyboardHidden()
     }
 
@@ -142,6 +168,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
                 predictionHost.applySettings(it)
+                neuralHost.apply(it)
                 appContainer.voiceHost.applySettings(it)
             }
         }
@@ -184,6 +211,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
         learningHost.requestFlush(FlushReason.TrimMemory)
         if (predictionHostLazy.isInitialized()) predictionHost.close()
+        if (neuralHostLazy.isInitialized()) neuralHost.close()
+        if (rerankExecutorLazy.isInitialized()) rerankExecutorLazy.value.shutdownNow()
         super.onDestroy()
     }
 
@@ -236,6 +265,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
+        if (shouldRecordField(editorInfo.inputType, editorInfo.packageName, packageName)) {
+            appContainer.lastField = describeField(editorInfo)
+        }
         // The controller first: super resumes the lifecycle, which lets Compose draw, and the
         // first frame should show this field's state (layer, shift, strip), not the last one's.
         controller.onStartInput(
@@ -289,3 +321,21 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         const val RESTART_FLUSH_MS = 2_000L
     }
 }
+
+/** What [KeyCorrectApp]'s Settings shows about a field: its app and declared type, never text. */
+private fun describeField(info: EditorInfo): String {
+    val type = info.inputType
+    val noSuggestions = type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0
+    val note = if (noSuggestions) ", asks for no suggestions" else ""
+    val hex = "inputType 0x${type.toString(16)}, imeOptions 0x${info.imeOptions.toString(16)}"
+    return "${info.packageName}: ${FieldProfile.from(info).kind}$note ($hex)"
+}
+
+/**
+ * Whether a started field is worth recording as the "last text field". Opening this app's own
+ * Settings starts the input view with an empty EditorInfo (no input type, our package), which would
+ * overwrite the real field the user was diagnosing; a real field of this app, or a no-type field of
+ * another app, is still recorded.
+ */
+internal fun shouldRecordField(inputType: Int, fieldPackage: String?, ownPackage: String): Boolean =
+    !(inputType == InputType.TYPE_NULL && fieldPackage == ownPackage)

@@ -25,6 +25,7 @@ class PersonalizationTest {
 
     private class Fake(
         val userLp: (List<String>, String) -> Float? = { _, _ -> null },
+        val userNext: (List<String>) -> List<String> = { emptyList() },
         val bias: (String, String, String) -> Float = { _, _, _ -> 0f },
         val suppressed: (String, String) -> Boolean = { _, _ -> false },
         val blocked: (String) -> Boolean = { false },
@@ -35,6 +36,8 @@ class PersonalizationTest {
         override val phraseGateDelta: Float = 0f,
     ) : Personalization {
         override fun userLogProb(context: List<String>, word: String) = userLp(context, word)
+
+        override fun userNextWords(context: List<String>) = userNext(context)
 
         override fun correctionBias(typed: String, candidate: String, contextBucket: String) =
             bias(typed, candidate, contextBucket)
@@ -120,6 +123,91 @@ class PersonalizationTest {
             .isWithin(1e-4f)
             .of(ln(0.25f * 0.9f + 0.75f * Math.exp(b.toDouble()).toFloat()))
         assertThat(u.userLm).isWithin(1e-4f).of(u.lm - b)
+    }
+
+    /** The user's "good <zebra-like word> tomorrow", which the base has no entry for. */
+    private fun learned(context: String, word: String) =
+        Fake(
+            userLp = { ctx, w ->
+                if (ctx.lastOrNull()?.lowercase() == context && w.lowercase() == word) ln(0.9f)
+                else null
+            },
+            userNext = { ctx ->
+                if (ctx.lastOrNull()?.lowercase() == context) listOf(word) else emptyList()
+            },
+        )
+
+    @Test
+    fun aWordOnlyTheUserTypesAfterAContextIsOffered() {
+        val request =
+            PredictRequest(TypingContext("very "), ComposingInput.Empty, TestKeyboard.layout)
+        val plain = ClassicEngine(dictionary).predictNow(request)
+        assertThat(plain.candidates.map { it.text }).doesNotContain("keys")
+        val r = ClassicEngine(dictionary, personalization = { learned("very", "keys") })
+        assertThat(r.predictNow(request).candidates.map { it.text }).contains("keys")
+    }
+
+    @Test
+    fun aPhraseCanBeMadeOfTheUsersOwnWords() {
+        val request =
+            PredictRequest(
+                TypingContext("the old woman child "),
+                ComposingInput.Empty,
+                TestKeyboard.layout,
+                maxPhraseWords = 3,
+            )
+        val user =
+            Fake(
+                userLp = { ctx, w ->
+                    when (ctx.lastOrNull()?.lowercase() to w.lowercase()) {
+                        "child" to "keys",
+                        "keys" to "school" -> ln(0.9f)
+                        else -> null
+                    }
+                },
+                userNext = { ctx ->
+                    when (ctx.lastOrNull()?.lowercase()) {
+                        "child" -> listOf("keys")
+                        "keys" -> listOf("school")
+                        else -> emptyList()
+                    }
+                },
+            )
+        val result = engine(user).predictNow(request)
+        val phrase = result.phrase
+        assertThat(phrase?.text).startsWith("keys school")
+    }
+
+    @Test
+    fun aPhraseNeverRepeatsTheWordBeforeIt() {
+        val request =
+            PredictRequest(
+                TypingContext("the old woman child "),
+                ComposingInput.Empty,
+                TestKeyboard.layout,
+                maxPhraseWords = 4,
+            )
+        val user =
+            Fake(
+                userLp = { ctx, w ->
+                    when (ctx.lastOrNull()?.lowercase() to w.lowercase()) {
+                        "child" to "keys",
+                        "keys" to "keys",
+                        "keys" to "school" -> ln(0.9f)
+                        else -> null
+                    }
+                },
+                // "keys" is followed by itself first, then by "school".
+                userNext = { ctx ->
+                    when (ctx.lastOrNull()?.lowercase()) {
+                        "child" -> listOf("keys")
+                        "keys" -> listOf("keys", "school")
+                        else -> emptyList()
+                    }
+                },
+            )
+        // "keys" would be followed by "keys" again ("keys keys keys ..."): no phrase at all.
+        assertThat(engine(user).predictNow(request).phrase).isNull()
     }
 
     @Test

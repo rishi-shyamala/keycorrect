@@ -10,4 +10,5 @@ android {
 dependencies {
     // SttEngine and friends are this module's public API.
     api(project(":core:voice"))
+    implementation(project(":core:packs"))
 }

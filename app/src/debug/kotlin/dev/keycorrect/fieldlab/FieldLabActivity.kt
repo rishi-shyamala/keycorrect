@@ -38,6 +38,7 @@ private const val SAMPLE_PARAGRAPH =
 
 /** Debug-only screen with one field per input type, plus a TYPE_NULL terminal-style view. */
 class FieldLabActivity : Activity() {
+    @Suppress("LongMethod") // A debug screen: one flat list of fields.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "KeyCorrect field lab"
@@ -83,6 +84,16 @@ class FieldLabActivity : Activity() {
 
         field("Plain text", InputType.TYPE_CLASS_TEXT)
         field(
+            "Search (Enter searches)",
+            InputType.TYPE_CLASS_TEXT,
+            imeOptions = EditorInfo.IME_ACTION_SEARCH,
+        )
+        field(
+            "Chat (Enter sends)",
+            InputType.TYPE_CLASS_TEXT,
+            imeOptions = EditorInfo.IME_ACTION_SEND,
+        )
+        field(
             "Multi-line text",
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
             multiLine = true,
@@ -103,6 +114,10 @@ class FieldLabActivity : Activity() {
             "No personalized learning",
             InputType.TYPE_CLASS_TEXT,
             imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING,
+        )
+        field(
+            "App asks for no suggestions",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
         )
 
         label("Image field (accepts images; logs what it receives)")

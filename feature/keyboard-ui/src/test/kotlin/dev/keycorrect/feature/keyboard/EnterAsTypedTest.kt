@@ -165,8 +165,8 @@ class EnterAsTypedTest {
     }
 
     @Test
-    fun aShortcutStillExpands() {
-        backend.shortcuts["omw"] = ShortcutRule("on my way", autoExpand = true)
+    fun aShortcutTriggerIsKeptAsTyped() {
+        backend.shortcuts["omw"] = ShortcutRule("on my way")
         predictor.words["omw"] =
             PredictResult(
                 listOf(Candidate("on my way", 0f, CandidateSource.Shortcut)),
@@ -176,6 +176,6 @@ class EnterAsTypedTest {
         start(search)
         type("omw")
         enter()
-        assertThat(editor.text.toString()).isEqualTo("on my way")
+        assertThat(editor.text.toString()).isEqualTo("omw")
     }
 }

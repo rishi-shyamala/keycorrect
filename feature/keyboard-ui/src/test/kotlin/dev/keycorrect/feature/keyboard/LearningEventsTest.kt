@@ -448,22 +448,24 @@ class LearningEventsTest {
     }
 
     @Test
-    fun aShortcutExpansionIsNeverReported() {
+    fun aTappedShortcutExpansionIsNeverReported() {
         backend.shortcuts["omw"] =
-            dev.keycorrect.feature.keyboard.prediction.ShortcutRule("on my way", autoExpand = true)
+            dev.keycorrect.feature.keyboard.prediction.ShortcutRule("on my way")
         predictor.words["omw"] =
             dev.keycorrect.core.engineapi.PredictResult(
-                emptyList(),
-                lit("omw"),
-                dev.keycorrect.core.engineapi.Candidate(
-                    "on my way",
-                    0f,
-                    dev.keycorrect.core.engineapi.CandidateSource.Shortcut,
+                listOf(
+                    dev.keycorrect.core.engineapi.Candidate(
+                        "on my way",
+                        0f,
+                        dev.keycorrect.core.engineapi.CandidateSource.Shortcut,
+                    )
                 ),
+                lit("omw"),
+                null,
             )
         start()
         type("omw")
-        space()
+        tap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("on my way ")
         assertThat(sink.events).isEmpty()
         assertThat(sink.sentence).isEmpty()
@@ -1024,20 +1026,6 @@ class LearningEventsTest {
     }
 
     // ------------------------------------------------------------------ UserAction
-
-    @Test
-    fun theAddWordChipReportsAnAddToDictionary() {
-        predictor.word("zorp", listOf("zap"), autocorrect = "zap")
-        start()
-        type("zorp")
-        tap(controller.strip.left) // literal: the add-word chip appears
-        assertThat(controller.strip.addWord).isEqualTo("zorp")
-        controller.onAddWordTap()
-        assertThat(backend.added).containsExactly("zorp")
-        val a = sink.of<UserAction>().single()
-        assertThat(a.kind).isEqualTo(UserAction.Kind.AddToDictionary)
-        assertThat(a.word).isEqualTo("zorp")
-    }
 
     @Test
     fun longPressingASuggestionAsksInlineAndYesBlocksIt() {

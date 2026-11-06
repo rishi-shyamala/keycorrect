@@ -98,7 +98,10 @@ private class FitTextNode(
                     layoutWidth = available
                 }
         val size = constraints.constrain(result.size)
-        return layout(size.width, size.height) {}
+        // The wrapped node must be measured and placed: an unplaced child is never drawn, and this
+        // node's draw runs as part of it.
+        val placeable = measurable.measure(Constraints.fixed(size.width, size.height))
+        return layout(size.width, size.height) { placeable.place(0, 0) }
     }
 
     /** Full size if it fits [available] px, else [shrunkSize]; ellipsized if that overflows too. */
