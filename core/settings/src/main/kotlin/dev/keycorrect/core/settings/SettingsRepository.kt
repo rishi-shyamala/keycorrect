@@ -234,6 +234,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         )
     }
 
+    @Suppress("LongMethod") // One line per setting.
     private fun MutablePreferences.write(s: KeyboardSettings) {
         this[KEY_HEIGHT_DP] = s.keyHeightDp
         this[BOTTOM_KEY_WIDTH] = s.bottomKeyWidth

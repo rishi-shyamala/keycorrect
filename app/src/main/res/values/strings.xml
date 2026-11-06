@@ -288,6 +288,36 @@
     <string name="learning_never_suggested_unblock_description">Allow suggesting %1$s again</string>
     <string name="learning_never_suggested_unblocked">%1$s can be suggested again</string>
 
+    <string name="fit_title">Keyboard fit</string>
+    <string name="fit_summary">Where your taps land, and a size that suits them</string>
+    <string name="fit_intro">Shows how your taps land on the letter keys. Only positions are used, never text. Nothing changes unless you tap Apply.</string>
+    <string name="fit_editing">Applies to: %1$s</string>
+    <string name="fit_touch_profile">Taps recorded on: %1$s</string>
+    <string name="fit_heat_title">Where your taps land</string>
+    <string name="fit_heat_legend">Dot: average tap position. Oval: spread of your taps. Green is precise, orange is average, red is loose.</string>
+    <string name="fit_heat_description">Heat map of the letter keys. Overall your taps are off by %1$d%% of a key sideways and %2$d%% up or down on average, with a spread of %3$d%% of a key sideways and %4$d%% up or down.</string>
+    <string name="fit_heat_key_description">Key %1$s: spread %2$d%% of a key</string>
+    <plurals name="fit_evidence">
+        <item quantity="one">Based on %1$d accepted word and %2$d taps</item>
+        <item quantity="other">Based on %1$d accepted words and %2$d taps</item>
+    </plurals>
+    <string name="fit_none">No tap data yet for this keyboard. It builds up as you type.</string>
+    <string name="fit_not_enough">Not enough data for a suggestion yet. It needs about %1$d accepted words; you have %2$d.</string>
+    <string name="fit_no_change">Your keyboard already fits your taps well. No change suggested.</string>
+    <string name="fit_dismissed">You chose Not now. A suggestion can appear again after 14 days.</string>
+    <string name="fit_suggestion_title">Suggestion</string>
+    <string name="fit_suggest_height">Make keys %1$d%% taller: about %2$d%% fewer missed keys</string>
+    <string name="fit_suggest_gap">Make the gap between keys %1$d dp smaller: about %2$d%% fewer missed keys</string>
+    <string name="fit_suggest_edge">Make the edge padding %1$d dp smaller: about %2$d%% fewer missed keys</string>
+    <string name="fit_estimate">Estimated from your recorded taps. Missed keys would go from %1$s to %2$s of taps.</string>
+    <string name="fit_preview_now">Now</string>
+    <string name="fit_preview_proposed">Proposed</string>
+    <string name="fit_preview_description">Preview: the keyboard now is %1$d dp per row, the proposed one is %2$d dp per row, with keys %3$d dp apart and %4$d dp of edge padding.</string>
+    <string name="fit_apply">Apply</string>
+    <string name="fit_not_now">Not now</string>
+    <string name="fit_applied">Applied. You can undo this until you leave the app.</string>
+    <string name="fit_undo">Undo</string>
+    <string name="fit_undone">Restored your previous sizes.</string>
     <string name="learning_accuracy_title">Typing accuracy (beta)</string>
     <string name="learning_accuracy_body">How closely your taps land on the keys you meant. Only positions are recorded, never text. Spread is in key sizes: smaller means more precise.</string>
     <string name="learning_accuracy_none">No data yet. It builds up as you type.</string>

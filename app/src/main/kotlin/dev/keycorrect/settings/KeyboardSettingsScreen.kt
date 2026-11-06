@@ -85,7 +85,7 @@ private fun currentSizeProfile(): SizeProfile {
 }
 
 @StringRes
-private fun SizeProfile.labelRes(): Int =
+internal fun SizeProfile.labelRes(): Int =
     when {
         !tablet && !landscape -> R.string.size_profile_phone_portrait
         !tablet -> R.string.size_profile_phone_landscape
