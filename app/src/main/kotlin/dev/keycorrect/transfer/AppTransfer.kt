@@ -1,6 +1,7 @@
 package dev.keycorrect.transfer
 
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Build
 import android.view.WindowManager
 import dev.keycorrect.core.data.EmojiHistoryDump
@@ -10,6 +11,7 @@ import dev.keycorrect.core.data.ShortcutStore
 import dev.keycorrect.core.data.UserDictionaryStore
 import dev.keycorrect.core.data.UserWord
 import dev.keycorrect.core.settings.SettingsRepository
+import dev.keycorrect.core.settings.SizeProfile
 import dev.keycorrect.core.transfer.DeviceProfile
 import kotlinx.coroutines.flow.first
 
@@ -39,6 +41,9 @@ internal object CurrentDevice {
         val keyboard = settings.settings.first()
         val bounds = context.getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
         val resources = context.resources
+        val config = resources.configuration
+        val landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val sizes = keyboard.sizeFor(SizeProfile.of(config.smallestScreenWidthDp, landscape))
         return DeviceProfile(
             model =
                 listOf(Build.MANUFACTURER, Build.MODEL)
@@ -48,8 +53,8 @@ internal object CurrentDevice {
             screenHeightPx = bounds.height(),
             densityDpi = resources.displayMetrics.densityDpi,
             smallestWidthDp = resources.configuration.smallestScreenWidthDp,
-            keyHeightDp = keyboard.keyHeightDp,
-            numberRow = keyboard.numberRow,
+            keyHeightDp = sizes.keyHeightDp,
+            numberRow = sizes.numberRow,
         )
     }
 }

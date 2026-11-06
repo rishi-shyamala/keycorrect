@@ -20,6 +20,7 @@ import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.core.settings.SizeProfile
 import dev.keycorrect.feature.keyboard.ConfigRestartTracker
 import dev.keycorrect.feature.keyboard.EditorIdentity
 import dev.keycorrect.feature.keyboard.InlineAutofillController
@@ -41,6 +42,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** The system-facing keyboard service. */
 class KeyCorrectImeService : ComposeInputMethodService() {
     private val settingsFlow = MutableStateFlow(KeyboardSettings())
+
+    /** The settings as stored (with every size profile); [settingsFlow] has the current one's. */
+    private var storedSettings = KeyboardSettings()
+    private var sizeProfile = SizeProfile(tablet = false, landscape = false)
 
     /**
      * The process-wide learning system; it gates itself on the settings as well as the keyboard.
@@ -164,6 +169,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         appContainer.clipboardEnvironment.imagePaster = imagePaster
         lifecycleScope.launch {
             appContainer.settingsRepository.settings.collect {
+                storedSettings = it
+                val it = it.forProfile(sizeProfile)
                 settingsFlow.value = it
                 if (!it.inlineAutofill) autofill.clear()
                 controller.updateSettings(it)
@@ -190,6 +197,13 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     /** Tells the keyboard what we run on; its input profile feeds both events and the decoder. */
     private fun updateDevice(config: Configuration) {
         val profile = DeviceProfile.from(config)
+        if (profile.sizeProfile != sizeProfile) {
+            // Rotation, folding or moving to a tablet: the keyboard takes that profile's sizes.
+            sizeProfile = profile.sizeProfile
+            val sized = storedSettings.forProfile(sizeProfile)
+            settingsFlow.value = sized
+            controller.updateSettings(sized)
+        }
         controller.updateDevice(profile.tablet, profile.landscape, profile.hardwareKeyboard)
     }
 
