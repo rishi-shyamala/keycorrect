@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -58,6 +59,8 @@ fun KeyboardScreen(
     val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
     val touch = remember { KeyboardTouchState() }
+    val keyRadius = keyCornerDp(settings.keyRadius, settings.keyHeightDp, settings.keyGapDp).dp
+    CompositionLocalProvider(LocalKeyRadius provides keyRadius) {
     Column(
         modifier =
             modifier
@@ -81,9 +84,11 @@ fun KeyboardScreen(
                 shift = shift,
                 enterLabel = enterLabel,
                 keyGap = settings.keyGapDp.dp,
+                keyRadius = keyRadius,
                 modifier = Modifier.matchParentSize(),
             )
         }
+    }
     }
 }
 

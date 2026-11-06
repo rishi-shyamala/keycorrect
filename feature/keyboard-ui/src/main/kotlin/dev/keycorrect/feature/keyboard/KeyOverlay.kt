@@ -30,9 +30,7 @@ import androidx.compose.ui.unit.sp
 import dev.keycorrect.core.layout.KeySlot
 import kotlin.math.max
 
-private val PreviewRadius = 14.dp
 private val PreviewOverlap = 4.dp
-private val PopupRadius = 14.dp
 private val PopupCellInset = 3.dp
 private val ShadowSpread = 1.5.dp
 private const val SHADOW_LAYERS = 3
@@ -73,6 +71,7 @@ internal fun KeyOverlay(
     shift: () -> ShiftState,
     enterLabel: String,
     keyGap: Dp,
+    keyRadius: Dp,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -91,9 +90,10 @@ internal fun KeyOverlay(
             if (touch.trailVersion >= 0) drawTrail(it, origin, cache, colors.primary)
         }
         touch.joystick?.let { drawJoystick(it, origin, cache, colors.primary) }
-        touch.popup?.let { drawPopup(it, origin, shiftState, colors, cache) }
+        val radius = keyRadius.toPx() * OVERLAY_RADIUS_SCALE
+        touch.popup?.let { drawPopup(it, origin, shiftState, radius, colors, cache) }
         touch.preview?.let {
-            drawPreview(it, origin, shiftState, enterLabel, keyGap.toPx(), colors, cache)
+            drawPreview(it, origin, shiftState, enterLabel, keyGap.toPx(), radius, colors, cache)
         }
     }
 }
@@ -226,6 +226,7 @@ private fun DrawScope.drawPreview(
     shift: ShiftState,
     enterLabel: String,
     keyGap: Float,
+    radius: Float,
     colors: ColorScheme,
     cache: OverlayCache,
 ) {
@@ -233,7 +234,7 @@ private fun DrawScope.drawPreview(
     val key =
         Rect(slot.left + gap, slot.top + gap, slot.right - gap, slot.bottom - gap).translate(origin)
     val bounds = previewBounds(key, PreviewOverlap.toPx(), size)
-    drawElevated(bounds, PreviewRadius.toPx(), colors.surfaceContainerHighest, colors, cache)
+    drawElevated(bounds, radius, colors.surfaceContainerHighest, colors, cache)
     val layout = cache.preview(keyLabel(slot.key, shift, enterLabel))
     drawText(
         layout,
@@ -250,6 +251,7 @@ private fun DrawScope.drawPopup(
     popup: PopupState,
     origin: Offset,
     shift: ShiftState,
+    radius: Float,
     colors: ColorScheme,
     cache: OverlayCache,
 ) {
@@ -258,9 +260,9 @@ private fun DrawScope.drawPopup(
     val top = max(panel.top + origin.y, 0f)
     val left = panel.left + origin.x
     val bounds = Rect(left, top, left + panel.width, top + panel.cellHeight)
-    drawElevated(bounds, PopupRadius.toPx(), colors.surfaceContainerHighest, colors, cache)
+    drawElevated(bounds, radius, colors.surfaceContainerHighest, colors, cache)
     val inset = PopupCellInset.toPx()
-    val cellRadius = CornerRadius(PopupRadius.toPx() - inset)
+    val cellRadius = CornerRadius((radius - inset).coerceAtLeast(0f))
     popup.entries.forEachIndexed { i, entry ->
         val cellLeft = left + i * panel.cellWidth
         val selected = i == popup.highlighted

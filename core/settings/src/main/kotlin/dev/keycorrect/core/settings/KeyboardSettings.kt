@@ -199,6 +199,15 @@ data class KeyboardSettings(
     val customLightColors: List<Int> = emptyList(),
     /** Custom colors for dark mode, like [customLightColors]. */
     val customDarkColors: List<Int> = emptyList(),
+    /** Key corner radius as a share of the key height, [KEY_RADIUS_RANGE]; 0 = square, .5 = pill. */
+    val keyRadius: Float = DEFAULT_KEY_RADIUS,
+    /** Draw a thin outline around every key. */
+    val keyBorder: Boolean = false,
+    /** Key label size scale, [LABEL_SCALE_RANGE]. */
+    val labelScale: Float = 1f,
+    val boldLabels: Boolean = false,
+    /** How a held key shows. */
+    val pressStyle: PressStyle = PressStyle.Shade,
     /** Let an on-device language model reorder the suggestions when one is installed (PHASE7). */
     val neuralRerank: Boolean = true,
     /** Offer whole-phrase completions from the on-device language model (PHASE7; off). */
@@ -310,6 +319,10 @@ data class KeyboardSettings(
                     voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
                     else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
                 },
+            keyRadius =
+                if (keyRadius.isNaN()) DEFAULT_KEY_RADIUS else keyRadius.coerceIn(KEY_RADIUS_RANGE),
+            labelScale =
+                if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
             neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
@@ -331,6 +344,10 @@ data class KeyboardSettings(
         val MODE_ENTER_KEY_WIDTH_RANGE = 0.75f..1.50f
         val EDGE_PADDING_DP_RANGE = 0..4
         val KEY_GAP_DP_RANGE = 0..6
+        val KEY_RADIUS_RANGE = 0f..0.5f
+        val LABEL_SCALE_RANGE = 0.8f..1.3f
+        /** 10 dp on the default 48 dp drawn key: the look before the radius was a setting. */
+        const val DEFAULT_KEY_RADIUS = 0.21f
         const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f
         const val DEFAULT_MODE_ENTER_KEY_WIDTH = 1.15f
         const val DEFAULT_EDGE_PADDING_DP = 4

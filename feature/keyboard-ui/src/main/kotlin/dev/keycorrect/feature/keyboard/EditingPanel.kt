@@ -108,7 +108,7 @@ private fun PanelButton(
             modifier
                 .fillMaxHeight()
                 .padding(KeyGap / 2)
-                .clip(RoundedCornerShape(KeyCornerRadius))
+                .clip(RoundedCornerShape(LocalKeyRadius.current))
                 .background(panelFill(action, on, colors))
                 .alpha(if (enabled) 1f else DISABLED_ALPHA)
                 .clickable(enabled = enabled, role = Role.Button, onClick = click)

@@ -173,6 +173,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                     neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
                     lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
                     neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
+                    keyRadius = this[KEY_RADIUS] ?: d.keyRadius,
+                    keyBorder = this[KEY_BORDER] ?: d.keyBorder,
+                    labelScale = this[LABEL_SCALE] ?: d.labelScale,
+                    boldLabels = this[BOLD_LABELS] ?: d.boldLabels,
+                    pressStyle = PressStyle.parse(this[PRESS_STYLE]) ?: d.pressStyle,
                     themeSource = ThemeSource.parse(this[THEME_SOURCE]) ?: d.themeSource,
                     customLightColors = ThemeColors.decode(this[CUSTOM_LIGHT_COLORS]),
                     customDarkColors = ThemeColors.decode(this[CUSTOM_DARK_COLORS]),
@@ -301,6 +306,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     private fun MutablePreferences.writeLookAndEngines(s: KeyboardSettings) {
+        this[KEY_RADIUS] = s.keyRadius
+        this[KEY_BORDER] = s.keyBorder
+        this[LABEL_SCALE] = s.labelScale
+        this[BOLD_LABELS] = s.boldLabels
+        this[PRESS_STYLE] = s.pressStyle.name
         this[THEME_SOURCE] = s.themeSource.name
         this[CUSTOM_LIGHT_COLORS] = ThemeColors.encode(s.customLightColors)
         this[CUSTOM_DARK_COLORS] = ThemeColors.encode(s.customDarkColors)
@@ -383,6 +393,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
+        val KEY_RADIUS = floatPreferencesKey("key_radius")
+        val KEY_BORDER = booleanPreferencesKey("key_border")
+        val LABEL_SCALE = floatPreferencesKey("label_scale")
+        val BOLD_LABELS = booleanPreferencesKey("bold_labels")
+        val PRESS_STYLE = stringPreferencesKey("press_style")
         val THEME_SOURCE = stringPreferencesKey("theme_source")
         val CUSTOM_LIGHT_COLORS = stringPreferencesKey("custom_light_colors")
         val CUSTOM_DARK_COLORS = stringPreferencesKey("custom_dark_colors")
@@ -420,6 +435,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_AUTO_PUNCTUATION.name,
                 NEURAL_RERANK.name,
                 NEURAL_PHRASES.name,
+                KEY_BORDER.name,
+                BOLD_LABELS.name,
             ) + perProfile(NUMBER_ROW)
         val INT_KEYS =
             setOf(
@@ -445,6 +462,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 MODE_ENTER_KEY_WIDTH.name,
                 SOUND_VOLUME.name,
                 LM_STRENGTH.name,
+                KEY_RADIUS.name,
+                LABEL_SCALE.name,
             ) + perProfile(BOTTOM_KEY_WIDTH, MODE_ENTER_KEY_WIDTH)
         val STRING_KEYS =
             setOf(
@@ -454,6 +473,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_ENGINE.name,
                 NEURAL_MODEL.name,
                 NEURAL_ENGINE.name,
+                PRESS_STYLE.name,
                 THEME_SOURCE.name,
                 CUSTOM_LIGHT_COLORS.name,
                 CUSTOM_DARK_COLORS.name,

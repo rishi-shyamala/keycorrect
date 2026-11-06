@@ -148,3 +148,24 @@ class KeyDrawingTest {
         assertThat(icon(ResolvedKey("?123", KeyAction.SwitchLayer("symbols1")))).isNull()
     }
 }
+
+class KeyCornerTest {
+    @Test
+    fun defaultFractionIsAboutTenDp() {
+        val dp = keyCornerDp(dev.keycorrect.core.settings.KeyboardSettings.DEFAULT_KEY_RADIUS, 54, 6)
+        assertThat(dp).isWithin(0.2f).of(10f)
+    }
+
+    @Test
+    fun squareAndPill() {
+        assertThat(keyCornerDp(0f, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(0.5f, 54, 6)).isEqualTo(24f)
+    }
+
+    @Test
+    fun outOfRangeIsClamped() {
+        assertThat(keyCornerDp(-1f, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(3f, 54, 6)).isEqualTo(24f)
+        assertThat(keyCornerDp(0.2f, 4, 6)).isEqualTo(0f)
+    }
+}

@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -48,6 +50,7 @@ import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardLayer
 import dev.keycorrect.core.layout.ResolvedKey
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.core.settings.PressStyle
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Enough for every label of a layer in each shift state, so drawing never re-measures text. */
@@ -59,6 +62,11 @@ private const val HINT_ICON_DP = 12f
 
 /** Height of the spacebar's split line as a share of the key's height. */
 private const val SPLIT_LINE_HEIGHT = 0.4f
+
+/** Width of the key border and of the outline that shows a held key. */
+private const val BORDER_DP = 1f
+private const val PRESS_OUTLINE_DP = 2.5f
+private const val BORDER_ALPHA = 0.45f
 
 /** Backspace swipe travel per further word, in dp. */
 private const val WORD_STEP_DP = 40f
@@ -119,11 +127,13 @@ internal fun KeyboardSurface(
     // geometry changes; never before the surface has a size.
     LaunchedEffect(geometry) { currentOnGeometry(geometry) }
     val textCache =
-        remember(textMeasurer) {
+        remember(textMeasurer, settings.labelScale, settings.boldLabels) {
+            val weight = if (settings.boldLabels) FontWeight.Bold else null
+            val scale = settings.labelScale
             KeyTextCache(
                 textMeasurer,
-                charStyle = TextStyle(fontSize = 22.sp),
-                modifierStyle = TextStyle(fontSize = 16.sp),
+                charStyle = TextStyle(fontSize = (22 * scale).sp, fontWeight = weight),
+                modifierStyle = TextStyle(fontSize = (16 * scale).sp, fontWeight = weight),
                 hintStyle = TextStyle(fontSize = 10.sp),
             )
         }
@@ -338,6 +348,9 @@ private class KeyDrawer(val text: KeyTextCache) {
     var hintInset = 0f
     var hintIconPx = 0f
     var radius = CornerRadius.Zero
+    var border: Stroke? = null
+    var pressOutline: Stroke? = null
+    var shadePress = true
     var spaceSplit = false
     var shift = ShiftState.Off
     var enterLabel = ""
@@ -365,11 +378,24 @@ private class KeyDrawer(val text: KeyTextCache) {
             gap = settings.keyGapDp.dp.toPx()
             iconPx = KEY_ICON_DP.dp.toPx()
             splitWidth = 1.dp.toPx()
-            radius = CornerRadius(KeyCornerRadius.toPx())
+            radius =
+                CornerRadius(
+                    keyCornerDp(settings.keyRadius, settings.keyHeightDp, settings.keyGapDp)
+                        .dp
+                        .toPx()
+                )
+            border = if (settings.keyBorder) Stroke(BORDER_DP.dp.toPx()) else null
+            pressOutline =
+                if (settings.pressStyle == PressStyle.Outline) {
+                    Stroke(PRESS_OUTLINE_DP.dp.toPx())
+                } else {
+                    null
+                }
             hintInset = 5.dp.toPx()
             hintIconPx = HINT_ICON_DP.dp.toPx()
         }
         spaceSplit = settings.spacebarCursor
+        shadePress = settings.pressStyle == PressStyle.Shade
         shift = shiftOf()
         text.prepare(geometry, shift, enterLabel, scope)
     }
@@ -382,18 +408,42 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
     val gap = d.gap
     val shiftState = d.shift
     val latch = latchOf(key, d.modifiers)
+    // Only the shade style changes the colours of a held key.
+    val shaded = isPressed && d.shadePress
+    val topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2)
+    val keySize = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap)
     drawRoundRect(
-        color = keyFill(key, isPressed, shiftState, colors, latch),
-        topLeft = Offset(slot.left + gap / 2, slot.top + gap / 2),
-        size = Size(slot.right - slot.left - gap, slot.bottom - slot.top - gap),
+        color = keyFill(key, shaded, shiftState, colors, latch),
+        topLeft = topLeft,
+        size = keySize,
         cornerRadius = d.radius,
     )
+    val border = d.border
+    if (border != null) {
+        drawRoundRect(
+            color = keyContent(key, shaded, shiftState, colors, latch).copy(alpha = BORDER_ALPHA),
+            topLeft = topLeft,
+            size = keySize,
+            cornerRadius = d.radius,
+            style = border,
+        )
+    }
+    val outline = d.pressOutline
+    if (isPressed && outline != null) {
+        drawRoundRect(
+            color = colors.primary,
+            topLeft = topLeft,
+            size = keySize,
+            cornerRadius = d.radius,
+            style = outline,
+        )
+    }
     val icon = keyIconFor(key, shiftState, d.enterLabel)
     if (icon != null) {
         with(KeyIconArt) {
             drawKeyIcon(
                 icon,
-                keyContent(key, isPressed, shiftState, colors, latch),
+                keyContent(key, shaded, shiftState, colors, latch),
                 slot.centerX,
                 slot.centerY,
                 d.iconPx,
@@ -403,7 +453,7 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
         d.text.label(slot.index, key)?.let { layout ->
             drawText(
                 layout,
-                color = keyContent(key, isPressed, shiftState, colors, latch),
+                color = keyContent(key, shaded, shiftState, colors, latch),
                 topLeft =
                     Offset(
                         slot.centerX - layout.size.width / 2f,
@@ -417,7 +467,7 @@ private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
         val x = slot.left + (slot.right - slot.left) * SPACE_SELECT_SPLIT
         val half = (slot.bottom - slot.top - gap) * SPLIT_LINE_HEIGHT / 2
         drawLine(
-            color = keyContent(key, isPressed, shiftState, colors, latch).copy(alpha = 0.25f),
+            color = keyContent(key, shaded, shiftState, colors, latch).copy(alpha = 0.25f),
             start = Offset(x, slot.centerY - half),
             end = Offset(x, slot.centerY + half),
             strokeWidth = d.splitWidth,

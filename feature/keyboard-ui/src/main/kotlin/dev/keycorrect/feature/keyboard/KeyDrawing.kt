@@ -14,7 +14,19 @@ import dev.keycorrect.core.layout.ResolvedKey
  * ([dev.keycorrect.core.settings.KeyboardSettings.keyGapDp]) inside its slot.
  */
 internal val KeyGap = 6.dp
-internal val KeyCornerRadius = 10.dp
+
+/**
+ * Corner radius in dp of a key whose slot is [keyHeightDp] tall with [gapDp] between keys: the
+ * [fraction] (0 square .. 0.5 pill) of the drawn key's height.
+ */
+internal fun keyCornerDp(fraction: Float, keyHeightDp: Int, gapDp: Int): Float =
+    fraction.coerceIn(0f, 0.5f) * (keyHeightDp - gapDp).coerceAtLeast(0)
+
+/** The key corner radius for panels that draw their own buttons (provided by the keyboard). */
+internal val LocalKeyRadius = androidx.compose.runtime.compositionLocalOf { 10.dp }
+
+/** The popup and preview bubbles are rounder than keys by this factor (14 dp at the default). */
+internal const val OVERLAY_RADIUS_SCALE = 1.4f
 
 /** The text drawn on [key] under [shift]; the Enter key shows [enterLabel]. */
 internal fun keyLabel(key: ResolvedKey, shift: ShiftState, enterLabel: String): String =
