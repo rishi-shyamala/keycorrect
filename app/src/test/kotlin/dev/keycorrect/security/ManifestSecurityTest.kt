@@ -12,6 +12,7 @@ import org.w3c.dom.Element
  * upgrade that adds one fails here instead of shipping (docs/SECURITY.md).
  */
 class ManifestSecurityTest {
+    private val PROFILE_INSTALLER = "androidx.profileinstaller.ProfileInstallReceiver"
     private val android = "http://schemas.android.com/apk/res/android"
 
     private fun load(property: String): Element {
@@ -53,15 +54,19 @@ class ManifestSecurityTest {
     }
 
     @Test
-    fun appExportsOnlyTheImeServiceAndTheLauncherActivity() {
+    fun appExportsOnlyTheImeServiceTheLauncherActivityAndTheProfileInstaller() {
         val exported = load("kc.manifest.app").components().filter { it.attr("exported") == "true" }
         assertThat(exported.map { it.attr("name") })
             .containsExactly(
                 "dev.keycorrect.ime.KeyCorrectImeService",
                 "dev.keycorrect.settings.SettingsActivity",
+                PROFILE_INSTALLER,
             )
-        val ime = exported.single { it.tagName == "service" }
+        val ime = exported.single { it.attr("name") == "dev.keycorrect.ime.KeyCorrectImeService" }
         assertThat(ime.attr("permission")).isEqualTo("android.permission.BIND_INPUT_METHOD")
+        // Baseline profiles (adb, Macrobenchmark): only the shell/system may call it.
+        val installer = exported.single { it.attr("name") == PROFILE_INSTALLER }
+        assertThat(installer.attr("permission")).isEqualTo("android.permission.DUMP")
     }
 
     @Test
