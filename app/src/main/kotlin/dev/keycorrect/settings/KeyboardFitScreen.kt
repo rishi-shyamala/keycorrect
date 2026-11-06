@@ -313,7 +313,10 @@ private fun PreviewPair(now: FitSizes, proposed: FitSizes) {
             proposed.keyGapDp,
             proposed.edgePaddingDp,
         )
-    val maxHeight = maxOf(now.keyHeightDp, proposed.keyHeightDp) * PREVIEW_ROWS
+    // The canvas draws at half scale: frame height is (rows * keyHeight + 2 * padding) / 2.
+    val maxHeight =
+        (maxOf(now.keyHeightDp, proposed.keyHeightDp) * PREVIEW_ROWS +
+            2 * maxOf(now.edgePaddingDp, proposed.edgePaddingDp)) / 2 + 2
     Row(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },

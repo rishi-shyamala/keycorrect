@@ -123,6 +123,20 @@ class FieldLabActivity : Activity() {
         label("Image field (accepts images; logs what it receives)")
         addImageField(column)
 
+        label("Keyboard fit (seeds 400 synthetic words, touches 0.25 key heights low)")
+        val seeded = TextView(this)
+        column.addView(
+            Button(this).apply {
+                text = "Seed fit data"
+                setOnClickListener {
+                    seedFitData(this@FieldLabActivity) { msg ->
+                        runOnUiThread { seeded.text = msg }
+                    }
+                }
+            }
+        )
+        column.addView(seeded)
+
         label("TYPE_NULL terminal (tap to focus; shows key events and committed text)")
         val log =
             TextView(this).apply {

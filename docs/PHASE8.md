@@ -31,6 +31,7 @@ recommend size changes from their own touch data.
   - the recommendation with a preview of the proposed keyboard;
   - the estimated effect;
   - Apply and Undo.
+- **How the estimate works:** it is a Gaussian fit of the per-key statistics, not a replay of individual touches. Each letter key (a-z only; the number row and bottom row are left out) is modelled as an independent normal in x and y around its mean offset, with its own spread, rescaled from key-size units to dp using the cell size the statistics were recorded at. The miss rate is the chance a touch lands outside a cell of the proposed size, weighted by each key's sample count. The app never stores individual touches or text (privacy: only counts, means and spreads exist), so a replay is not possible, and the fit lets any proposed geometry be scored in closed form. It is an estimate: tails are trimmed by the outlier filter, so real misses can be somewhat higher.
 - **Applies to:** the profile's size settings from 8a.
 
 ### 8c. Look

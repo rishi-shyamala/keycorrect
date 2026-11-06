@@ -309,7 +309,7 @@
     <string name="fit_suggest_height">Make keys %1$d%% taller: about %2$d%% fewer missed keys</string>
     <string name="fit_suggest_gap">Make the gap between keys %1$d dp smaller: about %2$d%% fewer missed keys</string>
     <string name="fit_suggest_edge">Make the edge padding %1$d dp smaller: about %2$d%% fewer missed keys</string>
-    <string name="fit_estimate">Estimated from your recorded taps. Missed keys would go from %1$s to %2$s of taps.</string>
+    <string name="fit_estimate">An estimate from the average position and spread of your taps on each key. Missed keys would go from %1$s to %2$s of taps.</string>
     <string name="fit_preview_now">Now</string>
     <string name="fit_preview_proposed">Proposed</string>
     <string name="fit_preview_description">Preview: the keyboard now is %1$d dp per row, the proposed one is %2$d dp per row, with keys %3$d dp apart and %4$d dp of edge padding.</string>
