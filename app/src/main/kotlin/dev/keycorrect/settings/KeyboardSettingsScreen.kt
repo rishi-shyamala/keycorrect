@@ -95,7 +95,11 @@ private fun SizeProfile.labelRes(): Int =
 
 /** Which profile's sizes are edited: this device's by default, any of the four on request. */
 @Composable
-private fun ProfilePicker(current: SizeProfile, editing: SizeProfile, onPick: (SizeProfile) -> Unit) {
+private fun ProfilePicker(
+    current: SizeProfile,
+    editing: SizeProfile,
+    onPick: (SizeProfile) -> Unit,
+) {
     Text(
         stringResource(R.string.keyboard_sizes_editing, stringResource(editing.labelRes())),
         style = MaterialTheme.typography.titleMedium,

@@ -168,15 +168,15 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         clipboardCapture.register()
         appContainer.clipboardEnvironment.imagePaster = imagePaster
         lifecycleScope.launch {
-            appContainer.settingsRepository.settings.collect {
-                storedSettings = it
-                val it = it.forProfile(sizeProfile)
-                settingsFlow.value = it
-                if (!it.inlineAutofill) autofill.clear()
-                controller.updateSettings(it)
-                predictionHost.applySettings(it)
-                neuralHost.apply(it)
-                appContainer.voiceHost.applySettings(it)
+            appContainer.settingsRepository.settings.collect { stored ->
+                storedSettings = stored
+                val sized = stored.forProfile(sizeProfile)
+                settingsFlow.value = sized
+                if (!sized.inlineAutofill) autofill.clear()
+                controller.updateSettings(sized)
+                predictionHost.applySettings(sized)
+                neuralHost.apply(sized)
+                appContainer.voiceHost.applySettings(sized)
             }
         }
     }

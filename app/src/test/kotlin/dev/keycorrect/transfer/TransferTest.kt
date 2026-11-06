@@ -33,6 +33,7 @@ import dev.keycorrect.core.learning.model.TouchRow
 import dev.keycorrect.core.learning.model.UserWordRow
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.settings.SettingsRepository
+import dev.keycorrect.core.settings.SizeProfile
 import dev.keycorrect.core.transfer.DeviceProfile
 import dev.keycorrect.core.transfer.ImportMode
 import dev.keycorrect.core.transfer.ImportPlan
@@ -451,6 +452,35 @@ class TransferTest {
         assertThat(d.repo.exportValues()["key_height_dp"]).isEqualTo(48)
         assertThat(d.repo.exportValues()["haptics_enabled"]).isEqualTo(false)
         assertThat(d.host.exportState().touch).isEqualTo(local().learning.touch)
+    }
+
+    @Test
+    fun profilesTravelAndAreSkippedOnADifferentScreen() = runTest {
+        val landscape = SizeProfile(tablet = false, landscape = true)
+        val tabletPortrait = SizeProfile(tablet = true, landscape = false)
+        val d = device(local().learning, name = "p")
+        d.repo.update { it.updateSizes(landscape) { s -> s.copy(keyHeightDp = 44) } }
+        d.start()
+        val source =
+            mapOf(
+                "key_height_dp@phone_landscape" to 70,
+                "key_height_dp@tablet_portrait" to 72,
+                "number_row@phone_landscape" to false,
+            )
+        val bundle = bundleOf(sourceState(settings = source), TABLET)
+        d.service.import(bundle, d.service.plan(bundle, ImportMode.Merge, false))
+        // Different screen: the sizes stay; the number row is a preference and comes along.
+        val after = d.repo.settings.first()
+        assertThat(after.sizeFor(landscape).keyHeightDp).isEqualTo(44)
+        assertThat(after.sizeFor(landscape).numberRow).isFalse()
+        assertThat(after.sizeFor(tabletPortrait).keyHeightDp).isNotEqualTo(72)
+
+        // Same screen: all profiles come in.
+        val same = bundleOf(sourceState(settings = source), PHONE)
+        d.service.import(same, d.service.plan(same, ImportMode.Merge, false))
+        val now = d.repo.settings.first()
+        assertThat(now.sizeFor(landscape).keyHeightDp).isEqualTo(70)
+        assertThat(now.sizeFor(tabletPortrait).keyHeightDp).isEqualTo(72)
     }
 
     // ---------------------------------------------------------------- settings this device keeps

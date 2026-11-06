@@ -225,7 +225,14 @@ data class KeyboardSettings(
     /** The six size settings held in the global fields: the value of any profile not in [sizes]. */
     val globalSizes: SizeSettings
         get() =
-            SizeSettings(keyHeightDp, bottomKeyWidth, modeEnterKeyWidth, edgePaddingDp, keyGapDp, numberRow)
+            SizeSettings(
+                keyHeightDp,
+                bottomKeyWidth,
+                modeEnterKeyWidth,
+                edgePaddingDp,
+                keyGapDp,
+                numberRow,
+            )
 
     /** The sizes to use on [profile]. */
     fun sizeFor(profile: SizeProfile): SizeSettings = sizes[profile] ?: globalSizes
@@ -234,7 +241,9 @@ data class KeyboardSettings(
     fun withSizes(profile: SizeProfile, size: SizeSettings): KeyboardSettings =
         copy(sizes = sizes + (profile to size))
 
-    /** A copy with [profile]'s sizes changed by [transform] (the helper the settings screen uses). */
+    /**
+     * A copy with [profile]'s sizes changed by [transform] (the helper the settings screen uses).
+     */
     fun updateSizes(profile: SizeProfile, transform: (SizeSettings) -> SizeSettings) =
         withSizes(profile, transform(sizeFor(profile)))
 

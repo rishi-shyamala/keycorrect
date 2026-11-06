@@ -291,7 +291,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_MODEL] = s.neuralModel
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
-        for ((profile, size) in s.sizes) {
+        writeSizes(s.sizes)
+    }
+
+    private fun MutablePreferences.writeSizes(sizes: Map<SizeProfile, SizeSettings>) {
+        for ((profile, size) in sizes) {
             val at = profile.id
             this[intPreferencesKey(sized(KEY_HEIGHT_DP, at))] = size.keyHeightDp
             this[floatPreferencesKey(sized(BOTTOM_KEY_WIDTH, at))] = size.bottomKeyWidth

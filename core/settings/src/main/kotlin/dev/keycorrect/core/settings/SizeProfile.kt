@@ -7,7 +7,8 @@ package dev.keycorrect.core.settings
 data class SizeProfile(val tablet: Boolean, val landscape: Boolean) {
     /** The stable name used in stored keys, e.g. `phone_landscape`. */
     val id: String
-        get() = (if (tablet) "tablet" else "phone") + "_" + (if (landscape) "landscape" else "portrait")
+        get() =
+            (if (tablet) "tablet" else "phone") + "_" + (if (landscape) "landscape" else "portrait")
 
     companion object {
         const val TABLET_MIN_SMALLEST_WIDTH_DP = 600

@@ -83,11 +83,16 @@ data class SettingsSection(val values: Map<String, SettingValue>) {
                 "mode_enter_key_width",
             )
 
-        /** The ids of the size profiles (core/settings `SizeProfile.id`; a test keeps them in sync). */
+        /**
+         * The ids of the size profiles (core/settings `SizeProfile.id`; a test keeps them in sync).
+         */
         private val SIZE_PROFILE_IDS =
             listOf("phone_portrait", "phone_landscape", "tablet_portrait", "tablet_landscape")
 
-        /** Sizes, global and per profile (`key_height_dp@phone_landscape`), that only make sense on the screen they were tuned for (decision T-4). */
+        /**
+         * Sizes, global and per profile (`key_height_dp@phone_landscape`), that only make sense on
+         * the screen they were tuned for (decision T-4).
+         */
         val SCREEN_TIED_KEYS: Set<String> =
             SIZE_KEYS.flatMap { key -> listOf(key) + SIZE_PROFILE_IDS.map { "$key@$it" } }.toSet()
     }
