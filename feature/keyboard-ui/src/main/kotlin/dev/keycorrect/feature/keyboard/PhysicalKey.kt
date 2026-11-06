@@ -7,6 +7,12 @@ sealed interface PhysicalKey {
     /** A printable character, already cased by the keyboard's shift and caps lock. */
     data class Text(val text: String) : PhysicalKey
 
+    /**
+     * A dead key (an accent that combines with the next letter): [accent] is the accent character.
+     * The controller holds it back and combines it with the next key.
+     */
+    data class Dead(val accent: Int) : PhysicalKey
+
     data object Space : PhysicalKey
 
     data object Backspace : PhysicalKey
@@ -25,6 +31,7 @@ sealed interface PhysicalKey {
 }
 
 private const val COMBINING_ACCENT = Int.MIN_VALUE // KeyCharacterMap.COMBINING_ACCENT: a dead key
+private const val COMBINING_ACCENT_MASK = Int.MAX_VALUE // KeyCharacterMap.COMBINING_ACCENT_MASK
 private const val FIRST_PRINTABLE = 0x20
 private const val DELETE_CHAR = 0x7f
 
@@ -64,9 +71,9 @@ fun physicalKeyFor(
         keyCode == KeyEvent.KEYCODE_SPACE -> PhysicalKey.Space
         keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ->
             PhysicalKey.Enter
-        unicodeChar == 0 ||
-            unicodeChar and COMBINING_ACCENT != 0 ||
-            unicodeChar < FIRST_PRINTABLE ||
-            unicodeChar == DELETE_CHAR -> PhysicalKey.Shortcut
+        unicodeChar and COMBINING_ACCENT != 0 ->
+            PhysicalKey.Dead(unicodeChar and COMBINING_ACCENT_MASK)
+        unicodeChar == 0 || unicodeChar < FIRST_PRINTABLE || unicodeChar == DELETE_CHAR ->
+            PhysicalKey.Shortcut
         else -> PhysicalKey.Text(String(Character.toChars(unicodeChar)))
     }

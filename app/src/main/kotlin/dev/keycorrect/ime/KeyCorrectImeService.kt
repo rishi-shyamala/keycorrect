@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
@@ -159,6 +160,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onWindowHidden() {
+        handledKeys.clear()
         super.onWindowHidden()
         neuralHost.onWindowHidden()
         packRestart.onKeyboardHidden()
@@ -232,15 +234,34 @@ class KeyCorrectImeService : ComposeInputMethodService() {
      * navigation, function keys, everything in sensitive fields), which falls through untouched.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (isInputViewShown && handlePhysical(event)) {
-            handledKeys += keyCode
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
+        val handled =
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                backHandled()
+            } else {
+                isInputViewShown && handlePhysical(event)
+            }
+        if (handled) handledKeys += keyCode
+        // With only the slim bar up, Back belongs to the app (the framework would hide the bar).
+        val toApp = keyCode == KeyEvent.KEYCODE_BACK && !handled && backToApp()
+        return handled || (!toApp && super.onKeyDown(keyCode, event))
     }
 
+    /** Back with a physical keyboard: an open panel closes first. */
+    private fun backHandled() =
+        isInputViewShown && controller.physicalMode && controller.onHardwareBack()
+
+    private fun backToApp() = isInputViewShown && controller.backGoesToApp
+
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
-        if (handledKeys.remove(keyCode)) true else super.onKeyUp(keyCode, event)
+        when {
+            handledKeys.remove(keyCode) -> true
+            keyCode == KeyEvent.KEYCODE_BACK && backToApp() -> false
+            else -> super.onKeyUp(keyCode, event)
+        }
+
+    /** The system setting "show on-screen keyboard" with a physical keyboard attached. */
+    private fun systemShowsKeyboardWithHardware(): Boolean =
+        Settings.Secure.getInt(contentResolver, SHOW_IME_WITH_HARD_KEYBOARD, 0) != 0
 
     private fun handlePhysical(event: KeyEvent): Boolean =
         controller.onPhysicalKey(
@@ -264,6 +285,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             settingsFlow.value = sized
             controller.updateSettings(sized)
         }
+        controller.fullKeyboardByDefault = systemShowsKeyboardWithHardware()
         controller.updateDevice(profile.tablet, profile.landscape, profile.hardwareKeyboard)
     }
 
@@ -338,6 +360,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
      */
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        handledKeys.clear()
         val identity = attribute?.let(EditorIdentity::from)
         val sameField = identity != null && identity.continues(inputIdentity, restarting)
         inputIdentity = identity
@@ -345,12 +368,14 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     }
 
     override fun onFinishInput() {
+        handledKeys.clear()
         controller.onFinishInput()
         autofill.clear()
         super.onFinishInput()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        handledKeys.clear()
         controller.onFinishInput()
         configRestarts.reset()
         learningHost.requestFlush(FlushReason.KeyboardHidden)
@@ -361,6 +386,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         if (shouldRecordField(editorInfo.inputType, editorInfo.packageName, packageName)) {
             appContainer.lastField = describeField(editorInfo)
         }
+        controller.fullKeyboardByDefault = systemShowsKeyboardWithHardware()
         // The controller first: super resumes the lifecycle, which lets Compose draw, and the
         // first frame should show this field's state (layer, shift, strip), not the last one's.
         controller.onStartInput(
@@ -412,6 +438,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     private companion object {
         /** How long to wait for the learned data to be saved before restarting the process. */
         const val RESTART_FLUSH_MS = 2_000L
+
+        /** `Settings.Secure.SHOW_IME_WITH_HARD_KEYBOARD`, a hidden constant. */
+        const val SHOW_IME_WITH_HARD_KEYBOARD = "show_ime_with_hard_keyboard"
     }
 }
 

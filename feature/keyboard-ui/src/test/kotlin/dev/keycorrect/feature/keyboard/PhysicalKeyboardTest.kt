@@ -169,7 +169,7 @@ class PhysicalKeyboardTest {
     }
 
     @Test
-    fun deadKeysAndControlCharactersPassThrough() {
+    fun controlCharactersPassThroughAndDeadKeysAreDead() {
         assertThat(
                 physicalKeyFor(
                     KeyEvent.KEYCODE_GRAVE,
@@ -179,7 +179,7 @@ class PhysicalKeyboardTest {
                     false,
                 )
             )
-            .isEqualTo(PhysicalKey.Shortcut)
+            .isEqualTo(PhysicalKey.Dead('`'.code))
         assertThat(physicalKeyFor(KeyEvent.KEYCODE_BACK, 0, false, false, false))
             .isEqualTo(PhysicalKey.Shortcut)
     }
@@ -235,5 +235,123 @@ class PhysicalKeyboardTest {
         controller.updateDevice(tablet = false, landscape = false, hardwareKeyboard = false)
         start()
         assertThat(controller.tools).doesNotContain(StripTool.Keyboard)
+    }
+
+    private fun dead(accent: Char) =
+        controller.onPhysicalKey(
+            physicalKeyFor(
+                KeyEvent.KEYCODE_GRAVE,
+                Int.MIN_VALUE or accent.code,
+                false,
+                false,
+                false,
+            )
+        )
+
+    private fun combiner() {
+        controller.deadCharCombiner = { accent, char ->
+            if (accent == '\u00b4'.code && char == 'e'.code) 'é'.code else 0
+        }
+    }
+
+    @Test
+    fun aDeadKeyIsHeldBackAndCombinesWithTheNextLetter() {
+        start()
+        combiner()
+        assertThat(
+                physicalKeyFor(KeyEvent.KEYCODE_GRAVE, Int.MIN_VALUE or 0xb4, false, false, false)
+            )
+            .isEqualTo(PhysicalKey.Dead(0xb4))
+        assertThat(dead('\u00b4')).isTrue()
+        assertThat(text()).isEmpty()
+        assertThat(press('e')).isTrue()
+        assertThat(text()).isEqualTo("é")
+    }
+
+    @Test
+    fun aDeadKeyWithoutACombinationTypesTheAccentAndTheLetter() {
+        start()
+        combiner()
+        dead('\u00b4')
+        press('x')
+        assertThat(text()).isEqualTo("\u00b4x")
+    }
+
+    @Test
+    fun spaceAfterADeadKeyTypesTheAccentAndBackspaceCancelsIt() {
+        start()
+        combiner()
+        dead('\u00b4')
+        space()
+        assertThat(text()).isEqualTo("\u00b4")
+        dead('\u00b4')
+        backspace()
+        press('e')
+        assertThat(text()).isEqualTo("\u00b4e")
+    }
+
+    @Test
+    fun aShortcutClearsAPendingDeadKey() {
+        start()
+        combiner()
+        dead('\u00b4')
+        controller.onPhysicalKey(PhysicalKey.Shortcut)
+        press('e')
+        assertThat(text()).isEqualTo("e")
+    }
+
+    @Test
+    fun aNewFieldClearsAPendingDeadKey() {
+        start()
+        combiner()
+        dead('\u00b4')
+        start()
+        press('e')
+        assertThat(text()).isEqualTo("e")
+    }
+
+    @Test
+    fun touchesKeepTheScreenProfileAndPhysicalKeysTheHardwareOne() {
+        start()
+        assertThat(controller.currentTouchKey).startsWith("Tablet/")
+        press('a')
+        assertThat(controller.currentTouchKey).startsWith("Tablet/")
+    }
+
+    @Test
+    fun enterInTheEmojiSearchGoesToTheSearchNotTheApp() {
+        start()
+        controller.showPanel(KeyboardPanel.Emoji)
+        controller.openEmojiSearch()
+        val enter = physicalKeyFor(KeyEvent.KEYCODE_ENTER, '\n'.code, false, false, false)
+        assertThat(controller.onPhysicalKey(enter)).isTrue()
+    }
+
+    @Test
+    fun backClosesAPanelAndOtherwiseBelongsToTheAppOnTheSlimBar() {
+        start()
+        assertThat(controller.backGoesToApp).isTrue()
+        assertThat(controller.onHardwareBack()).isFalse()
+        controller.onTool(StripTool.Emoji) {}
+        assertThat(controller.backGoesToApp).isFalse()
+        assertThat(controller.onHardwareBack()).isTrue()
+        assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
+    }
+
+    @Test
+    fun theFullKeyboardResetsOnANewFieldAndWhenTheKeyboardAttaches() {
+        start()
+        controller.toggleFullKeyboard()
+        assertThat(controller.fullKeyboardShown).isTrue()
+        start()
+        assertThat(controller.fullKeyboardShown).isFalse()
+        controller.toggleFullKeyboard()
+        controller.updateDevice(tablet = true, landscape = true, hardwareKeyboard = false)
+        controller.updateDevice(tablet = true, landscape = true, hardwareKeyboard = true)
+        assertThat(controller.fullKeyboardShown).isFalse()
+        controller.fullKeyboardByDefault = true
+        assertThat(controller.fullKeyboardShown).isTrue()
+        start()
+        assertThat(controller.fullKeyboardShown).isTrue()
     }
 }
