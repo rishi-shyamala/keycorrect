@@ -36,8 +36,7 @@ class ThemeSettingsTest {
         repo = SettingsRepository(store)
     }
 
-    @After
-    fun tearDown() = scope.cancel()
+    @After fun tearDown() = scope.cancel()
 
     @Test
     fun defaultsToWallpaperWithNoCustomColors() = runTest {
@@ -97,7 +96,9 @@ class ThemeSettingsTest {
     fun sanitizingForcesOpaqueAndRightLength() {
         val s = KeyboardSettings(customLightColors = List(8) { 0x00123456 }).sanitized()
         assertThat(s.customLightColors).containsExactlyElementsIn(List(8) { 0xFF123456.toInt() })
-        assertThat(KeyboardSettings(customDarkColors = listOf(1, 2, 3)).sanitized().customDarkColors)
+        assertThat(
+                KeyboardSettings(customDarkColors = listOf(1, 2, 3)).sanitized().customDarkColors
+            )
             .isEmpty()
     }
 

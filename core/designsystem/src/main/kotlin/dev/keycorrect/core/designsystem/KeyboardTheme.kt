@@ -2,8 +2,8 @@ package dev.keycorrect.core.designsystem
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import dev.keycorrect.core.settings.ThemeColors
 import dev.keycorrect.core.settings.ThemeSource
 import kotlin.math.pow
@@ -60,12 +60,24 @@ data class KeyboardColors(
 
     companion object {
         private const val OPAQUE = 0xFF000000.toInt()
+        private val BLANK =
+            KeyboardColors(
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+                Color.Black,
+            )
 
         /** Inverse of [toArgb]; null unless [argb] has one color per role. */
         fun fromArgb(argb: List<Int>): KeyboardColors? {
             if (argb.size != ThemeColors.COUNT) return null
-            val c = argb.map { Color(it or OPAQUE) }
-            return KeyboardColors(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7])
+            return ThemeRole.entries.fold(BLANK) { acc, role ->
+                acc.with(role, Color(argb[role.ordinal] or OPAQUE))
+            }
         }
     }
 }
@@ -129,7 +141,9 @@ fun KeyboardColors.keyContrast(): Double = contrastRatio(keyText.toArgb(), key.t
 /** Whether the key text is too faint on the key (below [MIN_TEXT_CONTRAST]). */
 fun KeyboardColors.lowContrast(): Boolean = keyContrast() < MIN_TEXT_CONTRAST
 
-private fun c(argb: Long) = Color(argb or 0xFF000000)
+private const val OPAQUE_LONG = 0xFF000000
+
+private fun c(rgb: Long) = Color(rgb or OPAQUE_LONG)
 
 private val SamsungLight =
     KeyboardColors(
@@ -197,9 +211,9 @@ fun wallpaperColors(s: ColorScheme, dark: Boolean) =
     classicColors(s).copy(key = if (dark) s.surfaceContainerHighest else s.surfaceContainerLowest)
 
 /**
- * The theme for [source] in light or [dark] mode. [dynamic] is the system's Material You scheme
- * for that mode; [custom] the user's colors for it (an empty or short list falls back to the
- * wallpaper colors).
+ * The theme for [source] in light or [dark] mode. [dynamic] is the system's Material You scheme for
+ * that mode; [custom] the user's colors for it (an empty or short list falls back to the wallpaper
+ * colors).
  */
 fun resolveKeyboardTheme(
     source: ThemeSource,
@@ -223,7 +237,6 @@ fun resolveKeyboardTheme(
  * theme's roles laid over it. Classic comes out equal to [base].
  */
 fun KeyboardTheme.toColorScheme(base: ColorScheme): ColorScheme {
-    if (dynamic && colors == classicColors(base)) return base
     val k = colors
     val themed =
         base.copy(
@@ -232,23 +245,27 @@ fun KeyboardTheme.toColorScheme(base: ColorScheme): ColorScheme {
             surfaceContainer = k.background,
             surfaceContainerHighest = k.key,
             secondaryContainer = k.modifierKey,
-            onSecondaryContainer = k.keyText,
+            onSecondaryContainer = if (dynamic) base.onSecondaryContainer else k.keyText,
             onSurface = k.keyText,
             onSurfaceVariant = k.hintText,
             primary = k.accent,
             primaryContainer = k.pressedKey,
         )
-    if (dynamic) return themed.copy(onSecondaryContainer = base.onSecondaryContainer)
-    val latched = lerp(k.modifierKey, k.accent, LATCH_BLEND)
-    return themed.copy(
-        onPrimary = onColor(k.accent),
-        onPrimaryContainer = onColor(k.pressedKey),
-        tertiary = k.accent,
-        onTertiary = onColor(k.accent),
-        tertiaryContainer = latched,
-        onTertiaryContainer = onColor(latched),
-        surfaceContainerLowest = k.background,
-        surfaceContainerHigh = k.key,
-        onSecondaryContainer = k.keyText,
-    )
+    return when {
+        dynamic && k == classicColors(base) -> base
+        dynamic -> themed
+        else -> {
+            val latched = lerp(k.modifierKey, k.accent, LATCH_BLEND)
+            themed.copy(
+                onPrimary = onColor(k.accent),
+                onPrimaryContainer = onColor(k.pressedKey),
+                tertiary = k.accent,
+                onTertiary = onColor(k.accent),
+                tertiaryContainer = latched,
+                onTertiaryContainer = onColor(latched),
+                surfaceContainerLowest = k.background,
+                surfaceContainerHigh = k.key,
+            )
+        }
+    }
 }

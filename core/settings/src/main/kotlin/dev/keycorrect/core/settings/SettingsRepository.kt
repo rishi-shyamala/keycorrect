@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
  * Reads and writes [KeyboardSettings] in a Preferences [DataStore]. Once any value of a size
  * profile is stored, that profile no longer follows the global fallback.
  */
+@Suppress("TooManyFunctions") // one repository with a typed read and write per group of settings
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     /** Current settings, always sanitized; falls back to defaults if the store is unreadable. */
     val settings: Flow<KeyboardSettings> =
@@ -295,12 +296,16 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
         this[NEURAL_MODEL] = s.neuralModel
+        writeLookAndEngines(s)
+        writeSizes(s.sizes)
+    }
+
+    private fun MutablePreferences.writeLookAndEngines(s: KeyboardSettings) {
         this[THEME_SOURCE] = s.themeSource.name
         this[CUSTOM_LIGHT_COLORS] = ThemeColors.encode(s.customLightColors)
         this[CUSTOM_DARK_COLORS] = ThemeColors.encode(s.customDarkColors)
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
-        writeSizes(s.sizes)
     }
 
     private fun MutablePreferences.writeSizes(sizes: Map<SizeProfile, SizeSettings>) {

@@ -55,7 +55,9 @@ class KeyboardThemeTest {
             assertThat(l.lowContrast()).isFalse()
             assertThat(d.lowContrast()).isFalse()
         }
-        assertThat(resolveKeyboardTheme(ThemeSource.HighContrast, false, light).colors.keyContrast())
+        assertThat(
+                resolveKeyboardTheme(ThemeSource.HighContrast, false, light).colors.keyContrast()
+            )
             .isAtLeast(7.0)
     }
 

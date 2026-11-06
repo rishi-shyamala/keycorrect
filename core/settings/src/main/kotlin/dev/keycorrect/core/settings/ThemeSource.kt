@@ -38,12 +38,10 @@ object ThemeColors {
         }
 
     fun decode(text: String?): List<Int> {
-        if (text.isNullOrEmpty() || text.length > MAX_ENCODED) return emptyList()
-        val parts = text.split(',')
-        if (parts.size != COUNT) return emptyList()
-        return parts.map { part ->
-            if (part.length != HEX_DIGITS) return emptyList()
-            (part.toIntOrNull(HEX_RADIX) ?: return emptyList()) or OPAQUE
+        val parts = text?.takeIf { it.length <= MAX_ENCODED }?.split(',').orEmpty()
+        val colors = parts.mapNotNull { part ->
+            part.takeIf { it.length == HEX_DIGITS }?.toIntOrNull(HEX_RADIX)?.or(OPAQUE)
         }
+        return if (parts.size == COUNT && colors.size == COUNT) colors else emptyList()
     }
 }
