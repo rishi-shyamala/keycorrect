@@ -202,7 +202,7 @@ internal interface TouchHost {
  * Call [cancelAll] when the owner goes away.
  */
 internal class TouchStateMachine(
-    private val geometry: KeyboardGeometry,
+    var geometry: KeyboardGeometry,
     private val touch: KeyboardTouchState,
     private val host: TouchHost,
     private val clock: () -> Long,

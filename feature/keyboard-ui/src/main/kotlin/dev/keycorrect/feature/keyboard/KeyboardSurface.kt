@@ -191,11 +191,22 @@ internal fun KeyboardSurface(
             modifier =
                 Modifier.fillMaxSize()
                     .graphicsLayer()
-                    .onSizeChanged { size = it }
+                    .onSizeChanged {
+                        size = it
+                        // Straight to the touch path and the decoder, without waiting for a
+                        // recomposition (which a paused IME frame clock can delay).
+                        drawGeometry.measured(it.width, it.height)
+                        currentOnGeometry(drawGeometry.latest(geometry))
+                    }
                     .onGloballyPositioned { touch.surfaceOrigin = it.positionInWindow() }
                     .pointerInput(geometry) {
                         val machine =
-                            TouchStateMachine(geometry, touch, host, SystemClock::uptimeMillis)
+                            TouchStateMachine(
+                                drawGeometry.latest(geometry),
+                                touch,
+                                host,
+                                SystemClock::uptimeMillis,
+                            )
                         touch.reset()
                         try {
                             awaitPointerEventScope {
@@ -216,6 +227,7 @@ internal fun KeyboardSurface(
                                         machine.onTimer()
                                         continue
                                     }
+                                    machine.geometry = drawGeometry.latest(geometry)
                                     val changes = event.changes
                                     for (i in changes.indices) {
                                         val change = changes[i]
@@ -292,6 +304,18 @@ internal fun KeyboardSurface(
  */
 internal class DrawGeometry {
     private var cached: KeyboardGeometry? = null
+    private var width = 0f
+    private var height = 0f
+
+    /** The size the surface was last measured at (from `onSizeChanged`, no recomposition). */
+    fun measured(width: Int, height: Int) {
+        this.width = width.toFloat()
+        this.height = height.toFloat()
+    }
+
+    /** The geometry for the last measured size; [composed] before there is one. */
+    fun latest(composed: KeyboardGeometry): KeyboardGeometry =
+        if (width <= 0f || height <= 0f) composed else at(composed, width, height)
 
     fun at(composed: KeyboardGeometry, width: Float, height: Float): KeyboardGeometry {
         val known = cached?.takeIf { it.layer === composed.layer }

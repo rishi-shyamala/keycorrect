@@ -34,4 +34,15 @@ class DrawGeometryTest {
         assertThat(d.at(stale, 1000f, 400f)).isSameInstanceAs(first)
         assertThat(d.at(stale, 500f, 400f)).isNotSameInstanceAs(first)
     }
+
+    @Test
+    fun touchGeometryFollowsTheMeasuredSizeWithoutRecomposition() {
+        val composed = KeyboardGeometry(layer, 1f, 1f)
+        val d = DrawGeometry()
+        assertThat(d.latest(composed)).isSameInstanceAs(composed) // not measured yet
+        d.measured(1000, 400)
+        val g = d.latest(composed)
+        assertThat(g.hitTest(900f, 300f)?.key?.label).isEqualTo("a")
+        assertThat(g.slots[0].right).isEqualTo(1000f)
+    }
 }
