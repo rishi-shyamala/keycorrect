@@ -1,0 +1,23 @@
+# Security and privacy audit (Phase 9a)
+
+Scope: PLAN.md section 15, PHASE9.md decisions P9-1 and P9-2. Audited at the head of `phase-9-security`.
+
+## Results
+
+| Area | How checked | Result |
+|---|---|---|
+| Manifests (app, voicepack, neuralpack, sampleplugin) | Merged release manifest of app and sampleplugin; pack source manifests (the packs have no dependencies, so nothing is merged in); `aapt2 dump permissions` on the release APK | App permissions: VIBRATE, RECORD_AUDIO, and the signature-level `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` added by androidx.core. No INTERNET anywhere. Exported: IME service (guarded by BIND_INPUT_METHOD), launcher SettingsActivity. **Finding (low):** androidx.profileinstaller merged an exported `ProfileInstallReceiver` (guarded by the shell-only DUMP permission). **Fixed:** removed in release via `app/src/release/AndroidManifest.xml` (`tools:node="remove"`); the startup initializer still installs the baseline profile. The sampleplugin service is exported on purpose (a sample plugin; documented in its manifest). |
+| Backup, direct boot | Manifest | `allowBackup=false`, `fullBackupContent=false`, `dataExtractionRules` exclude every domain for cloud backup and device transfer. No `directBootAware` anywhere (P9-1). Not debuggable, no cleartext flag. |
+| Logs | Grepped `Log.`, `println`, `printStackTrace` in all main source sets | No user text is logged. Warnings carry only exception class names and fixed strings; the engine SDK comment documents why messages are never logged. Latency logging has numbers only. The KCEngine trace is guarded by `BuildConfig.DEBUG` and logs call counts only. Field Lab logging is in the debug source set. `println` is only in the `tools/dictbuild` CLI, which is not shipped. **Finding (low):** `proguard-android-optimize.txt` does not strip logs. **Fixed:** `-assumenosideeffects` for `Log.v/d/i` in `app/proguard-rules.pro`. |
+| Password fields (P9-2) | Code review, compile | **Finding (medium):** keys and strip were not marked. **Fixed:** the keyboard root view is set to `ACCESSIBILITY_DATA_SENSITIVE_YES` (API 34+, reset to AUTO otherwise) on each field start via `ComposeInputMethodService.setInputViewDataSensitive`; the Compose root of the keyboard (strip and keys) and every virtual key node carry `isSensitiveData` while `profile.sensitive`. No FLAG_SECURE. Needs a device check on API 34+ with a non-tool accessibility service; not exercisable on the JVM. |
+| IPC | Code review | `ClipImageProvider`: not exported, per-URI grants only, read mode only, single path segment validated by `EncryptedBlobStore.isValidName` and must match a stored image clip, bytes decrypted into a pipe (no plaintext file), insert throws, update and delete are no-ops. `NeuralEngineService`: not exported, no intent filter, bound by explicit `ComponentName`; it exposes only the engine contract. Plugin binding: explicit component intents, only plugins approved for their current signing-certificate SHA-256 (pin). No `PendingIntent` in main code. Field Lab and its FileProvider are in the debug manifest only; none are in the release manifest, resources or dex. |
+| Storage | Code review | The SQLCipher passphrase is a random 32-byte value sealed with a non-exportable AndroidKeyStore AES-GCM key and stored in private prefs; the plaintext exists only in a returned array that callers zero; never logged; excluded from backup. Clip images are sealed with a Keystore key under `noBackupFilesDir`. Engine load markers are in `noBackupFilesDir`. Imported models are in app-private `filesDir`; import copies to a temp file, hashes it, and deletes the temp file on every failure path. The backup passphrase is never stored: it lives in memory in `BackupController` only and is zeroed after use (matches TRANSFER.md). SAF display names are only cleaned and stored, never logged. |
+
+## CI guard
+
+`app/src/test/kotlin/dev/keycorrect/security/ManifestSecurityTest.kt` runs in `testDebugUnitTest`. The app module's tests depend on `processReleaseMainManifest` (app and sampleplugin) and read the merged release manifest. It fails on: any permission outside the approved set (so INTERNET), any exported component beyond the IME service (with BIND_INPUT_METHOD) and the launcher activity, an exported provider, a component without an explicit `exported`, `allowBackup` other than false, missing `dataExtractionRules`, `directBootAware`, debuggable or cleartext, Field Lab in release, and any permission or component in the pack manifests.
+
+## Follow-ups
+
+- Device check of `isSensitiveData` on an API 34+ emulator or phone with a non-tool accessibility service.
+- Release logcat check on a device while typing (Log.w remains by design: class names only).
