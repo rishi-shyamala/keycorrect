@@ -156,4 +156,18 @@ class SizeProfileTest {
         assertThat(s.forProfile(PHONE_LANDSCAPE).numberRow).isFalse()
         assertThat(s.forProfile(PHONE_PORTRAIT).keyHeightDp).isEqualTo(60)
     }
+
+    @Test
+    fun fitDismissalIsPerProfileReplacedAndPersisted() = runTest {
+        assertThat(KeyboardSettings().fitDismissedAt(PHONE_PORTRAIT)).isNull()
+        repo.update { it.withFitDismissed(PHONE_PORTRAIT, 1000L) }
+        repo.update {
+            it.withFitDismissed(PHONE_PORTRAIT, 2000L).withFitDismissed(TABLET_LANDSCAPE, 5L)
+        }
+        val s = repo.settings.first()
+        assertThat(s.fitDismissedAt(PHONE_PORTRAIT)).isEqualTo(2000L)
+        assertThat(s.fitDismissedAt(TABLET_LANDSCAPE)).isEqualTo(5L)
+        assertThat(s.fitDismissedAt(PHONE_LANDSCAPE)).isNull()
+        assertThat(s.fitDismissals).hasSize(2)
+    }
 }

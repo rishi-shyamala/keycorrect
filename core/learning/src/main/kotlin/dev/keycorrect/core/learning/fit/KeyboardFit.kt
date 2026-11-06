@@ -75,6 +75,7 @@ object KeyboardFit {
 
     private const val LETTER_COLUMNS = 10
     private const val MIN_SIGMA = 1e-6
+    private val SQRT2 = sqrt(2.0)
     private val HEIGHT_PERCENTS = listOf(5, 10, 15)
     private val GAP_DELTAS = listOf(-1, -2)
     private val EDGE_DELTAS = listOf(-1, -2)
@@ -94,7 +95,7 @@ object KeyboardFit {
         return if (x >= 0) y else -y
     }
 
-    private fun phi(z: Double) = 0.5 * (1.0 + erf(z / sqrt(2.0)))
+    private fun phi(z: Double) = (1.0 + erf(z / SQRT2)) / 2.0
 
     /** P(a normal(mean, sigma) value lies in [-half, half]); a point mass when sigma is ~0. */
     internal fun massInside(mean: Double, sigma: Double, half: Double): Double =
@@ -174,33 +175,45 @@ object KeyboardFit {
     /**
      * The candidate with the largest predicted drop in misses, or null when the profile has fewer
      * than [MIN_WORDS] accepted words, no candidate is in range, or the best one is not meaningful
-     * (under [MIN_RELATIVE_REDUCTION] or [MIN_ABSOLUTE_REDUCTION]).
+     * (under [MIN_RELATIVE_REDUCTION] or [MIN_ABSOLUTE_REDUCTION]). The statistics were recorded on
+     * [recorded] sizes (default [current]); proposals are changes from [current].
      */
     fun recommend(
         profile: ProfileTouchStatistics,
         screenWidthDp: Double,
         current: FitSizes,
         limits: FitLimits,
+        recorded: FitSizes = current,
     ): FitRecommendation? {
-        if (profile.wordCount < MIN_WORDS) return null
-        val before = missRate(profile, screenWidthDp, current, current)
+        val best = bestCandidate(profile, screenWidthDp, current, limits, recorded)
+        return best?.takeIf { profile.wordCount >= MIN_WORDS && it.isMeaningful }
+    }
+
+    private val FitRecommendation.isMeaningful: Boolean
+        get() =
+            missBefore > 0 &&
+                relativeReduction >= MIN_RELATIVE_REDUCTION &&
+                absoluteReduction >= MIN_ABSOLUTE_REDUCTION
+
+    private fun bestCandidate(
+        profile: ProfileTouchStatistics,
+        screenWidthDp: Double,
+        current: FitSizes,
+        limits: FitLimits,
+        recorded: FitSizes,
+    ): FitRecommendation? {
+        val before = missRate(profile, screenWidthDp, recorded, current)
         val best =
             candidates(current, limits)
-                .map { it to missRate(profile, screenWidthDp, current, it.sizes) }
+                .map { it to missRate(profile, screenWidthDp, recorded, it.sizes) }
                 .minByOrNull { it.second } ?: return null
-        val rec =
-            FitRecommendation(
-                best.first.kind,
-                best.first.percent,
-                best.first.sizes,
-                before,
-                best.second,
-            )
-        val meaningful =
-            before > 0 &&
-                rec.relativeReduction >= MIN_RELATIVE_REDUCTION &&
-                rec.absoluteReduction >= MIN_ABSOLUTE_REDUCTION
-        return rec.takeIf { meaningful }
+        return FitRecommendation(
+            best.first.kind,
+            best.first.percent,
+            best.first.sizes,
+            before,
+            best.second,
+        )
     }
 
     /** True while a recommendation dismissed at [dismissedAt] must stay hidden at [now]. */
