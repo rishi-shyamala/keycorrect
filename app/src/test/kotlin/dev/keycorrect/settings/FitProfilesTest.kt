@@ -41,4 +41,12 @@ class FitProfilesTest {
         assertThat(pickTouchProfile(listOf(hw), SizeProfile(false, false), 54)).isEqualTo(hw)
         assertThat(pickTouchProfile(emptyList(), SizeProfile(false, false), 54)).isNull()
     }
+
+    @Test
+    fun pickIgnoresSymbolPagesWhenLettersExist() {
+        val phone = SizeProfile(false, false)
+        val letters = stats("Phone/port/letters@54dp/b100/g2", 100)
+        val symbols = stats("Phone/port/symbols@60dp/b100/g2", 900)
+        assertThat(pickTouchProfile(listOf(letters, symbols), phone, 60)).isEqualTo(letters)
+    }
 }

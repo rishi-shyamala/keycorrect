@@ -48,8 +48,10 @@ internal fun pickTouchProfile(
     current: SizeProfile,
     currentHeightDp: Int,
 ): ProfileTouchStatistics? {
-    val mapped = profiles.filter { parseTouchKey(it.touchKey).sizeProfile == current }
-    val pool = mapped.ifEmpty { profiles }
+    // Symbol pages have their own profiles and other key sizes; the report is about the letters.
+    val letters = profiles.filter { isLettersLayer(it.touchKey) }.ifEmpty { profiles }
+    val mapped = letters.filter { parseTouchKey(it.touchKey).sizeProfile == current }
+    val pool = mapped.ifEmpty { letters }
     return pool.maxWithOrNull(
         compareBy<ProfileTouchStatistics>(
                 { parseTouchKey(it.touchKey).recordedHeightDp == currentHeightDp },
@@ -58,6 +60,10 @@ internal fun pickTouchProfile(
             .thenBy { it.touchKey }
     )
 }
+
+/** True when the touch key's layer part (`letters`, `letters+nr`...) is the letters layer. */
+internal fun isLettersLayer(touchKey: String): Boolean =
+    touchKey.split('/', limit = 3).getOrNull(2)?.startsWith("letters") == true
 
 internal fun SizeSettings.toFitSizes() = FitSizes(keyHeightDp, keyGapDp, edgePaddingDp)
 

@@ -131,4 +131,13 @@ class KeyboardFitTest {
         assertThat(KeyboardFit.isDismissed(100 * day, 113 * day)).isTrue()
         assertThat(KeyboardFit.isDismissed(100 * day, 114 * day)).isFalse()
     }
+
+    @Test
+    fun nonLetterKeysAreIgnored() {
+        val letter = key(sx = 0.1f, sy = 0.1f)
+        val digit = KeyTouchStatistics('5', 1000, 0.4f, 0f, 0.5f, 0.5f)
+        val only = KeyboardFit.expectedMissRate(listOf(letter), w, h, w, h)
+        assertThat(KeyboardFit.expectedMissRate(listOf(letter, digit), w, h, w, h))
+            .isEqualTo(only)
+    }
 }
