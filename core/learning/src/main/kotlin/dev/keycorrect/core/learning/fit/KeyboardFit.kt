@@ -122,14 +122,19 @@ object KeyboardFit {
         return (1.0 - inX * inY).coerceIn(0.0, 1.0)
     }
 
-    /** Expected miss rate over [keys], each weighted by its sample count; 0 with no samples. */
+    /**
+     * Expected miss rate over the letter keys of [allKeys], each weighted by its sample count; 0
+     * with no samples. Digits, punctuation and other keys are left out: only the a-z keys sit on
+     * the 10-unit letter grid whose cell this models (number-row and bottom-row keys differ).
+     */
     fun expectedMissRate(
-        keys: List<KeyTouchStatistics>,
+        allKeys: List<KeyTouchStatistics>,
         refW: Double,
         refH: Double,
         cellW: Double,
         cellH: Double,
     ): Double {
+        val keys = allKeys.filter { it.char in 'a'..'z' }
         val total = keys.sumOf { it.sampleCount }
         if (total <= 0) return 0.0
         return keys.sumOf { missProbability(it, refW, refH, cellW, cellH) * it.sampleCount } / total
