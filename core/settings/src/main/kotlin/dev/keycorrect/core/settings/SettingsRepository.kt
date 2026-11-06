@@ -172,6 +172,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                     neuralPhrases = this[NEURAL_PHRASES] ?: d.neuralPhrases,
                     lmStrength = this[LM_STRENGTH] ?: d.lmStrength,
                     neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
+                    themeSource = ThemeSource.parse(this[THEME_SOURCE]) ?: d.themeSource,
+                    customLightColors = ThemeColors.decode(this[CUSTOM_LIGHT_COLORS]),
+                    customDarkColors = ThemeColors.decode(this[CUSTOM_DARK_COLORS]),
                 )
             }
             .withEngine(p)
@@ -292,6 +295,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
         this[NEURAL_MODEL] = s.neuralModel
+        this[THEME_SOURCE] = s.themeSource.name
+        this[CUSTOM_LIGHT_COLORS] = ThemeColors.encode(s.customLightColors)
+        this[CUSTOM_DARK_COLORS] = ThemeColors.encode(s.customDarkColors)
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
         writeSizes(s.sizes)
@@ -372,6 +378,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
+        val THEME_SOURCE = stringPreferencesKey("theme_source")
+        val CUSTOM_LIGHT_COLORS = stringPreferencesKey("custom_light_colors")
+        val CUSTOM_DARK_COLORS = stringPreferencesKey("custom_dark_colors")
         val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
         val BOOLEAN_KEYS =
             setOf(
@@ -440,6 +449,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_ENGINE.name,
                 NEURAL_MODEL.name,
                 NEURAL_ENGINE.name,
+                THEME_SOURCE.name,
+                CUSTOM_LIGHT_COLORS.name,
+                CUSTOM_DARK_COLORS.name,
             )
         val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name)
     }

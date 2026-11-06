@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.takeOrElse
+import dev.keycorrect.core.designsystem.stripTextColor
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
@@ -104,7 +105,7 @@ private fun NeverSuggestPrompt(
         Text(
             stringResource(R.string.strip_never_question, word),
             modifier = Modifier.weight(1f).padding(horizontal = SlotPadding),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = stripTextColor(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -214,7 +215,7 @@ private fun RowScope.Slot(
                 .padding(horizontal = SlotPadding),
         contentAlignment = Alignment.Center,
     ) {
-        val color = MaterialTheme.colorScheme.onSurface
+        val color = stripTextColor()
         val weight = if (slot.bold) FontWeight.Bold else FontWeight.Normal
         if (slot.kind == SlotKind.Phrase) {
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -193,6 +193,12 @@ data class KeyboardSettings(
     val voiceLiveMs: Int = VOICE_LIVE_AUTO,
     /** Stop dictating after this many seconds without speech; [VOICE_AUTO_STOP_OFF] never. */
     val voiceAutoStopSeconds: Int = DEFAULT_VOICE_AUTO_STOP_SECONDS,
+    /** Where the keyboard colors come from. */
+    val themeSource: ThemeSource = ThemeSource.Wallpaper,
+    /** Custom colors for light mode: [ThemeColors.COUNT] ARGB ints, or empty (not edited). */
+    val customLightColors: List<Int> = emptyList(),
+    /** Custom colors for dark mode, like [customLightColors]. */
+    val customDarkColors: List<Int> = emptyList(),
     /** Let an on-device language model reorder the suggestions when one is installed (PHASE7). */
     val neuralRerank: Boolean = true,
     /** Offer whole-phrase completions from the on-device language model (PHASE7; off). */
@@ -304,6 +310,8 @@ data class KeyboardSettings(
                     voiceAutoStopSeconds <= VOICE_AUTO_STOP_OFF -> VOICE_AUTO_STOP_OFF
                     else -> voiceAutoStopSeconds.coerceIn(VOICE_AUTO_STOP_SECONDS_RANGE)
                 },
+            customLightColors = ThemeColors.sanitize(customLightColors),
+            customDarkColors = ThemeColors.sanitize(customDarkColors),
             neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),
             neuralEngine = neuralEngine.take(ENGINE_ID_MAX_LENGTH).ifEmpty { ENGINE_BUILTIN },
             approvedEngines =

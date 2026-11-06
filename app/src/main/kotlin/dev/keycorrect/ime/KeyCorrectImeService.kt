@@ -15,7 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
 import dev.keycorrect.core.decoder.rerank.NeuralReranker
-import dev.keycorrect.core.designsystem.KeyCorrectTheme
+import dev.keycorrect.core.designsystem.KeyboardLook
 import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
@@ -234,7 +234,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     @Composable
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
-        KeyCorrectTheme {
+        KeyboardLook(settings) {
             KeyboardScreen(
                 controller,
                 settings,
