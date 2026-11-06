@@ -173,7 +173,8 @@ class TransferTest {
         assertThat(bundleOf(s).settings.values.keys).containsExactly("key_height_dp")
         for (mode in ImportMode.entries) {
             val o = ImportApplier.apply(local(), bundleOf(sourceState()), plan(mode))
-            assertThat(o.keepLocalSettings).containsAtLeast("neural_engine", "approved_engines")
+            assertThat(o.keepLocalSettings)
+                .containsAtLeast("neural_engine", "approved_engines", "fit_dismissals")
         }
     }
 
@@ -289,7 +290,13 @@ class TransferTest {
         assertThat(o.learning.touch.single().char).isEqualTo(97)
         assertThat(o.settings["key_height_dp"]).isEqualTo(60)
         assertThat(o.keepLocalSettings)
-            .containsExactly("incognito", "neural_model", "neural_engine", "approved_engines")
+            .containsExactly(
+                "incognito",
+                "neural_model",
+                "neural_engine",
+                "approved_engines",
+                "fit_dismissals",
+            )
     }
 
     @Test

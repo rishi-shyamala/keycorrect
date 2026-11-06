@@ -95,6 +95,8 @@ fun SettingsApp(
                 SettingsDestination.Setup ->
                     SetupScreen(padding, status, onOpenKeyboardSettings, onChooseKeyboard)
                 SettingsDestination.Keyboard -> KeyboardSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.KeyboardFit ->
+                    KeyboardFitScreen(padding, container, settings, onUpdate)
                 SettingsDestination.Editing -> EditingSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Theme -> ThemeScreen(padding, settings, onUpdate)
                 SettingsDestination.Emoji -> EmojiSettingsScreen(padding, settings, onUpdate)

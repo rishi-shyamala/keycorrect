@@ -243,9 +243,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ignoreNoSuggestions = p[IGNORE_NO_SUGGESTIONS] ?: d.ignoreNoSuggestions,
             neuralEngine = p[NEURAL_ENGINE] ?: d.neuralEngine,
             approvedEngines = p[APPROVED_ENGINES] ?: d.approvedEngines,
+            fitDismissals = p[FIT_DISMISSALS] ?: d.fitDismissals,
         )
     }
 
+    @Suppress("LongMethod") // One line per setting.
     private fun MutablePreferences.write(s: KeyboardSettings) {
         this[KEY_HEIGHT_DP] = s.keyHeightDp
         this[BOTTOM_KEY_WIDTH] = s.bottomKeyWidth
@@ -317,6 +319,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[CUSTOM_DARK_COLORS] = ThemeColors.encode(s.customDarkColors)
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
+        this[FIT_DISMISSALS] = s.fitDismissals
     }
 
     private fun MutablePreferences.writeSizes(sizes: Map<SizeProfile, SizeSettings>) {
@@ -403,6 +406,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val CUSTOM_LIGHT_COLORS = stringPreferencesKey("custom_light_colors")
         val CUSTOM_DARK_COLORS = stringPreferencesKey("custom_dark_colors")
         val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
+        val FIT_DISMISSALS = stringSetPreferencesKey("fit_dismissals")
         val BOOLEAN_KEYS =
             setOf(
                 SYMBOL_HINTS.name,
@@ -479,6 +483,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 CUSTOM_LIGHT_COLORS.name,
                 CUSTOM_DARK_COLORS.name,
             )
-        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name)
+        val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name, FIT_DISMISSALS.name)
     }
 }

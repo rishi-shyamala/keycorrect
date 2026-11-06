@@ -15,6 +15,8 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
 
     data object Keyboard : SettingsDestination("keyboard", R.string.keyboard_title)
 
+    data object KeyboardFit : SettingsDestination("keyboard_fit", R.string.fit_title)
+
     data object Editing : SettingsDestination("editing", R.string.editing_title)
 
     data object Theme : SettingsDestination("theme", R.string.theme_title)
@@ -80,6 +82,7 @@ sealed class SettingsDestination(val route: String, @StringRes val titleRes: Int
                 LearnedCorrections,
                 NeverCorrected,
                 NeverSuggested,
+                KeyboardFit,
                 Feedback,
                 Backup,
                 Advanced,

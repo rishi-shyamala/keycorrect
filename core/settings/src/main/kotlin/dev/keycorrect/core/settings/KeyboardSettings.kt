@@ -234,6 +234,11 @@ data class KeyboardSettings(
      */
     val approvedEngines: Set<String> = emptySet(),
     /**
+     * Keyboard-fit recommendations the user dismissed, as `<profile id>|<epoch millis>` entries
+     * (one per [SizeProfile]); see [fitDismissedAt]. Never carried by backup or transfer.
+     */
+    val fitDismissals: Set<String> = emptySet(),
+    /**
      * Sizes set for a particular [SizeProfile]. A profile without an entry uses the six global
      * fields above ([globalSizes]); read through [sizeFor], write through [withSizes].
      */
@@ -250,6 +255,24 @@ data class KeyboardSettings(
                 keyGapDp,
                 numberRow,
             )
+
+    /** When the fit recommendation for [profile] was last dismissed, or null. */
+    fun fitDismissedAt(profile: SizeProfile): Long? =
+        fitDismissals
+            .mapNotNull { e ->
+                val (id, ms) =
+                    e.split('|', limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+                if (id == profile.id) ms.toLongOrNull() else null
+            }
+            .maxOrNull()
+
+    /** A copy recording that [profile]'s fit recommendation was dismissed at [nowMillis]. */
+    fun withFitDismissed(profile: SizeProfile, nowMillis: Long): KeyboardSettings =
+        copy(
+            fitDismissals =
+                fitDismissals.filterNot { it.startsWith(profile.id + "|") }.toSet() +
+                    "${profile.id}|$nowMillis"
+        )
 
     /** The sizes to use on [profile]. */
     fun sizeFor(profile: SizeProfile): SizeSettings = sizes[profile] ?: globalSizes
@@ -333,6 +356,12 @@ data class KeyboardSettings(
                     .filter { it.length <= APPROVED_ENTRY_MAX_LENGTH }
                     .sorted()
                     .take(APPROVED_ENGINES_MAX)
+                    .toSet(),
+            fitDismissals =
+                fitDismissals
+                    .filter { e -> e.length <= APPROVED_ENTRY_MAX_LENGTH && e.contains('|') }
+                    .sorted()
+                    .take(SizeProfile.ALL.size)
                     .toSet(),
             lmStrength =
                 if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
