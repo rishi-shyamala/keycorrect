@@ -67,7 +67,7 @@ class DeviceState(
  * able to approve a plugin).
  */
 internal val UNTRANSFERRED_SETTINGS: Set<String> =
-    setOf("incognito", "neural_model", "neural_engine", "approved_engines")
+    setOf("incognito", "neural_model", "neural_engine", "approved_engines", "fit_dismissals")
 
 /** Device state to the file's data model, and the pieces back (see docs/TRANSFER.md). */
 @Suppress("TooManyFunctions") // One short mapping per kind of data.
