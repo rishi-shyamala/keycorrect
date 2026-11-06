@@ -9,11 +9,15 @@ import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
 import dev.keycorrect.core.decoder.rerank.NeuralReranker
@@ -242,6 +246,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
         KeyboardLook(settings, refresh = colorRefresh) {
+            NavigationBarIcons()
             KeyboardScreen(
                 controller,
                 settings,
@@ -249,6 +254,21 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 autofill = autofill,
                 onOpenSettings = ::openSettings,
             )
+        }
+    }
+
+    /**
+     * The system's chevron and keyboard-switcher buttons below the keys are drawn light or dark by
+     * the window's appearance flag; follow the keyboard background so they stay visible.
+     */
+    @Composable
+    private fun NavigationBarIcons() {
+        val light = MaterialTheme.colorScheme.surfaceContainer.luminance() > LIGHT_BACKGROUND
+        SideEffect {
+            window.window?.let { w ->
+                WindowCompat.getInsetsController(w, w.decorView).isAppearanceLightNavigationBars =
+                    light
+            }
         }
     }
 
@@ -361,3 +381,5 @@ private fun describeField(info: EditorInfo): String {
  */
 internal fun shouldRecordField(inputType: Int, fieldPackage: String?, ownPackage: String): Boolean =
     !(inputType == InputType.TYPE_NULL && fieldPackage == ownPackage)
+
+private const val LIGHT_BACKGROUND = 0.5f
