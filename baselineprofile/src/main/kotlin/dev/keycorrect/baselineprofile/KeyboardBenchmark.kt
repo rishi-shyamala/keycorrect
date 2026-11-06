@@ -14,7 +14,9 @@ import org.junit.Test
  * AOT compilation and with the baseline profile. Run on demand, see docs/PERF.md.
  */
 class KeyboardBenchmark {
-    @get:Rule val rule = MacrobenchmarkRule()
+    @get:Rule(order = 0) val ime = ImeGuard()
+
+    @get:Rule(order = 1) val rule = MacrobenchmarkRule()
 
     @Test fun coldStartNone() = start(CompilationMode.None())
 
@@ -62,7 +64,7 @@ class KeyboardBenchmark {
         }
 
     private companion object {
-        const val TARGET = "dev.keycorrect"
+        const val TARGET = Target.PACKAGE
         val BASELINE = CompilationMode.Partial(baselineProfileMode = BaselineProfileMode.Require)
     }
 }

@@ -7,18 +7,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
-import java.io.FileInputStream
 
 /** Drives the real KeyCorrect IME from a test: enable/select it, focus a field, tap keys. */
 internal class Keyboard(targetPackage: String) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     val device: UiDevice = UiDevice.getInstance(instrumentation)
-    private val imeId = "$targetPackage/.ime.KeyCorrectImeService"
-
-    private fun shell(cmd: String): String =
-        instrumentation.uiAutomation.executeShellCommand(cmd).use { fd ->
-            FileInputStream(fd.fileDescriptor).bufferedReader().readText()
-        }
+    private val imeId = "$targetPackage/dev.keycorrect.ime.KeyCorrectImeService"
 
     fun enableAndSelectIme() {
         shell("ime enable $imeId")

@@ -6,7 +6,9 @@ import org.junit.Test
 
 /** Collects the startup and first-keystroke paths into the app's baseline profile. */
 class BaselineProfileGenerator {
-    @get:Rule val rule = BaselineProfileRule()
+    @get:Rule(order = 0) val ime = ImeGuard()
+
+    @get:Rule(order = 1) val rule = BaselineProfileRule()
 
     @Test
     fun generate() =
@@ -26,6 +28,6 @@ class BaselineProfileGenerator {
         }
 
     private companion object {
-        const val TARGET = "dev.keycorrect"
+        const val TARGET = Target.PACKAGE
     }
 }

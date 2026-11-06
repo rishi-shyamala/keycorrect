@@ -130,3 +130,14 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.truth)
 }
+
+// The baseline-profile plugin's build types are release-like and release-signed. They get their own
+// application id so installing one (and the test run's uninstall) can never replace or wipe a real
+// dev.keycorrect installation.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        if (variant.buildType == "benchmarkRelease" || variant.buildType == "nonMinifiedRelease") {
+            variant.applicationId.set("dev.keycorrect.benchmark")
+        }
+    }
+}

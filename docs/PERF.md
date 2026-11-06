@@ -225,7 +225,7 @@ through `ime enable/set`, focuses an EditText in a test host activity (`HostActi
 release-like builds without Field Lab), types a sentence by tapping key positions, swipes once and
 opens the emoji panel. Key positions are fractions of the IME window (calibrated on 1440x3088);
 change `Keyboard.kt` if the layout moves. Everything needs a device and is on demand only; normal
-CI just compiles the module.
+CI just compiles the module. The profile and benchmarks run against the `dev.keycorrect.benchmark` package (same release signing, so pack signature checks pass), never the installed `dev.keycorrect`; `ImeGuard` restores the device's default/enabled keyboards after each test and the run refuses to target `dev.keycorrect`.
 
 ```sh
 # Regenerate the profile (commit the resulting files):
@@ -241,8 +241,8 @@ ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndr
 
 | Benchmark | None | Baseline profile |
 | --- | --- | --- |
-| Cold start, time to initial display (ms) | 448 | 364 |
-| Typing run, frame count | 73 | 80 |
+| Cold start, time to initial display (ms) | 434 | 353 |
+| Typing run, frame count | 75 | 79 |
 
 Caveats: the start benchmark's metric is the Settings activity's time to initial display (the IME
 runs in the same process, and the host is brought up after it); the keyboard's own first frame is
