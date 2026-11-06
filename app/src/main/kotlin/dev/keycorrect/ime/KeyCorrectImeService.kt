@@ -322,6 +322,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
             initialSelEnd = editorInfo.initialSelEnd,
         )
         super.onStartInputView(editorInfo, restarting)
+        setInputViewDataSensitive(controller.profile.sensitive)
         // Loads the emoji catalog in the background, once per process.
         appContainer.emojiEnvironment.start()
         // Loads the clipboard history in the background and applies its retention rules.

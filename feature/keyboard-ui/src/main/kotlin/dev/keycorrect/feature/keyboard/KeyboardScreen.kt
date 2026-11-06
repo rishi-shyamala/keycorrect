@@ -74,6 +74,9 @@ fun KeyboardScreen(
                         WindowInsets.navigationBars.union(WindowInsets.tappableElement)
                     )
                     .padding(settings.edgePaddingDp.dp)
+                    // Password fields: accessibility services that aren't tools can't read the
+                    // keys or the strip (docs/SECURITY.md). Not FLAG_SECURE.
+                    .dataSensitive(controller.profile.sensitive)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -166,6 +169,7 @@ private fun Keys(
             onKey = onSemanticKey,
             modifier = Modifier.matchParentSize(),
             terminalModifiers = controller.terminalModifiers,
+            sensitive = controller.profile.sensitive,
             onClipboard = if (controller.clipboardAvailable) controller::openClipboard else null,
             onVoice = controller.voice::toggle,
         )
