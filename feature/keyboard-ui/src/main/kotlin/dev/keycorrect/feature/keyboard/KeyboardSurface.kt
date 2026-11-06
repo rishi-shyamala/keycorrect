@@ -182,6 +182,7 @@ internal fun KeyboardSurface(
         }
 
     val drawer = remember(textCache) { KeyDrawer(textCache) }
+    val drawGeometry = remember { DrawGeometry() }
     // Two layers: every key unpressed in one (redrawn only when the layer, shift, size, theme or
     // settings change), and just the held keys over it in the other, so a press or release redraws
     // those few keys and no label. Each has its own graphicsLayer so its invalidation stays there.
@@ -252,18 +253,22 @@ internal fun KeyboardSurface(
                         }
                     }
         ) {
+            // The geometry for the size being drawn right now, not the composed one, which lags a
+            // frame (or longer, while the IME's frame clock is paused) behind the real size.
+            val drawn = drawGeometry.at(geometry, this.size.width, this.size.height)
             drawer.set(shift, enterLabel, colors, terminalModifiers)
-            drawer.begin(this, geometry, settings)
-            for (slot in geometry.slots) {
+            drawer.begin(this, drawn, settings)
+            for (slot in drawn.slots) {
                 if (!slot.key.isSpacer) drawKey(drawer, slot, isPressed = false)
             }
         }
         Canvas(Modifier.fillMaxSize().graphicsLayer()) {
             val pressed = touch.pressed
             if (pressed.isEmpty()) return@Canvas
+            val drawn = drawGeometry.at(geometry, this.size.width, this.size.height)
             drawer.set(shift, enterLabel, colors, terminalModifiers)
-            drawer.begin(this, geometry, settings)
-            val slots = geometry.slots
+            drawer.begin(this, drawn, settings)
+            val slots = drawn.slots
             for (index in pressed) {
                 val slot = slots.getOrNull(index)
                 if (slot != null && !slot.key.isSpacer) {
@@ -277,6 +282,23 @@ internal fun KeyboardSurface(
                     drawKey(drawer, slot, isPressed = true)
                 }
             }
+        }
+    }
+}
+
+/**
+ * The geometry to draw at the canvas's actual pixel size: the composed one when it matches, else
+ * one built here (and kept until the size or layer changes). Draw phase only.
+ */
+internal class DrawGeometry {
+    private var cached: KeyboardGeometry? = null
+
+    fun at(composed: KeyboardGeometry, width: Float, height: Float): KeyboardGeometry {
+        val known = cached?.takeIf { it.layer === composed.layer }
+        return when {
+            composed.width == width && composed.height == height -> composed
+            known?.width == width && known.height == height -> known
+            else -> KeyboardGeometry(composed.layer, width, height).also { cached = it }
         }
     }
 }
