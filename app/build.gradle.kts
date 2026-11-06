@@ -127,3 +127,26 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.truth)
 }
+
+// Security guard (docs/SECURITY.md): the manifest test reads the merged release manifests, so a
+// library that quietly adds INTERNET or an exported component fails the unit tests.
+tasks.withType<Test>().configureEach {
+    dependsOn(":app:processReleaseMainManifest", ":sampleplugin:processReleaseMainManifest")
+    val mergedApp =
+        layout.buildDirectory.file(
+            "intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml"
+        )
+    systemProperty("kc.manifest.app", mergedApp.get().asFile.path)
+    systemProperty(
+        "kc.manifest.sampleplugin",
+        project(":sampleplugin").file("src/main/AndroidManifest.xml").path,
+    )
+    systemProperty(
+        "kc.manifest.voicepack",
+        project(":voicepack").file("src/main/AndroidManifest.xml").path,
+    )
+    systemProperty(
+        "kc.manifest.neuralpack",
+        project(":neuralpack").file("src/main/AndroidManifest.xml").path,
+    )
+}

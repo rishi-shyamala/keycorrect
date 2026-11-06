@@ -1,6 +1,7 @@
 package dev.keycorrect.core.ime
 
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.Composable
@@ -54,9 +55,28 @@ abstract class ComposeInputMethodService :
 
     override fun onCreateInputView(): View {
         window.window?.decorView?.let(::installViewTreeOwners)
-        return ComposeView(this).apply {
-            installViewTreeOwners(this)
-            setContent { KeyboardContent() }
+        return ComposeView(this)
+            .apply {
+                installViewTreeOwners(this)
+                setContent { KeyboardContent() }
+            }
+            .also { inputView = it }
+    }
+
+    private var inputView: View? = null
+
+    /**
+     * Marks the keyboard view's accessibility data as sensitive (API 34+) while [sensitive], so
+     * accessibility services that are not accessibility tools (screen readers) cannot read the keys
+     * typed into a password field. Reset when the field is not sensitive. Not FLAG_SECURE:
+     * screenshots stay possible (docs/PHASE9.md, P9-2).
+     */
+    protected fun setInputViewDataSensitive(sensitive: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            inputView?.setAccessibilityDataSensitive(
+                if (sensitive) View.ACCESSIBILITY_DATA_SENSITIVE_YES
+                else View.ACCESSIBILITY_DATA_SENSITIVE_AUTO
+            )
         }
     }
 
