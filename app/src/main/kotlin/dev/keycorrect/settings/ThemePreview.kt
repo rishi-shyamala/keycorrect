@@ -124,6 +124,7 @@ private const val WIDE_WEIGHT = 1.4f
 private const val SPACE_WEIGHT = 5f
 private const val ENTER_WEIGHT = 1.6f
 
+@Suppress("LongParameterList")
 @Composable
 private fun PreviewKey(
     label: String,

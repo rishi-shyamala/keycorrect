@@ -158,6 +158,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /** The voice and neural fields; split from [toSettings] to keep it readable. */
+    @Suppress("CyclomaticComplexMethod")
     private fun KeyboardSettings.withVoiceAndNeural(p: Preferences): KeyboardSettings {
         val d = KeyboardSettings()
         return with(p) {

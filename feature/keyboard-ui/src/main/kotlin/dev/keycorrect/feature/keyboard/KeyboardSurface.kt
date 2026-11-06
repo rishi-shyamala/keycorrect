@@ -402,6 +402,7 @@ private class KeyDrawer(val text: KeyTextCache) {
 }
 
 /** Draws one key of the surface: fill, icon or label, the spacebar's split line and the hint. */
+@Suppress("LongMethod")
 private fun DrawScope.drawKey(d: KeyDrawer, slot: KeySlot, isPressed: Boolean) {
     val colors = d.colors ?: return
     val key = slot.key

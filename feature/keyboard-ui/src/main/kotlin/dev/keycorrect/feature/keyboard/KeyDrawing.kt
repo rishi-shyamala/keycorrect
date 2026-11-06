@@ -15,12 +15,14 @@ import dev.keycorrect.core.layout.ResolvedKey
  */
 internal val KeyGap = 6.dp
 
+private const val MAX_RADIUS_FRACTION = 0.5f
+
 /**
  * Corner radius in dp of a key whose slot is [keyHeightDp] tall with [gapDp] between keys: the
  * [fraction] (0 square .. 0.5 pill) of the drawn key's height.
  */
 internal fun keyCornerDp(fraction: Float, keyHeightDp: Int, gapDp: Int): Float =
-    fraction.coerceIn(0f, 0.5f) * (keyHeightDp - gapDp).coerceAtLeast(0)
+    fraction.coerceIn(0f, MAX_RADIUS_FRACTION) * (keyHeightDp - gapDp).coerceAtLeast(0)
 
 /** The key corner radius for panels that draw their own buttons (provided by the keyboard). */
 internal val LocalKeyRadius = androidx.compose.runtime.compositionLocalOf { 10.dp }

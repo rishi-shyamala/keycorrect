@@ -65,6 +65,7 @@ private const val TRAIL_MIN_WIDTH = 0.35f
  * input. It reads [touch] and [shift] only while drawing, so showing and moving them never
  * recomposes.
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun KeyOverlay(
     touch: KeyboardTouchState,

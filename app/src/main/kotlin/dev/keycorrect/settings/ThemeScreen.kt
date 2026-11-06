@@ -115,6 +115,7 @@ fun ThemeScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("LongMethod")
 @Composable
 private fun KeyStyleSection(
     settings: KeyboardSettings,
@@ -140,7 +141,7 @@ private fun KeyStyleSection(
         title = stringResource(R.string.theme_label_size),
         value = settings.labelScale,
         valueRange = KeyboardSettings.LABEL_SCALE_RANGE,
-        valueLabel = { stringResource(R.string.value_percent, (it * 100).roundToInt()) },
+        valueLabel = { stringResource(R.string.value_percent, (it * PERCENT).roundToInt()) },
         onValueCommitted = { v -> onUpdate { it.copy(labelScale = v) } },
         snap = { (it * LABEL_STEPS).roundToInt() / LABEL_STEPS },
     )
@@ -192,6 +193,7 @@ private fun pressLabel(style: PressStyle): Int =
 /** The radius slider shows 0 (square) to 100 % (pill) of its 0..0.5 range, in 2 % steps. */
 private const val RADIUS_PERCENT = 200
 private const val RADIUS_STEPS = 50f
+private const val PERCENT = 100
 private const val LABEL_STEPS = 20f
 
 @OptIn(ExperimentalLayoutApi::class)
