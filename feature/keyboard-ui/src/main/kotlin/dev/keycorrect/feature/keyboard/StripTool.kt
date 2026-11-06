@@ -50,6 +50,9 @@ internal enum class StripTool(val atLeftEdge: Boolean) {
 
     /** Opens the clipboard panel. Only when [KeyboardController.clipboardAvailable]. */
     Clipboard(atLeftEdge = false),
+
+    /** Shows or hides the on-screen keys. Only with a physical keyboard attached. */
+    Keyboard(atLeftEdge = false),
 }
 
 /**
@@ -57,12 +60,17 @@ internal enum class StripTool(val atLeftEdge: Boolean) {
  * are hidden in [sensitive] fields (the emoji key is absent there and the clipboard is off), and
  * the clipboard whenever it is unavailable (history off).
  */
-internal fun toolsFor(sensitive: Boolean, clipboardAvailable: Boolean): List<StripTool> =
+internal fun toolsFor(
+    sensitive: Boolean,
+    clipboardAvailable: Boolean,
+    keyboardToggle: Boolean = false,
+): List<StripTool> =
     buildList {
         add(StripTool.Edit)
         if (!sensitive) add(StripTool.Emoji)
         add(StripTool.Settings)
         if (clipboardAvailable && !sensitive) add(StripTool.Clipboard)
+        if (keyboardToggle) add(StripTool.Keyboard)
     }
 
 /**
@@ -145,7 +153,12 @@ internal fun StripTools(
                     icon = tool.icon(),
                     description = tool.description(),
                     progress = progress,
-                    selected = if (tool == StripTool.Edit) editSelected else null,
+                    selected =
+                        when (tool) {
+                            StripTool.Edit -> editSelected
+                            StripTool.Keyboard -> controller.fullKeyboardShown
+                            else -> null
+                        },
                 ) {
                     onPress()
                     controller.onTool(tool, onOpenSettings)
@@ -251,6 +264,7 @@ private fun StripTool.icon(): ImageVector =
         StripTool.Emoji -> ShortcutIcons.Emoji
         StripTool.Clipboard -> ShortcutIcons.Clipboard
         StripTool.Settings -> ShortcutIcons.Settings
+        StripTool.Keyboard -> ShortcutIcons.Keyboard
     }
 
 @Composable
@@ -261,5 +275,6 @@ private fun StripTool.description(): String =
             StripTool.Emoji -> R.string.shortcut_emoji
             StripTool.Clipboard -> R.string.shortcut_clipboard
             StripTool.Settings -> R.string.shortcut_settings
+            StripTool.Keyboard -> R.string.shortcut_keyboard
         }
     )

@@ -30,7 +30,7 @@ data class DeviceProfile(
                 tablet = smallestScreenWidthDp >= TABLET_MIN_SMALLEST_WIDTH_DP,
                 landscape = orientation == Configuration.ORIENTATION_LANDSCAPE,
                 hardwareKeyboard =
-                    keyboard != Configuration.KEYBOARD_NOKEYS &&
+                    keyboard == Configuration.KEYBOARD_QWERTY &&
                         hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO,
             )
 

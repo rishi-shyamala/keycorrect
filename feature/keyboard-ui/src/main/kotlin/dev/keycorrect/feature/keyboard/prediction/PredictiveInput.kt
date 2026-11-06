@@ -485,6 +485,9 @@ internal class PredictiveInput(
         publish(StripModel.Empty)
     }
 
+    /** A shortcut or navigation key is about to reach the app: the word in progress ends as typed. */
+    fun finishWordAsTyped() = onLayerSwitch()
+
     /** The layer changed: a word in progress ends as typed. */
     fun onLayerSwitch() {
         closeUndo()

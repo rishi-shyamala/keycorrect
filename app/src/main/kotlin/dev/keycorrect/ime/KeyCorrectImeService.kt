@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -33,6 +34,7 @@ import dev.keycorrect.feature.keyboard.InlineAutofillController
 import dev.keycorrect.feature.keyboard.KeyFeedback
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.KeyboardScreen
+import dev.keycorrect.feature.keyboard.physicalKeyFor
 import dev.keycorrect.feature.keyboard.prediction.PredictionEnvironment
 import dev.keycorrect.settings.SettingsActivity
 import dev.keycorrect.voice.PackChangeWatcher
@@ -177,6 +179,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         appContainer.clipboardEnvironment.imagePaster = imagePaster
         lifecycleScope.launch {
             appContainer.settingsRepository.settings.collect { stored ->
+                val physicalChanged =
+                    stored.physicalKeyboardSuggestions != storedSettings.physicalKeyboardSuggestions
                 storedSettings = stored
                 val sized = stored.forProfile(sizeProfile)
                 settingsFlow.value = sized
@@ -185,6 +189,7 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 predictionHost.applySettings(sized)
                 neuralHost.apply(sized)
                 appContainer.voiceHost.applySettings(sized)
+                if (physicalChanged) updateInputViewShown()
             }
         }
     }
@@ -200,7 +205,53 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         configRestarts.onConfigurationChanged(isInputViewShown)
         super.onConfigurationChanged(newConfig)
         updateDevice(newConfig)
+        updateInputViewShown()
     }
+
+    /**
+     * With a physical keyboard attached the system hides the input view (unless the user turned on
+     * "show on-screen keyboard"). We show it as the slim suggestion bar instead, unless the user
+     * turned that off; the framework default then applies.
+     */
+    override fun onEvaluateInputViewShown(): Boolean =
+        if (
+            storedSettings.physicalKeyboardSuggestions &&
+                DeviceProfile.from(resources.configuration).hardwareKeyboard
+        ) {
+            true
+        } else {
+            super.onEvaluateInputViewShown()
+        }
+
+    /** The keys whose press we handled, so their release is not passed on to the app alone. */
+    private val handledKeys = HashSet<Int>()
+
+    /**
+     * A physical key reaches the same prediction pipeline as the on-screen keys; the controller
+     * decides what is ours (printable keys, space, backspace) and what is the app's (shortcuts,
+     * navigation, function keys, everything in sensitive fields), which falls through untouched.
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (isInputViewShown && handlePhysical(event)) {
+            handledKeys += keyCode
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
+        if (handledKeys.remove(keyCode)) true else super.onKeyUp(keyCode, event)
+
+    private fun handlePhysical(event: KeyEvent): Boolean =
+        controller.onPhysicalKey(
+            physicalKeyFor(
+                event.keyCode,
+                event.unicodeChar,
+                ctrl = event.isCtrlPressed,
+                alt = event.metaState and KeyEvent.META_ALT_LEFT_ON != 0,
+                meta = event.isMetaPressed,
+            )
+        )
 
     /** Tells the keyboard what we run on; its input profile feeds both events and the decoder. */
     private fun updateDevice(config: Configuration) {

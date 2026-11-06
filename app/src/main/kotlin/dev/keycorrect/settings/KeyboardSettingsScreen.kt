@@ -70,6 +70,13 @@ fun KeyboardSettingsScreen(
             checked = settings.inlineAutofill,
             onCheckedChange = { v -> onUpdate { it.copy(inlineAutofill = v) } },
         )
+        SectionHeader(stringResource(R.string.keyboard_physical_section))
+        SwitchRow(
+            title = stringResource(R.string.keyboard_physical_suggestions),
+            supportingText = stringResource(R.string.keyboard_physical_suggestions_summary),
+            checked = settings.physicalKeyboardSuggestions,
+            onCheckedChange = { v -> onUpdate { it.copy(physicalKeyboardSuggestions = v) } },
+        )
 
         TryItSection()
     }

@@ -241,6 +241,14 @@ class KeyboardController(
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
         private set
 
+    /** Whether a physical keyboard is attached (from the configuration, see [updateDevice]). */
+    var hardwareKeyboardAttached: Boolean by mutableStateOf(false)
+        private set
+
+    /** With a physical keyboard: the full on-screen keyboard is up instead of the slim bar. */
+    var fullKeyboardShown: Boolean by mutableStateOf(false)
+        private set
+
     /** What fills the key area: the keys or a panel (Phase 4). */
     var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
         private set
@@ -778,7 +786,63 @@ class KeyboardController(
 
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>
-        get() = toolsFor(profile.sensitive, clipboardAvailable)
+        get() = toolsFor(profile.sensitive, clipboardAvailable, keyboardToggle = physicalMode)
+
+    /**
+     * Whether a physical keyboard is attached and the user wants suggestions for it: the host shows
+     * the slim bar (or the full keyboard, see [fullKeyboardShown]) and routes its keys here.
+     */
+    val physicalMode: Boolean
+        get() = hardwareKeyboardAttached && settings.physicalKeyboardSuggestions
+
+    /** Shows the full on-screen keyboard, or goes back to the slim bar. */
+    fun toggleFullKeyboard() {
+        fullKeyboardShown = !fullKeyboardShown
+        if (!fullKeyboardShown && panel != KeyboardPanel.Keys) showPanelKeepingLayer(KeyboardPanel.Keys)
+    }
+
+    /**
+     * A key of the physical keyboard. Returns whether it was handled (the app must not see it);
+     * false means the app gets it untouched, after the word in progress has been finished as typed
+     * where that matters. Nothing is handled in sensitive and terminal fields, with suggestions
+     * off, or when [physicalMode] is off.
+     */
+    fun onPhysicalKey(key: PhysicalKey): Boolean {
+        val active = physicalMode && key != PhysicalKey.Ignore && !profile.sensitive
+        if (!active || profile.kind == FieldKind.Terminal) return false
+        voice.stopNow()
+        if (searching) return onPhysicalSearchKey(key)
+        if (!input.canPredict()) return false
+        input.settlePendingSwipe()
+        val handled =
+            when (key) {
+                is PhysicalKey.Text -> true.also { input.onText(key.text, null) }
+                PhysicalKey.Space -> true.also { input.onSeparator(" ") }
+                PhysicalKey.Backspace -> true.also { input.onBackspace() }
+                PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
+                PhysicalKey.Shortcut -> false.also { input.finishWordAsTyped() }
+                PhysicalKey.Ignore -> false
+            }
+        composingNow = input.isComposing
+        if (handled && key != PhysicalKey.Backspace) {
+            sawText = true
+            zeroChecked = false
+            if (fieldEmpty) fieldEmpty = false
+        }
+        return handled
+    }
+
+    private fun onPhysicalSearchKey(key: PhysicalKey): Boolean {
+        val action =
+            when (key) {
+                is PhysicalKey.Text -> KeyAction.Text(key.text)
+                PhysicalKey.Space -> KeyAction.Space
+                PhysicalKey.Backspace -> KeyAction.Backspace
+                else -> return false
+            }
+        onSearchKey(action)
+        return true
+    }
 
     /**
      * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
@@ -800,12 +864,27 @@ class KeyboardController(
         else editing.openPanel()
     }
 
+    /** The panels live in the key area, so the slim bar gives way to the full keyboard for them. */
+    private fun openFullKeyboard() {
+        if (physicalMode) fullKeyboardShown = true
+    }
+
     /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
     internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
         when (tool) {
-            StripTool.Edit -> toggleEditingPanel()
-            StripTool.Emoji -> showPanel(KeyboardPanel.Emoji)
-            StripTool.Clipboard -> openClipboard()
+            StripTool.Edit -> {
+                openFullKeyboard()
+                toggleEditingPanel()
+            }
+            StripTool.Emoji -> {
+                openFullKeyboard()
+                showPanel(KeyboardPanel.Emoji)
+            }
+            StripTool.Clipboard -> {
+                openFullKeyboard()
+                openClipboard()
+            }
+            StripTool.Keyboard -> toggleFullKeyboard()
             StripTool.Settings -> openSettings()
         }
     }
@@ -960,6 +1039,7 @@ class KeyboardController(
      * the configuration. Call on start and whenever the configuration changes.
      */
     fun updateDevice(tablet: Boolean, landscape: Boolean, hardwareKeyboard: Boolean = false) {
+        hardwareKeyboardAttached = hardwareKeyboard
         val device =
             when {
                 hardwareKeyboard -> DeviceClass.HardwareKeyboard
