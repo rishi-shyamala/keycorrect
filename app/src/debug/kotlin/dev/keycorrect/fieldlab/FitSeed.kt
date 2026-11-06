@@ -28,14 +28,11 @@ private const val GAUSS_MEAN = 6f
  * heights low with a wide spread, for the current touch profile, so Settings > Keyboard fit has
  * data to show. Goes through the normal learning event path; no release code changes.
  */
-internal fun seedFitData(
-    context: Context,
-    words: Int = 400,
-    biasY: Float = 0.25f,
-    sigmaX: Float = 0.18f,
-    sigmaY: Float = 0.3f,
-    done: (String) -> Unit,
-) {
+internal fun seedFitData(context: Context, done: (String) -> Unit) {
+    val words = 400
+    val biasY = 0.25f
+    val sigmaX = 0.18f
+    val sigmaY = 0.3f
     val container = context.appContainer
     container.applicationScope.launch {
         val s = container.settingsRepository.settings.first()
