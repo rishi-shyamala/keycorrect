@@ -78,7 +78,12 @@ fun KeyboardScreen(
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
-                    KeyArea(controller, settings, feedback, touch)
+                    // With a physical keyboard the slim bar is just the strip, no keys.
+                    val slimBar =
+                        controller.hardwareKeyboardAttached &&
+                            settings.physicalKeyboardSuggestions &&
+                            !controller.fullKeyboardShown
+                    if (!slimBar) KeyArea(controller, settings, feedback, touch)
                 }
                 KeyOverlay(
                     touch = touch,

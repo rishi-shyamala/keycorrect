@@ -35,5 +35,12 @@ internal object ShortcutIcons {
                 "-1.8L4.3 9.1l1.7-3 2.3.8 1.5-.9z",
         )
 
+    val Keyboard =
+        outline(
+            "keyboard",
+            "M4 6.5h16A1.5 1.5 0 0 1 21.5 8v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 16V8A1.5 " +
+                "1.5 0 0 1 4 6.5M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10",
+        )
+
     private fun outline(name: String, path: String): ImageVector = outlineIcon(name, path)
 }
