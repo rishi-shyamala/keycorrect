@@ -152,7 +152,8 @@ class KeyDrawingTest {
 class KeyCornerTest {
     @Test
     fun defaultFractionIsAboutTenDp() {
-        val dp = keyCornerDp(dev.keycorrect.core.settings.KeyboardSettings.DEFAULT_KEY_RADIUS, 54, 6)
+        val dp =
+            keyCornerDp(dev.keycorrect.core.settings.KeyboardSettings.DEFAULT_KEY_RADIUS, 54, 6)
         assertThat(dp).isWithin(0.2f).of(10f)
     }
 

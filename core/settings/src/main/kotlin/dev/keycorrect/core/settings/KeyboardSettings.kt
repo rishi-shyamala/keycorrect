@@ -199,7 +199,9 @@ data class KeyboardSettings(
     val customLightColors: List<Int> = emptyList(),
     /** Custom colors for dark mode, like [customLightColors]. */
     val customDarkColors: List<Int> = emptyList(),
-    /** Key corner radius as a share of the key height, [KEY_RADIUS_RANGE]; 0 = square, .5 = pill. */
+    /**
+     * Key corner radius as a share of the key height, [KEY_RADIUS_RANGE]; 0 = square, .5 = pill.
+     */
     val keyRadius: Float = DEFAULT_KEY_RADIUS,
     /** Draw a thin outline around every key. */
     val keyBorder: Boolean = false,
@@ -321,8 +323,7 @@ data class KeyboardSettings(
                 },
             keyRadius =
                 if (keyRadius.isNaN()) DEFAULT_KEY_RADIUS else keyRadius.coerceIn(KEY_RADIUS_RANGE),
-            labelScale =
-                if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
+            labelScale = if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
             neuralModel = neuralModel.take(NEURAL_MODEL_MAX_LENGTH),

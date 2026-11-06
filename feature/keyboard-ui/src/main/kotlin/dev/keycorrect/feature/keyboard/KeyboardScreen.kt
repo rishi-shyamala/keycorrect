@@ -61,34 +61,35 @@ fun KeyboardScreen(
     val touch = remember { KeyboardTouchState() }
     val keyRadius = keyCornerDp(settings.keyRadius, settings.keyHeightDp, settings.keyGapDp).dp
     CompositionLocalProvider(LocalKeyRadius provides keyRadius) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                // With gesture nav the IME draws a 48dp bar (switcher / hide-keyboard buttons)
-                // that navigationBars (~15dp, gesture handle only) doesn't cover; tappableElement
-                // does. The union also keeps keys off the handle when those buttons are hidden.
-                .windowInsetsPadding(
-                    WindowInsets.navigationBars.union(WindowInsets.tappableElement)
+        Column(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    // With gesture nav the IME draws a 48dp bar (switcher / hide-keyboard buttons)
+                    // that navigationBars (~15dp, gesture handle only) doesn't cover;
+                    // tappableElement
+                    // does. The union also keeps keys off the handle when those buttons are hidden.
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars.union(WindowInsets.tappableElement)
+                    )
+                    .padding(settings.edgePaddingDp.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
+                    KeyArea(controller, settings, feedback, touch)
+                }
+                KeyOverlay(
+                    touch = touch,
+                    shift = shift,
+                    enterLabel = enterLabel,
+                    keyGap = settings.keyGapDp.dp,
+                    keyRadius = keyRadius,
+                    modifier = Modifier.matchParentSize(),
                 )
-                .padding(settings.edgePaddingDp.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
-                KeyArea(controller, settings, feedback, touch)
             }
-            KeyOverlay(
-                touch = touch,
-                shift = shift,
-                enterLabel = enterLabel,
-                keyGap = settings.keyGapDp.dp,
-                keyRadius = keyRadius,
-                modifier = Modifier.matchParentSize(),
-            )
         }
-    }
     }
 }
 

@@ -47,8 +47,10 @@ import dev.keycorrect.core.designsystem.keyContrast
 import dev.keycorrect.core.designsystem.lowContrast
 import dev.keycorrect.core.designsystem.resolveKeyboardTheme
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.core.settings.PressStyle
 import dev.keycorrect.core.settings.ThemeSource
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -77,7 +79,7 @@ fun ThemeScreen(
     SettingsPage(contentPadding) {
         SectionHeader(stringResource(R.string.theme_section_preview))
         ThemeModeToggle(editDark) { editDark = it }
-        ThemePreview(colorsFor(editDark))
+        ThemePreview(colorsFor(editDark), settings)
 
         SectionHeader(stringResource(R.string.theme_section_source))
         for (option in ThemeSource.entries) {
@@ -107,8 +109,90 @@ fun ThemeScreen(
         if (source == ThemeSource.Custom) {
             CustomEditor(colorsFor(editDark), editDark, role, { role = it }, onUpdate)
         }
+
+        KeyStyleSection(settings, onUpdate)
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KeyStyleSection(
+    settings: KeyboardSettings,
+    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
+) {
+    SectionHeader(stringResource(R.string.theme_section_keys))
+    SliderRow(
+        title = stringResource(R.string.theme_key_radius),
+        supportingText = stringResource(R.string.theme_key_radius_summary),
+        value = settings.keyRadius,
+        valueRange = KeyboardSettings.KEY_RADIUS_RANGE,
+        valueLabel = { stringResource(R.string.value_percent, (it * RADIUS_PERCENT).roundToInt()) },
+        onValueCommitted = { v -> onUpdate { it.copy(keyRadius = v) } },
+        snap = { (it * RADIUS_STEPS).roundToInt() / RADIUS_STEPS },
+    )
+    SwitchRow(
+        title = stringResource(R.string.theme_key_border),
+        supportingText = stringResource(R.string.theme_key_border_summary),
+        checked = settings.keyBorder,
+        onCheckedChange = { v -> onUpdate { it.copy(keyBorder = v) } },
+    )
+    SliderRow(
+        title = stringResource(R.string.theme_label_size),
+        value = settings.labelScale,
+        valueRange = KeyboardSettings.LABEL_SCALE_RANGE,
+        valueLabel = { stringResource(R.string.value_percent, (it * 100).roundToInt()) },
+        onValueCommitted = { v -> onUpdate { it.copy(labelScale = v) } },
+        snap = { (it * LABEL_STEPS).roundToInt() / LABEL_STEPS },
+    )
+    SwitchRow(
+        title = stringResource(R.string.theme_bold_labels),
+        checked = settings.boldLabels,
+        onCheckedChange = { v -> onUpdate { it.copy(boldLabels = v) } },
+    )
+    SwitchRow(
+        title = stringResource(R.string.theme_hint_labels),
+        supportingText = stringResource(R.string.theme_hint_labels_summary),
+        checked = settings.symbolHints,
+        onCheckedChange = { v -> onUpdate { it.copy(symbolHints = v) } },
+    )
+    SwitchRow(
+        title = stringResource(R.string.theme_key_preview),
+        supportingText = stringResource(R.string.theme_key_preview_summary),
+        checked = settings.keyPreview,
+        onCheckedChange = { v -> onUpdate { it.copy(keyPreview = v) } },
+    )
+    Text(
+        stringResource(R.string.theme_press_style),
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    )
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        PressStyle.entries.forEachIndexed { index, style ->
+            SegmentedButton(
+                selected = settings.pressStyle == style,
+                onClick = { onUpdate { it.copy(pressStyle = style) } },
+                shape = SegmentedButtonDefaults.itemShape(index, PressStyle.entries.size),
+            ) {
+                Text(stringResource(pressLabel(style)))
+            }
+        }
+    }
+}
+
+@StringRes
+private fun pressLabel(style: PressStyle): Int =
+    when (style) {
+        PressStyle.Shade -> R.string.theme_press_shade
+        PressStyle.Outline -> R.string.theme_press_outline
+        PressStyle.None -> R.string.theme_press_none
+    }
+
+/** The radius slider shows 0 (square) to 100 % (pill) of its 0..0.5 range, in 2 % steps. */
+private const val RADIUS_PERCENT = 200
+private const val RADIUS_STEPS = 50f
+private const val LABEL_STEPS = 20f
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
