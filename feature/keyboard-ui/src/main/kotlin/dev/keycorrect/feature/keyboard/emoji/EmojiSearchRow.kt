@@ -27,6 +27,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
+import dev.keycorrect.core.designsystem.onBackgroundColor
 import dev.keycorrect.feature.keyboard.KeyboardController
 import dev.keycorrect.feature.keyboard.R
 
@@ -55,7 +57,7 @@ internal fun EmojiSearchRow(controller: KeyboardController, onPress: () -> Unit)
             if (results.isEmpty() && query.isNotBlank()) {
                 Text(
                     stringResource(R.string.emoji_search_empty),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = hintOnBackgroundColor(),
                     maxLines = 1,
                 )
             } else {
@@ -107,7 +109,7 @@ private fun QueryBox(query: String) {
     ) {
         Text(
             text = query.ifEmpty { stringResource(R.string.emoji_search_hint) },
-            color = if (query.isEmpty()) colors.onSurfaceVariant else colors.onSurface,
+            color = if (query.isEmpty()) hintOnBackgroundColor() else onBackgroundColor(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

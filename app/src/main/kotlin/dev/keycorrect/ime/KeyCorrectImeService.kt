@@ -9,13 +9,19 @@ import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import dev.keycorrect.appContainer
 import dev.keycorrect.core.decoder.rerank.NeuralReranker
-import dev.keycorrect.core.designsystem.KeyCorrectTheme
+import dev.keycorrect.core.designsystem.KeyboardLook
 import dev.keycorrect.core.ime.ComposeInputMethodService
 import dev.keycorrect.core.input.EditorSession
 import dev.keycorrect.core.input.FieldProfile
@@ -145,6 +151,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        // The wallpaper colors may have changed while the keyboard was hidden.
+        colorRefresh++
         neuralHost.onWindowShown()
     }
 
@@ -215,6 +223,9 @@ class KeyCorrectImeService : ComposeInputMethodService() {
         }
     }
 
+    /** Bumped each time the keyboard is shown, so the dynamic (wallpaper) colors are read again. */
+    private var colorRefresh by mutableIntStateOf(0)
+
     override fun onDestroy() {
         // The microphone and the recognizer are closed with the service.
         controller.voice.stopNow()
@@ -234,7 +245,8 @@ class KeyCorrectImeService : ComposeInputMethodService() {
     @Composable
     override fun KeyboardContent() {
         val settings by settingsFlow.collectAsState()
-        KeyCorrectTheme {
+        KeyboardLook(settings, refresh = colorRefresh) {
+            NavigationBarIcons()
             KeyboardScreen(
                 controller,
                 settings,
@@ -242,6 +254,21 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                 autofill = autofill,
                 onOpenSettings = ::openSettings,
             )
+        }
+    }
+
+    /**
+     * The system's chevron and keyboard-switcher buttons below the keys are drawn light or dark by
+     * the window's appearance flag; follow the keyboard background so they stay visible.
+     */
+    @Composable
+    private fun NavigationBarIcons() {
+        val light = MaterialTheme.colorScheme.surfaceContainer.luminance() > LIGHT_BACKGROUND
+        SideEffect {
+            window.window?.let { w ->
+                WindowCompat.getInsetsController(w, w.decorView).isAppearanceLightNavigationBars =
+                    light
+            }
         }
     }
 
@@ -354,3 +381,5 @@ private fun describeField(info: EditorInfo): String {
  */
 internal fun shouldRecordField(inputType: Int, fieldPackage: String?, ownPackage: String): Boolean =
     !(inputType == InputType.TYPE_NULL && fieldPackage == ownPackage)
+
+private const val LIGHT_BACKGROUND = 0.5f

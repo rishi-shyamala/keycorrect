@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -43,6 +42,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.takeOrElse
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
+import dev.keycorrect.core.designsystem.stripTextColor
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
@@ -104,7 +105,7 @@ private fun NeverSuggestPrompt(
         Text(
             stringResource(R.string.strip_never_question, word),
             modifier = Modifier.weight(1f).padding(horizontal = SlotPadding),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = stripTextColor(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -139,7 +140,7 @@ private fun PromptButton(label: String, description: String, onClick: () -> Unit
                 .padding(horizontal = PromptButtonPadding),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        Text(label, color = accentOnBackgroundColor(), maxLines = 1)
     }
 }
 
@@ -214,7 +215,7 @@ private fun RowScope.Slot(
                 .padding(horizontal = SlotPadding),
         contentAlignment = Alignment.Center,
     ) {
-        val color = MaterialTheme.colorScheme.onSurface
+        val color = stripTextColor()
         val weight = if (slot.bold) FontWeight.Bold else FontWeight.Normal
         if (slot.kind == SlotKind.Phrase) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -226,7 +227,7 @@ private fun RowScope.Slot(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(PHRASE_HINT, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                Text(PHRASE_HINT, color = accentOnBackgroundColor(), maxLines = 1)
             }
         } else {
             ShrinkingText(slot, measurer, color, weight)

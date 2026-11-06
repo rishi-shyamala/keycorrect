@@ -7,6 +7,7 @@ import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyCodes
 import dev.keycorrect.core.layout.KeyModifier
 import dev.keycorrect.core.layout.ResolvedKey
+import dev.keycorrect.core.settings.KeyboardSettings
 import org.junit.Test
 
 class KeyDrawingTest {
@@ -146,5 +147,30 @@ class KeyDrawingTest {
         assertThat(icon(code(KeyCodes.PAGE_UP))).isNull()
         assertThat(icon(letter)).isNull()
         assertThat(icon(ResolvedKey("?123", KeyAction.SwitchLayer("symbols1")))).isNull()
+    }
+}
+
+class KeyCornerTest {
+    @Test
+    fun defaultIsTenDpAtEverySize() {
+        for (height in listOf(40, 54, 80)) {
+            assertThat(keyCornerDp(KeyboardSettings.DEFAULT_KEY_RADIUS_DP, height, 6))
+                .isEqualTo(10f)
+        }
+    }
+
+    @Test
+    fun squareAndPill() {
+        assertThat(keyCornerDp(0, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(40, 54, 6)).isEqualTo(24f)
+        assertThat(isPill(24, 54, 6)).isTrue()
+        assertThat(isPill(23, 54, 6)).isFalse()
+    }
+
+    @Test
+    fun outOfRangeIsClamped() {
+        assertThat(keyCornerDp(-1, 54, 6)).isEqualTo(0f)
+        assertThat(keyCornerDp(99, 54, 6)).isEqualTo(24f)
+        assertThat(keyCornerDp(10, 4, 6)).isEqualTo(0f)
     }
 }

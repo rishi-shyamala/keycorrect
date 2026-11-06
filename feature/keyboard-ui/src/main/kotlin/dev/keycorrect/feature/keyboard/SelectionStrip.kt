@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 
 /**
  * The strip shown in place of the predictions while a range is selected (docs/PHASE4.md, feedback
@@ -141,7 +142,7 @@ private fun RowScope.StripAction(
         Icon(
             icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = accentOnBackgroundColor(),
             modifier = Modifier.size(StripActionIcon),
         )
     }

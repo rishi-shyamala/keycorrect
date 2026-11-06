@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -58,31 +59,35 @@ fun KeyboardScreen(
     val shift = remember(controller) { { controller.effectiveShift } }
     val enterLabel = enterLabel(controller.enterAction)
     val touch = remember { KeyboardTouchState() }
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                // With gesture nav the IME draws a 48dp bar (switcher / hide-keyboard buttons)
-                // that navigationBars (~15dp, gesture handle only) doesn't cover; tappableElement
-                // does. The union also keeps keys off the handle when those buttons are hidden.
-                .windowInsetsPadding(
-                    WindowInsets.navigationBars.union(WindowInsets.tappableElement)
+    val keyRadius = keyCornerDp(settings.keyRadiusDp, settings.keyHeightDp, settings.keyGapDp).dp
+    CompositionLocalProvider(LocalKeyRadius provides keyRadius) {
+        Column(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    // With gesture nav the IME draws a 48dp bar (switcher / hide-keyboard buttons)
+                    // that navigationBars (~15dp, gesture handle only) doesn't cover;
+                    // tappableElement
+                    // does. The union also keeps keys off the handle when those buttons are hidden.
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars.union(WindowInsets.tappableElement)
+                    )
+                    .padding(settings.edgePaddingDp.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
+                    KeyArea(controller, settings, feedback, touch)
+                }
+                KeyOverlay(
+                    touch = touch,
+                    shift = shift,
+                    enterLabel = enterLabel,
+                    keyGap = settings.keyGapDp.dp,
+                    modifier = Modifier.matchParentSize(),
                 )
-                .padding(settings.edgePaddingDp.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
-                KeyArea(controller, settings, feedback, touch)
             }
-            KeyOverlay(
-                touch = touch,
-                shift = shift,
-                enterLabel = enterLabel,
-                keyGap = settings.keyGapDp.dp,
-                modifier = Modifier.matchParentSize(),
-            )
         }
     }
 }

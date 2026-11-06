@@ -98,6 +98,7 @@ fun SettingsApp(
                 SettingsDestination.KeyboardFit ->
                     KeyboardFitScreen(padding, container, settings, onUpdate)
                 SettingsDestination.Editing -> EditingSettingsScreen(padding, settings, onUpdate)
+                SettingsDestination.Theme -> ThemeScreen(padding, settings, onUpdate)
                 SettingsDestination.Emoji -> EmojiSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.Voice -> VoiceSettingsScreen(padding, settings, onUpdate)
                 SettingsDestination.LanguageModel ->

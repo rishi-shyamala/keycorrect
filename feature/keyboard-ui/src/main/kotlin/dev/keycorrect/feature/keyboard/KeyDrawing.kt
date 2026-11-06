@@ -8,13 +8,33 @@ import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyStyle
 import dev.keycorrect.core.layout.ResolvedKey
+import dev.keycorrect.core.settings.KeyboardSettings
 
 /**
  * Space between neighbouring keys at its default; each key is drawn inset by half of the gap
  * ([dev.keycorrect.core.settings.KeyboardSettings.keyGapDp]) inside its slot.
  */
 internal val KeyGap = 6.dp
-internal val KeyCornerRadius = 10.dp
+
+/**
+ * Corner radius in dp of a key whose slot is [keyHeightDp] tall with [gapDp] between keys: the
+ * chosen [radiusDp], but at most half the drawn key's height (a pill).
+ */
+internal fun keyCornerDp(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Float =
+    radiusDp
+        .coerceIn(KeyboardSettings.KEY_RADIUS_DP_RANGE)
+        .toFloat()
+        .coerceAtMost((keyHeightDp - gapDp).coerceAtLeast(0) / 2f)
+
+/** Whether [radiusDp] makes the keys pills at this key height and gap. */
+internal fun isPill(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Boolean =
+    radiusDp >= (keyHeightDp - gapDp).coerceAtLeast(0) / 2f
+
+/** The key corner radius for panels that draw their own buttons (provided by the keyboard). */
+internal val LocalKeyRadius = androidx.compose.runtime.compositionLocalOf { 10.dp }
+
+/** The popup and preview bubbles are rounder than keys by this factor (14 dp at the default). */
+internal const val OVERLAY_RADIUS_SCALE = 1.4f
 
 /** The text drawn on [key] under [shift]; the Enter key shows [enterLabel]. */
 internal fun keyLabel(key: ResolvedKey, shift: ShiftState, enterLabel: String): String =

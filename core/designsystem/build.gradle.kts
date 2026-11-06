@@ -5,4 +5,7 @@ plugins {
 
 android { namespace = "dev.keycorrect.core.designsystem" }
 
-dependencies { api(libs.compose.material3) }
+dependencies {
+    api(libs.compose.material3)
+    api(project(":core:settings"))
+}

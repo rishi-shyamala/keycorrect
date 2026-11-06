@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -34,6 +33,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import dev.keycorrect.core.designsystem.accentOnBackgroundColor
+import dev.keycorrect.core.designsystem.hintOnBackgroundColor
 import kotlin.math.roundToInt
 
 /** The icon buttons of the suggestion strip's tool row. */
@@ -233,9 +234,7 @@ private fun ToolButton(
         Icon(
             icon,
             contentDescription = null,
-            tint =
-                if (selected == true) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (selected == true) accentOnBackgroundColor() else hintOnBackgroundColor(),
             modifier =
                 Modifier.size(IDLE_ICON_DP.dp).graphicsLayer {
                     val scale = lerp(1f, BUSY_ICON_DP / IDLE_ICON_DP, progress.value)

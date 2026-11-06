@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
  * Reads and writes [KeyboardSettings] in a Preferences [DataStore]. Once any value of a size
  * profile is stored, that profile no longer follows the global fallback.
  */
+@Suppress("TooManyFunctions") // one repository with a typed read and write per group of settings
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     /** Current settings, always sanitized; falls back to defaults if the store is unreadable. */
     val settings: Flow<KeyboardSettings> =
@@ -174,8 +175,26 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                     neuralModel = this[NEURAL_MODEL] ?: d.neuralModel,
                 )
             }
+            .withLook(p)
             .withEngine(p)
             .withSizes(p)
+    }
+
+    /** The theme and key style fields; split from [withVoiceAndNeural] to keep both short. */
+    private fun KeyboardSettings.withLook(p: Preferences): KeyboardSettings {
+        val d = KeyboardSettings()
+        return with(p) {
+            copy(
+                keyRadiusDp = this[KEY_RADIUS_DP] ?: d.keyRadiusDp,
+                keyBorder = this[KEY_BORDER] ?: d.keyBorder,
+                labelScale = this[LABEL_SCALE] ?: d.labelScale,
+                boldLabels = this[BOLD_LABELS] ?: d.boldLabels,
+                pressStyle = PressStyle.parse(this[PRESS_STYLE]) ?: d.pressStyle,
+                themeSource = ThemeSource.parse(this[THEME_SOURCE]) ?: d.themeSource,
+                customLightColors = ThemeColors.decode(this[CUSTOM_LIGHT_COLORS]),
+                customDarkColors = ThemeColors.decode(this[CUSTOM_DARK_COLORS]),
+            )
+        }
     }
 
     /** The per-profile sizes stored in [p]; a missing value falls back to the global one. */
@@ -294,10 +313,22 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[NEURAL_PHRASES] = s.neuralPhrases
         this[LM_STRENGTH] = s.lmStrength
         this[NEURAL_MODEL] = s.neuralModel
+        writeLookAndEngines(s)
+        writeSizes(s.sizes)
+    }
+
+    private fun MutablePreferences.writeLookAndEngines(s: KeyboardSettings) {
+        this[KEY_RADIUS_DP] = s.keyRadiusDp
+        this[KEY_BORDER] = s.keyBorder
+        this[LABEL_SCALE] = s.labelScale
+        this[BOLD_LABELS] = s.boldLabels
+        this[PRESS_STYLE] = s.pressStyle.name
+        this[THEME_SOURCE] = s.themeSource.name
+        this[CUSTOM_LIGHT_COLORS] = ThemeColors.encode(s.customLightColors)
+        this[CUSTOM_DARK_COLORS] = ThemeColors.encode(s.customDarkColors)
         this[NEURAL_ENGINE] = s.neuralEngine
         this[APPROVED_ENGINES] = s.approvedEngines
         this[FIT_DISMISSALS] = s.fitDismissals
-        writeSizes(s.sizes)
     }
 
     private fun MutablePreferences.writeSizes(sizes: Map<SizeProfile, SizeSettings>) {
@@ -375,6 +406,14 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val LM_STRENGTH = floatPreferencesKey("lm_strength")
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
+        val KEY_RADIUS_DP = intPreferencesKey("key_radius_dp")
+        val KEY_BORDER = booleanPreferencesKey("key_border")
+        val LABEL_SCALE = floatPreferencesKey("label_scale")
+        val BOLD_LABELS = booleanPreferencesKey("bold_labels")
+        val PRESS_STYLE = stringPreferencesKey("press_style")
+        val THEME_SOURCE = stringPreferencesKey("theme_source")
+        val CUSTOM_LIGHT_COLORS = stringPreferencesKey("custom_light_colors")
+        val CUSTOM_DARK_COLORS = stringPreferencesKey("custom_dark_colors")
         val APPROVED_ENGINES = stringSetPreferencesKey("approved_engines")
         val FIT_DISMISSALS = stringSetPreferencesKey("fit_dismissals")
         val BOOLEAN_KEYS =
@@ -410,10 +449,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_AUTO_PUNCTUATION.name,
                 NEURAL_RERANK.name,
                 NEURAL_PHRASES.name,
+                KEY_BORDER.name,
+                BOLD_LABELS.name,
             ) + perProfile(NUMBER_ROW)
         val INT_KEYS =
             setOf(
                 KEY_HEIGHT_DP.name,
+                KEY_RADIUS_DP.name,
                 EDGE_PADDING_DP.name,
                 KEY_GAP_DP.name,
                 LONG_PRESS_DELAY_MS.name,
@@ -435,6 +477,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 MODE_ENTER_KEY_WIDTH.name,
                 SOUND_VOLUME.name,
                 LM_STRENGTH.name,
+                LABEL_SCALE.name,
             ) + perProfile(BOTTOM_KEY_WIDTH, MODE_ENTER_KEY_WIDTH)
         val STRING_KEYS =
             setOf(
@@ -444,6 +487,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 VOICE_ENGINE.name,
                 NEURAL_MODEL.name,
                 NEURAL_ENGINE.name,
+                PRESS_STYLE.name,
+                THEME_SOURCE.name,
+                CUSTOM_LIGHT_COLORS.name,
+                CUSTOM_DARK_COLORS.name,
             )
         val STRING_SET_KEYS = setOf(APPROVED_ENGINES.name, FIT_DISMISSALS.name)
     }
