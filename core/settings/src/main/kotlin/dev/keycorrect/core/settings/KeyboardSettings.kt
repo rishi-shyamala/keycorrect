@@ -50,6 +50,12 @@ enum class VoiceEngineChoice {
     }
 }
 
+/** [this] clamped to [range], or [default] when it is NaN. */
+internal fun Float.coerceInOrDefault(
+    range: ClosedFloatingPointRange<Float>,
+    default: Float,
+): Float = if (isNaN()) default else coerceIn(range)
+
 private const val HOUR_MS = 3_600_000L
 private const val DAY_MS = 86_400_000L
 private const val WEEK_MS = 604_800_000L
@@ -313,11 +319,15 @@ data class KeyboardSettings(
                 clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
                 keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
                 bottomKeyWidth =
-                    if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
-                    else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
+                    bottomKeyWidth.coerceInOrDefault(
+                        BOTTOM_KEY_WIDTH_RANGE,
+                        DEFAULT_BOTTOM_KEY_WIDTH,
+                    ),
                 modeEnterKeyWidth =
-                    if (modeEnterKeyWidth.isNaN()) DEFAULT_MODE_ENTER_KEY_WIDTH
-                    else modeEnterKeyWidth.coerceIn(MODE_ENTER_KEY_WIDTH_RANGE),
+                    modeEnterKeyWidth.coerceInOrDefault(
+                        MODE_ENTER_KEY_WIDTH_RANGE,
+                        DEFAULT_MODE_ENTER_KEY_WIDTH,
+                    ),
                 edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
                 keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
                 longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
@@ -331,8 +341,7 @@ data class KeyboardSettings(
                         .coerceIn(REVERTS_RANGE)
                         .coerceAtLeast(implicitAddReverts.coerceIn(REVERTS_RANGE)),
                 soundVolume =
-                    if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
-                    else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
+                    soundVolume.coerceInOrDefault(SOUND_VOLUME_RANGE, DEFAULT_SOUND_VOLUME),
                 voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
                 // Never more than half the phrase: a longer pause would not fit in it.
                 voicePauseMs =
@@ -364,16 +373,14 @@ data class KeyboardSettings(
                         .sorted()
                         .take(SizeProfile.ALL.size)
                         .toSet(),
-                lmStrength =
-                    if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
-                    else lmStrength.coerceIn(LM_STRENGTH_RANGE),
+                lmStrength = lmStrength.coerceInOrDefault(LM_STRENGTH_RANGE, DEFAULT_LM_STRENGTH),
             )
             .sanitizedLook()
 
     private fun sanitizedLook(): KeyboardSettings =
         copy(
             keyRadiusDp = keyRadiusDp.coerceIn(KEY_RADIUS_DP_RANGE),
-            labelScale = if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
+            labelScale = labelScale.coerceInOrDefault(LABEL_SCALE_RANGE, 1f),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
         )

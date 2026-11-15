@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import dev.keycorrect.core.settings.KeyboardSettings
-import dev.keycorrect.core.settings.ThemeSource
 
 /** What to draw on each fill of the theme in effect; null for the dynamic themes. */
 val LocalThemePalette = staticCompositionLocalOf<ThemePalette?> { null }
@@ -57,23 +56,6 @@ fun rememberDynamicScheme(
     val configuration = LocalConfiguration.current
     return remember(context, darkTheme, configuration, refresh) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    }
-}
-
-/**
- * The theme chosen in settings for the system light/dark mode (the one the keyboard and the
- * settings preview use).
- */
-@Composable
-fun rememberKeyboardTheme(
-    source: ThemeSource,
-    custom: List<Int>,
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    refresh: Int = 0,
-): KeyboardTheme {
-    val dynamic = rememberDynamicScheme(darkTheme, refresh)
-    return remember(source, custom, darkTheme, dynamic) {
-        resolveKeyboardTheme(source, darkTheme, dynamic, custom)
     }
 }
 

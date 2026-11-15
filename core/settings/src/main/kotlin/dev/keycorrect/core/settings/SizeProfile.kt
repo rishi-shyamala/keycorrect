@@ -41,11 +41,15 @@ data class SizeSettings(
         copy(
             keyHeightDp = keyHeightDp.coerceIn(KeyboardSettings.KEY_HEIGHT_DP_RANGE),
             bottomKeyWidth =
-                if (bottomKeyWidth.isNaN()) KeyboardSettings.DEFAULT_BOTTOM_KEY_WIDTH
-                else bottomKeyWidth.coerceIn(KeyboardSettings.BOTTOM_KEY_WIDTH_RANGE),
+                bottomKeyWidth.coerceInOrDefault(
+                    KeyboardSettings.BOTTOM_KEY_WIDTH_RANGE,
+                    KeyboardSettings.DEFAULT_BOTTOM_KEY_WIDTH,
+                ),
             modeEnterKeyWidth =
-                if (modeEnterKeyWidth.isNaN()) KeyboardSettings.DEFAULT_MODE_ENTER_KEY_WIDTH
-                else modeEnterKeyWidth.coerceIn(KeyboardSettings.MODE_ENTER_KEY_WIDTH_RANGE),
+                modeEnterKeyWidth.coerceInOrDefault(
+                    KeyboardSettings.MODE_ENTER_KEY_WIDTH_RANGE,
+                    KeyboardSettings.DEFAULT_MODE_ENTER_KEY_WIDTH,
+                ),
             edgePaddingDp = edgePaddingDp.coerceIn(KeyboardSettings.EDGE_PADDING_DP_RANGE),
             keyGapDp = keyGapDp.coerceIn(KeyboardSettings.KEY_GAP_DP_RANGE),
         )

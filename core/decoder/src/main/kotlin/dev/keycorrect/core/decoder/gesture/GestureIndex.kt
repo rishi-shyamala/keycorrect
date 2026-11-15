@@ -201,11 +201,6 @@ internal class GestureLayoutIndex(
         return sum
     }
 
-    /** First and last key of word [w], or -1 if the word is not usable on this layout. */
-    fun firstKey(w: Int): Int = if (seqOff[w + 1] > seqOff[w]) seqKeys[seqOff[w]].toInt() else -1
-
-    fun lastKey(w: Int): Int = seqKeys[seqOff[w + 1] - 1].toInt()
-
     fun pathLengthOf(w: Int): Float = pathLength[w]
 
     /**
