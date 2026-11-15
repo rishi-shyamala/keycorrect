@@ -17,6 +17,7 @@ import dev.keycorrect.core.layout.KeyboardGeometry
 import dev.keycorrect.core.layout.KeyboardSet
 import dev.keycorrect.feature.keyboard.ManualExecutor
 import dev.keycorrect.feature.keyboard.R
+import dev.keycorrect.feature.keyboard.releaseWhenWaiting
 import org.junit.Test
 
 class ShortcutExpanderTest {
