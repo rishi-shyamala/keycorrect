@@ -215,3 +215,36 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
+
+## Baseline profile and Macrobenchmarks (phase 9c)
+
+`:baselineprofile` (com.android.test + `androidx.baselineprofile` 1.5.0, works with AGP 9.4) generates
+`app/src/release/generated/baselineProfiles/{baseline,startup}-prof.txt`, which ships in the release
+build (profileinstaller installs it). The generator launches Settings, selects the KeyCorrect IME
+through `ime enable/set`, focuses an EditText in a test host activity (`HostActivity`, works on
+release-like builds without Field Lab), types a sentence by tapping key positions, swipes once and
+opens the emoji panel. Key positions are fractions of the IME window (calibrated on 1440x3088);
+change `Keyboard.kt` if the layout moves. Everything needs a device and is on demand only; normal
+CI just compiles the module. The profile and benchmarks run against the `dev.keycorrect.benchmark` package (same release signing, so pack signature checks pass), never the installed `dev.keycorrect`; `ImeGuard` restores the device's default/enabled keyboards after each test and the run refuses to target `dev.keycorrect`.
+
+```sh
+# Regenerate the profile (commit the resulting files):
+ANDROID_SERIAL=<serial> ./gradlew :app:generateBaselineProfile
+# Macrobenchmarks (cold start, typing frames; CompilationMode None vs baseline profile):
+ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.keycorrect.baselineprofile.KeyboardBenchmark
+# Add -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
+# on an emulator only. Results: baselineprofile/build/outputs/connected_android_test_additional_output.
+```
+
+**Emulator numbers (s23u AVD, x86_64, relative only; 5 iterations, median):**
+
+| Benchmark | None | Baseline profile |
+| --- | --- | --- |
+| Cold start, time to initial display (ms) | 434 | 353 |
+| Typing run, frame count | 75 | 79 |
+
+Caveats: the start benchmark's metric is the Settings activity's time to initial display (the IME
+runs in the same process, and the host is brought up after it); the keyboard's own first frame is
+not isolated. Frame durations were not reported on the emulator (only `frameCount`), so typing frame
+timing needs a real device. Device numbers pending.

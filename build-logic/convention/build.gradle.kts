@@ -9,6 +9,7 @@ dependencies {
     implementation(libs.kotlin.serialization.gradle.plugin)
     implementation(libs.detekt.gradle.plugin)
     implementation(libs.androidx.benchmark.gradle.plugin)
+    implementation(libs.androidx.baselineprofile.gradle.plugin)
 }
 
 gradlePlugin {
@@ -32,6 +33,14 @@ gradlePlugin {
         register("androidBenchmark") {
             id = "keycorrect.android.benchmark"
             implementationClass = "AndroidBenchmarkConventionPlugin"
+        }
+        register("baselineProfileConsumer") {
+            id = "keycorrect.baselineprofile.consumer"
+            implementationClass = "BaselineProfileConsumerConventionPlugin"
+        }
+        register("baselineProfileProducer") {
+            id = "keycorrect.baselineprofile.producer"
+            implementationClass = "BaselineProfileProducerConventionPlugin"
         }
         register("detekt") {
             id = "keycorrect.detekt"
