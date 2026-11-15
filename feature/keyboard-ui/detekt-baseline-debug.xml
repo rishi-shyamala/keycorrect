@@ -30,10 +30,6 @@
     <ID>LongParameterList:PredictiveInput.kt:PredictiveInput</ID>
     <ID>LongParameterList:PredictiveInput.kt:PredictiveInput$private fun completeWord: Correction?</ID>
     <ID>LoopWithTooManyJumpStatements:TouchStateMachine.kt:TouchStateMachine$for</ID>
-    <ID>MagicNumber:DecoderLoop.kt:DecoderLoop$1_000</ID>
-    <ID>MagicNumber:DecoderLoop.kt:DecoderLoop$1_000_000</ID>
-    <ID>MagicNumber:DecoderLoop.kt:LatencyStats$0.5</ID>
-    <ID>MagicNumber:DecoderLoop.kt:LatencyStats$0.95</ID>
     <ID>NestedBlockDepth:ShortcutExpander.kt:ShortcutExpander$fun expand: Expansion</ID>
     <ID>ReturnCount:DecoderLoop.kt:DecoderLoop$fun resultForSeparator: PredictResult?</ID>
     <ID>ReturnCount:DecoderLoop.kt:DecoderLoop$private fun decode: PredictResult?</ID>
@@ -71,7 +67,6 @@
     <ID>TooManyFunctions:PredictiveInput.kt:PredictiveInput</ID>
     <ID>TooManyFunctions:TextContextCache.kt:TextContextCache</ID>
     <ID>TooManyFunctions:TouchStateMachine.kt:TouchStateMachine</ID>
-    <ID>UnnecessaryNotNullOperator:PredictiveInput.kt:PredictiveInput$separator!!</ID>
     <ID>UnsafeCallOnNullableType:WordTouchLog.kt:WordTouchLog$ring[(next - size + it + capacity) % capacity]!!</ID>
   </CurrentIssues>
 </SmellBaseline>

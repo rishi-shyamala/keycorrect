@@ -178,9 +178,7 @@ class KeyboardController(
     private fun settleForVoice() {
         input.endComposingForMove()
         composingNow = input.isComposing
-        sawText = true
-        zeroChecked = false
-        if (fieldEmpty) fieldEmpty = false
+        noteTextTyped()
         updateAutoCapitalize()
     }
 
@@ -221,7 +219,7 @@ class KeyboardController(
         override fun onSwipeCancel() = swipes.onCancel()
     }
 
-    /** Touches of recently committed words, in memory only (for Phase 3 learning). */
+    /** Touches of recently committed words, in memory only (for touch-model learning). */
     val touchLog: WordTouchLog
         get() = input.touchLog
 
@@ -361,9 +359,14 @@ class KeyboardController(
         emojiSearch.close()
         clipboardPanel.reset()
         editing.reset()
+        terminalModifiers.reset()
+        rebuildLayers(effective, newOptions)
+    }
+
+    /** Starts the layers over for the field's [effective] profile: its home layer, shift off. */
+    private fun rebuildLayers(effective: FieldProfile, newOptions: ComposeOptions) {
         shiftHeld = false
         shiftChorded = false
-        terminalModifiers.reset()
         variant = variantFor(effective.kind)
         options = newOptions
         val layerId = homeLayerFor(effective.kind)
@@ -401,9 +404,7 @@ class KeyboardController(
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
-            sawText = true
-            zeroChecked = false
-            if (fieldEmpty) fieldEmpty = false
+            noteTextTyped()
         }
     }
 
@@ -508,17 +509,7 @@ class KeyboardController(
         profile = effective
         input.onStartInput(effective, settings, newField = false, selectionState())
         composingNow = input.isComposing
-        shiftHeld = false
-        shiftChorded = false
-        variant = variantFor(effective.kind)
-        options = composeOptions(effective, settings)
-        val layerId = homeLayerFor(effective.kind)
-        state = KeyboardState(layerId)
-        layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
-        updateLayoutKey()
-        updateAutoCapitalize()
-        warmUpSwipe()
+        rebuildLayers(effective, composeOptions(effective, settings))
     }
 
     private fun switchLayer(layerId: String) {
@@ -713,9 +704,7 @@ class KeyboardController(
         markChord()
         state = state.afterCharacter(shiftHeld)
         composingNow = input.isComposing
-        sawText = true
-        zeroChecked = false
-        if (fieldEmpty) fieldEmpty = false
+        noteTextTyped()
         updateAutoCapitalize()
     }
 
@@ -799,6 +788,13 @@ class KeyboardController(
         if (fieldEmpty != empty) fieldEmpty = empty
     }
 
+    /** Text was typed (or dictated) in the field, so it is no longer empty. */
+    private fun noteTextTyped() {
+        sawText = true
+        zeroChecked = false
+        if (fieldEmpty) fieldEmpty = false
+    }
+
     private fun canAskEditor() = sawText && !profile.sensitive
 
     /** Empty by the editor when it can be asked, else by whether text was ever seen. */
@@ -865,9 +861,7 @@ class KeyboardController(
             }
         composingNow = input.isComposing
         if (handled && !searching && resolved != PhysicalKey.Backspace) {
-            sawText = true
-            zeroChecked = false
-            if (fieldEmpty) fieldEmpty = false
+            noteTextTyped()
         }
         return handled
     }
@@ -914,7 +908,7 @@ class KeyboardController(
             PhysicalKey.Space -> true.also { input.onSeparator(" ") }
             PhysicalKey.Backspace -> true.also { input.onBackspace() }
             PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
-            PhysicalKey.Shortcut -> false.also { input.finishWordAsTyped() }
+            PhysicalKey.Shortcut -> false.also { input.onLayerSwitch() }
             PhysicalKey.Ignore,
             is PhysicalKey.Dead -> false
         }
@@ -932,13 +926,6 @@ class KeyboardController(
         onSearchKey(action)
         return true
     }
-
-    /**
-     * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
-     * clipboard panels use the strip for their own headers).
-     */
-    val toolsVisible: Boolean
-        get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
 
     /**
      * Whether the strip's Edit tool is drawn selected: exactly while the editing panel is open,

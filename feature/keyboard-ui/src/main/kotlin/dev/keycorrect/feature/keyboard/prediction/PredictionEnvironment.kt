@@ -13,7 +13,7 @@ import java.util.concurrent.Executors
 /**
  * Everything prediction depends on, so the controller can be built with fakes in tests and with the
  * real thing by [create]: the [backend] (engine, shortcuts, user dictionary), the [loop] that runs
- * the engine off the main thread, the timer for the transient "add word" prompt, and the shortcut
+ * the engine off the main thread, the timer for the "never suggest" prompt, and the shortcut
  * variable resolver.
  */
 class PredictionEnvironment

@@ -163,8 +163,6 @@ class KeyCornerTest {
     fun squareAndPill() {
         assertThat(keyCornerDp(0, 54, 6)).isEqualTo(0f)
         assertThat(keyCornerDp(40, 54, 6)).isEqualTo(24f)
-        assertThat(isPill(24, 54, 6)).isTrue()
-        assertThat(isPill(23, 54, 6)).isFalse()
     }
 
     @Test

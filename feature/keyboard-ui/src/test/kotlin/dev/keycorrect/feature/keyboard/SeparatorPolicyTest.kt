@@ -88,11 +88,7 @@ class SeparatorPolicyTest {
     fun aSeparatorWaitsBrieflyForTheOutstandingDecodeAndUsesItsResult() {
         val c = controller(waitMs = 5_000)
         typeTeh(c)
-        Thread {
-            Thread.sleep(50)
-            gate.countDown()
-        }
-            .start()
+        releaseWhenWaiting(Thread.currentThread(), gate)
         c.onKey(KeyAction.Space)
         assertThat(editor.text.toString()).isEqualTo("the ")
         assertThat(enteredOnMain).isFalse()

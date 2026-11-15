@@ -212,13 +212,13 @@ class DecoderLoop(
         }
         if (predictor() == null) return null
         if (outstanding.get() > 0) {
-            val deadline = System.nanoTime() + separatorWaitMs * 1_000_000
+            val deadline = System.nanoTime() + separatorWaitMs * NANOS_PER_MS
             try {
                 synchronized(monitor) {
                     while (outstanding.get() > 0 && current(sequence) == null) {
                         val remaining = deadline - System.nanoTime()
                         if (remaining <= 0) break
-                        monitor.wait(remaining / 1_000_000, (remaining % 1_000_000).toInt())
+                        monitor.wait(remaining / NANOS_PER_MS, (remaining % NANOS_PER_MS).toInt())
                     }
                 }
             } catch (e: InterruptedException) {
@@ -236,13 +236,6 @@ class DecoderLoop(
     private fun current(sequence: Long): PredictResult? =
         completed.get()?.takeIf { it.sequence == sequence }
 
-    /**
-     * Decodes [request] on the calling thread. Only for callers that know no background decode can
-     * hold the engine ([resultForSeparator] checks that); returns null without a predictor or when
-     * the predictor fails.
-     */
-    fun predictNow(request: PredictRequest): PredictResult? = decode(request)
-
     private fun decode(request: PredictRequest): PredictResult? {
         val p = predictor() ?: return null
         val seq = request.sequence
@@ -257,7 +250,7 @@ class DecoderLoop(
                 Log.w(TAG, "Prediction failed: ${e.javaClass.name}")
                 return null
             }
-        latency.record((System.nanoTime() - start) / 1_000)
+        latency.record((System.nanoTime() - start) / NANOS_PER_MICRO)
         return result
     }
 
@@ -274,7 +267,7 @@ class DecoderLoop(
                 Log.w(TAG, "Gesture decode failed: ${e.javaClass.name}")
                 return null
             }
-        gestureLatency.record((System.nanoTime() - start) / 1_000)
+        gestureLatency.record((System.nanoTime() - start) / NANOS_PER_MICRO)
         return result
     }
 
@@ -291,6 +284,7 @@ class DecoderLoop(
 }
 
 private const val NANOS_PER_MS = 1_000_000L
+private const val NANOS_PER_MICRO = 1_000L
 
 /**
  * The final decode of a swipe in flight (see [DecoderLoop.submitFinalGesture]). The main thread
@@ -374,19 +368,12 @@ class LatencyStats {
         if (count % LOG_EVERY == 0L) {
             Log.d(
                 TAG,
-                "decode p50=${percentileLocked(0.5)}us p95=${percentileLocked(0.95)}us n=$count",
+                "decode p50=${percentileLocked(P50)}us p95=${percentileLocked(P95)}us n=$count",
             )
         }
     }
 
-    /** Number of decodes recorded so far. */
-    @get:Synchronized
-    val total: Long
-        get() = count
-
     /** The [fraction] percentile (0..1) of the recent window in microseconds, 0 if empty. */
-    @Synchronized fun percentile(fraction: Double): Long = percentileLocked(fraction)
-
     private fun percentileLocked(fraction: Double): Long {
         val n = minOf(count, WINDOW.toLong()).toInt()
         if (n == 0) return 0
@@ -398,6 +385,8 @@ class LatencyStats {
         const val TAG = "DecoderLatency"
         const val WINDOW = 256
         const val LOG_EVERY = 200
+        const val P50 = 0.5
+        const val P95 = 0.95
     }
 }
 

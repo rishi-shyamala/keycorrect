@@ -26,10 +26,6 @@ internal fun keyCornerDp(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Float =
         .toFloat()
         .coerceAtMost((keyHeightDp - gapDp).coerceAtLeast(0) / 2f)
 
-/** Whether [radiusDp] makes the keys pills at this key height and gap. */
-internal fun isPill(radiusDp: Int, keyHeightDp: Int, gapDp: Int): Boolean =
-    radiusDp >= (keyHeightDp - gapDp).coerceAtLeast(0) / 2f
-
 /** The key corner radius for panels that draw their own buttons (provided by the keyboard). */
 internal val LocalKeyRadius = androidx.compose.runtime.compositionLocalOf { 10.dp }
 

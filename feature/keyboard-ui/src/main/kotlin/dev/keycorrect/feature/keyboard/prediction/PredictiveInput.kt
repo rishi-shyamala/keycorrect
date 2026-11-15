@@ -51,14 +51,15 @@ import java.nio.CharBuffer
  *   Backspace deletes in the editor and, when the cursor lands right after a word, turns that word
  *   back into the composing word. Separators commit directly.
  * - *Composing*. Letters, digits and apostrophes extend the word, shown with `setComposingText`.
- *   Backspace shortens it. A separator (space, punctuation, Enter) finishes it: the autocorrect or
- *   auto-expanding shortcut of the freshest result is applied if allowed, otherwise the word stays.
- *   A layer switch or an unexpected cursor move finishes it as it is.
- * - *Undo window*. After a correction or expansion, the very next backspace restores the typed word
- *   (a space separator is dropped, so the next space or punctuation keeps it without a double
- *   space; punctuation the user typed deliberately stays, see [undoCorrection]); while the user is
- *   putting that word back (finishing it again) it is not auto-corrected again, but that is for
- *   this occurrence only: the permanent behaviour comes from the learning thresholds. Any other key
+ *   Backspace shortens it. A separator (space, punctuation, Enter) finishes it: the autocorrect of
+ *   the freshest result is applied if allowed, otherwise the word stays. A shortcut expands only
+ *   when its strip slot is tapped. A layer switch or an unexpected cursor move finishes it as it
+ *   is.
+ * - *Undo window*. After an autocorrection, the very next backspace restores the typed word (a
+ *   space separator is dropped, so the next space or punctuation keeps it without a double space;
+ *   punctuation the user typed deliberately stays, see [undoCorrection]); while the user is putting
+ *   that word back (finishing it again) it is not auto-corrected again, but that is for this
+ *   occurrence only: the permanent behaviour comes from the learning thresholds. Any other key
  *   closes the window.
  * - *Held revert*. The learning layer is told about an undone (or deleted and retyped) correction
  *   only once the restored word is finished, since the user often undoes a wrong fix in order to
@@ -95,7 +96,7 @@ internal class PredictiveInput(
      */
     private val onLateSwipe: () -> Unit = {},
 ) {
-    /** The touches of recently finished words, for Phase 3. In memory only. */
+    /** The touches of recently finished words, for touch-model learning. In memory only. */
     val touchLog = WordTouchLog()
 
     /** The keys touches are relative to; changing it re-bases the word being composed. */
@@ -206,7 +207,7 @@ internal class PredictiveInput(
         val typed: String,
         val applied: String,
         val separator: String,
-        /** Set for an autocorrection (not for a shortcut expansion). */
+        /** The autocorrection that was applied. */
         val correction: Correction?,
     )
 
@@ -488,7 +489,6 @@ internal class PredictiveInput(
     /**
      * A shortcut or navigation key is about to reach the app: the word in progress ends as typed.
      */
-    fun finishWordAsTyped() = onLayerSwitch()
 
     /** The layer changed: a word in progress ends as typed. */
     fun onLayerSwitch() {
@@ -853,7 +853,11 @@ internal class PredictiveInput(
                     canUndo,
                 )
             }
-        undo = if (canUndo) Undo(typed, committed, separator!!, correction) else null
+        val undoSeparator = separator
+        undo =
+            if (canUndo && undoSeparator != null) {
+                Undo(typed, committed, undoSeparator, correction)
+            } else null
         if (unlearned) restoredWord = null else record(typed, committed, touchList, method)
         if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
@@ -1670,7 +1674,7 @@ internal class PredictiveInput(
         onStrip(StripModel.Empty)
     }
 
-    /** Records a finished word for Phase 3, unless the field forbids learning. */
+    /** Records a finished word for touch-model learning, unless the field forbids learning. */
     private fun record(
         typed: String,
         committed: String,
@@ -2263,10 +2267,10 @@ internal class PredictiveInput(
         /** Most positions of a word where the intended char differs from the one registered. */
         const val MAX_MISMATCHED_POSITIONS = 1
 
-        /** Text ending in one of these needs no space before an inserted next word. */
         /** Separators that make the word before them part of an address or path. */
         const val ADDRESS_SEPARATORS = "@/\\_"
 
+        /** Text ending in one of these needs no space before an inserted next word. */
         const val NO_SPACE_AFTER = "([{<\"'“‘/@#-"
 
         /** A swiped word after one of these gets a space first. */

@@ -416,3 +416,19 @@ internal class ScriptedPredictor : Predictor {
         return base.copy(sequence = request.sequence)
     }
 }
+
+/**
+ * Opens [gate] once [waiter] is parked in a timed wait, so a test releases a blocked engine exactly
+ * when the code under test is waiting for it, with no real-time sleep. Gives up after five seconds
+ * (the test then fails on its own assertions).
+ */
+internal fun releaseWhenWaiting(waiter: Thread, gate: java.util.concurrent.CountDownLatch) {
+    Thread {
+        val giveUp = System.nanoTime() + 5_000_000_000L
+        while (waiter.state != Thread.State.TIMED_WAITING && System.nanoTime() < giveUp) {
+            Thread.onSpinWait()
+        }
+        gate.countDown()
+    }
+        .start()
+}

@@ -146,13 +146,6 @@ constructor(
     var swipeActive: Boolean by mutableStateOf(false)
         private set
 
-    /**
-     * The "send selection to the engine" hook (Phase 7). It stays off, and has no UI, until then:
-     * nothing calls [sendSelectionToEngine] and it does nothing unless this flag is set.
-     */
-    var engineHookEnabled = false
-    var engineHook: ((String) -> Unit)? = null
-
     private var swipe: Swipe? = null
     private var swipeTried = false
 
@@ -472,16 +465,10 @@ constructor(
 
     // ------------------------------------------------------------------ selection strip
 
-    /** The selection grows to the word(s) around it. False where that is not possible. */
-    fun expandSelectionToWord(): Boolean = selectAround(TextUnits::expandWord)
-
-    /** The selection grows to the sentence(s) around it. */
-    fun expandSelectionToSentence(): Boolean = selectAround(TextUnits::expandSentence)
-
-    /** The selection grows to the line(s) around it. */
-    fun expandSelectionToLine(): Boolean = selectAround(TextUnits::expandLine)
-
-    /** The selection grows to the whole [unit]s around it (the strip's Word, Sentence, Line). */
+    /**
+     * The selection grows to the whole [unit]s around it (the strip's Word, Sentence, Line). False
+     * where that is not possible.
+     */
     fun expandSelection(unit: SelectionUnit): Boolean =
         selectAround(expand = { text, start, end -> TextUnits.expand(unit, text, start, end) })
 
@@ -511,18 +498,6 @@ constructor(
             editor.setSelection(selected.range.start, selected.range.start + next.length)
         }
         return true
-    }
-
-    /** Copies the selection to the clipboard. */
-    fun copySelection(): Boolean {
-        endComposing()
-        return editor.contextMenuAction(EditAction.Copy)
-    }
-
-    /** Hands the selected text to the engine hook. Does nothing until Phase 7 switches it on. */
-    fun sendSelectionToEngine(): Boolean {
-        val hook = engineHook?.takeIf { engineHookEnabled }
-        return hook?.let { send -> readSelected()?.text?.also(send) } != null
     }
 
     /** Forgets what belongs to one field: the select mode and any swipe under way. */

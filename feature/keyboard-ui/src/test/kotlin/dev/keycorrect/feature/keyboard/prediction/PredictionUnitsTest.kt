@@ -65,15 +65,13 @@ class StripBuilderTest {
     }
 
     @Test
-    fun slotLabelsFollowTheSlotKindAndAnAutoExpandingShortcutReadsAsAutocorrect() {
+    fun slotLabelsFollowTheSlotKind() {
         assertThat(StripSlot("a", SlotKind.Suggestion).labelRes())
             .isEqualTo(R.string.strip_suggestion)
         assertThat(StripSlot("a", SlotKind.Literal).labelRes()).isEqualTo(R.string.strip_literal)
         assertThat(StripSlot("a", SlotKind.Literal, addsWord = true).labelRes())
             .isEqualTo(R.string.strip_add_word)
         assertThat(StripSlot("a", SlotKind.Shortcut).labelRes()).isEqualTo(R.string.strip_shortcut)
-        assertThat(StripSlot("a", SlotKind.Shortcut, bold = true).labelRes())
-            .isEqualTo(R.string.strip_autocorrect)
     }
 
     @Test
@@ -223,14 +221,17 @@ class DecoderLoopTest {
             staleSeen = stale()
             PredictResult(emptyList(), null, null, sequence = r.sequence)
         }
-        loop.predictNow(request(loop.advance()))
+        loop.submit(request(loop.advance())) { delivered += it }
+        executor.runAll()
         assertThat(staleSeen).isTrue()
     }
 
     @Test
     fun aFailingPredictorYieldsNothingAndNoCrash() {
         predictor = Predictor { _, _ -> throw IllegalStateException("secret typed text") }
-        assertThat(loop.predictNow(request(loop.advance()))).isNull()
+        loop.submit(request(loop.advance())) { delivered += it }
+        executor.runAll()
+        assertThat(delivered).isEmpty()
     }
 
     @Test
@@ -238,7 +239,6 @@ class DecoderLoopTest {
         predictor = null
         loop.submit(request(loop.advance())) { delivered += it }
         assertThat(executor.queue).isEmpty()
-        assertThat(loop.predictNow(request(1))).isNull()
     }
 
     // ------------------------------------------------------------------ final swipe decode
@@ -256,7 +256,7 @@ class DecoderLoopTest {
     fun aFinalGestureDecodeIsDeliveredLateWhileTheSequenceIsCurrent() {
         val seq = loop.advance()
         val final = loop.submitFinalGesture(gestureRequest(seq))!!
-        assertThat(final.await(1)).isFalse() // the decoder thread has not run
+        assertThat(final.await(0)).isFalse() // the decoder thread has not run
         assertThat(final.whenDone { delivered += it }).isTrue()
         executor.runAll()
         assertThat(delivered.map { it.sequence }).containsExactly(seq)
@@ -281,7 +281,7 @@ class DecoderLoopTest {
         val seq = loop.advance()
         val final = loop.submitFinalGesture(gestureRequest(seq))!!
         executor.runAll()
-        assertThat(final.await(1)).isTrue()
+        assertThat(final.await(0)).isTrue()
         assertThat(final.result?.sequence).isEqualTo(seq)
         assertThat(final.whenDone { delivered += it }).isFalse()
     }
@@ -338,11 +338,7 @@ class DecoderLoopTest {
                 }
             val seq = threaded.advance()
             threaded.submit(request(seq)) { delivered += it }
-            Thread {
-                Thread.sleep(30)
-                gate.countDown()
-            }
-                .start()
+            releaseWhenWaiting(Thread.currentThread(), gate)
             assertThat(threaded.resultForSeparator(seq) { error("must not decode here") }?.sequence)
                 .isEqualTo(seq)
         } finally {

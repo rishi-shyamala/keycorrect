@@ -14,8 +14,8 @@ enum class CommitMethod {
 }
 
 /**
- * One finished word and the touches that produced it, for Phase 3's touch-model learning (§6.2).
- * [reverted] is set when the user undid the autocorrect with backspace (§6.3 rule 6).
+ * One finished word and the touches that produced it, for touch-model learning (§6.2). [reverted]
+ * is set when the user undid the autocorrect with backspace (§6.3 rule 6).
  */
 class WordRecord(
     val typed: String,
