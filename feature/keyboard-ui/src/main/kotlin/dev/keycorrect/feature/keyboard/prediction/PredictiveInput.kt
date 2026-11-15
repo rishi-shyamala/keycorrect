@@ -185,7 +185,7 @@ internal class PredictiveInput(
     private var pendingRevertTracked: Tracked? = null
 
     /** Words the user said never to suggest, hidden at once; the model takes over from there. */
-    private val locallyBlocked = ArrayDeque<String>()
+    private val blocked = BlockedSuggestions()
 
     private val loop: DecoderLoop
         get() = env.loop
@@ -263,7 +263,7 @@ internal class PredictiveInput(
         predictionOn = computeCanPredict(profile, settings)
         if (newField) {
             revertedWords.clear()
-            locallyBlocked.clear()
+            blocked.clear()
             memory.clear()
             learn.newSession()
         }
@@ -606,7 +606,7 @@ internal class PredictiveInput(
     private fun onRecorrectResult(result: PredictResult) {
         val word = recorrect ?: return
         if (result.sequence != loop.sequence || !canPredict()) return
-        val visible = result.unblocked()
+        val visible = blocked.filter(result)
         val candidates =
             visible.candidates.filter {
                 it.text.isNotEmpty() &&
@@ -727,10 +727,9 @@ internal class PredictiveInput(
         val word = prompts.neverWord ?: return
         prompts.cancelNever()
         if (canPredict() && learn.open) {
-            locallyBlocked.addLast(word)
-            while (locallyBlocked.size > MAX_BLOCKED) locallyBlocked.removeFirst()
+            blocked.add(word)
             learn.emit(UserAction(learn.stamp(), learn.profile, UserAction.Kind.NeverSuggest, word))
-            latest = latest?.unblocked()
+            latest = latest?.let { blocked.filter(it) }
             if (composing.isNotEmpty()) requestWord() else requestNextWord()
         }
         publish(prompts.base)
@@ -914,7 +913,9 @@ internal class PredictiveInput(
                 return it
             }
         val seq = loop.sequence
-        return loop.resultForSeparator(seq) { request(seq, typed, touches.toList()) }?.unblocked()
+        return loop
+            .resultForSeparator(seq) { request(seq, typed, touches.toList()) }
+            ?.let { blocked.filter(it) }
     }
 
     /**
@@ -1549,7 +1550,7 @@ internal class PredictiveInput(
 
     private fun onResult(result: PredictResult) {
         if (result.sequence != loop.sequence || !canPredict()) return
-        val visible = result.unblocked()
+        val visible = blocked.filter(result)
         latest = visible
         val typed = composing.toString()
         latestTyped = typed
@@ -2121,33 +2122,12 @@ internal class PredictiveInput(
         learn.sentenceWord(word, next != null && SentenceContext.endsSentence(next))
     }
 
-    /** Hides what the user said never to suggest, until the model takes over. */
-    private fun PredictResult.unblocked(): PredictResult {
-        if (locallyBlocked.isEmpty()) return this
-        fun blocked(c: Candidate?) = c != null && locallyBlocked.any { sameWord(it, c.text) }
-        if (
-            candidates.none(::blocked) &&
-                !blocked(autocorrect) &&
-                !blocked(phrase) &&
-                !blocked(autocorrectRunnerUp)
-        ) {
-            return this
-        }
-        return copy(
-            candidates = candidates.filterNot(::blocked),
-            autocorrect = autocorrect?.takeUnless(::blocked),
-            phrase = phrase?.takeUnless(::blocked),
-            autocorrectRunnerUp = autocorrectRunnerUp?.takeUnless(::blocked),
-        )
-    }
-
     private companion object {
         /** A truncated cache shorter than this may cut a long grapheme cluster short. */
         const val MIN_CACHED_LOOKBEHIND = 32
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
-        const val MAX_BLOCKED = 32
 
         /** Separators that make the word before them part of an address or path. */
         const val ADDRESS_SEPARATORS = "@/\\_"
