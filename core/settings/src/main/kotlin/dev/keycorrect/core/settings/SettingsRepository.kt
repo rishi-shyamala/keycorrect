@@ -119,6 +119,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 soundEnabled = this[SOUND_ENABLED] ?: d.soundEnabled,
                 soundVolume = this[SOUND_VOLUME] ?: d.soundVolume,
                 inlineAutofill = this[INLINE_AUTOFILL] ?: d.inlineAutofill,
+                physicalKeyboardSuggestions =
+                    this[PHYSICAL_KEYBOARD_SUGGESTIONS] ?: d.physicalKeyboardSuggestions,
                 suggestionsEnabled = this[SUGGESTIONS_ENABLED] ?: d.suggestionsEnabled,
                 autocorrectEnabled = this[AUTOCORRECT_ENABLED] ?: d.autocorrectEnabled,
                 enterKeepsTyped = this[ENTER_KEEPS_TYPED] ?: d.enterKeepsTyped,
@@ -274,6 +276,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[SOUND_ENABLED] = s.soundEnabled
         this[SOUND_VOLUME] = s.soundVolume
         this[INLINE_AUTOFILL] = s.inlineAutofill
+        this[PHYSICAL_KEYBOARD_SUGGESTIONS] = s.physicalKeyboardSuggestions
         this[SUGGESTIONS_ENABLED] = s.suggestionsEnabled
         this[AUTOCORRECT_ENABLED] = s.autocorrectEnabled
         this[ENTER_KEEPS_TYPED] = s.enterKeepsTyped
@@ -366,6 +369,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
         val SOUND_VOLUME = floatPreferencesKey("sound_volume")
         val INLINE_AUTOFILL = booleanPreferencesKey("inline_autofill")
+        val PHYSICAL_KEYBOARD_SUGGESTIONS = booleanPreferencesKey("physical_keyboard_suggestions")
         val SUGGESTIONS_ENABLED = booleanPreferencesKey("suggestions_enabled")
         val AUTOCORRECT_ENABLED = booleanPreferencesKey("autocorrect_enabled")
         val ENTER_KEEPS_TYPED = booleanPreferencesKey("enter_keeps_typed")
@@ -425,6 +429,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 HAPTICS_ENABLED.name,
                 SOUND_ENABLED.name,
                 INLINE_AUTOFILL.name,
+                PHYSICAL_KEYBOARD_SUGGESTIONS.name,
                 SUGGESTIONS_ENABLED.name,
                 AUTOCORRECT_ENABLED.name,
                 ENTER_KEEPS_TYPED.name,

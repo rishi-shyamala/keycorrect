@@ -2,6 +2,7 @@ package dev.keycorrect.feature.keyboard
 
 import android.os.SystemClock
 import android.text.InputType
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -241,6 +242,32 @@ class KeyboardController(
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
         private set
 
+    /** Whether a physical keyboard is attached (from the configuration, see [updateDevice]). */
+    var hardwareKeyboardAttached: Boolean by mutableStateOf(false)
+        private set
+
+    /** With a physical keyboard: the full on-screen keyboard is up instead of the slim bar. */
+    var fullKeyboardShown: Boolean by mutableStateOf(false)
+        private set
+
+    /**
+     * Whether the full keyboard is the default with a physical keyboard (the system's "show
+     * on-screen keyboard" setting); a new field and attaching or detaching a keyboard return to it.
+     */
+    var fullKeyboardByDefault: Boolean = false
+        set(value) {
+            if (field != value) fullKeyboardShown = value
+            field = value
+        }
+
+    /** The accent of a dead key pressed and not yet combined; 0 for none. */
+    private var pendingAccent = 0
+
+    /** Combines a dead-key accent with a character (`KeyCharacterMap.getDeadChar`); 0 for none. */
+    var deadCharCombiner: (accent: Int, char: Int) -> Int = { accent, char ->
+        KeyCharacterMap.getDeadChar(accent, char)
+    }
+
     /** What fills the key area: the keys or a panel (Phase 4). */
     var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
         private set
@@ -329,6 +356,8 @@ class KeyboardController(
             return
         }
         panel = KeyboardPanel.Keys
+        fullKeyboardShown = fullKeyboardByDefault
+        pendingAccent = 0
         emojiSearch.close()
         clipboardPanel.reset()
         editing.reset()
@@ -776,9 +805,133 @@ class KeyboardController(
     private fun askFieldEmpty(sel: EditorSelection): Boolean =
         if (sel.known && canAskEditor()) editor.textAfterCursor(1)?.isEmpty() ?: false else !sawText
 
+    /** What the on-screen keys' touches are recorded as; physical keys are their own profile. */
+    private var touchDevice = DeviceClass.Phone
+    private var landscape = false
+
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>
-        get() = toolsFor(profile.sensitive, clipboardAvailable)
+        get() = toolsFor(profile.sensitive, clipboardAvailable, keyboardToggle = physicalMode)
+
+    /**
+     * Whether a physical keyboard is attached and the user wants suggestions for it: the host shows
+     * the slim bar (or the full keyboard, see [fullKeyboardShown]) and routes its keys here.
+     */
+    val physicalMode: Boolean
+        get() = hardwareKeyboardAttached && settings.physicalKeyboardSuggestions
+
+    /** The hardware Back key: closes an open panel and returns true; false when none is open. */
+    fun onHardwareBack(): Boolean {
+        if (panel == KeyboardPanel.Keys) return false
+        showPanel(KeyboardPanel.Keys)
+        return true
+    }
+
+    /** Whether Back belongs to the app: the physical-keyboard mode shows only the slim bar. */
+    val backGoesToApp: Boolean
+        get() = physicalMode && !fullKeyboardShown
+
+    /** Shows the full on-screen keyboard, or goes back to the slim bar. */
+    fun toggleFullKeyboard() {
+        fullKeyboardShown = !fullKeyboardShown
+        if (!fullKeyboardShown && panel != KeyboardPanel.Keys)
+            showPanelKeepingLayer(KeyboardPanel.Keys)
+    }
+
+    /**
+     * A key of the physical keyboard. Returns whether it was handled (the app must not see it);
+     * false means the app gets it untouched, after the word in progress has been finished as typed
+     * where that matters. Nothing is handled in sensitive and terminal fields, with suggestions
+     * off, or when [physicalMode] is off.
+     */
+    fun onPhysicalKey(key: PhysicalKey): Boolean {
+        if (!physicalKeysHandled(key)) {
+            pendingAccent = 0
+            return false
+        }
+        voice.stopNow()
+        val resolved = resolveDeadKey(key)
+        return resolved == null || processPhysical(resolved)
+    }
+
+    private fun processPhysical(resolved: PhysicalKey): Boolean {
+        // Typing on the physical keys is its own learning profile; touches keep the screen's.
+        input.setDevice(DeviceClass.HardwareKeyboard, landscape)
+        val handled =
+            try {
+                if (searching) onPhysicalSearchKey(resolved) else onPhysicalTypingKey(resolved)
+            } finally {
+                input.setDevice(touchDevice, landscape)
+            }
+        composingNow = input.isComposing
+        if (handled && !searching && resolved != PhysicalKey.Backspace) {
+            sawText = true
+            zeroChecked = false
+            if (fieldEmpty) fieldEmpty = false
+        }
+        return handled
+    }
+
+    /**
+     * Applies a pending dead key to [key]: the key to process instead, or null when [key] was
+     * absorbed (a dead key waiting for its letter, or a backspace that cancelled it).
+     */
+    private fun resolveDeadKey(key: PhysicalKey): PhysicalKey? {
+        val pending = pendingAccent
+        if (key !is PhysicalKey.Ignore) pendingAccent = 0
+        return when {
+            key is PhysicalKey.Dead -> {
+                pendingAccent = if (pending == key.accent) 0 else key.accent
+                if (pending == 0) null else PhysicalKey.Text(charText(pending))
+            }
+            pending == 0 -> key
+            key is PhysicalKey.Text -> {
+                val combined = deadCharCombiner(pending, key.text.codePointAt(0))
+                PhysicalKey.Text(
+                    if (combined != 0) charText(combined) else charText(pending) + key.text
+                )
+            }
+            key == PhysicalKey.Space -> PhysicalKey.Text(charText(pending))
+            key == PhysicalKey.Backspace -> null
+            key == PhysicalKey.Ignore -> key.also { pendingAccent = pending }
+            else -> key
+        }
+    }
+
+    private fun charText(codePoint: Int) = String(Character.toChars(codePoint))
+
+    private fun physicalKeysHandled(key: PhysicalKey): Boolean =
+        physicalMode &&
+            key != PhysicalKey.Ignore &&
+            !profile.sensitive &&
+            profile.kind != FieldKind.Terminal &&
+            (searching || input.canPredict())
+
+    private fun onPhysicalTypingKey(key: PhysicalKey): Boolean {
+        input.settlePendingSwipe()
+        return when (key) {
+            is PhysicalKey.Text -> true.also { input.onText(key.text, null) }
+            PhysicalKey.Space -> true.also { input.onSeparator(" ") }
+            PhysicalKey.Backspace -> true.also { input.onBackspace() }
+            PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
+            PhysicalKey.Shortcut -> false.also { input.finishWordAsTyped() }
+            PhysicalKey.Ignore,
+            is PhysicalKey.Dead -> false
+        }
+    }
+
+    private fun onPhysicalSearchKey(key: PhysicalKey): Boolean {
+        val action =
+            when (key) {
+                is PhysicalKey.Text -> KeyAction.Text(key.text)
+                PhysicalKey.Space -> KeyAction.Space
+                PhysicalKey.Backspace -> KeyAction.Backspace
+                PhysicalKey.Enter -> KeyAction.Enter
+                else -> return false
+            }
+        onSearchKey(action)
+        return true
+    }
 
     /**
      * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
@@ -800,12 +953,27 @@ class KeyboardController(
         else editing.openPanel()
     }
 
+    /** The panels live in the key area, so the slim bar gives way to the full keyboard for them. */
+    private fun openFullKeyboard() {
+        if (physicalMode) fullKeyboardShown = true
+    }
+
     /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
     internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
         when (tool) {
-            StripTool.Edit -> toggleEditingPanel()
-            StripTool.Emoji -> showPanel(KeyboardPanel.Emoji)
-            StripTool.Clipboard -> openClipboard()
+            StripTool.Edit -> {
+                openFullKeyboard()
+                toggleEditingPanel()
+            }
+            StripTool.Emoji -> {
+                openFullKeyboard()
+                showPanel(KeyboardPanel.Emoji)
+            }
+            StripTool.Clipboard -> {
+                openFullKeyboard()
+                openClipboard()
+            }
+            StripTool.Keyboard -> toggleFullKeyboard()
             StripTool.Settings -> openSettings()
         }
     }
@@ -906,6 +1074,7 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        pendingAccent = 0
         voice.stopNow()
         selection = EditorSelection()
         editing.reset()
@@ -960,13 +1129,14 @@ class KeyboardController(
      * the configuration. Call on start and whenever the configuration changes.
      */
     fun updateDevice(tablet: Boolean, landscape: Boolean, hardwareKeyboard: Boolean = false) {
-        val device =
-            when {
-                hardwareKeyboard -> DeviceClass.HardwareKeyboard
-                tablet -> DeviceClass.Tablet
-                else -> DeviceClass.Phone
-            }
-        input.setDevice(device, landscape)
+        if (hardwareKeyboard != hardwareKeyboardAttached) {
+            fullKeyboardShown = fullKeyboardByDefault
+            pendingAccent = 0
+        }
+        hardwareKeyboardAttached = hardwareKeyboard
+        touchDevice = if (tablet) DeviceClass.Tablet else DeviceClass.Phone
+        this.landscape = landscape
+        input.setDevice(touchDevice, landscape)
     }
 
     /**

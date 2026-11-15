@@ -47,6 +47,9 @@
     <string name="keyboard_long_press_delay">Long-press delay</string>
     <string name="keyboard_auto_capitalize">Auto-capitalisation</string>
     <string name="keyboard_auto_capitalize_summary">Capitalise the first letter of each sentence</string>
+    <string name="keyboard_physical_section">Physical keyboard</string>
+    <string name="keyboard_physical_suggestions">Show suggestions while typing on a physical keyboard</string>
+    <string name="keyboard_physical_suggestions_summary">With a hardware keyboard attached, show a slim suggestion bar and correct what you type. Shortcuts like Ctrl+C go to the app untouched.</string>
     <string name="keyboard_inline_autofill">Password manager suggestions</string>
     <string name="keyboard_inline_autofill_summary">Show autofill suggestions from your password manager in the suggestion bar</string>
 

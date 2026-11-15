@@ -95,6 +95,11 @@ data class KeyboardSettings(
     val soundVolume: Float = 0.5f,
     /** Show the autofill service's (password manager) inline suggestions in the strip. */
     val inlineAutofill: Boolean = true,
+    /**
+     * With a physical keyboard attached: show the suggestion bar (no keys) and feed the keys typed
+     * on it through the prediction pipeline.
+     */
+    val physicalKeyboardSuggestions: Boolean = true,
     /** Show word suggestions in the strip. */
     val suggestionsEnabled: Boolean = true,
     /** Replace likely typos on space/punctuation (one backspace undoes). */
