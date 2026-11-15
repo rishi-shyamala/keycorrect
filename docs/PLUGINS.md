@@ -2,7 +2,7 @@
 
 A plugin is a separate APK with a bound service. The keyboard asks it to **score** candidate words
 (a language-model reranker) and, optionally, to **generate** a short continuation. This page is the
-contract; `:sampleplugin` is a working example. The design is in [PHASE7.md](PHASE7.md).
+contract; `:sampleplugin` is a working example. The design is in [PHASE7.md](archive/PHASE7.md).
 
 ## The contract
 

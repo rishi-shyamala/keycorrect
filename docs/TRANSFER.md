@@ -1,7 +1,7 @@
 # KeyCorrect — Settings & learned-data transfer (export / import)
 
 Goal: move your keyboard to another device (or keep a backup) by hand. Android's own backup and
-device transfer stay disabled (privacy invariant, HANDOFF §5); this is an explicit,
+device transfer stay disabled (privacy invariant, ARCHITECTURE.md invariants); this is an explicit,
 user-initiated file export.
 
 ## Decisions (user, 2026-10-18)

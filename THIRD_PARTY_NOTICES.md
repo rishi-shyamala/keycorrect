@@ -1,7 +1,7 @@
 # Third-party components of the voice feature
 
 KeyCorrect itself is GPL-3.0-or-later ([`LICENSE`](LICENSE)). The offline speech feature (Phase 6,
-[`docs/PHASE6.md`](docs/PHASE6.md)) uses the components below. The first row is compiled into the
+[`docs/archive/PHASE6.md`](docs/archive/PHASE6.md)) uses the components below. The first row is compiled into the
 keyboard; the rest ship only in the optional **voice pack** APK (`dev.keycorrect.voice`) or **neural pack**
 APK (`dev.keycorrect.neural`), which the keyboard loads at run time. All of them allow redistribution with this notice; their licence texts
 are available at the links, and the models' own LICENSE files are in the downloaded archives

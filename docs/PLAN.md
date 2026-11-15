@@ -1,6 +1,6 @@
 # KeyCorrect — Research, Design & Implementation Plan
 
-Status: **draft for review** (2026-10-09). Nothing is implemented yet. All decisions in §16 are made (D1–D10 confirmed by you; D11 placeholder name). Target devices: **Galaxy S23 Ultra** and **Galaxy Tab S9** (both Snapdragon 8 Gen 2, Android 16+).
+Status (2026-11-15): **Phases 0-9 are implemented and merged** (0 foundations, 1 core keyboard, 2 prediction, 3 learning, 4 editing/clipboard/emoji, 5 swipe, 6 voice, 7 neural and plugins, 8 UI/UX customization, 9 hardening); phase 10 is optional and not started. This document is the original design (2026-10-09), kept as written: where it disagrees with the code, the code and [ARCHITECTURE.md](ARCHITECTURE.md) (the real module map) win, and decisions are logged in [DECISIONS.md](DECISIONS.md). Phase plans are in [archive/](archive/README.md). Original status: draft for review. All decisions in §16 are made (D1–D10 confirmed by you; D11 placeholder name). Target devices: **Galaxy S23 Ultra** and **Galaxy Tab S9** (both Snapdragon 8 Gen 2, Android 16+).
 
 ---
 
@@ -62,6 +62,8 @@ No INTERNET permission anywhere in the keyboard [D3]. Network engines can only e
 Why a separate `:engine` process: a 150–600 MB model in the IME process makes the keyboard the OOM-killer's favourite target ("keyboard disappeared"). Isolated, the engine can die without taking typing with it, and `onTrimMemory` can unload it. Binder overhead (~0.1–0.5 ms/call) is negligible against model latency. The *same* AIDL contract serves third-party plugins, so built-in and external engines are interchangeable.
 
 ### 2.1 Gradle modules
+
+> **Superseded.** The map below is the original plan and is out of date (it lists modules that were never created, e.g. `:core:model`, `:engine:*`, `:feature:clipboard|emoji|...`). See [ARCHITECTURE.md](ARCHITECTURE.md) for the real modules.
 ```
 :app                      IME service, settings activity, DI wiring
 :core:model               shared data types (Candidate, FieldProfile, LearningEvent…)
@@ -71,7 +73,7 @@ Why a separate `:engine` process: a 150–600 MB model in the IME process makes 
 :core:decoder             spatial model, candidate generation, classic scorer, fusion ranker, autocorrect policy
 :core:dictionary          mmap'd binary dictionary reader (+ writer used by tools)
 :core:learning            tracker, outcome classifier, learning store, touch model
-:core:data                encrypted DB (Room+SQLCipher), DataStore settings, backup/restore
+:core:data                encrypted DB (plan said Room+SQLCipher; superseded: plain `androidx.sqlite` + SQLCipher, no Room), DataStore settings, backup/restore
 :feature:keyboard-ui      renderer, strip, panels
 :feature:clipboard | :feature:emoji | :feature:shortcuts | :feature:gesture | :feature:voice | :feature:settings
 :engine:host              :engine process service, model manager
@@ -285,7 +287,7 @@ The touch model (§6.1) already learns, per key, where your touches land relativ
 - Phase 2 records touch points per typed character so this data exists; Phase 3 builds the touch model; Phase 8 adds the report UI and preview.
 
 ### 6.4 Storage
-SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pairs(context_bucket)`, `blocklist`, `touch_model`, `candidate_words`, `ranker_weights(engine_id)`, `episodes_ring` (last few hundred episodes, auto-pruned), `sentence_buffer` (D10, 7-day TTL). Writes batched on the IO thread at commit boundaries.
+SQLite (planned as Room; superseded, see ARCHITECTURE.md) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pairs(context_bucket)`, `blocklist`, `touch_model`, `candidate_words`, `ranker_weights(engine_id)`, `episodes_ring` (last few hundred episodes, auto-pruned), `sentence_buffer` (D10, 7-day TTL). Writes batched on the IO thread at commit boundaries.
 
 ---
 
@@ -318,7 +320,7 @@ SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pai
 ---
 
 ## 9. Clipboard history
-- **P4 simplified this (see `docs/PHASE4.md`): everything copied is captured as is, with no sensitivity detection, masking or expiry; the user deletes; encryption protects against other apps. The "Never stored", masking and clear-after-paste points below are superseded.**
+- **P4 simplified this (see `docs/archive/PHASE4.md`): everything copied is captured as is, with no sensitivity detection, masking or expiry; the user deletes; encryption protects against other apps. The "Never stored", masking and clear-after-paste points below are superseded.**
 - Listener: `ClipboardManager.addPrimaryClipChangedListener` (only works while we are the default IME — Android 10+ restriction, which is fine).
 - **Never stored**: clips with `ClipDescription.EXTRA_IS_SENSITIVE` (API 33+), clips copied *from* a password field we were typing in, clips matching sensitive heuristics (card numbers w/ Luhn, IBAN, high-entropy tokens, `sk-…`/`ghp_…` key patterns, OTP-like codes → kept only 3 min with masked preview) — heuristics configurable.
 - Keep last **N items (default 30)**; text TTL default 7 days; pinned items never expire; images capped (default 20 MB total).
@@ -328,7 +330,7 @@ SQLite (Room) with SQLCipher [D9]: `words`, `ngrams`, `phrases`, `correction_pai
 - Storage encrypted; history disabled entirely during direct boot and in incognito.
 
 ## 10. Text selection & editing
-- **Spacebar**: horizontal drag moves cursor by character with acceleration; vertical drag moves lines (where `TYPE_NULL`/terminal → arrow key events); long-press-then-drag enters selection mode (anchor at start); long-press released without moving opens the editing panel (P4, `docs/PHASE4.md`). Second finger while dragging extends selection.
+- **Spacebar**: horizontal drag moves cursor by character with acceleration; vertical drag moves lines (where `TYPE_NULL`/terminal → arrow key events); long-press-then-drag enters selection mode (anchor at start); long-press released without moving opens the editing panel (P4, `docs/archive/PHASE4.md`). Second finger while dragging extends selection.
 - **Backspace**: swipe left selects whole words back (preview highlight), release deletes; swipe back to cancel.
 - **Editing panel** (long-press on space; no toolbar, P4): D-pad, word-jump, Home/End, select toggle (shift-anchored), select word / sentence / line / all, cut/copy/paste, undo/redo (own undo stack for our commits + `Ctrl+Z` key events fallback).
 - **Selection strip**: when text is selected, the suggestion strip shows the selection with "expand to word/sentence", case toggle (Aa/AA/aa), and "send to engine" actions (fix spelling / rewrite via GENERATE engine).
@@ -414,7 +416,7 @@ Tooling: Macrobenchmark + baseline profiles; microbenchmarks for decoder; `:tool
 | D10 ✅ | Raw-text buffer for engine finetuning | — | **On by default with a toggle**, encrypted, 7-day retention, never from sensitive fields. |
 | D11 | App identity | name & package id | "KeyCorrect", `dev.keycorrect` (placeholder — your call). |
 | D12 ✅ | Build environment | — | You install JDK 21 + Android cmdline tools/SDK/NDK; I verify versions (see `docs/SETUP.md`). |
-| P4 ✅ | Phase 4 entry points, defaults, delivery (feedback round 1 on 2026-10-16 added a Samsung-style shortcut row and a split spacebar: left half selects, right half moves) | — | Decided 2026-10-11, see `docs/PHASE4.md`: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; three PRs. |
+| P4 ✅ | Phase 4 entry points, defaults, delivery (feedback round 1 on 2026-10-16 added a Samsung-style shortcut row and a split spacebar: left half selects, right half moves) | — | Decided 2026-10-11, see `docs/archive/PHASE4.md`: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; three PRs. |
 
 ## 17. Phased roadmap
 

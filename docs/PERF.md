@@ -1,6 +1,6 @@
 # KeyCorrect — Performance check
 
-A profiling pass runs **before every PR** (workflow rule, `docs/HANDOFF.md` §2). It looks for
+A profiling pass runs **before every PR** (workflow rule, `CLAUDE.md`, `docs/DEVELOPMENT.md`). It looks for
 regressions and new hotspots in the code that runs on every keystroke or every word, and checks
 the budgets in `docs/PLAN.md` §14.
 
@@ -21,7 +21,7 @@ the budgets in `docs/PLAN.md` §14.
 
 ```sh
 tools/profile/profile.sh                                    # desktop: decoder, learning, keystroke
-ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device # + on-device microbenchmarks
+ANDROID_SERIAL=<serial> tools/profile/profile.sh --device # + on-device microbenchmarks
 ```
 
 - **Output:** a summary goes to stdout, and the full output (JFR recordings, eval reports) to
@@ -43,7 +43,7 @@ ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device # + on-device micro
 | Decode with personalization | decoder thread | learn eval (learning arm) | `DecoderBenchmark.composingPersonalized` |
 | Keyboard's own per-key work | **UI thread**, every keystroke | `KeystrokeBenchmarkTest` (opt-in) | `KeystrokeBenchmark.cannedPredictor` |
 | Learning updates, snapshot publish | learning thread, every word | learn eval + JFR | `LearningBenchmark` |
-| Frames (Compose) | UI thread | (none) | `dumpsys gfxinfo` on a release build (HANDOFF §4), when UI changed |
+| Frames (Compose) | UI thread | (none) | `dumpsys gfxinfo` on a release build (docs/DEVELOPMENT.md, emulator testing), when UI changed |
 
 ## Checklist before a PR
 
@@ -124,7 +124,7 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
 
 #### Scorer latency inside the eval (desktop, relative), 2026-10-19
 
-`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/PHASE7.md "Eval (reranker arm)".
+`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/archive/PHASE7.md "Eval (reranker arm)".
 
 | Model | mean | p50 | p95 | p99 | max | Over 40 ms |
 |---|---:|---:|---:|---:|---:|---:|
@@ -237,7 +237,7 @@ ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndr
 # on an emulator only. Results: baselineprofile/build/outputs/connected_android_test_additional_output.
 ```
 
-**Emulator numbers (s23u AVD, x86_64, relative only; 5 iterations, median):**
+**Emulator numbers (s23u AVD, 1440x3088, x86_64, relative only; 5 iterations, median):**
 
 | Benchmark | None | Baseline profile |
 | --- | --- | --- |

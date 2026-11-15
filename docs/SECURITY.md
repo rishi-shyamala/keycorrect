@@ -1,6 +1,6 @@
 # Security and privacy audit (Phase 9a)
 
-Scope: PLAN.md section 15, PHASE9.md decisions P9-1 and P9-2. Audited at the head of `phase-9-security`.
+Scope: PLAN.md section 15, archive/PHASE9.md decisions P9-1 and P9-2. Audited at the head of `phase-9-security`.
 
 ## Results
 

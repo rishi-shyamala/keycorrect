@@ -160,8 +160,8 @@ Read this first when resuming. Other docs:
 
 | Device | Serial | Notes |
 |---|---|---|
-| Galaxy Tab S9 (SM-X710) | `R52X204HLZV` | Android 16 / One UI 8.5, SD 8 Gen 2, 1600×2560, density 300 (override). Rotates; tests were run in both portrait and landscape. The `adb` authorisation once dropped ("unauthorized"); the user had to re-accept the RSA prompt. |
-| Galaxy S23 Ultra (SM-S918U) | `R5CW22BB7YY` | Android 16 / One UI 8.5, 1440×3088, density 560. **The user needs the phone; don't use it unless asked.** Phase 3 hasn't run on it. |
+| Galaxy Tab S9 (SM-X710) | `<serial>` | Android 16 / One UI 8.5, SD 8 Gen 2, 1600×2560, density 300 (override). Rotates; tests were run in both portrait and landscape. The `adb` authorisation once dropped ("unauthorized"); the user had to re-accept the RSA prompt. |
+| Galaxy S23 Ultra (SM-S918U) | `<serial>` | Android 16 / One UI 8.5, 1440×3088, density 560. **The user needs the phone; don't use it unless asked.** Phase 3 hasn't run on it. |
 
 - **IME ids:**
   - debug: `dev.keycorrect.debug/dev.keycorrect.ime.KeyCorrectImeService` (debug builds use the `.debug` applicationIdSuffix)
@@ -198,7 +198,7 @@ Read this first when resuming. Other docs:
   - autocorrect: a double 12 ms pulse
   - unknown word: a single 40 ms pulse
 - **Field lab (debug builds only):** `adb shell am start -n dev.keycorrect.debug/dev.keycorrect.fieldlab.FieldLabActivity`. It has every field type, plus a `TYPE_NULL` terminal view that logs the key events it receives (`adb logcat -s FieldLab`). Use it instead of third-party apps.
-- **Instrumented tests:** `ANDROID_SERIAL=R52X204HLZV ./gradlew :core:data:connectedDebugAndroidTest` works even while the device is locked.
+- **Instrumented tests:** `ANDROID_SERIAL=<serial> ./gradlew :core:data:connectedDebugAndroidTest` works even while the device is locked.
 - **Test data on the tablet:** our app has "thier" learned (it's in Learned words and Never corrected) from test 2. The user was told to remove it.
 
 ## 5. Architecture map
