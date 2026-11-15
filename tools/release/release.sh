@@ -16,6 +16,62 @@ cd "$(git rev-parse --show-toplevel)"
 
 prop() { sed -n "s/^$1=//p" version.properties; }
 
+# The newest build-tools' apksigner under the SDK ($1), found without parsing ls output.
+find_apksigner() {
+    local newest="" dir
+    for dir in "$1"/build-tools/*/; do
+        [[ -x ${dir}apksigner ]] || continue
+        if [[ -z $newest || $(printf '%s\n%s\n' "$newest" "$dir" | sort -V | tail -1) == "$dir" ]]; then
+            newest=$dir
+        fi
+    done
+    if [[ -z $newest ]]; then
+        echo "No apksigner under $1/build-tools: install build-tools (docs/SETUP.md)." >&2
+        return 1
+    fi
+    echo "${newest}apksigner"
+}
+
+cert() { "$apksigner" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | sort; }
+
+# publish_pack <label> <gradle-module> <verify-task> <package> <fetch-script> <note-blurb>
+# Builds the optional pack APK when its inputs exist, checks it is signed with the keyboard's key,
+# copies it to build/release, appends it to assets and sets <label>_note for the release notes.
+publish_pack() {
+    local label=$1 module=$2 verify=$3 pkg=$4 fetch=$5 blurb=$6
+    local pack_apk=$module/build/outputs/apk/release/$module-release.apk
+    local note_var=${label}_note cap=${label^}
+    printf -v "$note_var" ''
+    if ! ./gradlew --console=plain -q ":$module:$verify" >/dev/null 2>&1; then
+        echo "$cap files not downloaded ($fetch): publishing without the $label pack." >&2
+        return 0
+    fi
+    rm -f "$pack_apk"
+    ./gradlew --console=plain -q ":$module:assembleRelease"
+    if [[ ! -f $pack_apk ]]; then
+        echo "The $label pack APK is unsigned or missing: see above." >&2
+        exit 1
+    fi
+    "$apksigner" verify "$pack_apk"
+    # The keyboard only loads a pack signed by its own key: refuse to publish a mismatch.
+    local kcert pcert pack_out size
+    kcert=$(cert "$apk")
+    pcert=$(cert "$pack_apk")
+    if [[ -z $kcert || $kcert != "$pcert" ]]; then
+        echo "The $label pack's signing certificate differs from the keyboard's:" \
+            "the keyboard would refuse it." >&2
+        echo "  keyboard: ${kcert:-none}" >&2
+        echo "  $label pack: ${pcert:-none}" >&2
+        exit 1
+    fi
+    pack_out=build/release/keycorrect-$label-$name.apk
+    cp "$pack_apk" "$pack_out"
+    assets+=("$pack_out")
+    size=$(du -h "$pack_out" | cut -f1)
+    printf -v "$note_var" '\n- Optional %s pack `keycorrect-%s-%s.apk` (%s, package `%s`):\n%s' \
+        "$label" "$label" "$name" "$size" "$pkg" "$blurb"
+}
+
 case "${1:-}" in
     bump)
         code=$(prop versionCode)
@@ -67,79 +123,19 @@ case "${1:-}" in
             fi
             exit 1
         fi
-        "$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner" verify "$apk"
+        apksigner=$(find_apksigner "$sdk")
+        "$apksigner" verify "$apk"
         out=build/release/keycorrect-$name+$short.apk
         mkdir -p build/release
         cp "$apk" "$out"
         assets=("$out")
-        # The optional voice pack (package dev.keycorrect.voice, same key): only if its inputs exist.
-        voice_note=""
-        if ./gradlew --console=plain -q :voicepack:verifyVoiceFiles >/dev/null 2>&1; then
-            rm -f voicepack/build/outputs/apk/release/voicepack-release.apk
-            ./gradlew --console=plain -q :voicepack:assembleRelease
-            vapk=voicepack/build/outputs/apk/release/voicepack-release.apk
-            if [[ ! -f $vapk ]]; then
-                echo "The voice pack APK is unsigned or missing: see above." >&2
-                exit 1
-            fi
-            apksigner="$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner"
-            "$apksigner" verify "$vapk"
-            # The keyboard only loads a pack signed by its own key: refuse to publish a mismatch.
-            cert() { "$apksigner" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | sort; }
-            kcert=$(cert "$apk")
-            vcert=$(cert "$vapk")
-            if [[ -z $kcert || $kcert != "$vcert" ]]; then
-                echo "The voice pack's signing certificate differs from the keyboard's:" \
-                    "the keyboard would refuse it." >&2
-                echo "  keyboard: ${kcert:-none}" >&2
-                echo "  voice pack: ${vcert:-none}" >&2
-                exit 1
-            fi
-            vout=build/release/keycorrect-voice-$name.apk
-            cp "$vapk" "$vout"
-            assets+=("$vout")
-            voice_size=$(du -h "$vout" | cut -f1)
-            voice_note="
-- Optional voice pack \`keycorrect-voice-$name.apk\` ($voice_size, package \`dev.keycorrect.voice\`):
-  the offline speech model for voice typing. Install it too, from the same page; it needs the
+        # The optional packs (same signing key): only if their inputs exist.
+        publish_pack voice voicepack verifyVoiceFiles dev.keycorrect.voice tools/data/fetch-voice.sh \
+            "  the offline speech model for voice typing. Install it too, from the same page; it needs the
   keyboard installed from the same key. Updates install over it."
-        else
-            echo "Voice files not downloaded (tools/data/fetch-voice.sh): publishing without the voice pack." >&2
-        fi
-        # The optional neural pack (package dev.keycorrect.neural, same key): only if its inputs exist.
-        neural_note=""
-        if ./gradlew --console=plain -q :neuralpack:verifyNeuralFiles >/dev/null 2>&1; then
-            rm -f neuralpack/build/outputs/apk/release/neuralpack-release.apk
-            ./gradlew --console=plain -q :neuralpack:assembleRelease
-            napk=neuralpack/build/outputs/apk/release/neuralpack-release.apk
-            if [[ ! -f $napk ]]; then
-                echo "The neural pack APK is unsigned or missing: see above." >&2
-                exit 1
-            fi
-            apksigner="$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)/apksigner"
-            "$apksigner" verify "$napk"
-            # The keyboard only loads a pack signed by its own key: refuse to publish a mismatch.
-            cert() { "$apksigner" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | sort; }
-            kcert=$(cert "$apk")
-            ncert=$(cert "$napk")
-            if [[ -z $kcert || $kcert != "$ncert" ]]; then
-                echo "The neural pack's signing certificate differs from the keyboard's:" \
-                    "the keyboard would refuse it." >&2
-                echo "  keyboard: ${kcert:-none}" >&2
-                echo "  neural pack: ${ncert:-none}" >&2
-                exit 1
-            fi
-            nout=build/release/keycorrect-neural-$name.apk
-            cp "$napk" "$nout"
-            assets+=("$nout")
-            neural_size=$(du -h "$nout" | cut -f1)
-            neural_note="
-- Optional neural pack \`keycorrect-neural-$name.apk\` ($neural_size, package \`dev.keycorrect.neural\`):
-  the offline language model and its native library for suggestion reranking. Install it too,
+        publish_pack neural neuralpack verifyNeuralFiles dev.keycorrect.neural tools/data/fetch-neural.sh \
+            "  the offline language model and its native library for suggestion reranking. Install it too,
   from the same page; it needs the keyboard installed from the same key. Updates install over it."
-        else
-            echo "Neural files not downloaded (tools/data/fetch-neural.sh): publishing without the neural pack." >&2
-        fi
         branch=$(git rev-parse --abbrev-ref HEAD)
         notes="Test build **$name+$short** (Settings → About shows this version).
 

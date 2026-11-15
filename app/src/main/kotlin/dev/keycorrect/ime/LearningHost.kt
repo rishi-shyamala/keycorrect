@@ -1,6 +1,7 @@
 package dev.keycorrect.ime
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import dev.keycorrect.core.data.InvalidEntryException
 import dev.keycorrect.core.data.UserDictionaryStore
 import dev.keycorrect.core.engineapi.FieldClass
@@ -328,7 +329,8 @@ class LearningHost(
     /** Per-profile touch statistics for the keyboard-fit report (never contains text). */
     suspend fun touchStatistics(): TouchStatistics = onLearningThread { model.touchStatistics() }
 
-    /** Number of stored recent sentences. */
+    /** Number of stored recent sentences (test seam). */
+    @VisibleForTesting
     suspend fun sentenceBufferSize(): Int = onLearningThread { model.sentences.size() }
 
     /** "Clear now" for the sentence buffer, also from the saved copy. */
