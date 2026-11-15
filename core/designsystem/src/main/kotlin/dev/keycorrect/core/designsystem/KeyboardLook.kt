@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import dev.keycorrect.core.settings.KeyboardSettings
-import dev.keycorrect.core.settings.ThemeSource
 
 /** What to draw on each fill of the theme in effect; null for the dynamic themes. */
 val LocalThemePalette = staticCompositionLocalOf<ThemePalette?> { null }

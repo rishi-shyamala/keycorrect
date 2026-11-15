@@ -346,7 +346,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
-    private companion object {
+    internal companion object {
         /** The stored name of a per-profile size, e.g. `key_height_dp@phone_landscape`. */
         fun sized(base: Preferences.Key<*>, profileId: String) = "${base.name}@$profileId"
 

@@ -3,5 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:SettingsRepository.kt:SettingsRepository$private fun Preferences.toSettings: KeyboardSettings</ID>
+    <ID>LongMethod:KeyboardSettings.kt:KeyboardSettings$fun sanitized: KeyboardSettings</ID>
   </CurrentIssues>
 </SmellBaseline>

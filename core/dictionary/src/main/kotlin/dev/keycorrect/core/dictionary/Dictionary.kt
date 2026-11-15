@@ -100,11 +100,13 @@ private constructor(
         var sum = 0
         val sections =
             arrayOf(
-                bitmapOff to ((nodeCount + 63) / 64) * Fmt.BITMAP_BLOCK_BYTES,
-                termOff to keyCount * 3,
+                bitmapOff to
+                    ((nodeCount + Fmt.BITMAP_BLOCK_NODES - 1) / Fmt.BITMAP_BLOCK_NODES) *
+                        Fmt.BITMAP_BLOCK_BYTES,
+                termOff to keyCount * Fmt.U24_BYTES,
                 multiOff to multiEnd - multiOff,
                 infoOff to wordCount * 2,
-                idNodeOff to wordCount * 3,
+                idNodeOff to wordCount * Fmt.U24_BYTES,
             )
         for ((off, len) in sections) {
             var p = 0
@@ -190,8 +192,13 @@ private constructor(
     /** True if some key ends exactly at [node]. */
     fun isTerminal(node: Int): Boolean {
         checkNode(node)
-        val bits = buf.getLong(bitmapOff + (node ushr 6) * Fmt.BITMAP_BLOCK_BYTES + 4)
-        return (bits ushr (node and 63)) and 1L != 0L
+        val bits =
+            buf.getLong(
+                bitmapOff +
+                    (node ushr Fmt.BITMAP_SHIFT) * Fmt.BITMAP_BLOCK_BYTES +
+                    Fmt.BITMAP_RANK_BYTES
+            )
+        return (bits ushr (node and Fmt.BITMAP_BIT_MASK)) and 1L != 0L
     }
 
     /** Number of surface forms (word ids) of the key ending at [node]; 0 if not terminal. */
@@ -206,11 +213,11 @@ private constructor(
 
     /** Number of ids of the multi-id record referenced by terminal value [v] (bounds-checked). */
     private fun multiCount(v: Int): Int {
-        val base = multiOff + (v and 0x7FFFFF)
+        val base = multiOff + (v and Fmt.MULTI_OFFSET_MASK)
         if (base < multiOff || base >= multiEnd)
             throw DictionaryFormatException("corrupt multi-id offset")
         val count = Fmt.u8(buf, base)
-        if (base + 1 + count * 3 > multiEnd)
+        if (base + 1 + count * Fmt.U24_BYTES > multiEnd)
             throw DictionaryFormatException("corrupt multi-id record")
         return count
     }
@@ -232,7 +239,9 @@ private constructor(
         }
         val count = multiCount(v)
         require(index in 0 until count) { "index $index out of range" }
-        return checkedWordId(Fmt.u24(buf, multiOff + (v and 0x7FFFFF) + 1 + index * 3))
+        return checkedWordId(
+            Fmt.u24(buf, multiOff + (v and Fmt.MULTI_OFFSET_MASK) + 1 + index * Fmt.U24_BYTES)
+        )
     }
 
     /** Word id of the most probable surface form at [node], or -1 if not terminal. */
@@ -242,7 +251,7 @@ private constructor(
             v < 0 -> -1
             v and Fmt.MULTI_FLAG != 0 ->
                 if (multiCount(v) == 0) -1
-                else checkedWordId(Fmt.u24(buf, multiOff + (v and 0x7FFFFF) + 1))
+                else checkedWordId(Fmt.u24(buf, multiOff + (v and Fmt.MULTI_OFFSET_MASK) + 1))
             else -> checkedWordId(v)
         }
     }
@@ -263,13 +272,13 @@ private constructor(
     }
 
     private fun terminalValue(node: Int): Int {
-        val blockOff = bitmapOff + (node ushr 6) * Fmt.BITMAP_BLOCK_BYTES
-        val bits = buf.getLong(blockOff + 4)
-        val bit = node and 63
+        val blockOff = bitmapOff + (node ushr Fmt.BITMAP_SHIFT) * Fmt.BITMAP_BLOCK_BYTES
+        val bits = buf.getLong(blockOff + Fmt.BITMAP_RANK_BYTES)
+        val bit = node and Fmt.BITMAP_BIT_MASK
         if ((bits ushr bit) and 1L == 0L) return -1
         val rank = buf.getInt(blockOff) + java.lang.Long.bitCount(bits and ((1L shl bit) - 1))
         if (rank < 0 || rank >= keyCount) throw DictionaryFormatException("corrupt terminal rank")
-        return Fmt.u24(buf, termOff + rank * 3)
+        return Fmt.u24(buf, termOff + rank * Fmt.U24_BYTES)
     }
 
     private fun labelOf(c: Char): Int {
@@ -319,7 +328,7 @@ private constructor(
 
     /** Terminal node of word [id]'s key from ID_TO_NODE, validated. */
     private fun nodeOfId(id: Int): Int {
-        val node = Fmt.u24(buf, idNodeOff + id * 3)
+        val node = Fmt.u24(buf, idNodeOff + id * Fmt.U24_BYTES)
         if (node >= nodeCount)
             throw DictionaryFormatException("corrupt dictionary: node of word $id")
         return node
@@ -401,7 +410,7 @@ private constructor(
         var hi = caseCount - 1
         while (lo <= hi) {
             val mid = (lo + hi) ushr 1
-            val e = caseIdxOff + mid * 6
+            val e = caseIdxOff + mid * Fmt.CASE_INDEX_ENTRY
             val v = Fmt.u24(buf, e)
             if (v < id) lo = mid + 1
             else if (v > id) hi = mid - 1
@@ -466,7 +475,7 @@ private constructor(
         val loc = bigrams.locate(w1)
         if (loc < 0) return -1
         val r = bigrams.lookup(bigrams.positionOf(loc), w2)
-        if (r < 0 || (r and 0x80L) == 0L) return -1
+        if (r < 0 || (r and NGRAM_HAS_TRIGRAMS) == 0L) return -1
         val ordinal = bigrams.flagsBeforeOf(loc) + (r ushr 8).toInt()
         val t = trigrams.locate(ordinal)
         return if (t < 0) -1 else trigrams.positionOf(t)
@@ -551,6 +560,9 @@ private constructor(
         /** Longest trie key (in chars) the reader will reconstruct; the writer enforces it too. */
         const val MAX_KEY_LENGTH = 256
 
+        /** Flag bit of a bigram lookup result: the pair has a trigram list. */
+        private const val NGRAM_HAS_TRIGRAMS = 0x80L
+
         /** Entries in the [word] cache (a power of two; ids map to `id and (size - 1)`). */
         private const val WORD_CACHE_SIZE = 4096
 
@@ -579,17 +591,13 @@ private constructor(
 
         private fun fail(msg: String): Nothing = throw DictionaryFormatException(msg)
 
+        private fun hasMagic(buf: ByteBuffer): Boolean =
+            "KCD1".indices.all { buf.get(it) == "KCD1"[it].code.toByte() }
+
         private fun parse(buf: ByteBuffer): Dictionary {
             val size = buf.limit()
             if (size < Fmt.HEADER_SIZE) fail("buffer too small for header ($size bytes)")
-            if (
-                buf.get(0) != 'K'.code.toByte() ||
-                    buf.get(1) != 'C'.code.toByte() ||
-                    buf.get(2) != 'D'.code.toByte() ||
-                    buf.get(3) != '1'.code.toByte()
-            ) {
-                fail("bad magic (not a KCD1 dictionary)")
-            }
+            if (!hasMagic(buf)) fail("bad magic (not a KCD1 dictionary)")
             val version = Fmt.u16(buf, 4)
             if (version != Fmt.VERSION) fail("unsupported format version $version")
             val total = buf.getInt(8).toLong() and 0xFFFFFFFFL
@@ -673,26 +681,23 @@ private constructor(
             if (secLen[Fmt.SEC_ALPHABET] != 2 + 2 * alphaN || alphaN > 255) fail("bad alphabet")
             val alphabet = CharArray(alphaN) { buf.getChar(a + 2 + it * 2) }
             for (i in 1 until alphaN) if (alphabet[i] <= alphabet[i - 1]) fail("bad alphabet order")
-            if (
-                !uniMin.isFinite() ||
-                    !uniStep.isFinite() ||
-                    !bgMin.isFinite() ||
-                    !bgStep.isFinite() ||
-                    !tgMin.isFinite() ||
-                    !tgStep.isFinite()
-            ) {
-                fail("non-finite quantization parameters")
-            }
+            val quantization = floatArrayOf(uniMin, uniStep, bgMin, bgStep, tgMin, tgStep)
+            if (!quantization.all { it.isFinite() }) fail("non-finite quantization parameters")
 
             val n = nodeCount.toLong()
             val nodesOff = need(Fmt.SEC_TRIE_NODES, n * Fmt.NODE_RECORD)
             val samplesOff = need(Fmt.SEC_TRIE_SAMPLES, ((n + 15) / 16) * 4)
-            val bitmapOff = need(Fmt.SEC_TERM_BITMAP, ((n + 63) / 64) * Fmt.BITMAP_BLOCK_BYTES)
-            val termOff = need(Fmt.SEC_TERM_VALUES, keyCount.toLong() * 3)
+            val bitmapOff =
+                need(
+                    Fmt.SEC_TERM_BITMAP,
+                    ((n + Fmt.BITMAP_BLOCK_NODES - 1) / Fmt.BITMAP_BLOCK_NODES) *
+                        Fmt.BITMAP_BLOCK_BYTES,
+                )
+            val termOff = need(Fmt.SEC_TERM_VALUES, keyCount.toLong() * Fmt.U24_BYTES)
             val multiOff = need(Fmt.SEC_MULTI_IDS, -1)
             val infoOff = need(Fmt.SEC_WORD_INFO, wordCount.toLong() * 2)
-            val idNodeOff = need(Fmt.SEC_ID_TO_NODE, wordCount.toLong() * 3)
-            val caseIdxOff = need(Fmt.SEC_CASE_INDEX, caseCount.toLong() * 6)
+            val idNodeOff = need(Fmt.SEC_ID_TO_NODE, wordCount.toLong() * Fmt.U24_BYTES)
+            val caseIdxOff = need(Fmt.SEC_CASE_INDEX, caseCount.toLong() * Fmt.CASE_INDEX_ENTRY)
             val casePoolOff = need(Fmt.SEC_CASE_POOL, -1)
             val bgIdx =
                 need(

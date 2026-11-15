@@ -5,6 +5,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
 
 /** Parses and validates layout JSON (docs/LAYOUT_FORMAT.md). */
@@ -69,8 +70,7 @@ internal object LayoutParser {
             "action" to KeyStyle.Action,
         )
 
-    /** [expectedId], when given, must match the file's `id`. */
-    fun parse(text: String, expectedId: String? = null): Layout {
+    private fun parseTree(text: String, expectedId: String?): JsonObject {
         val tree =
             try {
                 json.parseToJsonElement(text)
@@ -83,32 +83,38 @@ internal object LayoutParser {
         if (tree !is JsonObject) {
             throw LayoutParseException("Layout '${expectedId ?: "?"}': top level must be an object")
         }
+        return tree
+    }
+
+    /** [expectedId], when given, must match the file's `id`. */
+    fun parse(text: String, expectedId: String? = null): Layout {
+        val tree = parseTree(text, expectedId)
         val id =
             (tree["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: expectedId ?: "?"
-        fun fail(path: String, message: String): Nothing =
-            throw LayoutParseException(
-                if (path.isEmpty()) "Layout '$id': $message" else "Layout '$id' at $path: $message"
-            )
 
         val format = (tree["format"] as? JsonPrimitive)?.intOrNull
         if (format != FORMAT) {
-            fail("format", "unsupported format ${tree["format"] ?: "(missing)"}, expected $FORMAT")
+            failLayout(
+                id,
+                "format",
+                "unsupported format ${tree["format"] ?: "(missing)"}, expected $FORMAT",
+            )
         }
         val file =
             try {
-                json.decodeFromJsonElement(LayoutFile.serializer(), tree)
+                json.decodeFromJsonElement<LayoutFile>(tree)
             } catch (e: SerializationException) {
                 throw LayoutParseException("Layout '$id': ${e.message}", e)
             }
 
-        if (!idPattern.matches(file.id)) fail("id", "'${file.id}' must match [a-z0-9_]+")
+        if (!idPattern.matches(file.id)) failLayout(id, "id", "'${file.id}' must match [a-z0-9_]+")
         if (expectedId != null && file.id != expectedId) {
-            fail("id", "'${file.id}' does not match requested id '$expectedId'")
+            failLayout(id, "id", "'${file.id}' does not match requested id '$expectedId'")
         }
-        if (file.name.isBlank()) fail("name", "must not be blank")
+        if (file.name.isBlank()) failLayout(id, "name", "must not be blank")
         val kind =
             LayoutKind.entries.firstOrNull { it.json == file.kind }
-                ?: fail("kind", "unknown kind '${file.kind}'")
+                ?: failLayout(id, "kind", "unknown kind '${file.kind}'")
         val mode =
             if (file.bottomRow == null) {
                 if (kind == LayoutKind.Letters || kind == LayoutKind.Symbols) {
@@ -118,22 +124,25 @@ internal object LayoutParser {
                 }
             } else {
                 BottomRowMode.entries.firstOrNull { it.json == file.bottomRow }
-                    ?: fail("bottomRow", "unknown bottomRow '${file.bottomRow}'")
+                    ?: failLayout(id, "bottomRow", "unknown bottomRow '${file.bottomRow}'")
             }
         if (kind == LayoutKind.Bottom && mode == BottomRowMode.Auto) {
-            fail("bottomRow", "a bottom layout cannot use bottomRow 'auto'")
+            failLayout(id, "bottomRow", "a bottom layout cannot use bottomRow 'auto'")
         }
-        if (file.rows.isEmpty()) fail("rows", "must not be empty")
+        if (file.rows.isEmpty()) failLayout(id, "rows", "must not be empty")
 
         fun resolveAll(onLetters: Boolean) =
             file.rows.mapIndexed { r, row ->
                 val rowPath = "rows[$r]"
                 if (!(row.height > 0f))
-                    fail("$rowPath.height", "must be positive, got ${row.height}")
-                if (row.keys.isEmpty()) fail("$rowPath.keys", "must not be empty")
+                    failLayout(id, "$rowPath.height", "must be positive, got ${row.height}")
+                if (row.keys.isEmpty()) failLayout(id, "$rowPath.keys", "must not be empty")
                 ResolvedRow(
                     row.keys.mapIndexed { k, key ->
-                        resolveKey(key, "$rowPath.keys[$k]", kind, onLetters, popup = false, ::fail)
+                        resolveKey(key, "$rowPath.keys[$k]", kind, onLetters, popup = false) { p, m
+                            ->
+                            failLayout(id, p, m)
+                        }
                     },
                     row.height,
                 )
@@ -349,3 +358,8 @@ internal object LayoutParser {
         return upper.takeIf { it != s && it.codePointCount(0, it.length) == 1 }
     }
 }
+
+private fun failLayout(id: String, path: String, message: String): Nothing =
+    throw LayoutParseException(
+        if (path.isEmpty()) "Layout '$id': $message" else "Layout '$id' at $path: $message"
+    )
