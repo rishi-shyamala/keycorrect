@@ -27,7 +27,6 @@ import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.learning.RevertKind
 import dev.keycorrect.core.learning.SentenceContext
 import dev.keycorrect.core.learning.ShownSuggestion
-import dev.keycorrect.core.learning.TouchSample
 import dev.keycorrect.core.learning.UserAction
 import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
@@ -2042,7 +2041,7 @@ internal class PredictiveInput(
                     method = method,
                     pickedRank = rank,
                     shown = pre.shown,
-                    touches = touchSamples(typed, committed, touchList),
+                    touches = touchSamples(typed, committed, touchList, keyByChar),
                     sentenceInitial = pre.sentenceInitial,
                     committedIsKnown = isKnown(committed),
                     typedIsKnown = typed.isEmpty() || isKnown(typed),
@@ -2083,71 +2082,6 @@ internal class PredictiveInput(
 
     private fun isKnown(word: String): Boolean =
         backend.isKnownWord(word) || backend.isKnownWord(word.lowercase())
-
-    /**
-     * One sample per typed char that came from a tap, measured from the centre of the key of the
-     * char the user *meant*: the same position of [committed] (case-insensitively). Same-length
-     * words align position by position (autocorrections, substitutions); otherwise only the common
-     * prefix and suffix do (completions, insertions, deletions). A touch farther than
-     * [MAX_TOUCH_OFFSET] key sizes from that key isn't plausibly aimed at it and is dropped. A word
-     * with more than [MAX_MISMATCHED_POSITIONS] mismatched positions yields no samples.
-     */
-    private fun touchSamples(
-        typed: String,
-        committed: String,
-        touchList: List<TouchPoint?>,
-    ): List<TouchSample?> {
-        if (typed.isEmpty()) return emptyList()
-        val n = typed.length
-        val m = committed.length
-        var prefix = 0
-        var suffix = 0
-        if (n != m) {
-            val limit = minOf(n, m)
-            while (
-                prefix < limit && typed[prefix].lowercaseChar() == committed[prefix].lowercaseChar()
-            ) {
-                prefix++
-            }
-            while (
-                suffix < limit - prefix &&
-                    typed[n - 1 - suffix].lowercaseChar() ==
-                        committed[m - 1 - suffix].lowercaseChar()
-            ) {
-                suffix++
-            }
-        }
-        fun aligned(i: Int): Int =
-            when {
-                n == m -> i
-                i < prefix -> i
-                i >= n - suffix -> m - (n - i)
-                else -> -1
-            }
-        // A word with more than one mismatched position (intended != registered) is too unclear
-        // to say which touch was aimed where: no samples at all.
-        var mismatches = 0
-        for (i in 0 until n) {
-            val j = aligned(i)
-            if (j < 0 || typed[i].lowercaseChar() != committed[j].lowercaseChar()) mismatches++
-        }
-        if (mismatches > MAX_MISMATCHED_POSITIONS) return List(n) { null }
-        return List(n) { i ->
-            val touch = touchList.getOrNull(i) ?: return@List null
-            val j = aligned(i)
-            if (j < 0) return@List null
-            val intended = committed[j].lowercaseChar()
-            val key = keyByChar[intended] ?: return@List null
-            if (key.width <= 0f || key.height <= 0f) return@List null
-            val dx = (touch.x - key.centerX) / key.width
-            val dy = (touch.y - key.centerY) / key.height
-            if (kotlin.math.abs(dx) > MAX_TOUCH_OFFSET || kotlin.math.abs(dy) > MAX_TOUCH_OFFSET) {
-                null
-            } else {
-                TouchSample(intended, dx, dy)
-            }
-        }
-    }
 
     // ---- phrases (docs/PLAN.md §6.3 rows 18-20)
 
@@ -2214,10 +2148,6 @@ internal class PredictiveInput(
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
         const val MAX_BLOCKED = 32
-        const val MAX_TOUCH_OFFSET = 0.7f
-
-        /** Most positions of a word where the intended char differs from the one registered. */
-        const val MAX_MISMATCHED_POSITIONS = 1
 
         /** Separators that make the word before them part of an address or path. */
         const val ADDRESS_SEPARATORS = "@/\\_"
