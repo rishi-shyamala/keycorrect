@@ -51,13 +51,11 @@
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun needsLeadingSpace: Boolean</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun pendingCorrection: Candidate?</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun recomposePreviousWord: Boolean</ID>
-    <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun record</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun resolveEdit: Resolution</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun sessionFor: EditSession?</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun touchSamples: List&lt;TouchSample?&gt;</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun undoCorrection: Boolean</ID>
     <ID>ReturnCount:TextContextCache.kt:TextContextCache$fun trailingWordStart: Int</ID>
-    <ID>ReturnCount:WordTouchLog.kt:WordTouchLog$fun markLastReverted</ID>
     <ID>TooGenericExceptionCaught:DecoderLoop.kt:DecoderLoop$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DecoderLoop.kt:DecoderLoop$e: RuntimeException</ID>
     <ID>TooGenericExceptionCaught:TouchStateMachine.kt:TouchStateMachine$e: Exception</ID>
@@ -67,6 +65,5 @@
     <ID>TooManyFunctions:PredictiveInput.kt:PredictiveInput</ID>
     <ID>TooManyFunctions:TextContextCache.kt:TextContextCache</ID>
     <ID>TooManyFunctions:TouchStateMachine.kt:TouchStateMachine</ID>
-    <ID>UnsafeCallOnNullableType:WordTouchLog.kt:WordTouchLog$ring[(next - size + it + capacity) % capacity]!!</ID>
   </CurrentIssues>
 </SmellBaseline>

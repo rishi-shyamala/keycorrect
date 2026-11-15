@@ -96,9 +96,6 @@ internal class PredictiveInput(
      */
     private val onLateSwipe: () -> Unit = {},
 ) {
-    /** The touches of recently finished words, for touch-model learning. In memory only. */
-    val touchLog = WordTouchLog()
-
     /** The keys touches are relative to; changing it re-bases the word being composed. */
     var layout: KeyLayoutModel = KeyLayoutModel(0L, emptyList())
         set(value) {
@@ -155,12 +152,6 @@ internal class PredictiveInput(
      * where learning is off.
      */
     private var retypeGuard: String? = null
-
-    /**
-     * The word an undo just put back (its touches are unknown). Its first log entry already exists,
-     * so finishing it must not log it again with all-null touches; see [record].
-     */
-    private var restoredWord: String? = null
 
     private val prompts = StripPrompts(env.scheduler, onStrip)
 
@@ -275,7 +266,6 @@ internal class PredictiveInput(
             revertedWords.clear()
             locallyBlocked.clear()
             memory.clear()
-            touchLog.clear()
             learn.newSession()
         }
         learn.setField(fieldClass())
@@ -323,8 +313,6 @@ internal class PredictiveInput(
     fun onFinishInput() {
         settleAll()
         resetWordState()
-        // No typed text outlives the field it was typed in.
-        touchLog.clear()
         memory.clear()
     }
 
@@ -688,7 +676,6 @@ internal class PredictiveInput(
         }
         cache.appendBefore(replacement)
         val touchList = List<TouchPoint?>(word.text.length) { null }
-        record(word.text, replacement, touchList, CommitMethod.SuggestionTap)
         completeWord(
             word.text,
             replacement,
@@ -822,14 +809,12 @@ internal class PredictiveInput(
         latest = null
 
         var committed = typed
-        var method = CommitMethod.Typed
         editor.batchEdit {
             if (decision == null) {
                 editor.finishComposingText()
             } else {
                 editor.commitText(decision.text)
                 committed = decision.text
-                method = CommitMethod.Autocorrect
             }
             if (separator != null) editor.commitText(separator)
         }
@@ -858,7 +843,6 @@ internal class PredictiveInput(
             if (canUndo && undoSeparator != null) {
                 Undo(typed, committed, undoSeparator, correction)
             } else null
-        if (unlearned) restoredWord = null else record(typed, committed, touchList, method)
         if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
@@ -989,7 +973,6 @@ internal class PredictiveInput(
             else editor.setComposingText(u.typed)
         }
         if (cache.beforeKnown) cache.dropBefore(expected.length)
-        touchLog.markLastReverted(u.applied)
         edit = null
         u.correction?.pendingWord = null // the corrected word is not recorded; see below
         u.correction?.let { reportImmediateRevert(it) }
@@ -1001,7 +984,6 @@ internal class PredictiveInput(
             }
             // Still no auto-correction if the user backspaces the punctuation and finishes again.
             retypeGuard = u.typed.lowercase()
-            restoredWord = u.typed
             loop.advance()
             latest = null
             publish(StripModel.Empty)
@@ -1015,7 +997,6 @@ internal class PredictiveInput(
             edit = EditSession(u.typed, held)
         }
         retypeGuard = u.typed.lowercase() // after the hold: holding another revert clears it
-        restoredWord = u.typed
         requestWord()
         return true
     }
@@ -1087,15 +1068,6 @@ internal class PredictiveInput(
         cache.appendBefore(if (cursorInside) expansion.head else expansion.text)
         if (cursorInside) cache.prependAfter(expansion.tail)
         if (trailingSpace) cache.appendBefore(" ")
-        if (!nextWord) {
-            val method =
-                when (slot.kind) {
-                    SlotKind.Phrase -> CommitMethod.PhraseTap
-                    SlotKind.Shortcut -> CommitMethod.Expansion
-                    else -> CommitMethod.SuggestionTap
-                }
-            record(typed, expansion.text, touchList, method)
-        }
         when (slot.kind) {
             SlotKind.Phrase -> takePhrase(expansion.text, pre, trailingSpace)
             SlotKind.Shortcut -> abandonWord()
@@ -1140,7 +1112,6 @@ internal class PredictiveInput(
         phrases.judgeTaken()
         phrases.clear()
         retypeGuard = null
-        restoredWord = null
         // Recents and variant memory key on the grid emoji the form belongs to. Nothing is
         // remembered where the field asks for no learning (incognito tabs and the like).
         if (profile?.learningEnabled == true) {
@@ -1168,7 +1139,6 @@ internal class PredictiveInput(
         if (space) cache.appendBefore(" ")
         revertedWords.addLast(typed.lowercase())
         while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
-        record(typed, typed, touchList, CommitMethod.LiteralTap)
         completeWord(
             typed,
             typed,
@@ -1400,7 +1370,7 @@ internal class PredictiveInput(
         loop.advance()
         latest = null
         // Learned like a picked suggestion, but with no touches: a swipe says nothing about where
-        // the finger lands on a key, and it is not logged in [touchLog] either.
+        // the finger lands on a key.
         completeWord("", top, Learned.Gesture, null, pre, emptyList(), null, null, false)
         retypeGuard = null
         val word = SwipedWord(words, 0, space)
@@ -1646,7 +1616,6 @@ internal class PredictiveInput(
         cache.appendBefore(typed)
         composing.setLength(0)
         touches.clear()
-        record(typed, typed, touchList, CommitMethod.Typed)
         completeWord(typed, typed, Learned.Typed, null, pre, touchList, null, null, false)
         if (pendingRevertTracked == null) retypeGuard = null
         loop.advance()
@@ -1660,7 +1629,6 @@ internal class PredictiveInput(
         recorrect = null
         dropPendingSwipe()
         retypeGuard = null
-        restoredWord = null
         composing.setLength(0)
         touches.clear()
         cache.reset()
@@ -1672,21 +1640,6 @@ internal class PredictiveInput(
         prompts.cancelNever()
         prompts.base = StripModel.Empty
         onStrip(StripModel.Empty)
-    }
-
-    /** Records a finished word for touch-model learning, unless the field forbids learning. */
-    private fun record(
-        typed: String,
-        committed: String,
-        touchList: List<TouchPoint?>,
-        method: CommitMethod,
-    ) {
-        val p = profile ?: return
-        if (!p.learningEnabled || p.sensitive || !learn.open) return
-        val restored = restoredWord
-        restoredWord = null
-        if (restored != null && restored == typed && touchList.all { it == null }) return
-        touchLog.record(WordRecord(typed, committed, touchList, layout.id, method))
     }
 
     private fun publish(base: StripModel) {
@@ -1745,7 +1698,6 @@ internal class PredictiveInput(
         pendingRevertTracked = null
         undo?.correction?.pendingKept = null
         undo?.correction?.pendingWord = null
-        touchLog.clear()
     }
 
     /**
