@@ -143,7 +143,7 @@ private constructor(
     }
 
     /** Child handle by index (`0 until childCount(node)`); recomputes [firstChild] every call. */
-    fun childAt(node: Int, index: Int): Int = firstChild(node) + index
+    internal fun childAt(node: Int, index: Int): Int = firstChild(node) + index
 
     /** The character labelling the edge into [node] (undefined for [root]). */
     fun nodeChar(node: Int): Char {
@@ -236,7 +236,7 @@ private constructor(
     }
 
     /** Word id of the most probable surface form at [node], or -1 if not terminal. */
-    fun firstWordIdAt(node: Int): Int {
+    internal fun firstWordIdAt(node: Int): Int {
         val v = terminalValue(node)
         return when {
             v < 0 -> -1

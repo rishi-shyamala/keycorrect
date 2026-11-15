@@ -60,23 +60,6 @@ fun rememberDynamicScheme(
     }
 }
 
-/**
- * The theme chosen in settings for the system light/dark mode (the one the keyboard and the
- * settings preview use).
- */
-@Composable
-fun rememberKeyboardTheme(
-    source: ThemeSource,
-    custom: List<Int>,
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    refresh: Int = 0,
-): KeyboardTheme {
-    val dynamic = rememberDynamicScheme(darkTheme, refresh)
-    return remember(source, custom, darkTheme, dynamic) {
-        resolveKeyboardTheme(source, darkTheme, dynamic, custom)
-    }
-}
-
 /** Applies [theme] as the Material scheme (over the dynamic scheme [base]) for [content]. */
 @Composable
 fun KeyboardLook(theme: KeyboardTheme, base: ColorScheme, content: @Composable () -> Unit) {

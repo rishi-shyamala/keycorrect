@@ -51,13 +51,6 @@ fun hintOn(text: Color, fill: Color): Color {
 private fun Color.orIfFaint(fill: Color, minimum: Double, fallback: Color): Color =
     if (contrastRatio(toArgb(), fill.toArgb()) >= minimum) this else fallback
 
-/** A shade of [fill] a step lighter (on a dark one) or darker (on a light one). */
-fun tonalShift(fill: Color, amount: Float = TONE_SHIFT): Color =
-    lerp(
-        fill,
-        if (relativeLuminance(fill.toArgb()) > LIGHT_FILL) Color.Black else Color.White,
-        amount,
-    )
 
 /** The colors to draw on every fill of these theme colors. */
 fun KeyboardColors.palette(): ThemePalette {

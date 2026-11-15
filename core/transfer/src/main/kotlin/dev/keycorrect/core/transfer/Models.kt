@@ -70,7 +70,7 @@ data class SettingValue(val type: SettingType, val value: String) {
 @Serializable
 data class SettingsSection(val values: Map<String, SettingValue>) {
     /** The keys in this section that depend on the screen ([SCREEN_TIED_KEYS]). */
-    val screenTiedKeys: Set<String>
+    internal val screenTiedKeys: Set<String>
         get() = values.keys.filterTo(HashSet()) { it in SCREEN_TIED_KEYS }
 
     companion object {

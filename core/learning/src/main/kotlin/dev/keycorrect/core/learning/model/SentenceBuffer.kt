@@ -71,7 +71,7 @@ class SentenceBuffer(private val config: SentenceBufferConfig = SentenceBufferCo
 
     /** Closed sentences newest-last, after TTL pruning at [nowMillis]. */
     @Synchronized
-    fun recentSentences(nowMillis: Long, limit: Int = Int.MAX_VALUE): List<Sentence> {
+    internal fun recentSentences(nowMillis: Long, limit: Int = Int.MAX_VALUE): List<Sentence> {
         prune(nowMillis)
         return closed.toList().takeLast(limit)
     }

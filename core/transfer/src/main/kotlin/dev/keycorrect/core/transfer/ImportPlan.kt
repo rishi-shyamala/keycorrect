@@ -74,7 +74,7 @@ data class ImportPlan(
         }
 
     /** The sections whose local data is erased before applying (Replace only). */
-    val sectionsToWipe: List<Section>
+    internal val sectionsToWipe: List<Section>
         get() = if (mode == ImportMode.Replace) sections else emptyList()
 
     /** The sections of the file that are left out and why: always the touch section here. */
@@ -90,7 +90,7 @@ data class ImportPlan(
         else section.values.filterKeys { it !in SettingsSection.SCREEN_TIED_KEYS }
 
     /** The setting keys left out of the import. */
-    fun skippedSettingKeys(section: SettingsSection): Set<String> =
+    internal fun skippedSettingKeys(section: SettingsSection): Set<String> =
         section.values.keys - settingsToApply(section).keys
 
     companion object {
