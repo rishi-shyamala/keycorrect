@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -155,7 +156,7 @@ private fun ImportSection(controller: BackupController) {
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             if (uri != null) {
-                controller.pickFile(fileSize(resolver, uri)) { resolver.openInputStream(uri) }
+                controller.pickFile({ fileSize(resolver, uri) }) { resolver.openInputStream(uri) }
             }
         }
 
@@ -265,11 +266,11 @@ private fun ReviewImport(
     val bundle = review.bundle
     val screenDiffers = review.screenDiffers
     val already = review.alreadyImportedAt
-    var mode by remember { mutableStateOf<ImportMode?>(null) }
-    var anyway by remember { mutableStateOf(false) }
-    var mergeAnyway by remember { mutableStateOf(false) }
+    var mode by rememberSaveable { mutableStateOf<ImportMode?>(null) }
+    var anyway by rememberSaveable { mutableStateOf(false) }
+    var mergeAnyway by rememberSaveable { mutableStateOf(false) }
     val mergeBlocked = already != null && !mergeAnyway
-    var confirmReplace by remember { mutableStateOf(false) }
+    var confirmReplace by rememberSaveable { mutableStateOf(false) }
     val device = bundle.manifest.device
     val date =
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
