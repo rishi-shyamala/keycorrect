@@ -298,8 +298,7 @@ internal class PredictiveInput(
                 old.nextWordPredictions != settings.nextWordPredictions ||
                 old.phraseCompletion != settings.phraseCompletion
         if (relevant) {
-            loop.advance()
-            latest = null
+            invalidateWord()
             if (!predictionOn) publish(StripModel.Empty)
             else if (composing.isNotEmpty()) requestWord() else publish(StripModel.Empty)
         }
@@ -381,8 +380,7 @@ internal class PredictiveInput(
                 if (pendingRevertTracked == null) retypeGuard = null
                 shown.clear()
                 editor.commitText("")
-                loop.advance()
-                latest = null
+                invalidateWord()
                 publish(StripModel.Empty)
                 requestNextWord()
             } else {
@@ -400,8 +398,7 @@ internal class PredictiveInput(
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
         deleteBeforeCursor()
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (!recomposePreviousWord()) {
             dropPendingRevert() // the restored word can't be followed any more
             publish(StripModel.Empty)
@@ -468,8 +465,7 @@ internal class PredictiveInput(
         endEdit()
         flushPendingRevert() // Enter finishes a restored word as it is
         if (commitsLineBreak) cache.appendBefore("\n")
-        loop.advance()
-        latest = null
+        invalidateWord()
         publish(StripModel.Empty)
     }
 
@@ -667,8 +663,7 @@ internal class PredictiveInput(
         cache.truncateBefore(word.start)
         cache.dropAfter(word.afterLength)
         val pre = capturePre()
-        loop.advance()
-        latest = null
+        invalidateWord()
         editor.batchEdit {
             editor.deleteSurroundingText(word.beforeLength, word.afterLength)
             editor.commitText(replacement)
@@ -760,8 +755,7 @@ internal class PredictiveInput(
         endEdit()
         editor.commitText(text)
         cache.appendBefore(text)
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (prompts.base != StripModel.Empty) publish(StripModel.Empty)
     }
 
@@ -780,8 +774,7 @@ internal class PredictiveInput(
             endEdit()
             editor.commitText(text)
             cache.appendBefore(text)
-            loop.advance()
-            latest = null
+            invalidateWord()
         }
         publish(StripModel.Empty)
         requestNextWord()
@@ -803,8 +796,7 @@ internal class PredictiveInput(
         val unlearned = asTyped && decision == null && !keptAsTyped && looksPartial(typed)
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
 
         var committed = typed
         editor.batchEdit {
@@ -984,8 +976,7 @@ internal class PredictiveInput(
             }
             // Still no auto-correction if the user backspaces the punctuation and finishes again.
             retypeGuard = u.typed.lowercase()
-            loop.advance()
-            latest = null
+            invalidateWord()
             publish(StripModel.Empty)
             requestNextWord()
             return true
@@ -1049,8 +1040,7 @@ internal class PredictiveInput(
         val leadingSpace = nextWord && needsLeadingSpace()
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
 
         val cursorInside = expansion.cursor in 0 until expansion.text.length
         val trailingSpace = settings.autoSpaceAfterPick && !cursorInside
@@ -1099,8 +1089,7 @@ internal class PredictiveInput(
         if (composing.isEmpty()) return
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         val trailingSpace = settings.autoSpaceAfterPick
         editor.batchEdit {
             editor.commitText(slot.insert)
@@ -1128,8 +1117,7 @@ internal class PredictiveInput(
         val pre = capturePre()
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         val space = settings.autoSpaceAfterPick
         editor.batchEdit {
             editor.finishComposingText()
@@ -1367,8 +1355,7 @@ internal class PredictiveInput(
         }
         if (space) cache.appendBefore(" ")
         cache.appendBefore(top)
-        loop.advance()
-        latest = null
+        invalidateWord()
         // Learned like a picked suggestion, but with no touches: a swipe says nothing about where
         // the finger lands on a key.
         completeWord("", top, Learned.Gesture, null, pre, emptyList(), null, null, false)
@@ -1442,8 +1429,7 @@ internal class PredictiveInput(
                 ?.let(memory::remove)
         }
         shown.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (!recomposePreviousWord()) {
             dropPendingRevert()
             publish(StripModel.Empty)
@@ -1488,8 +1474,7 @@ internal class PredictiveInput(
             editor.commitText(replacement)
         }
         cache.appendBefore(replacement)
-        loop.advance()
-        latest = null
+        invalidateWord()
         completeWord("", replacement, Learned.Gesture, null, pre, emptyList(), null, null, false)
         retypeGuard = null
         word.current = index
@@ -1618,8 +1603,7 @@ internal class PredictiveInput(
         touches.clear()
         completeWord(typed, typed, Learned.Typed, null, pre, touchList, null, null, false)
         if (pendingRevertTracked == null) retypeGuard = null
-        loop.advance()
-        latest = null
+        invalidateWord()
         publish(StripModel.Empty)
     }
 
@@ -1640,6 +1624,12 @@ internal class PredictiveInput(
         prompts.cancelNever()
         prompts.base = StripModel.Empty
         onStrip(StripModel.Empty)
+    }
+
+    /** Drops the decode in flight and the result held for the word. */
+    private fun invalidateWord() {
+        loop.advance()
+        latest = null
     }
 
     private fun publish(base: StripModel) {
