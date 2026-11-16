@@ -57,12 +57,15 @@ class SegmentedDictationTest {
         }
     }
 
-    private class Harness(cutEvery: Int, script: List<String>) {
+    private class Harness(cutEvery: Int, script: List<String>, gateCreate: Boolean = false) {
         val detector = FakeDetector(cutEvery)
         val recognizer = FakeRecognizer(script)
         val results = CopyOnWriteArrayList<SttResult>()
         private val done = CountDownLatch(1)
         val created = CountDownLatch(1)
+
+        /** Holds `create` until the test calls `releaseCreate`, when [gateCreate] is set. */
+        private val gate = CountDownLatch(if (gateCreate) 1 else 0)
         val session =
             SegmentedDictation(
                 listener = {
@@ -71,9 +74,12 @@ class SegmentedDictationTest {
                 },
                 create = {
                     created.countDown()
+                    gate.await(5, TimeUnit.SECONDS)
                     SpeechComponents(detector, recognizer)
                 },
             )
+
+        fun releaseCreate() = gate.countDown()
 
         fun await() = assertThat(done.await(5, TimeUnit.SECONDS)).isTrue()
     }
@@ -129,11 +135,13 @@ class SegmentedDictationTest {
 
     @Test
     fun cancelEmitsNothingAndFreesTheModels() {
-        val h = Harness(cutEvery = 2, script = listOf("a", "b"))
+        val h = Harness(cutEvery = 2, script = listOf("a", "b"), gateCreate = true)
         assertThat(h.created.await(5, TimeUnit.SECONDS)).isTrue()
         h.session.cancel()
         h.session.acceptAudio(ShortArray(4))
         h.session.finish()
+        assertThat(h.results).isEmpty()
+        h.releaseCreate()
         waitUntil { h.detector.released && h.recognizer.released }
         assertThat(h.results).isEmpty()
     }

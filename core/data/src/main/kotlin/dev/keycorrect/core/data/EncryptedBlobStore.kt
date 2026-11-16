@@ -55,6 +55,7 @@ class EncryptedBlobStore(
 
     /** [write] into blob [name] (from [newName]). */
     fun write(name: String, input: InputStream, maxBytes: Long = defaultMaxBytes) {
+        require(isValidName(name)) { "Invalid blob name" }
         require(maxBytes >= 0) { "Negative limit" }
         directory.mkdirs()
         val temp = File(directory, name + TEMP_SUFFIX)

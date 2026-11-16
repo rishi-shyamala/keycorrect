@@ -213,6 +213,21 @@ class TransferCodecTest {
         }
     }
 
+    @Test
+    fun anEntryNameThatIsNotValidUtf8IsCorruptNotACrash() {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { z ->
+            z.putNextEntry(ZipEntry("aaaa.json"))
+            z.closeEntry()
+        }
+        // Both the local and the central header carry the name; make it invalid UTF-8.
+        val bytes = out.toByteArray()
+        val s = String(bytes, Charsets.ISO_8859_1).replace("aaaa.json", "\u00ff\u00ffaa.json")
+        assertThrows(TransferException::class.java) {
+            TransferCodec.read(s.toByteArray(Charsets.ISO_8859_1))
+        }
+    }
+
     // ------------------------------------------------------------- passphrase handling
 
     @Test

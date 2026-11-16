@@ -200,7 +200,7 @@ class ReviewFixesTest {
     }
 
     @Test
-    fun aCancelledFlushDoesNotRequeueTheJournalEntries() {
+    fun aCancelledFlushRequeuesTheJournalEntries() {
         val store = SpyStore()
         val m = PersonalModel(testConfig())
         val p = LearningPersistence(m, store)
@@ -210,7 +210,7 @@ class ReviewFixesTest {
             runSuspend { p.flush(10) }
         }
         store.cancelCommit = false
-        assertThat(m.drainJournalForPersistence()).isEmpty() // not requeued
+        assertThat(m.drainJournalForPersistence()).hasSize(1) // requeued
     }
 
     @Test
