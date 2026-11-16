@@ -40,67 +40,37 @@ object Merge {
         )
     }
 
-    fun words(existing: List<DictWord>, incoming: List<DictWord>): List<DictWord> {
-        val out = LinkedHashMap<String, DictWord>()
-        for (w in existing) out[w.word] = w
-        for (w in incoming) {
-            val e = out[w.word]
-            out[w.word] =
-                if (e == null) w
-                else
-                    e.copy(
-                        frequency = (e.frequency + w.frequency).coerceAtMost(MAX_FREQUENCY),
-                        createdAt = earliest(e.createdAt, w.createdAt),
-                        updatedAt = maxOf(e.updatedAt, w.updatedAt),
-                    )
+    fun words(existing: List<DictWord>, incoming: List<DictWord>): List<DictWord> =
+        combine(existing, incoming, { it.word }) { e, w ->
+            e.copy(
+                frequency = (e.frequency + w.frequency).coerceAtMost(MAX_FREQUENCY),
+                createdAt = earliest(e.createdAt, w.createdAt),
+                updatedAt = maxOf(e.updatedAt, w.updatedAt),
+            )
         }
-        return out.values.toList()
-    }
 
     /** A removed tombstone on either side wins: the word stays removed. */
-    fun learnedWords(existing: List<LearnedWord>, incoming: List<LearnedWord>): List<LearnedWord> {
-        val out = LinkedHashMap<String, LearnedWord>()
-        for (w in existing) out[w.key] = w
-        for (w in incoming) {
-            val e = out[w.key]
-            out[w.key] =
-                if (e == null) w
-                else
-                    e.copy(
-                        removed = e.removed || w.removed,
-                        createdAtMillis = earliest(e.createdAtMillis, w.createdAtMillis),
-                    )
+    fun learnedWords(existing: List<LearnedWord>, incoming: List<LearnedWord>): List<LearnedWord> =
+        combine(existing, incoming, { it.key }) { e, w ->
+            e.copy(
+                removed = e.removed || w.removed,
+                createdAtMillis = earliest(e.createdAtMillis, w.createdAtMillis),
+            )
         }
-        return out.values.toList()
-    }
 
     /** Union by case-insensitive word; the earliest block time is kept. */
-    fun blocked(existing: List<BlockedWord>, incoming: List<BlockedWord>): List<BlockedWord> {
-        val out = LinkedHashMap<String, BlockedWord>()
-        for (b in existing + incoming) {
-            val k = lower(b.word)
-            val e = out[k]
-            out[k] =
-                if (e == null) b
-                else e.copy(createdAtMillis = earliest(e.createdAtMillis, b.createdAtMillis))
+    fun blocked(existing: List<BlockedWord>, incoming: List<BlockedWord>): List<BlockedWord> =
+        combine(existing, incoming, { lower(it.word) }) { e, b ->
+            e.copy(createdAtMillis = earliest(e.createdAtMillis, b.createdAtMillis))
         }
-        return out.values.toList()
-    }
 
     /** Union by trigger (case-insensitive); [replace] lets the incoming one win a conflict. */
     fun shortcuts(
         existing: List<ShortcutEntry>,
         incoming: List<ShortcutEntry>,
         replace: Boolean = false,
-    ): List<ShortcutEntry> {
-        val out = LinkedHashMap<String, ShortcutEntry>()
-        for (s in existing) out[lower(s.trigger)] = s
-        for (s in incoming) {
-            val k = lower(s.trigger)
-            if (replace || k !in out) out[k] = s
-        }
-        return out.values.toList()
-    }
+    ): List<ShortcutEntry> =
+        combine(existing, incoming, { lower(it.trigger) }) { e, s -> if (replace) s else e }
 
     /**
      * Learned typing data. N-gram weights, correction scores, keeps, casing and candidate weights
