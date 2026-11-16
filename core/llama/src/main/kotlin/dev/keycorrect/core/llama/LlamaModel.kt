@@ -105,11 +105,10 @@ class LlamaModel private constructor(private val backend: LlamaBackend, private 
 
 /**
  * One llama context: a KV cache plus the scratch the scorer needs. **Not thread-safe**: use it from
- * one thread at a time (the keyboard keeps one session on its scorer thread) and never call [close]
- * while another thread is inside [score] or [generate]. After [close], every call throws
- * [IllegalStateException]. The closed flag itself is safe to read and [close] safe to call from any
- * thread (so a use-after-close check on another thread sees the right answer), but that is all:
- * scoring stays single-threaded.
+ * one thread at a time (the keyboard keeps one session on its scorer thread). [close] is safe from
+ * any thread: it waits for a running [score] or [generate] to return before freeing the context.
+ * After [close], every call throws [IllegalStateException]. The closed flag is safe to read from
+ * any thread; scoring itself stays single-threaded.
  *
  * The session remembers the tokens of the last context it scored, so a call whose context extends
  * the previous one (the usual case while typing) decodes only the new tokens.
@@ -131,11 +130,14 @@ internal constructor(
      * (empty = start of text), or null when [timeoutMs] runs out or decoding fails. A timeout of 0
      * expires at once; a negative one never expires. Candidates are scored in batches, in order.
      */
-    fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? {
-        val ctx = requireOpen()
-        if (candidates.isEmpty()) return FloatArray(0)
-        return backend.score(ctx, context, candidates.toTypedArray(), timeoutMs)
-    }
+    fun score(context: String, candidates: List<String>, timeoutMs: Long): FloatArray? =
+        // Under the session's lock, so a close from another thread waits for the native call
+        // instead of freeing the context under it.
+        synchronized(this) {
+            val ctx = requireOpen()
+            if (candidates.isEmpty()) FloatArray(0)
+            else backend.score(ctx, context, candidates.toTypedArray(), timeoutMs)
+        }
 
     /**
      * Greedy continuation of [prompt]: at most [maxTokens] tokens, stopping at a newline (not
@@ -143,11 +145,12 @@ internal constructor(
      * score cache survives unless the cache is too full for the prompt, in which case the next
      * [score] decodes its context again.
      */
-    fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? {
-        val ctx = requireOpen()
-        require(maxTokens > 0) { "maxTokens must be positive" }
-        return backend.generate(ctx, prompt, maxTokens, timeoutMs)
-    }
+    fun generate(prompt: String, maxTokens: Int, timeoutMs: Long): String? =
+        synchronized(this) {
+            val ctx = requireOpen()
+            require(maxTokens > 0) { "maxTokens must be positive" }
+            backend.generate(ctx, prompt, maxTokens, timeoutMs)
+        }
 
     /** Frees the context. Safe to call twice. */
     override fun close() {

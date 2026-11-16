@@ -173,4 +173,40 @@ class LlamaModelTest {
         // The session was already freed once; closing the model must not free it again.
         assertThat(backend.calls.count { it == "freeContext" }).isEqualTo(1)
     }
+
+    @Test
+    fun closeWaitsForARunningScoreInsteadOfFreeingUnderIt() {
+        val inside = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val order = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val backend =
+            object : LlamaBackend by FakeBackend() {
+                override fun score(
+                    ctx: Long,
+                    context: String,
+                    candidates: Array<String>,
+                    timeoutMs: Long,
+                ): FloatArray? {
+                    inside.countDown()
+                    release.await()
+                    order += "scored"
+                    return FloatArray(candidates.size)
+                }
+
+                override fun freeContext(ctx: Long) {
+                    order += "freed"
+                }
+            }
+        val session = LlamaModel.openFile(backend, "/x.gguf").newSession()
+        val scorer = Thread { session.score("a", listOf("b"), 0) }
+        scorer.start()
+        inside.await()
+        val closer = Thread { session.close() }
+        closer.start()
+        Thread.sleep(100)
+        release.countDown()
+        scorer.join()
+        closer.join()
+        assertThat(order).containsExactly("scored", "freed").inOrder()
+    }
 }
