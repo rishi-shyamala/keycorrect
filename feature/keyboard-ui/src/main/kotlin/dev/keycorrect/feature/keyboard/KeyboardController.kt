@@ -627,25 +627,6 @@ class KeyboardController(
         if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
     }
 
-    /**
-     * An emoji or kaomoji [value] was picked in the emoji panel ([base] is its grid entry; it is
-     * [record]ed as used unless a kaomoji). Nothing happens in a sensitive field.
-     *
-     * Settling: like a cursor move ([PredictiveInput.endComposingForMove]), not like a separator.
-     * The composing word is finished as typed and abandoned rather than learned or autocorrected,
-     * pending suggestions and a held revert are dropped, and the text cache is reset (it is read
-     * again on the next word). The emoji is then committed through [tracked], so [OwnEditTracker]
-     * expects its selection update. An emoji is never a word and never a separator.
-     */
-    fun onEmojiPicked(value: String, base: String = value, record: Boolean = true) {
-        if (profile.sensitive || value.isEmpty()) return
-        input.endComposingForMove()
-        tracked.commitText(value, 1)
-        // Nothing is remembered where the field asks for no learning (incognito tabs and the like).
-        if (record && profile.learningEnabled) emoji.onEmojiUsed(value, base)
-        updateAutoCapitalize()
-    }
-
     // ------------------------------------------------------------------ clipboard (PR C)
 
     /** Clipboard UI state: the card whose actions are open, and the clear-all confirmation. */
@@ -904,32 +885,39 @@ class KeyboardController(
         clipboardPanel.reset()
     }
 
+    private val emojiPanelActions =
+        EmojiPanelController(
+            emoji,
+            emojiSearch,
+            input,
+            tracked,
+            { profile },
+            { settings },
+            { panel },
+            { state.layerId },
+            ::switchLayer,
+            ::updateAutoCapitalize,
+        )
+
+    /** An emoji or kaomoji was picked in the emoji panel (see [EmojiPanelController]). */
+    fun onEmojiPicked(value: String, base: String = value, record: Boolean = true) =
+        emojiPanelActions.onEmojiPicked(value, base, record)
+
     /** A grid emoji was tapped: inserts its preferred variant, else the default tone, else base. */
-    fun onEmojiTap(item: Emoji) = onEmojiPicked(emojiValue(item), item.value)
+    fun onEmojiTap(item: Emoji) = emojiPanelActions.onEmojiTap(item)
 
     /** The form of [item] a tap inserts. */
-    internal fun emojiValue(item: Emoji): String =
-        EmojiChoice.resolve(item, emoji.preferredVariant(item.value), settings.emojiSkinTone)
+    internal fun emojiValue(item: Emoji): String = emojiPanelActions.emojiValue(item)
 
     /** [variant] was chosen from [item]'s long-press popup: inserts it and remembers the choice. */
-    fun onEmojiVariantPicked(item: Emoji, variant: String) {
-        if (profile.sensitive) return
-        if (profile.learningEnabled) emoji.setPreferredVariant(item.value, variant)
-        onEmojiPicked(variant, item.value)
-    }
+    fun onEmojiVariantPicked(item: Emoji, variant: String) =
+        emojiPanelActions.onEmojiVariantPicked(item, variant)
 
     /** Switches the emoji panel to search: the letters layer, typing edits the query. */
-    fun openEmojiSearch() {
-        if (profile.sensitive || panel != KeyboardPanel.Emoji) return
-        emojiSearch.open()
-        if (state.layerId != KeyboardSet.LETTERS) switchLayer(KeyboardSet.LETTERS)
-    }
+    fun openEmojiSearch() = emojiPanelActions.openEmojiSearch()
 
     /** Leaves the emoji search, back to the emoji grid. */
-    fun closeEmojiSearch() {
-        emojiSearch.close()
-        updateAutoCapitalize()
-    }
+    fun closeEmojiSearch() = emojiPanelActions.closeEmojiSearch()
 
     /** A key pressed while the emoji search is active: it edits the query and nothing else. */
     private fun onSearchKey(action: KeyAction) {
