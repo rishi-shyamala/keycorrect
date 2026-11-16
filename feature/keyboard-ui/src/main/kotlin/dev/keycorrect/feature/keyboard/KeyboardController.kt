@@ -632,9 +632,6 @@ class KeyboardController(
     /** Clipboard UI state: the card whose actions are open, and the clear-all confirmation. */
     internal val clipboardPanel = ClipboardPanelState()
 
-    /** A clip tapped on the strip chip is not offered again; set here so the chip hides. */
-    private var chipDismissedFor by mutableStateOf<Long?>(null)
-
     /**
      * Mirrors [PredictiveInput.isComposing] as observable state, so the chip hides while typing.
      */
@@ -682,13 +679,9 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
-    /**
-     * The clipboard panel is offered when history is on and the field is not sensitive (a password
-     * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
-     * in any field, password fields included: pasting there is a normal use.
-     */
+    /** Whether the clipboard panel is offered (see [ClipboardController.available]). */
     val clipboardAvailable: Boolean
-        get() = clipboard.enabled && !profile.sensitive
+        get() = clipboards.available
 
     /**
      * A key was held. Only the emoji key has a long press: it opens the clipboard when
@@ -707,19 +700,9 @@ class KeyboardController(
     /** Opens the clipboard panel; does nothing when it is not [clipboardAvailable]. */
     fun openClipboard() = showPanel(KeyboardPanel.Clipboard)
 
-    /**
-     * The clip shown as a chip in the strip: only when the strip would otherwise be empty (keys
-     * showing, no word being composed, no suggestions, no selection strip), history is on, the host
-     * has a fresh clip and the user hasn't dismissed or pasted it. Autofill chips outrank it in the
-     * UI. Reads observable state only, so a keystroke recomposes just the chip. The host must back
-     * [ClipboardEnvironment.freshClip] with state (and age it out), as there is no timer here.
-     */
+    /** The clip shown as a chip in the strip (see [ClipboardController.stripClip]). */
     val stripClip: ClipItem?
-        get() {
-            if (!clipboard.enabled || panel != KeyboardPanel.Keys) return null
-            if (composingNow || !strip.isEmpty || selectionStripVisible) return null
-            return clipboard.freshClip()?.takeIf { it.id != chipDismissedFor }
-        }
+        get() = clipboards.stripClip
 
     /**
      * Whether the strip has content besides the tools (see [stripBusy]), so they sit small at its
@@ -838,52 +821,36 @@ class KeyboardController(
         }
     }
 
+    private val clipboards =
+        ClipboardController(
+            clipboard,
+            clipboardPanel,
+            input,
+            tracked,
+            { profile },
+            { panel },
+            { composingNow },
+            { strip.isEmpty },
+            { selectionStripVisible },
+            { composingNow = false },
+            { showPanelKeepingLayer(KeyboardPanel.Keys) },
+            ::updateAutoCapitalize,
+        )
+
     /** The chip's ✕: hides it for [id] (the clip stays in the history). */
-    fun dismissClipChip(id: Long) {
-        chipDismissedFor = id
-    }
+    fun dismissClipChip(id: Long) = clipboards.dismissClipChip(id)
 
-    /**
-     * Clip [id] was tapped in the panel or on the chip: pastes it into the field.
-     *
-     * Settling is the same as for an emoji ([onEmojiPicked]): the composing word is finished as
-     * typed and abandoned, not corrected or learned, pending suggestions are dropped, and the text
-     * is then committed through [tracked] so [OwnEditTracker] expects its selection update. Pasted
-     * text is never a word to learn from and no learning event is produced. Allowed in a sensitive
-     * field (that is how a copied code reaches a password field); the text is never read back.
-     * Images are committed by the host. The panel then returns to the keys, unless the paste
-     * failed.
-     */
-    fun onClipPicked(id: Long) {
-        input.endComposingForMove()
-        val pasted =
-            clipboard.paste(id) { text -> if (text.isNotEmpty()) tracked.commitText(text, 1) }
-        composingNow = false
-        // A failed paste (an image the field refused and the clipboard could not take) leaves the
-        // panel open, so the user sees nothing happened and can pick again.
-        if (!pasted) return
-        chipDismissedFor = id
-        showPanelKeepingLayer(KeyboardPanel.Keys)
-        updateAutoCapitalize()
-    }
+    /** Clip [id] was tapped in the panel or on the chip: pastes it into the field. */
+    fun onClipPicked(id: Long) = clipboards.onClipPicked(id)
 
-    fun pinClip(id: Long, pinned: Boolean) = clipboard.setPinned(id, pinned)
+    fun pinClip(id: Long, pinned: Boolean) = clipboards.pinClip(id, pinned)
 
-    fun deleteClip(id: Long) {
-        clipboard.delete(id)
-        clipboardPanel.closeMenu()
-    }
+    fun deleteClip(id: Long) = clipboards.deleteClip(id)
 
-    fun cleanClipUrl(id: Long) {
-        clipboard.cleanUrl(id)
-        clipboardPanel.closeMenu()
-    }
+    fun cleanClipUrl(id: Long) = clipboards.cleanClipUrl(id)
 
     /** "Clear" confirmed: deletes every unpinned clip. */
-    fun clearClips() {
-        clipboard.clearUnpinned()
-        clipboardPanel.reset()
-    }
+    fun clearClips() = clipboards.clearClips()
 
     private val emojiPanelActions =
         EmojiPanelController(
