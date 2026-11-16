@@ -5,7 +5,6 @@ import android.text.InputType
 import android.view.KeyEvent
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.keycorrect.core.emoji.Emoji
@@ -15,7 +14,6 @@ import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.TextEditor
-import dev.keycorrect.core.layout.BottomRowVariant
 import dev.keycorrect.core.layout.ComposeOptions
 import dev.keycorrect.core.layout.FieldMode
 import dev.keycorrect.core.layout.KeyAction
@@ -82,10 +80,7 @@ class KeyboardController(
     voiceScheduler: Scheduler = MainThread.scheduler,
     voicePost: (() -> Unit) -> Unit = MainThread::post,
 ) {
-    private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
-    private var variant = BottomRowVariant.Text
-    private var options = ComposeOptions()
     private val ownEdits = OwnEditTracker(clock)
     private val tracked = TrackedEditor(editor, ownEdits)
     private var layoutId = 0L
@@ -217,9 +212,11 @@ class KeyboardController(
         override fun onSwipeCancel() = swipes.onCancel()
     }
 
+    private val layers = LayerComposition(composer) { profile }
+
     /** The layer being shown, composed for the current field and settings. */
-    var layer: KeyboardLayer by mutableStateOf(composer.compose(keyboardSet, KeyboardSet.LETTERS))
-        private set
+    val layer: KeyboardLayer
+        get() = layers.layer
 
     var state by mutableStateOf(KeyboardState())
         private set
@@ -295,14 +292,9 @@ class KeyboardController(
         }
     }
 
-    /**
-     * Keyboard height in row units (multiples of the key height setting), the same on every layer
-     * of the field: the letters layer's total row weight for the current field and options. Shorter
-     * layers (symbols, numpad) stretch their rows to fill it, so switching layers never resizes the
-     * IME window.
-     */
-    var heightUnits: Float by mutableFloatStateOf(DEFAULT_HEIGHT_UNITS)
-        private set
+    /** Keyboard height in row units, the same on every layer of the field. */
+    val heightUnits: Float
+        get() = layers.heightUnits
 
     /**
      * Prepares the keyboard for a field. The keyboard opens on the field's home layer (letters for
@@ -340,7 +332,7 @@ class KeyboardController(
         fieldEmpty.refresh(newField = !sameField)
         val newOptions = composeOptions(effective, settings)
         if (sameField) {
-            applyOptions(newOptions)
+            layers.applyOptions(newOptions, state.layerId)
             updateLayoutKey()
             updateAutoCapitalize()
             warmUpSwipe()
@@ -360,12 +352,9 @@ class KeyboardController(
     private fun rebuildLayers(effective: FieldProfile, newOptions: ComposeOptions) {
         shiftHeld = false
         shiftChorded = false
-        variant = variantFor(effective.kind)
-        options = newOptions
-        val layerId = homeLayerFor(effective.kind)
+        val layerId = LayerComposition.homeLayerFor(effective.kind)
         state = KeyboardState(layerId)
-        layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
+        layers.rebuild(effective.kind, newOptions, layerId)
         updateLayoutKey()
         updateAutoCapitalize()
         warmUpSwipe()
@@ -379,7 +368,7 @@ class KeyboardController(
         this.settings = settings
         if (!settings.voiceEnabled) voice.stopNow()
         input.updateSettings(settings)
-        applyOptions(composeOptions(profile, settings))
+        layers.applyOptions(composeOptions(profile, settings), state.layerId)
         updateLayoutKey()
         if (!settings.autoCapitalize && state.shift == ShiftState.Auto) {
             state = state.withAutoShift(false)
@@ -440,7 +429,7 @@ class KeyboardController(
         if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
         state = state.afterCharacter(shiftHeld)
         updateAutoCapitalize()
-        if (afterSymbol) switchLayer(homeLayerFor(profile.kind))
+        if (afterSymbol) switchLayer(LayerComposition.homeLayerFor(profile.kind))
     }
 
     private fun onBackspaceKey() {
@@ -471,22 +460,6 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
-    private fun variantFor(kind: FieldKind): BottomRowVariant =
-        when (kind) {
-            FieldKind.Email -> BottomRowVariant.Email
-            FieldKind.Url -> BottomRowVariant.Url
-            else -> BottomRowVariant.Text
-        }
-
-    /** The layer a field of [kind] opens on, and ABC returns to from a panel. */
-    private fun homeLayerFor(kind: FieldKind): String =
-        when (kind) {
-            FieldKind.Number -> NUMPAD
-            FieldKind.Phone -> PHONE
-            FieldKind.DateTime -> DATETIME
-            else -> KeyboardSet.LETTERS
-        }
-
     /**
      * The user picked [mode] for a plain text field (the popup of ?123): the keyboard becomes that
      * kind's, with its layout, bottom row and suggestion and autocorrect rules, until the field
@@ -508,15 +481,12 @@ class KeyboardController(
     private fun switchLayer(layerId: String) {
         // A user-edited layout may name a layer that doesn't exist; stay put rather than crash
         // the keyboard.
-        val next =
-            runCatching { composer.compose(keyboardSet, layerId, variant, options) }.getOrNull()
-                ?: return
+        if (!layers.show(layerId)) return
         input.onLayerSwitch()
         lastTypedOnSymbols = null
         shiftHeld = false
         shiftChorded = false
         state = state.withLayer(layerId)
-        layer = next
         updateLayoutKey()
         updateAutoCapitalize()
     }
@@ -609,8 +579,11 @@ class KeyboardController(
     fun showPanel(panel: KeyboardPanel) {
         showPanelKeepingLayer(panel)
         // The panels' ABC key: back to the letters, not to the symbols page that was up before.
-        if (panel == KeyboardPanel.Keys && state.layerId != homeLayerFor(profile.kind)) {
-            switchLayer(homeLayerFor(profile.kind))
+        if (
+            panel == KeyboardPanel.Keys &&
+                state.layerId != LayerComposition.homeLayerFor(profile.kind)
+        ) {
+            switchLayer(LayerComposition.homeLayerFor(profile.kind))
         }
     }
 
@@ -987,8 +960,10 @@ class KeyboardController(
      * positions change (g2: shared key unit, Samsung-like bottom row and symbol pages).
      */
     private fun updateLayoutKey() {
-        val rows = (if (options.numberRow) "+nr" else "") + (if (options.terminalRow) "+tr" else "")
-        val bottom = (options.bottomKeyWidth * PERCENT).roundToInt()
+        val rows =
+            (if (layers.options.numberRow) "+nr" else "") +
+                (if (layers.options.terminalRow) "+tr" else "")
+        val bottom = (layers.options.bottomKeyWidth * PERCENT).roundToInt()
         input.setLayoutKey(
             "${state.layerId}$rows@${settings.keyHeightDp}dp/b$bottom/$GEOMETRY_VERSION"
         )
@@ -1022,60 +997,7 @@ class KeyboardController(
     }
 
     private fun composeOptions(profile: FieldProfile, settings: KeyboardSettings): ComposeOptions =
-        if (profile.kind == FieldKind.Number) {
-            ComposeOptions(
-                numberRow = settings.numberRow || profile.sensitive,
-                signedNumber = profile.signedNumber,
-                decimalNumber = profile.decimalNumber,
-                fieldModes = declaredProfile.kind == FieldKind.Text,
-            )
-        } else {
-            ComposeOptions(
-                numberRow = settings.numberRow || profile.sensitive,
-                terminalRow = profile.kind == FieldKind.Terminal,
-                bottomKeyWidth = settings.bottomKeyWidth,
-                modeEnterKeyWidth = settings.modeEnterKeyWidth,
-                symbolHints = settings.symbolHints,
-                // No emoji (nor, from PR C, clipboard) in password fields.
-                emojiKey = !profile.sensitive,
-                fieldModes = declaredProfile.kind == FieldKind.Text,
-                // Voice typing (long-press the comma) is off in password fields and by setting.
-                voiceKey = settings.voiceEnabled && !profile.sensitive,
-            )
-        }
-
-    /** Adopts [newOptions]; recomposes the current layer and the height if they changed. */
-    private fun applyOptions(newOptions: ComposeOptions) {
-        if (newOptions == options) return
-        options = newOptions
-        layer = composer.compose(keyboardSet, state.layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { state.layerId == KeyboardSet.LETTERS })
-    }
-
-    /**
-     * Total row weight of the letters layer for the current field. The number row is left out for
-     * numeric fields: their pads already have the digits, so it would only make them taller.
-     */
-    private fun referenceHeightUnits(composedLetters: KeyboardLayer? = null): Float {
-        val numeric =
-            profile.kind == FieldKind.Number ||
-                profile.kind == FieldKind.Phone ||
-                profile.kind == FieldKind.DateTime
-        // The letters layer just composed with these options is the reference: compose it once.
-        val reference =
-            composedLetters?.takeIf { !numeric }
-                ?: runCatching {
-                    composer.compose(
-                        keyboardSet,
-                        KeyboardSet.LETTERS,
-                        variant,
-                        if (numeric) options.copy(numberRow = false) else options,
-                    )
-                }
-                    .getOrNull()
-                ?: return heightUnits
-        return reference.rows.sumOf { it.height.toDouble() }.toFloat()
-    }
+        LayerComposition.composeOptions(profile, settings, declaredProfile.kind == FieldKind.Text)
 
     /**
      * Sets [ShiftState.Auto] when the editor wants a capital at the cursor, clears it otherwise.
@@ -1100,10 +1022,6 @@ class KeyboardController(
         /** Bumped when built-in key positions change, so old touch offsets aren't mixed in. */
         const val GEOMETRY_VERSION = "g2"
         const val PERCENT = 100f
-        const val NUMPAD = "numpad"
-        const val PHONE = "phone"
-        const val DATETIME = "datetime"
-        const val DEFAULT_HEIGHT_UNITS = 4f
 
         /** Fields where a swipe types a word (P5-5). */
         val SWIPE_KINDS =
