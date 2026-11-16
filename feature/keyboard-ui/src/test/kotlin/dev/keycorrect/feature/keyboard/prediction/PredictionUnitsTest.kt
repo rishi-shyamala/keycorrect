@@ -126,36 +126,6 @@ class StripBuilderTest {
     }
 }
 
-class WordTouchLogTest {
-    private fun rec(w: String) = WordRecord(w, w, emptyList(), 1, CommitMethod.Typed)
-
-    @Test
-    fun keepsTheNewestRecordsOldestFirst() {
-        val log = WordTouchLog(3)
-        listOf("a", "b", "c", "d").forEach { log.record(rec(it)) }
-        assertThat(log.snapshot().map { it.typed }).containsExactly("b", "c", "d").inOrder()
-        assertThat(log.size).isEqualTo(3)
-    }
-
-    @Test
-    fun marksOnlyTheLatestMatchingRecordReverted() {
-        val log = WordTouchLog(3)
-        log.record(rec("a"))
-        log.markLastReverted("zzz")
-        assertThat(log.snapshot().single().reverted).isFalse()
-        log.markLastReverted("a")
-        assertThat(log.snapshot().single().reverted).isTrue()
-    }
-
-    @Test
-    fun clearEmptiesIt() {
-        val log = WordTouchLog()
-        log.record(rec("a"))
-        log.clear()
-        assertThat(log.snapshot()).isEmpty()
-    }
-}
-
 class KeyLayoutModelsTest {
     private val layer =
         KeyboardComposer(BuiltInLayouts.repository())

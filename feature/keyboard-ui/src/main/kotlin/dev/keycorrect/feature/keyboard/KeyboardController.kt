@@ -41,7 +41,6 @@ import dev.keycorrect.feature.keyboard.prediction.SelectionState
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
-import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
 import dev.keycorrect.feature.keyboard.voice.MainThread
 import dev.keycorrect.feature.keyboard.voice.Scheduler
 import dev.keycorrect.feature.keyboard.voice.VoiceController
@@ -218,10 +217,6 @@ class KeyboardController(
 
         override fun onSwipeCancel() = swipes.onCancel()
     }
-
-    /** Touches of recently committed words, in memory only (for touch-model learning). */
-    val touchLog: WordTouchLog
-        get() = input.touchLog
 
     /** The layer being shown, composed for the current field and settings. */
     var layer: KeyboardLayer by mutableStateOf(composer.compose(keyboardSet, KeyboardSet.LETTERS))

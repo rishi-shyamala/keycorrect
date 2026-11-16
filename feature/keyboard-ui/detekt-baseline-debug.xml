@@ -5,7 +5,7 @@
     <ID>ComplexCondition:KeyboardController.kt:KeyboardController$!settings.autoCapitalize || profile.autoCapitalize == AutoCapitalize.None || state.layerId != KeyboardSet.LETTERS || state.shift == ShiftState.Once || state.shift == ShiftState.Locked</ID>
     <ID>ComplexCondition:OwnEditTracker.kt:OwnEditTracker$update.composingLength == 0 &amp;&amp; selStart &gt;= 0 &amp;&amp; selStart == selEnd &amp;&amp; cursor == selEnd</ID>
     <ID>ComplexCondition:PredictiveInput.kt:PredictiveInput$c != null &amp;&amp; composingNow &amp;&amp; (c.isLetterOrDigit() || isApostrophe(c))</ID>
-    <ID>ComplexCondition:PredictiveInput.kt:PredictiveInput$candidates.none(::blocked) &amp;&amp; !blocked(autocorrect) &amp;&amp; !blocked(phrase) &amp;&amp; !blocked(autocorrectRunnerUp)</ID>
+    <ID>ComplexCondition:BlockedSuggestions.kt:BlockedSuggestions$candidates.none(::blocked) &amp;&amp; !blocked(autocorrect) &amp;&amp; !blocked(phrase) &amp;&amp; !blocked(autocorrectRunnerUp)</ID>
     <ID>ComplexCondition:PredictiveInput.kt:PredictiveInput$first != null &amp;&amp; first.source == CandidateSource.Shortcut &amp;&amp; first.text != typed &amp;&amp; retypeGuard?.let { sameWord(it, typed) } != true &amp;&amp; backend.shortcutFor(typed)?.autoExpand == true</ID>
     <ID>CyclomaticComplexMethod:KeyboardSurface.kt:@Composable internal fun KeyboardSurface</ID>
     <ID>CyclomaticComplexMethod:OwnEditTracker.kt:OwnEditTracker$fun onUpdate: UpdateVerdict</ID>
@@ -13,7 +13,7 @@
     <ID>CyclomaticComplexMethod:PredictiveInput.kt:PredictiveInput$private fun finishWord</ID>
     <ID>CyclomaticComplexMethod:PredictiveInput.kt:PredictiveInput$private fun pick</ID>
     <ID>CyclomaticComplexMethod:PredictiveInput.kt:PredictiveInput$private fun resolveEdit: Resolution</ID>
-    <ID>CyclomaticComplexMethod:PredictiveInput.kt:PredictiveInput$private fun touchSamples: List&lt;TouchSample?&gt;</ID>
+    <ID>CyclomaticComplexMethod:TouchSampling.kt:internal fun touchSamples: List&lt;TouchSample?&gt;</ID>
     <ID>CyclomaticComplexMethod:SuggestionStrip.kt:StripBuilder$fun build: StripModel</ID>
     <ID>CyclomaticComplexMethod:TextContextCache.kt:TextContextCache$fun trailingWordStart: Int</ID>
     <ID>LargeClass:PredictiveInput.kt:PredictiveInput</ID>
@@ -42,7 +42,7 @@
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$fun onBackspace</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$fun onSuggestionLongPress</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$fun resyncComposing: Boolean</ID>
-    <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun PredictResult.unblocked: PredictResult</ID>
+    <ID>ReturnCount:BlockedSuggestions.kt:BlockedSuggestions$fun filter: PredictResult</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun autocorrectAllowed: Boolean</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun completeWord: Correction?</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun decide: Decision?</ID>
@@ -51,13 +51,11 @@
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun needsLeadingSpace: Boolean</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun pendingCorrection: Candidate?</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun recomposePreviousWord: Boolean</ID>
-    <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun record</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun resolveEdit: Resolution</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun sessionFor: EditSession?</ID>
-    <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun touchSamples: List&lt;TouchSample?&gt;</ID>
+    <ID>ReturnCount:TouchSampling.kt:internal fun touchSamples: List&lt;TouchSample?&gt;</ID>
     <ID>ReturnCount:PredictiveInput.kt:PredictiveInput$private fun undoCorrection: Boolean</ID>
     <ID>ReturnCount:TextContextCache.kt:TextContextCache$fun trailingWordStart: Int</ID>
-    <ID>ReturnCount:WordTouchLog.kt:WordTouchLog$fun markLastReverted</ID>
     <ID>TooGenericExceptionCaught:DecoderLoop.kt:DecoderLoop$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DecoderLoop.kt:DecoderLoop$e: RuntimeException</ID>
     <ID>TooGenericExceptionCaught:TouchStateMachine.kt:TouchStateMachine$e: Exception</ID>
@@ -67,6 +65,5 @@
     <ID>TooManyFunctions:PredictiveInput.kt:PredictiveInput</ID>
     <ID>TooManyFunctions:TextContextCache.kt:TextContextCache</ID>
     <ID>TooManyFunctions:TouchStateMachine.kt:TouchStateMachine</ID>
-    <ID>UnsafeCallOnNullableType:WordTouchLog.kt:WordTouchLog$ring[(next - size + it + capacity) % capacity]!!</ID>
   </CurrentIssues>
 </SmellBaseline>

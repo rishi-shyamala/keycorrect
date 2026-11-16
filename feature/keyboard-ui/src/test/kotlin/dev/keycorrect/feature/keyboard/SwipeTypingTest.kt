@@ -575,7 +575,6 @@ class SwipeTypingTest {
         assertThat(e.typed).isEmpty()
         assertThat(e.context).containsExactly("hi")
         assertThat(e.touches).isEmpty()
-        assertThat(controller.touchLog.snapshot()).isEmpty()
         type(".")
         assertThat(sink.sentence.map { it.word to it.end }).containsExactly("hello" to true)
     }

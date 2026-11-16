@@ -27,7 +27,6 @@ import dev.keycorrect.core.learning.LearningSink
 import dev.keycorrect.core.learning.RevertKind
 import dev.keycorrect.core.learning.SentenceContext
 import dev.keycorrect.core.learning.ShownSuggestion
-import dev.keycorrect.core.learning.TouchSample
 import dev.keycorrect.core.learning.UserAction
 import dev.keycorrect.core.learning.WordCommitted
 import dev.keycorrect.core.learning.WordReplaced
@@ -96,9 +95,6 @@ internal class PredictiveInput(
      */
     private val onLateSwipe: () -> Unit = {},
 ) {
-    /** The touches of recently finished words, for touch-model learning. In memory only. */
-    val touchLog = WordTouchLog()
-
     /** The keys touches are relative to; changing it re-bases the word being composed. */
     var layout: KeyLayoutModel = KeyLayoutModel(0L, emptyList())
         set(value) {
@@ -156,12 +152,6 @@ internal class PredictiveInput(
      */
     private var retypeGuard: String? = null
 
-    /**
-     * The word an undo just put back (its touches are unknown). Its first log entry already exists,
-     * so finishing it must not log it again with all-null touches; see [record].
-     */
-    private var restoredWord: String? = null
-
     private val prompts = StripPrompts(env.scheduler, onStrip)
 
     /** A swipe in progress (nothing is typed until it lifts); see [swipeBegin]. */
@@ -195,7 +185,7 @@ internal class PredictiveInput(
     private var pendingRevertTracked: Tracked? = null
 
     /** Words the user said never to suggest, hidden at once; the model takes over from there. */
-    private val locallyBlocked = ArrayDeque<String>()
+    private val blocked = BlockedSuggestions()
 
     private val loop: DecoderLoop
         get() = env.loop
@@ -273,9 +263,8 @@ internal class PredictiveInput(
         predictionOn = computeCanPredict(profile, settings)
         if (newField) {
             revertedWords.clear()
-            locallyBlocked.clear()
+            blocked.clear()
             memory.clear()
-            touchLog.clear()
             learn.newSession()
         }
         learn.setField(fieldClass())
@@ -309,8 +298,7 @@ internal class PredictiveInput(
                 old.nextWordPredictions != settings.nextWordPredictions ||
                 old.phraseCompletion != settings.phraseCompletion
         if (relevant) {
-            loop.advance()
-            latest = null
+            invalidateWord()
             if (!predictionOn) publish(StripModel.Empty)
             else if (composing.isNotEmpty()) requestWord() else publish(StripModel.Empty)
         }
@@ -323,8 +311,6 @@ internal class PredictiveInput(
     fun onFinishInput() {
         settleAll()
         resetWordState()
-        // No typed text outlives the field it was typed in.
-        touchLog.clear()
         memory.clear()
     }
 
@@ -394,8 +380,7 @@ internal class PredictiveInput(
                 if (pendingRevertTracked == null) retypeGuard = null
                 shown.clear()
                 editor.commitText("")
-                loop.advance()
-                latest = null
+                invalidateWord()
                 publish(StripModel.Empty)
                 requestNextWord()
             } else {
@@ -413,8 +398,7 @@ internal class PredictiveInput(
         }
         if (edit != null) endEdit() // deleting on past a word that was being rewritten
         deleteBeforeCursor()
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (!recomposePreviousWord()) {
             dropPendingRevert() // the restored word can't be followed any more
             publish(StripModel.Empty)
@@ -481,8 +465,7 @@ internal class PredictiveInput(
         endEdit()
         flushPendingRevert() // Enter finishes a restored word as it is
         if (commitsLineBreak) cache.appendBefore("\n")
-        loop.advance()
-        latest = null
+        invalidateWord()
         publish(StripModel.Empty)
     }
 
@@ -619,7 +602,7 @@ internal class PredictiveInput(
     private fun onRecorrectResult(result: PredictResult) {
         val word = recorrect ?: return
         if (result.sequence != loop.sequence || !canPredict()) return
-        val visible = result.unblocked()
+        val visible = blocked.filter(result)
         val candidates =
             visible.candidates.filter {
                 it.text.isNotEmpty() &&
@@ -680,15 +663,13 @@ internal class PredictiveInput(
         cache.truncateBefore(word.start)
         cache.dropAfter(word.afterLength)
         val pre = capturePre()
-        loop.advance()
-        latest = null
+        invalidateWord()
         editor.batchEdit {
             editor.deleteSurroundingText(word.beforeLength, word.afterLength)
             editor.commitText(replacement)
         }
         cache.appendBefore(replacement)
         val touchList = List<TouchPoint?>(word.text.length) { null }
-        record(word.text, replacement, touchList, CommitMethod.SuggestionTap)
         completeWord(
             word.text,
             replacement,
@@ -741,10 +722,9 @@ internal class PredictiveInput(
         val word = prompts.neverWord ?: return
         prompts.cancelNever()
         if (canPredict() && learn.open) {
-            locallyBlocked.addLast(word)
-            while (locallyBlocked.size > MAX_BLOCKED) locallyBlocked.removeFirst()
+            blocked.add(word)
             learn.emit(UserAction(learn.stamp(), learn.profile, UserAction.Kind.NeverSuggest, word))
-            latest = latest?.unblocked()
+            latest = latest?.let { blocked.filter(it) }
             if (composing.isNotEmpty()) requestWord() else requestNextWord()
         }
         publish(prompts.base)
@@ -775,8 +755,7 @@ internal class PredictiveInput(
         endEdit()
         editor.commitText(text)
         cache.appendBefore(text)
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (prompts.base != StripModel.Empty) publish(StripModel.Empty)
     }
 
@@ -795,8 +774,7 @@ internal class PredictiveInput(
             endEdit()
             editor.commitText(text)
             cache.appendBefore(text)
-            loop.advance()
-            latest = null
+            invalidateWord()
         }
         publish(StripModel.Empty)
         requestNextWord()
@@ -818,18 +796,15 @@ internal class PredictiveInput(
         val unlearned = asTyped && decision == null && !keptAsTyped && looksPartial(typed)
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
 
         var committed = typed
-        var method = CommitMethod.Typed
         editor.batchEdit {
             if (decision == null) {
                 editor.finishComposingText()
             } else {
                 editor.commitText(decision.text)
                 committed = decision.text
-                method = CommitMethod.Autocorrect
             }
             if (separator != null) editor.commitText(separator)
         }
@@ -858,7 +833,6 @@ internal class PredictiveInput(
             if (canUndo && undoSeparator != null) {
                 Undo(typed, committed, undoSeparator, correction)
             } else null
-        if (unlearned) restoredWord = null else record(typed, committed, touchList, method)
         if (!asTyped) wordFeedback(decision, typed, separator, keptAsTyped)
         if (pendingRevertTracked == null) retypeGuard = null // the restored word is settled
     }
@@ -931,7 +905,9 @@ internal class PredictiveInput(
                 return it
             }
         val seq = loop.sequence
-        return loop.resultForSeparator(seq) { request(seq, typed, touches.toList()) }?.unblocked()
+        return loop
+            .resultForSeparator(seq) { request(seq, typed, touches.toList()) }
+            ?.let { blocked.filter(it) }
     }
 
     /**
@@ -989,7 +965,6 @@ internal class PredictiveInput(
             else editor.setComposingText(u.typed)
         }
         if (cache.beforeKnown) cache.dropBefore(expected.length)
-        touchLog.markLastReverted(u.applied)
         edit = null
         u.correction?.pendingWord = null // the corrected word is not recorded; see below
         u.correction?.let { reportImmediateRevert(it) }
@@ -1001,9 +976,7 @@ internal class PredictiveInput(
             }
             // Still no auto-correction if the user backspaces the punctuation and finishes again.
             retypeGuard = u.typed.lowercase()
-            restoredWord = u.typed
-            loop.advance()
-            latest = null
+            invalidateWord()
             publish(StripModel.Empty)
             requestNextWord()
             return true
@@ -1015,7 +988,6 @@ internal class PredictiveInput(
             edit = EditSession(u.typed, held)
         }
         retypeGuard = u.typed.lowercase() // after the hold: holding another revert clears it
-        restoredWord = u.typed
         requestWord()
         return true
     }
@@ -1068,8 +1040,7 @@ internal class PredictiveInput(
         val leadingSpace = nextWord && needsLeadingSpace()
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
 
         val cursorInside = expansion.cursor in 0 until expansion.text.length
         val trailingSpace = settings.autoSpaceAfterPick && !cursorInside
@@ -1087,15 +1058,6 @@ internal class PredictiveInput(
         cache.appendBefore(if (cursorInside) expansion.head else expansion.text)
         if (cursorInside) cache.prependAfter(expansion.tail)
         if (trailingSpace) cache.appendBefore(" ")
-        if (!nextWord) {
-            val method =
-                when (slot.kind) {
-                    SlotKind.Phrase -> CommitMethod.PhraseTap
-                    SlotKind.Shortcut -> CommitMethod.Expansion
-                    else -> CommitMethod.SuggestionTap
-                }
-            record(typed, expansion.text, touchList, method)
-        }
         when (slot.kind) {
             SlotKind.Phrase -> takePhrase(expansion.text, pre, trailingSpace)
             SlotKind.Shortcut -> abandonWord()
@@ -1127,8 +1089,7 @@ internal class PredictiveInput(
         if (composing.isEmpty()) return
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         val trailingSpace = settings.autoSpaceAfterPick
         editor.batchEdit {
             editor.commitText(slot.insert)
@@ -1140,7 +1101,6 @@ internal class PredictiveInput(
         phrases.judgeTaken()
         phrases.clear()
         retypeGuard = null
-        restoredWord = null
         // Recents and variant memory key on the grid emoji the form belongs to. Nothing is
         // remembered where the field asks for no learning (incognito tabs and the like).
         if (profile?.learningEnabled == true) {
@@ -1157,8 +1117,7 @@ internal class PredictiveInput(
         val pre = capturePre()
         composing.setLength(0)
         touches.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         val space = settings.autoSpaceAfterPick
         editor.batchEdit {
             editor.finishComposingText()
@@ -1168,7 +1127,6 @@ internal class PredictiveInput(
         if (space) cache.appendBefore(" ")
         revertedWords.addLast(typed.lowercase())
         while (revertedWords.size > MAX_REVERTED) revertedWords.removeFirst()
-        record(typed, typed, touchList, CommitMethod.LiteralTap)
         completeWord(
             typed,
             typed,
@@ -1397,10 +1355,9 @@ internal class PredictiveInput(
         }
         if (space) cache.appendBefore(" ")
         cache.appendBefore(top)
-        loop.advance()
-        latest = null
+        invalidateWord()
         // Learned like a picked suggestion, but with no touches: a swipe says nothing about where
-        // the finger lands on a key, and it is not logged in [touchLog] either.
+        // the finger lands on a key.
         completeWord("", top, Learned.Gesture, null, pre, emptyList(), null, null, false)
         retypeGuard = null
         val word = SwipedWord(words, 0, space)
@@ -1472,8 +1429,7 @@ internal class PredictiveInput(
                 ?.let(memory::remove)
         }
         shown.clear()
-        loop.advance()
-        latest = null
+        invalidateWord()
         if (!recomposePreviousWord()) {
             dropPendingRevert()
             publish(StripModel.Empty)
@@ -1518,8 +1474,7 @@ internal class PredictiveInput(
             editor.commitText(replacement)
         }
         cache.appendBefore(replacement)
-        loop.advance()
-        latest = null
+        invalidateWord()
         completeWord("", replacement, Learned.Gesture, null, pre, emptyList(), null, null, false)
         retypeGuard = null
         word.current = index
@@ -1580,7 +1535,7 @@ internal class PredictiveInput(
 
     private fun onResult(result: PredictResult) {
         if (result.sequence != loop.sequence || !canPredict()) return
-        val visible = result.unblocked()
+        val visible = blocked.filter(result)
         latest = visible
         val typed = composing.toString()
         latestTyped = typed
@@ -1646,11 +1601,9 @@ internal class PredictiveInput(
         cache.appendBefore(typed)
         composing.setLength(0)
         touches.clear()
-        record(typed, typed, touchList, CommitMethod.Typed)
         completeWord(typed, typed, Learned.Typed, null, pre, touchList, null, null, false)
         if (pendingRevertTracked == null) retypeGuard = null
-        loop.advance()
-        latest = null
+        invalidateWord()
         publish(StripModel.Empty)
     }
 
@@ -1660,7 +1613,6 @@ internal class PredictiveInput(
         recorrect = null
         dropPendingSwipe()
         retypeGuard = null
-        restoredWord = null
         composing.setLength(0)
         touches.clear()
         cache.reset()
@@ -1674,19 +1626,10 @@ internal class PredictiveInput(
         onStrip(StripModel.Empty)
     }
 
-    /** Records a finished word for touch-model learning, unless the field forbids learning. */
-    private fun record(
-        typed: String,
-        committed: String,
-        touchList: List<TouchPoint?>,
-        method: CommitMethod,
-    ) {
-        val p = profile ?: return
-        if (!p.learningEnabled || p.sensitive || !learn.open) return
-        val restored = restoredWord
-        restoredWord = null
-        if (restored != null && restored == typed && touchList.all { it == null }) return
-        touchLog.record(WordRecord(typed, committed, touchList, layout.id, method))
+    /** Drops the decode in flight and the result held for the word. */
+    private fun invalidateWord() {
+        loop.advance()
+        latest = null
     }
 
     private fun publish(base: StripModel) {
@@ -1745,7 +1688,6 @@ internal class PredictiveInput(
         pendingRevertTracked = null
         undo?.correction?.pendingKept = null
         undo?.correction?.pendingWord = null
-        touchLog.clear()
     }
 
     /**
@@ -2090,7 +2032,7 @@ internal class PredictiveInput(
                     method = method,
                     pickedRank = rank,
                     shown = pre.shown,
-                    touches = touchSamples(typed, committed, touchList),
+                    touches = touchSamples(typed, committed, touchList, keyByChar),
                     sentenceInitial = pre.sentenceInitial,
                     committedIsKnown = isKnown(committed),
                     typedIsKnown = typed.isEmpty() || isKnown(typed),
@@ -2132,71 +2074,6 @@ internal class PredictiveInput(
     private fun isKnown(word: String): Boolean =
         backend.isKnownWord(word) || backend.isKnownWord(word.lowercase())
 
-    /**
-     * One sample per typed char that came from a tap, measured from the centre of the key of the
-     * char the user *meant*: the same position of [committed] (case-insensitively). Same-length
-     * words align position by position (autocorrections, substitutions); otherwise only the common
-     * prefix and suffix do (completions, insertions, deletions). A touch farther than
-     * [MAX_TOUCH_OFFSET] key sizes from that key isn't plausibly aimed at it and is dropped. A word
-     * with more than [MAX_MISMATCHED_POSITIONS] mismatched positions yields no samples.
-     */
-    private fun touchSamples(
-        typed: String,
-        committed: String,
-        touchList: List<TouchPoint?>,
-    ): List<TouchSample?> {
-        if (typed.isEmpty()) return emptyList()
-        val n = typed.length
-        val m = committed.length
-        var prefix = 0
-        var suffix = 0
-        if (n != m) {
-            val limit = minOf(n, m)
-            while (
-                prefix < limit && typed[prefix].lowercaseChar() == committed[prefix].lowercaseChar()
-            ) {
-                prefix++
-            }
-            while (
-                suffix < limit - prefix &&
-                    typed[n - 1 - suffix].lowercaseChar() ==
-                        committed[m - 1 - suffix].lowercaseChar()
-            ) {
-                suffix++
-            }
-        }
-        fun aligned(i: Int): Int =
-            when {
-                n == m -> i
-                i < prefix -> i
-                i >= n - suffix -> m - (n - i)
-                else -> -1
-            }
-        // A word with more than one mismatched position (intended != registered) is too unclear
-        // to say which touch was aimed where: no samples at all.
-        var mismatches = 0
-        for (i in 0 until n) {
-            val j = aligned(i)
-            if (j < 0 || typed[i].lowercaseChar() != committed[j].lowercaseChar()) mismatches++
-        }
-        if (mismatches > MAX_MISMATCHED_POSITIONS) return List(n) { null }
-        return List(n) { i ->
-            val touch = touchList.getOrNull(i) ?: return@List null
-            val j = aligned(i)
-            if (j < 0) return@List null
-            val intended = committed[j].lowercaseChar()
-            val key = keyByChar[intended] ?: return@List null
-            if (key.width <= 0f || key.height <= 0f) return@List null
-            val dx = (touch.x - key.centerX) / key.width
-            val dy = (touch.y - key.centerY) / key.height
-            if (kotlin.math.abs(dx) > MAX_TOUCH_OFFSET || kotlin.math.abs(dy) > MAX_TOUCH_OFFSET) {
-                null
-            } else {
-                TouchSample(intended, dx, dy)
-            }
-        }
-    }
-
     // ---- phrases (docs/PLAN.md §6.3 rows 18-20)
 
     /** A phrase chip was tapped: the whole text went in; it is judged at the next word. */
@@ -2235,37 +2112,12 @@ internal class PredictiveInput(
         learn.sentenceWord(word, next != null && SentenceContext.endsSentence(next))
     }
 
-    /** Hides what the user said never to suggest, until the model takes over. */
-    private fun PredictResult.unblocked(): PredictResult {
-        if (locallyBlocked.isEmpty()) return this
-        fun blocked(c: Candidate?) = c != null && locallyBlocked.any { sameWord(it, c.text) }
-        if (
-            candidates.none(::blocked) &&
-                !blocked(autocorrect) &&
-                !blocked(phrase) &&
-                !blocked(autocorrectRunnerUp)
-        ) {
-            return this
-        }
-        return copy(
-            candidates = candidates.filterNot(::blocked),
-            autocorrect = autocorrect?.takeUnless(::blocked),
-            phrase = phrase?.takeUnless(::blocked),
-            autocorrectRunnerUp = autocorrectRunnerUp?.takeUnless(::blocked),
-        )
-    }
-
     private companion object {
         /** A truncated cache shorter than this may cut a long grapheme cluster short. */
         const val MIN_CACHED_LOOKBEHIND = 32
         const val MAX_CANDIDATES = 3
         const val MAX_PHRASE_WORDS = 4
         const val MAX_REVERTED = 16
-        const val MAX_BLOCKED = 32
-        const val MAX_TOUCH_OFFSET = 0.7f
-
-        /** Most positions of a word where the intended char differs from the one registered. */
-        const val MAX_MISMATCHED_POSITIONS = 1
 
         /** Separators that make the word before them part of an address or path. */
         const val ADDRESS_SEPARATORS = "@/\\_"
