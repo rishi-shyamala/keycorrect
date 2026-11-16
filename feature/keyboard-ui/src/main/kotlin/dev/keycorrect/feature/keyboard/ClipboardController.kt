@@ -14,6 +14,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
  * pin, delete, clean and clear. Panel switching and the typing state stay with
  * [KeyboardController].
  */
+@Suppress("LongParameterList") // the controller's state reaches it as lambdas
 internal class ClipboardController(
     private val clipboard: ClipboardEnvironment,
     private val panelState: ClipboardPanelState,

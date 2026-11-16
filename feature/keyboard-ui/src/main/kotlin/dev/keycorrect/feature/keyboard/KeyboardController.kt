@@ -57,10 +57,10 @@ import kotlin.math.roundToInt
  * cached, and asked of the editor (a blocking call) only otherwise: when input starts, after an
  * external cursor move, or in fields where nothing is read.
  */
-@Suppress("LargeClass") // the keyboard's one coordinator; swipe logic lives in SwipeController
+@Suppress("LargeClass") // the keyboard's one coordinator; collaborators hold the rest
 class KeyboardController(
     private val editor: TextEditor,
-    private val composer: KeyboardComposer,
+    composer: KeyboardComposer,
     prediction: PredictionEnvironment = PredictionEnvironment.Disabled,
     private val clock: () -> Long = SystemClock::uptimeMillis,
     learning: LearningSink = LearningSink.None,

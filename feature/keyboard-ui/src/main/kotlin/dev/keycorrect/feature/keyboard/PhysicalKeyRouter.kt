@@ -11,6 +11,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
  * Routes the physical keyboard's keys (see [PhysicalKey]) into [PredictiveInput], or into the emoji
  * search while it owns the keys, and holds the dead-key state between two presses.
  */
+@Suppress("LongParameterList") // the controller's state reaches it as lambdas
 internal class PhysicalKeyRouter(
     private val input: PredictiveInput,
     private val physicalMode: () -> Boolean,

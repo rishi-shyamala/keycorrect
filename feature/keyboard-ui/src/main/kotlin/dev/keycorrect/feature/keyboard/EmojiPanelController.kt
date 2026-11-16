@@ -14,6 +14,7 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
  * opening and leaving the emoji search. The keys typed into the search stay with the keyboard's
  * shift and layer state (see [KeyboardController]).
  */
+@Suppress("LongParameterList") // the controller's state reaches it as lambdas
 internal class EmojiPanelController(
     private val emoji: EmojiEnvironment,
     private val emojiSearch: EmojiSearch,
