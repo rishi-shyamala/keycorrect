@@ -53,6 +53,7 @@ internal class AdaptiveThresholds(private val cfg: PersonalModelConfig) {
         var den = cfg.outcomePriorWeight
         var w = 1.0
         for (i in phrase.indices.reversed()) {
+            if (phrase[i].offered <= 0) continue
             num += w * phrase[i].accepted / phrase[i].offered
             den += w
             w *= cfg.outcomeEwmaDecay
@@ -78,12 +79,16 @@ internal class AdaptiveThresholds(private val cfg: PersonalModelConfig) {
         autocorrect.map { OutcomeRow(0, it.timeMillis, if (it.reverted) 1 else 0, 0) } +
             phrase.map { OutcomeRow(1, it.timeMillis, it.offered, it.accepted) }
 
+    /** Rows of an unknown kind or with impossible values (from a damaged store) are dropped. */
     fun importRows(rows: List<OutcomeRow>) {
         autocorrect.clear()
         phrase.clear()
         for (r in rows) {
-            if (r.kind == 0) autocorrect.addLast(Autocorrect(r.timeMillis, r.a == 1))
-            else phrase.addLast(Phrase(r.timeMillis, r.a, r.b))
+            when {
+                r.kind == 0 -> autocorrect.addLast(Autocorrect(r.timeMillis, r.a == 1))
+                r.kind == 1 && r.a > 0 ->
+                    phrase.addLast(Phrase(r.timeMillis, r.a, r.b.coerceIn(0, r.a)))
+            }
         }
     }
 }
