@@ -177,7 +177,7 @@ class KeyboardController(
     private fun settleForVoice() {
         input.endComposingForMove()
         composingNow = input.isComposing
-        noteTextTyped()
+        fieldEmpty.noteTextTyped()
         updateAutoCapitalize()
     }
 
@@ -339,7 +339,7 @@ class KeyboardController(
         input.onStartInput(effective, settings, newField = !sameField, selectionState())
         composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
-        refreshFieldEmpty(newField = !sameField)
+        fieldEmpty.refresh(newField = !sameField)
         val newOptions = composeOptions(effective, settings)
         if (sameField) {
             applyOptions(newOptions)
@@ -399,7 +399,7 @@ class KeyboardController(
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
-            noteTextTyped()
+            fieldEmpty.noteTextTyped()
         }
     }
 
@@ -574,7 +574,7 @@ class KeyboardController(
         val verdict = ownEdits.onUpdate(update)
         if (ownEdits.lastUpdateConfirmed) input.confirmEdits()
         // Our own edits don't change what a cursor at 0 has after it; anything else might.
-        refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
+        fieldEmpty.refresh(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
         if (verdict == UpdateVerdict.External) {
             editing.dropDeferred()
@@ -699,7 +699,7 @@ class KeyboardController(
         markChord()
         state = state.afterCharacter(shiftHeld)
         composingNow = input.isComposing
-        noteTextTyped()
+        fieldEmpty.noteTextTyped()
         updateAutoCapitalize()
     }
 
@@ -749,52 +749,20 @@ class KeyboardController(
     val stripBusy: Boolean
         get() =
             stripBusy(
-                fieldHasText = !fieldEmpty,
+                fieldHasText = !fieldEmpty.empty,
                 stripEmpty = strip.isEmpty,
                 composing = composingNow,
                 selectionStrip = selectionStripVisible,
                 hasClip = stripClip != null,
             )
 
-    /**
-     * Whether the field has no text at all (nothing before or after the cursor), which is when the
-     * strip's tools spread out. Known from the selection updates: a cursor past 0 or a range means
-     * text. A cursor at 0 is empty as long as no text has been seen in the field ([sawText]: this
-     * costs no editor read, so opening a field is as cheap as before); once text has been there
-     * (deleted back to the start, cleared by the app) the editor is asked for one char after the
-     * cursor. Sensitive fields are never read, and where the editor can't say, the field counts as
-     * having text.
-     */
-    private var fieldEmpty by mutableStateOf(true)
-    private var sawText = false
-
-    /** The editor was asked about the text after a cursor at 0, and has not moved since. */
-    private var zeroChecked = false
-
-    private fun refreshFieldEmpty(newField: Boolean = false, externalChange: Boolean = false) {
-        if (newField) sawText = false
-        if (newField || externalChange) zeroChecked = false
-        val sel = selection
-        val hasText = sel.known && (sel.selStart > 0 || !sel.collapsed)
-        if (hasText) sawText = true
-        val atZero = sel.known && sel.collapsed && sel.selStart == 0 && canAskEditor()
-        val empty = !hasText && (if (atZero && zeroChecked) fieldEmpty else askFieldEmpty(sel))
-        zeroChecked = atZero
-        if (fieldEmpty != empty) fieldEmpty = empty
-    }
-
-    /** Text was typed (or dictated) in the field, so it is no longer empty. */
-    private fun noteTextTyped() {
-        sawText = true
-        zeroChecked = false
-        if (fieldEmpty) fieldEmpty = false
-    }
-
-    private fun canAskEditor() = sawText && !profile.sensitive
-
-    /** Empty by the editor when it can be asked, else by whether text was ever seen. */
-    private fun askFieldEmpty(sel: EditorSelection): Boolean =
-        if (sel.known && canAskEditor()) editor.textAfterCursor(1)?.isEmpty() ?: false else !sawText
+    /** Whether the field has no text at all, which is when the strip's tools spread out. */
+    private val fieldEmpty =
+        FieldEmptyTracker(
+            selection = { selection },
+            sensitive = { profile.sensitive },
+            textAfterCursor = { editor.textAfterCursor(1) },
+        )
 
     /** What the on-screen keys' touches are recorded as; physical keys are their own profile. */
     private var touchDevice = DeviceClass.Phone
@@ -856,7 +824,7 @@ class KeyboardController(
             }
         composingNow = input.isComposing
         if (handled && !searching && resolved != PhysicalKey.Backspace) {
-            noteTextTyped()
+            fieldEmpty.noteTextTyped()
         }
         return handled
     }
