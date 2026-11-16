@@ -66,8 +66,8 @@
     <ID>ReturnCount:PersonalModel.kt:PersonalModel$private fun tryTrain: Training</ID>
     <ID>ReturnCount:TouchModel.kt:FrozenTouch$fun offset: Pair&lt;Float, Float&gt;?</ID>
     <ID>ReturnCount:TouchModel.kt:TouchModel$private fun clean: Pair&lt;Double, Double&gt;?</ID>
-    <ID>TooGenericExceptionCaught:PersonalModel.kt:LearningPersistence$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:PersonalModel.kt:LearningPersistence$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LearningPersistence.kt:LearningPersistence$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LearningPersistence.kt:LearningPersistence$e: Throwable</ID>
     <ID>TooManyFunctions:KeepCounts.kt:KeepCounts</ID>
     <ID>TooManyFunctions:Lexicon.kt:Lexicon</ID>
     <ID>TooManyFunctions:OutcomeClassifier.kt:OutcomeClassifier</ID>

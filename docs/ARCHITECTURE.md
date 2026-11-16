@@ -16,7 +16,7 @@ The list is `settings.gradle.kts`; dependencies are the `project(":...")` lines 
 | `:app` | The only application. IME service, settings UI (Compose), `KeyCorrectApp` (wiring), `LearningHost`, `PredictionHost`, `NeuralHost`/`EngineClient` (talk to the engine process), `VoiceHost`, backup/transfer UI, clipboard image provider |
 | `:feature:keyboard-ui` | The keyboard: single-canvas renderer, `TouchStateMachine`, `KeyboardController`, `PredictiveInput`, `DecoderLoop`, strip, editing/emoji/clipboard panels, swipe, voice controller |
 | `:feature:voice-sherpa` | sherpa-onnx speech engine (loaded from the voice pack), segmented dictation |
-| `:core:engine-api` | `TextEngine` tiers (Predict, Score, Generate, Gesture) and request/result types (JVM) |
+| `:core:engine-api` | `TextEngine` tiers (Predict, Gesture) and request/result types (JVM) |
 | `:core:engine-sdk` | AIDL contract and `TextEngineService` base class for plugins and the built-in engine |
 | `:core:decoder` | `ClassicEngine`: spatial model, trie search, back-off LM, autocorrect policy, gesture decoder, `NeuralReranker` (JVM) |
 | `:core:dictionary` | KCD1 memory-mapped dictionary reader/writer (JVM) |
