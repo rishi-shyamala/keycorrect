@@ -2,7 +2,6 @@ package dev.keycorrect.feature.keyboard
 
 import android.os.SystemClock
 import android.text.InputType
-import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -253,13 +252,12 @@ class KeyboardController(
             field = value
         }
 
-    /** The accent of a dead key pressed and not yet combined; 0 for none. */
-    private var pendingAccent = 0
-
     /** Combines a dead-key accent with a character (`KeyCharacterMap.getDeadChar`); 0 for none. */
-    var deadCharCombiner: (accent: Int, char: Int) -> Int = { accent, char ->
-        KeyCharacterMap.getDeadChar(accent, char)
-    }
+    var deadCharCombiner: (accent: Int, char: Int) -> Int
+        get() = physicalKeys.deadCharCombiner
+        set(value) {
+            physicalKeys.deadCharCombiner = value
+        }
 
     /** What fills the key area: the keys or a panel (Phase 4). */
     var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
@@ -350,7 +348,7 @@ class KeyboardController(
         }
         panel = KeyboardPanel.Keys
         fullKeyboardShown = fullKeyboardByDefault
-        pendingAccent = 0
+        physicalKeys.clearPendingAccent()
         emojiSearch.close()
         clipboardPanel.reset()
         editing.reset()
@@ -797,98 +795,29 @@ class KeyboardController(
             showPanelKeepingLayer(KeyboardPanel.Keys)
     }
 
+    private val physicalKeys =
+        PhysicalKeyRouter(
+            input,
+            { physicalMode },
+            { profile },
+            { searching },
+            voice::stopNow,
+            ::onSearchKey,
+            { touchDevice },
+            { landscape },
+            { typed ->
+                composingNow = input.isComposing
+                if (typed) fieldEmpty.noteTextTyped()
+            },
+        )
+
     /**
      * A key of the physical keyboard. Returns whether it was handled (the app must not see it);
      * false means the app gets it untouched, after the word in progress has been finished as typed
      * where that matters. Nothing is handled in sensitive and terminal fields, with suggestions
      * off, or when [physicalMode] is off.
      */
-    fun onPhysicalKey(key: PhysicalKey): Boolean {
-        if (!physicalKeysHandled(key)) {
-            pendingAccent = 0
-            return false
-        }
-        voice.stopNow()
-        val resolved = resolveDeadKey(key)
-        return resolved == null || processPhysical(resolved)
-    }
-
-    private fun processPhysical(resolved: PhysicalKey): Boolean {
-        // Typing on the physical keys is its own learning profile; touches keep the screen's.
-        input.setDevice(DeviceClass.HardwareKeyboard, landscape)
-        val handled =
-            try {
-                if (searching) onPhysicalSearchKey(resolved) else onPhysicalTypingKey(resolved)
-            } finally {
-                input.setDevice(touchDevice, landscape)
-            }
-        composingNow = input.isComposing
-        if (handled && !searching && resolved != PhysicalKey.Backspace) {
-            fieldEmpty.noteTextTyped()
-        }
-        return handled
-    }
-
-    /**
-     * Applies a pending dead key to [key]: the key to process instead, or null when [key] was
-     * absorbed (a dead key waiting for its letter, or a backspace that cancelled it).
-     */
-    private fun resolveDeadKey(key: PhysicalKey): PhysicalKey? {
-        val pending = pendingAccent
-        if (key !is PhysicalKey.Ignore) pendingAccent = 0
-        return when {
-            key is PhysicalKey.Dead -> {
-                pendingAccent = if (pending == key.accent) 0 else key.accent
-                if (pending == 0) null else PhysicalKey.Text(charText(pending))
-            }
-            pending == 0 -> key
-            key is PhysicalKey.Text -> {
-                val combined = deadCharCombiner(pending, key.text.codePointAt(0))
-                PhysicalKey.Text(
-                    if (combined != 0) charText(combined) else charText(pending) + key.text
-                )
-            }
-            key == PhysicalKey.Space -> PhysicalKey.Text(charText(pending))
-            key == PhysicalKey.Backspace -> null
-            key == PhysicalKey.Ignore -> key.also { pendingAccent = pending }
-            else -> key
-        }
-    }
-
-    private fun charText(codePoint: Int) = String(Character.toChars(codePoint))
-
-    private fun physicalKeysHandled(key: PhysicalKey): Boolean =
-        physicalMode &&
-            key != PhysicalKey.Ignore &&
-            !profile.sensitive &&
-            profile.kind != FieldKind.Terminal &&
-            (searching || input.canPredict())
-
-    private fun onPhysicalTypingKey(key: PhysicalKey): Boolean {
-        input.settlePendingSwipe()
-        return when (key) {
-            is PhysicalKey.Text -> true.also { input.onText(key.text, null) }
-            PhysicalKey.Space -> true.also { input.onSeparator(" ") }
-            PhysicalKey.Backspace -> true.also { input.onBackspace() }
-            PhysicalKey.Enter -> false.also { input.beforeEnter(commitsLineBreak = false) }
-            PhysicalKey.Shortcut -> false.also { input.onLayerSwitch() }
-            PhysicalKey.Ignore,
-            is PhysicalKey.Dead -> false
-        }
-    }
-
-    private fun onPhysicalSearchKey(key: PhysicalKey): Boolean {
-        val action =
-            when (key) {
-                is PhysicalKey.Text -> KeyAction.Text(key.text)
-                PhysicalKey.Space -> KeyAction.Space
-                PhysicalKey.Backspace -> KeyAction.Backspace
-                PhysicalKey.Enter -> KeyAction.Enter
-                else -> return false
-            }
-        onSearchKey(action)
-        return true
-    }
+    fun onPhysicalKey(key: PhysicalKey): Boolean = physicalKeys.onKey(key)
 
     /**
      * Whether the strip's Edit tool is drawn selected: exactly while the editing panel is open,
@@ -1024,7 +953,7 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
-        pendingAccent = 0
+        physicalKeys.clearPendingAccent()
         voice.stopNow()
         selection = EditorSelection()
         editing.reset()
@@ -1081,7 +1010,7 @@ class KeyboardController(
     fun updateDevice(tablet: Boolean, landscape: Boolean, hardwareKeyboard: Boolean = false) {
         if (hardwareKeyboard != hardwareKeyboardAttached) {
             fullKeyboardShown = fullKeyboardByDefault
-            pendingAccent = 0
+            physicalKeys.clearPendingAccent()
         }
         hardwareKeyboardAttached = hardwareKeyboard
         touchDevice = if (tablet) DeviceClass.Tablet else DeviceClass.Phone
