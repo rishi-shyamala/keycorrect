@@ -45,6 +45,9 @@ export KC_SWIPENET_LIB=$(tools/swipenet/build.sh host | tail -1)
 scratch venv outside the repo). `tools/swipenet/ops.txt` lists the kernels the build compiles;
 regenerate it when the model changes.
 
+The swipe eval's `--neural` arm (EVAL.md, "Neural fusion") uses the same host library and model:
+`KC_SWIPENET_LIB` (or `--swipenet-lib`) and `--swipenet-model`.
+
 The neural arm also needs the host build of llama.cpp (`tools/llama/build-host.sh`) and
 `-Pkeycorrect.learncurve.lib` / `.model` (see `feature/keyboard-ui/build.gradle.kts`); the report lands in `feature/keyboard-ui/build/learning-curve/report.md`.
 
@@ -132,9 +135,13 @@ tools/release/release.sh publish   # signed build of the clean, pushed HEAD -> p
 `./gradlew :voicepack:assembleRelease :neuralpack:assembleRelease`; they are not part of CI.
 The swipe pack (Phase 10, not attached by `publish` yet) needs `tools/data/fetch-swipe-model.sh`
 and `tools/swipenet/build.sh android` (NDK, and `KC_ET_PYTHON` as above) before
-`./gradlew :swipepack:assembleRelease`. Its per-call cost on a device: install the debug pack
+`./gradlew :swipepack:assembleRelease`. When the pack is installed the keyboard fuses the encoder
+into every swipe decode (docs/PHASE10.md, 10a-3). Its cost on a device: install the debug pack
 (`./gradlew :swipepack:installDebug`) and run `SwipeNetBenchmark` (part of the device
-microbenchmarks; skipped without the pack):
+microbenchmarks; skipped without the pack). `emissionsOneThread` is one encoder call;
+`fusedDecodeOnLift` and `sharkDecodeOnLift` are one whole swipe decode with and without the
+encoder, one swipe per iteration, so the reported percentiles are per swipe (target on the S23
+Ultra: fused p95 ≤ 30 ms):
 
 ```sh
 ./gradlew :benchmark:connectedReleaseAndroidTest \
