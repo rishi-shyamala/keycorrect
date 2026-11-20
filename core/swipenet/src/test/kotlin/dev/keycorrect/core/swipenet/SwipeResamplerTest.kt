@@ -99,4 +99,31 @@ class SwipeResamplerTest {
     fun mismatchedArraysAreRefused() {
         SwipeResampler.features(FloatArray(2), FloatArray(2), FloatArray(3))
     }
+
+    @Test
+    fun aLargeAbsoluteTimeOffsetGivesTheSameFeatures() {
+        val n = 40
+        val x = FloatArray(n) { (it * 7 % 13) / 13f }
+        val y = FloatArray(n) { (it * 5 % 11) / 11f }
+        // Multiples of 16 ms are exact in float32 even at this offset (spacing there is 8 ms), so
+        // the only difference between the two inputs is the origin.
+        val t = FloatArray(n) { it * 16f }
+        val shifted = FloatArray(n) { 123_456_000f + t[it] }
+        assertThat(SwipeResampler.features(x, y, shifted))
+            .isEqualTo(SwipeResampler.features(x, y, t))
+    }
+
+    @Test
+    fun aVeryLongGestureStaysBounded() {
+        val x = floatArrayOf(0f, 1f)
+        val y = floatArrayOf(0f, 0f)
+        val (rx, _) = SwipeResampler.to60Hz(x, y, floatArrayOf(0f, 1e12f))
+        assertThat(rx.size).isEqualTo(SwipeResampler.MAX_SAMPLES)
+        val f = SwipeResampler.features(x, y, floatArrayOf(0f, 1e12f))
+        assertThat(f[0]).isEqualTo(0f)
+        assertThat(f[points - 1]).isEqualTo(1f)
+        // Up to the bound nothing changes: 10 s is exactly 601 samples.
+        val (tenSeconds, _) = SwipeResampler.to60Hz(x, y, floatArrayOf(0f, 10_000f))
+        assertThat(tenSeconds.size).isEqualTo(SwipeResampler.MAX_SAMPLES)
+    }
 }

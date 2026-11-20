@@ -20,20 +20,29 @@ object SwipeResampler {
     private const val EPS = 1e-12f
 
     /**
+     * The most 60 Hz samples one gesture yields: 10 s of gesture. A longer gesture is resampled at
+     * a lower rate over its whole duration (not clipped), so the allocation stays bounded; gestures
+     * up to 10 s are unaffected.
+     */
+    internal const val MAX_SAMPLES = 601
+
+    /**
      * The encoder features for a gesture with coordinates [x] and [y] (in the encoder's frame) and
-     * timestamps [t] in milliseconds, non-decreasing. Returns `2 * POINTS` floats; all zeros for an
-     * empty gesture.
+     * timestamps [t] in milliseconds relative to the gesture's first point (absolute uptimes lose
+     * float precision, so callers should subtract the origin; [t]`[0]` is subtracted here anyway),
+     * non-decreasing. Returns `2 * POINTS` floats; all zeros for an empty gesture.
      */
     fun features(x: FloatArray, y: FloatArray, t: FloatArray): FloatArray {
         require(x.size == y.size && x.size == t.size) { "x, y and t differ in length" }
-        val (rx, ry) = to60Hz(x, y, t)
+        val origin = if (t.isEmpty()) 0f else t[0]
+        val (rx, ry) = to60Hz(x, y, FloatArray(t.size) { t[it] - origin })
         return toPoints(rx, ry)
     }
 
     /**
      * Resamples uniformly in time to 60 Hz: `max(2, round(duration / 16.667 ms) + 1)` points over
-     * `linspace(0, duration)`, linearly interpolated. One point is doubled; a gesture without
-     * duration keeps its first and last points.
+     * `linspace(0, duration)` (at most [MAX_SAMPLES] points), linearly interpolated. One point is
+     * doubled; a gesture without duration keeps its first and last points.
      */
     internal fun to60Hz(x: FloatArray, y: FloatArray, t: FloatArray): Pair<FloatArray, FloatArray> {
         val n = x.size
@@ -54,7 +63,8 @@ object SwipeResampler {
         val t0 = t[0]
         val duration = t[n - 1] - t0
         // std::round rounds halves away from zero; the duration is positive, so roundToLong agrees.
-        val count = maxOf(2L, (duration / INTERVAL_MS).roundToLong() + 1).toInt()
+        val count =
+            (duration / INTERVAL_MS).roundToLong().coerceIn(1L, MAX_SAMPLES - 1L).toInt() + 1
         val outX = FloatArray(count)
         val outY = FloatArray(count)
         val step = duration / (count - 1).toFloat()

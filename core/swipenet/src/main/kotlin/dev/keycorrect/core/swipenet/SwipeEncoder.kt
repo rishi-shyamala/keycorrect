@@ -81,6 +81,8 @@ private constructor(private val backend: SwipeNetBackend, private var handle: Lo
         /**
          * Opens the encoder from the bytes of its `.pte` (the native side keeps its own copy).
          * [threads] sizes XNNPACK's process-wide pool; the encoder is small, so one is the default.
+         * The pool is sized once per process: the first open's count wins, later counts are
+         * ignored.
          */
         @Throws(SwipeNetException::class)
         fun open(

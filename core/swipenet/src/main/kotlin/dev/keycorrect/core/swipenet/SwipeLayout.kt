@@ -28,6 +28,9 @@ class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pa
     init {
         require(chars.size == centres.size) { "one centre per key" }
         require(chars.size in 1..MAX_KEYS) { "1..$MAX_KEYS keys, got ${chars.size}" }
+        require(chars.map { it.lowercaseChar() }.toSet().size == chars.size) {
+            "two keys type the same letter"
+        }
     }
 
     /** The `layout_keys` input: (x, y) per slot, padding (0, 0). */
@@ -56,8 +59,9 @@ class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pa
 
         /**
          * The letter keys of [geometry] (keys that type one letter), in row order, framed by the
-         * bounding box of their slots. Null when the layer has no letters or more than [MAX_KEYS]
-         * of them, i.e. when the encoder can't be used.
+         * bounding box of their slots. Null when the layer has no letters, more than [MAX_KEYS] of
+         * them, or two slots typing the same letter (ignoring case), i.e. when the encoder can't be
+         * used.
          */
         fun of(geometry: KeyboardGeometry): SwipeLayout? {
             val letters =
@@ -65,7 +69,11 @@ class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pa
                     val text = (it.key.action as? KeyAction.Text)?.text
                     text != null && text.length == 1 && text[0].isLetter()
                 }
-            if (letters.isEmpty() || letters.size > MAX_KEYS) return null
+            // Two slots typing one letter would make the encoder's key table ambiguous.
+            val typed = letters.map { (it.key.action as KeyAction.Text).text[0].lowercaseChar() }
+            if (letters.isEmpty() || letters.size > MAX_KEYS || typed.toSet().size != typed.size) {
+                return null
+            }
             val frame =
                 SwipeFrame(
                     letters.minOf { it.left },
@@ -75,7 +83,7 @@ class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pa
                 )
             return SwipeLayout(
                 frame,
-                letters.map { (it.key.action as KeyAction.Text).text[0].lowercaseChar() },
+                typed,
                 letters.map { frame.x(it.centerX) to frame.y(it.centerY) },
             )
         }

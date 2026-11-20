@@ -7,7 +7,9 @@ package dev.keycorrect.core.swipenet
 interface SwipeNetBackend {
     /**
      * Loads an ExecuTorch program (the bytes of a `.pte`) and checks its outputs with one dry run.
-     * [threads] > 0 resizes the process-wide XNNPACK thread pool. Returns a handle or 0.
+     * [threads] > 0 sizes the process-wide XNNPACK thread pool, once: the first open with a
+     * positive count wins for the process and later counts are ignored (resizing would free a pool
+     * that open encoders still point to). Returns a handle or 0.
      */
     fun open(model: ByteArray, threads: Int): Long
 

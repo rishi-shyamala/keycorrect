@@ -101,4 +101,12 @@ class SwipeLayoutTest {
         }
         assertThat(result.isFailure).isTrue()
     }
+
+    @Test
+    fun twoSlotsTypingTheSameLetterAreRejectedIgnoringCase() {
+        val frame = SwipeFrame(0f, 0f, 1f, 1f)
+        val centres = listOf(0.2f to 0.3f, 0.8f to 0.9f)
+        assertThat(runCatching { SwipeLayout(frame, listOf('a', 'A'), centres) }.isFailure).isTrue()
+        assertThat(runCatching { SwipeLayout(frame, listOf('a', 'b'), centres) }.isSuccess).isTrue()
+    }
 }

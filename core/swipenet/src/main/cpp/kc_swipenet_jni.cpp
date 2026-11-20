@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include <executorch/extension/data_loader/buffer_data_loader.h>
@@ -101,14 +102,21 @@ JNIEXPORT jlong JNICALL Java_dev_keycorrect_core_swipenet_SwipeNetNative_open(
   if (size <= 0) return 0;
   executorch::runtime::runtime_init();
   if (threads > 0) {
-    if (auto* pool = executorch::extension::threadpool::get_threadpool()) {
-      // The pool is process-wide; the encoder is the only user in this library.
+    // ExecuTorch's XNNPACK runtimes keep a raw pointer to the process-wide pool from load time, and
+    // a reset frees the old one, so resizing while an encoder is open is a use-after-free. Size it
+    // once, on the first open with threads > 0; the first count wins and later opens never reset.
+    static std::once_flag poolSized;
+    std::call_once(poolSized, [threads] {
+      if (auto* pool = executorch::extension::threadpool::get_threadpool()) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-      pool->_unsafe_reset_threadpool(static_cast<uint32_t>(threads));
+        pool->_unsafe_reset_threadpool(static_cast<uint32_t>(threads));
 #pragma GCC diagnostic pop
-    }
+      }
+    });
   }
+  // Exceptions are off (EXECUTORCH_OPTIMIZE_SIZE), so an allocation failure below (bad_alloc under
+  // OOM) terminates the process instead of returning 0; only the explicit checks can fail softly.
   const size_t rounded = (static_cast<size_t>(size) + kAlignment - 1) / kAlignment * kAlignment;
   std::unique_ptr<uint8_t, FreeDeleter> bytes(
       static_cast<uint8_t*>(std::aligned_alloc(kAlignment, rounded)));
