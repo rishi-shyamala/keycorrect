@@ -60,7 +60,8 @@ object Merge {
 
     /** Union by case-insensitive word; the earliest block time is kept. */
     fun blocked(existing: List<BlockedWord>, incoming: List<BlockedWord>): List<BlockedWord> =
-        combine(existing, incoming, { lower(it.word) }) { e, b ->
+        // All through the merge path, so duplicates already in [existing] fold the same way.
+        combine(emptyList(), existing + incoming, { lower(it.word) }) { e, b ->
             e.copy(createdAtMillis = earliest(e.createdAtMillis, b.createdAtMillis))
         }
 
