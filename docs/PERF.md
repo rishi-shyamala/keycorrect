@@ -253,8 +253,10 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
     - Emulator (x86_64 AVD `s23u`, relative only), `SwipeNetBenchmark` medians per swipe:
       `sharkDecodeOnLift` 1.22 ms (371 allocations), `fusedDecodeOnLift` 3.28 ms (max run
       3.61 ms; 1,030 allocations), `emissionsOneThread` 1.22 ms.
-    - S23 Ultra: still to be measured (`SwipeNetBenchmark`, DEVELOPMENT.md); target fused p95
-      ≤ 30 ms.
+    - S23 Ultra (release, 50 runs per benchmark): `sharkDecodeOnLift` 1.19 ms median (371
+      allocations), `fusedDecodeOnLift` 2.86 ms median, 2.98 ms slowest run (1,650 allocations),
+      `emissionsOneThread` 0.73 ms. Target fused p95 ≤ 30 ms: met. Previews (at most one per
+      50 ms, `SwipeController.PREVIEW_INTERVAL_MS`) cost about one decode each.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
