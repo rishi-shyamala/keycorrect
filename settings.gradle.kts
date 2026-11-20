@@ -59,6 +59,8 @@ include(":core:packs")
 
 include(":core:settings")
 
+include(":core:swipenet")
+
 include(":core:transfer")
 
 include(":core:voice")
