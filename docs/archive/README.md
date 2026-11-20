@@ -16,3 +16,4 @@ planned at the time, not as it is: for the current module map see
 | [PHASE9.md](PHASE9.md) | Hardening plan |
 | [CODEBASE_REVIEW.md](CODEBASE_REVIEW.md) | Point-in-time code review (2026-10-10) |
 | [HANDOFF.md](HANDOFF.md) | Session handoff from Phase 4 (2026-10-16); its still-valid parts moved to DEVELOPMENT.md and ARCHITECTURE.md |
+| [HANDOFF-2026-11-19.md](HANDOFF-2026-11-19.md) | Session handoff after Phase 9 closeout and 10a-1; decisions moved to DECISIONS.md, gotchas to DEVELOPMENT.md, the 10a-2 plan is in PHASE10.md |

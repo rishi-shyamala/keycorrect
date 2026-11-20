@@ -122,6 +122,8 @@ Learning apply fell from 33.2 ms on the Tab S9 in October to 5.2 ms (a different
 | Idle CPU 0 when hidden | Met: about 0 over 30 s with no focus changes; binder work follows the user's app switches |
 | APK ≤15 MB | Superseded by N-2 (about 16 MB acceptable): the arm64-only test APK is 15.9 MB |
 
+Still pending on the Galaxy Tab S9: the hardware-keyboard mode pass (P9-4) and the tablet numbers.
+
 To see where device time goes, add a stack-sampling profile to a run:
 `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling`.
 The `.trace` files land next to the JSON results; open them in Android Studio or Perfetto.

@@ -91,7 +91,16 @@ Macrobenchmark commands and numbers are in the baseline-profile section of [PERF
 - Reading text: `uiautomator dump` sees app fields but not the IME window (keys are drawn on a
   canvas). Check `topResumedActivity` before tapping; a dump can bring another app forward.
 - Shell note: the tool shell quotes globs strictly; use `export ANDROID_SERIAL=...` instead of a
-  variable holding an `adb` command.
+  variable holding an `adb` command. In zsh, never name a loop variable `path` (it overwrites
+  `$PATH`).
+- Force-stopping the *selected* IME on the emulator makes the system fall back to Gboard, and later
+  typing silently goes there. Check `settings get secure default_input_method` before trusting a
+  typing test.
+- The `s23u` emulator sometimes shuts itself down mid-session; check `adb devices` first.
+- One UI binds a selected keyboard immediately, so a benchmark that selects the IME in setup starts
+  its process (`KeyboardBenchmark`'s cold start handles this).
+- Instrumentation filters: `-Pandroid.testInstrumentationRunnerArguments.class=A#m1,A#m2` runs only
+  `m1`. Run methods one at a time.
 
 ## Release flow (test builds)
 
@@ -138,3 +147,7 @@ swipes for the real-swipe eval), `tools/llama/build-host.sh`
 - SQLCipher: page reads by rowid (a single 120k-row cursor is very slow); never persist NaN.
 - The dictionary asset is stored uncompressed (`noCompress += "kcd"`) so it can be memory-mapped.
 - Detekt prints "compiler errors found during analysis" for modules with generated code; harmless.
+  On new code it wants no magic numbers, at most two returns per function, one jump per loop and
+  functions under 60 lines: fix the code, never add baseline entries.
+- If the JDK is upgraded while a Gradle daemon runs, spawning `adb` fails ("Failed to exec spawn
+  helper"): `./gradlew --stop` and retry.
