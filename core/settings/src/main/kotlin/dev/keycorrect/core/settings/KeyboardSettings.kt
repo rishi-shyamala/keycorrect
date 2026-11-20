@@ -1,6 +1,9 @@
 package dev.keycorrect.core.settings
 
-/** How fast the spacebar joystick moves the cursor: a multiplier on its speeds (docs/PHASE4.md). */
+/**
+ * How fast the spacebar joystick moves the cursor: a multiplier on its speeds
+ * (docs/archive/PHASE4.md).
+ */
 enum class CursorSpeed(val joystickScale: Float) {
     Slow(SLOW_SCALE),
     Normal(NORMAL_SCALE),
@@ -25,7 +28,7 @@ enum class ClipRetention(val millis: Long) {
     Month(MONTH_MS),
 }
 
-/** Which speech recognizer voice typing uses (docs/PHASE6.md). */
+/** Which speech recognizer voice typing uses (docs/archive/PHASE6.md). */
 enum class VoiceEngineChoice {
     /**
      * The built-in model from the KeyCorrect voice pack, on this device. Never falls back to the
@@ -156,10 +159,10 @@ data class KeyboardSettings(
     val unknownWordPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
     /**
      * Dragging on the spacebar moves the cursor (right half) or selects (left half);
-     * docs/PHASE4.md.
+     * docs/archive/PHASE4.md.
      */
     val spacebarCursor: Boolean = true,
-    /** Gesture (swipe) typing on letter keys (docs/PHASE5.md). */
+    /** Gesture (swipe) typing on letter keys (docs/archive/PHASE5.md). */
     val gestureTyping: Boolean = true,
     /** Draw the swipe's trail under the finger. */
     val gestureTrail: Boolean = true,
@@ -180,7 +183,10 @@ data class KeyboardSettings(
     val clipboardRetention: ClipRetention = ClipRetention.Week,
     /** Copied images are kept too (encrypted, 20 MB in all). */
     val clipboardImages: Boolean = true,
-    /** Voice typing: long-press the comma (docs/PHASE6.md). Never offered in password fields. */
+    /**
+     * Voice typing: long-press the comma (docs/archive/PHASE6.md). Never offered in password
+     * fields.
+     */
     val voiceEnabled: Boolean = true,
     val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.BuiltIn,
     /** Ask the recognizer for punctuation and capitalisation. */
@@ -408,7 +414,7 @@ data class KeyboardSettings(
         val REVERTS_RANGE = 1..5
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100
 
-        /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/PHASE6.md). */
+        /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/archive/PHASE6.md). */
         val VOICE_PHRASE_MS_RANGE = 3000..8000
         const val DEFAULT_VOICE_PHRASE_MS = 7000
         val VOICE_PAUSE_MS_RANGE = 300..1500

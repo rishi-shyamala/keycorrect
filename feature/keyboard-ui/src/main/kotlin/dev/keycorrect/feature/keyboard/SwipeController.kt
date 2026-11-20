@@ -5,8 +5,9 @@ import dev.keycorrect.feature.keyboard.prediction.PredictiveInput
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
 
 /**
- * The controller side of gesture typing (docs/PHASE5.md): turns the touch layer's swipe events
- * ([KeyGestures.onSwipeStart] and friends) into decoder requests and a commit. Main thread only.
+ * The controller side of gesture typing (docs/archive/PHASE5.md): turns the touch layer's swipe
+ * events ([KeyGestures.onSwipeStart] and friends) into decoder requests and a commit. Main thread
+ * only.
  *
  * Previews: while the finger moves, at most one request per [PREVIEW_INTERVAL_MS] goes to the
  * decoder thread, each carrying a copy of the path so far

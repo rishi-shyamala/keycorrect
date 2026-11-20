@@ -90,7 +90,7 @@ class AppContainer(private val context: Context) {
      */
     @Volatile var lastField: String? = null
 
-    /** Imported language models (docs/PHASE7.md); the engine process reads them by path. */
+    /** Imported language models (docs/archive/PHASE7.md); the engine process reads them by path. */
     val modelStore by lazy { ModelStore(context) }
     val keyboardComposer = KeyboardComposer(BuiltInLayouts.repository())
 

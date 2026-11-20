@@ -57,7 +57,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The emoji panel (docs/PHASE4.md, PR B), in the place of the keys and as tall as they are:
+ * The emoji panel (docs/archive/PHASE4.md, PR B), in the place of the keys and as tall as they are:
  * category tabs, a grid of the selected category, and a bar with ABC, search and backspace. A tap
  * inserts through [KeyboardController.onEmojiTap]; a long press on an emoji with variants offers
  * them. While the catalog loads a short message is shown. [onPress] is the key feedback.

@@ -3,7 +3,7 @@
   The KeyCorrect neural pack: the language model (an uncompressed asset) and the llama.cpp native
   library, nothing else. No code, no activity, no permissions (not even INTERNET). The keyboard
   (dev.keycorrect) loads the library and reads the model from this package, after checking that
-  both APKs are signed with the same key (docs/PHASE7.md).
+  both APKs are signed with the same key (docs/archive/PHASE7.md).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 

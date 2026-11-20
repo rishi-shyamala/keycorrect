@@ -2,7 +2,8 @@ package dev.keycorrect.core.settings
 
 /**
  * Which screen shape a keyboard size belongs to: phone or tablet (smallest width of at least
- * [TABLET_MIN_SMALLEST_WIDTH_DP]) crossed with portrait or landscape (docs/PHASE8.md, P8-2).
+ * [TABLET_MIN_SMALLEST_WIDTH_DP]) crossed with portrait or landscape (docs/archive/PHASE8.md,
+ * P8-2).
  */
 data class SizeProfile(val tablet: Boolean, val landscape: Boolean) {
     /** The stable name used in stored keys, e.g. `phone_landscape`. */

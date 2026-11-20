@@ -8,10 +8,10 @@ import dev.keycorrect.core.engineapi.KeyLayoutModel
 import kotlin.math.sqrt
 
 /**
- * The shape/location stage of swipe decoding (SHARK²-style, docs/PHASE5.md): resamples the gesture,
- * picks the words whose first and last key are near the path's ends, prunes by path length, and
- * keeps the [GestureConfig.shortlistSize] best by channel score plus a unigram prior. The engine
- * then adds the contextual language model to the shortlist.
+ * The shape/location stage of swipe decoding (SHARK²-style, docs/archive/PHASE5.md): resamples the
+ * gesture, picks the words whose first and last key are near the path's ends, prunes by path
+ * length, and keeps the [GestureConfig.shortlistSize] best by channel score plus a unigram prior.
+ * The engine then adds the contextual language model to the shortlist.
  *
  * Threading: [run] and the per-decode scratch are not thread-safe; the engine calls [run] under its
  * lock. [indexFor] and [warmUp] are safe from any thread (they take [buildLock], never the engine's

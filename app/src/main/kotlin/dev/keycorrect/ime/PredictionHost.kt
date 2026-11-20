@@ -70,8 +70,8 @@ class PredictionHost(
     /** `InputProfile.touchKey` of the layout on screen; read on the decoder thread per decode. */
     private val touchKey: () -> String? = { null },
     /**
-     * The optional language-model re-ranker (docs/PHASE7.md); null means classic results only. A
-     * request is only refined when it has `engineAllowed`.
+     * The optional language-model re-ranker (docs/archive/PHASE7.md); null means classic results
+     * only. A request is only refined when it has `engineAllowed`.
      */
     private val reranker: NeuralReranker? = null,
 ) : PredictionBackend {

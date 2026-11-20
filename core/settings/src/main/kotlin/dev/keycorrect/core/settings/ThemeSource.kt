@@ -1,6 +1,6 @@
 package dev.keycorrect.core.settings
 
-/** Where the keyboard's colors come from (docs/PHASE8.md, P8-4). */
+/** Where the keyboard's colors come from (docs/archive/PHASE8.md, P8-4). */
 enum class ThemeSource {
     /** Material You colors from the wallpaper (the default). */
     Wallpaper,

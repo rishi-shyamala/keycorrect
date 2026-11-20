@@ -3,7 +3,7 @@ package dev.keycorrect.feature.keyboard.prediction
 import dev.keycorrect.core.engineapi.PredictResult
 import java.util.Locale
 
-/** How a swiped word is cased: the shift state when the finger lifts (docs/PHASE5.md). */
+/** How a swiped word is cased: the shift state when the finger lifts (docs/archive/PHASE5.md). */
 internal enum class SwipeCase {
     /** The decoder's casing. */
     None,

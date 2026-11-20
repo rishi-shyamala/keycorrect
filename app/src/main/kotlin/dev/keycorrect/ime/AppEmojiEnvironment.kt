@@ -15,13 +15,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * The keyboard's emoji data (docs/PHASE4.md, PR B), shared by the whole process. [start] loads the
- * catalog, hides the emoji the font cannot draw ([hasGlyph]) and reads the recents and variant
- * choices from [history], all on [dispatcher]; until then [catalog] is null. Every member the
- * keyboard calls only reads memory. Picks and choices update memory at once and are saved in the
- * background through [history], which holds the privacy gate; memory itself is updated only while
- * [recording] (learning on, incognito off), so an incognito pick leaves no trace anywhere. Emoji
- * values are user data and are never logged.
+ * The keyboard's emoji data (docs/archive/PHASE4.md, PR B), shared by the whole process. [start]
+ * loads the catalog, hides the emoji the font cannot draw ([hasGlyph]) and reads the recents and
+ * variant choices from [history], all on [dispatcher]; until then [catalog] is null. Every member
+ * the keyboard calls only reads memory. Picks and choices update memory at once and are saved in
+ * the background through [history], which holds the privacy gate; memory itself is updated only
+ * while [recording] (learning on, incognito off), so an incognito pick leaves no trace anywhere.
+ * Emoji values are user data and are never logged.
  */
 class AppEmojiEnvironment(
     private val scope: CoroutineScope,

@@ -1181,11 +1181,11 @@ internal class PredictiveInput(
     }
 
     /**
-     * A swipe starts (docs/PHASE5.md). Nothing is typed until it lifts and a word being composed is
-     * left alone. Reads the text around the cursor once (the context of every preview). Returns
-     * false, and the swipe is ignored, when nothing could decode it: suggestions are off for the
-     * field, there is no engine, or the layout is unknown. A previous swipe still waiting for its
-     * decode is settled first ([settlePendingSwipe]).
+     * A swipe starts (docs/archive/PHASE5.md). Nothing is typed until it lifts and a word being
+     * composed is left alone. Reads the text around the cursor once (the context of every preview).
+     * Returns false, and the swipe is ignored, when nothing could decode it: suggestions are off
+     * for the field, there is no engine, or the layout is unknown. A previous swipe still waiting
+     * for its decode is settled first ([settlePendingSwipe]).
      */
     fun swipeBegin(): Boolean {
         settlePendingSwipe()

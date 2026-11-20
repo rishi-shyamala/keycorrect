@@ -9,8 +9,8 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Scores words with a language model (docs/PHASE7.md, SCORE tier). Backed later by the engine
- * service (AIDL); the re-ranker only knows this interface.
+ * Scores words with a language model (docs/archive/PHASE7.md, SCORE tier). Backed later by the
+ * engine service (AIDL); the re-ranker only knows this interface.
  */
 fun interface CandidateScorer {
     /**
@@ -31,8 +31,8 @@ fun interface PhraseGenerator {
 }
 
 /**
- * The SCORE tier of the prediction pipeline (docs/PHASE7.md "Pipeline"): re-ranks a finished
- * classic result with a language model.
+ * The SCORE tier of the prediction pipeline (docs/archive/PHASE7.md "Pipeline"): re-ranks a
+ * finished classic result with a language model.
  *
  * [refine] runs on the decoder thread right after the classic result was published. It hands the
  * literal and the candidates to the [scorer] on [scorerExecutor] and polls for the answer in
@@ -239,7 +239,7 @@ class NeuralReranker(
         /**
          * Default scale of the language-model bonus against the classic fused score. With the
          * default LM strength (0.5) the effective weight is 0.1: +0.9 points of word accuracy for
-         * +0.13 false corrections per 1000 words on the eval (user's choice, docs/PHASE7.md
+         * +0.13 false corrections per 1000 words on the eval (user's choice, docs/archive/PHASE7.md
          * "Eval").
          */
         const val LM_WEIGHT = 0.2f

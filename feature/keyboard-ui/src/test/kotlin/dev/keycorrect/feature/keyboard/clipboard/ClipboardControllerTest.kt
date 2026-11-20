@@ -18,7 +18,9 @@ import dev.keycorrect.feature.keyboard.clipboard.FakeClipboardEnvironment.Compan
 import dev.keycorrect.feature.keyboard.testEnv
 import org.junit.Test
 
-/** The clipboard through [KeyboardController] against [SimEditor] (docs/PHASE4.md, PR C). */
+/**
+ * The clipboard through [KeyboardController] against [SimEditor] (docs/archive/PHASE4.md, PR C).
+ */
 class ClipboardControllerTest {
     private val editor = SimEditor()
     private val backend = FakeBackend()

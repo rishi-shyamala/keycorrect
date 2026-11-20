@@ -612,11 +612,11 @@ class KeyboardController(
 
     /**
      * Gesture typing is on for the current field: the setting is on and the field is a text, email,
-     * URL, name or address field that takes suggestions and has an engine (docs/PHASE5.md P5-5),
-     * and the letters are showing (not a panel, not the symbols, not the emoji search). Off in
-     * password, number, phone, date and terminal fields, and where the app asks for no suggestions;
-     * also off while suggestions are switched off, as the swiped word is committed like a picked
-     * suggestion. Read by the touch layer.
+     * URL, name or address field that takes suggestions and has an engine (docs/archive/PHASE5.md
+     * P5-5), and the letters are showing (not a panel, not the symbols, not the emoji search). Off
+     * in password, number, phone, date and terminal fields, and where the app asks for no
+     * suggestions; also off while suggestions are switched off, as the swiped word is committed
+     * like a picked suggestion. Read by the touch layer.
      */
     val swipeTypingActive: Boolean
         get() =
@@ -626,7 +626,7 @@ class KeyboardController(
                 profile.kind in SWIPE_KINDS &&
                 input.canSwipe()
 
-    /** The casing the shift state gives a word swiped now (docs/PHASE5.md). */
+    /** The casing the shift state gives a word swiped now (docs/archive/PHASE5.md). */
     private fun swipeCase(): SwipeCase =
         when (effectiveShift) {
             ShiftState.Locked -> SwipeCase.All

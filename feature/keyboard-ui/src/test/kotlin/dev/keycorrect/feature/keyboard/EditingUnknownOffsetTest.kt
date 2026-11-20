@@ -24,8 +24,8 @@ private class UnknownOffsetEditor(private val sim: SimEditor) : TextEditor by si
 
 /**
  * The editing panel's Word / Line / Sentence and the backspace swipe in editors that report the
- * surrounding-text offset as -1 (docs/PHASE4.md, feedback round 1, row 9): the keyboard's tracked
- * cursor stands in, but only while none of its own edits is in flight.
+ * surrounding-text offset as -1 (docs/archive/PHASE4.md, feedback round 1, row 9): the keyboard's
+ * tracked cursor stands in, but only while none of its own edits is in flight.
  */
 class EditingUnknownOffsetTest {
     private val sim = SimEditor()

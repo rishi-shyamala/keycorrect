@@ -3,11 +3,11 @@ package dev.keycorrect.feature.keyboard.emoji
 import dev.keycorrect.core.emoji.EmojiCatalog
 
 /**
- * What the keyboard needs for emoji (docs/PHASE4.md, PR B), provided by the app: the catalog, the
- * recently used emoji and the per-emoji variant choices. Every member is called on the main thread
- * and must not block: the host loads the catalog and the history in the background and keeps
- * in-memory copies; writes go to its encrypted store asynchronously, and only when learning is on
- * and incognito off.
+ * What the keyboard needs for emoji (docs/archive/PHASE4.md, PR B), provided by the app: the
+ * catalog, the recently used emoji and the per-emoji variant choices. Every member is called on the
+ * main thread and must not block: the host loads the catalog and the history in the background and
+ * keeps in-memory copies; writes go to its encrypted store asynchronously, and only when learning
+ * is on and incognito off.
  */
 interface EmojiEnvironment {
     /** The catalog, or null while it loads (the panel waits; the strip suggests no emoji). */

@@ -17,9 +17,9 @@ import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import org.junit.Test
 
 /**
- * Gesture typing through [KeyboardController] (docs/PHASE5.md, PR B): the gating, the preview in
- * the strip, the commit with its auto-space and casing, backspace, the alternatives and learning.
- * The touch layer is replaced by calls to [KeyboardController.gestures].
+ * Gesture typing through [KeyboardController] (docs/archive/PHASE5.md, PR B): the gating, the
+ * preview in the strip, the commit with its auto-space and casing, backspace, the alternatives and
+ * learning. The touch layer is replaced by calls to [KeyboardController.gestures].
  */
 class SwipeTypingTest {
     private val editor = SimEditor()

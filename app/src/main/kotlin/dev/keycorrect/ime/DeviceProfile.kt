@@ -13,7 +13,7 @@ data class DeviceProfile(
     val landscape: Boolean,
     val hardwareKeyboard: Boolean,
 ) {
-    /** Which per-profile keyboard sizes apply here (docs/PHASE8.md, P8-2). */
+    /** Which per-profile keyboard sizes apply here (docs/archive/PHASE8.md, P8-2). */
     val sizeProfile: SizeProfile
         get() = SizeProfile(tablet, landscape)
 

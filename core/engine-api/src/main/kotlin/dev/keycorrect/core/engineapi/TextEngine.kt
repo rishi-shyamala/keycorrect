@@ -36,7 +36,8 @@ interface PredictiveEngine : TextEngine {
 }
 
 /**
- * Tier 2b (Phase 5, docs/PHASE5.md): decodes a swipe into ranked words. The built-in engine is one.
+ * Tier 2b (Phase 5, docs/archive/PHASE5.md): decodes a swipe into ranked words. The built-in engine
+ * is one.
  */
 interface GestureEngine : TextEngine {
     /**

@@ -23,7 +23,7 @@ sealed interface BuiltInOpening {
     data class Unavailable(val problem: VoicePackProblem) : BuiltInOpening
 }
 
-/** The built-in engine: the on-device model from the voice pack (docs/PHASE6.md P6-1). */
+/** The built-in engine: the on-device model from the voice pack (docs/archive/PHASE6.md P6-1). */
 interface BuiltInEngineSource {
     /** A new engine, or why there is none. May take a moment. */
     fun open(): BuiltInOpening
@@ -74,8 +74,8 @@ fun interface PhoneEngineSource {
 }
 
 /**
- * Which engine a dictation uses, by the setting alone (docs/PHASE6.md P6-5). Nothing falls back to
- * another engine:
+ * Which engine a dictation uses, by the setting alone (docs/archive/PHASE6.md P6-5). Nothing falls
+ * back to another engine:
  * - [VoiceEngineChoice.BuiltIn]: the voice pack, or the reason it can't be used (not installed, not
  *   signed by our key, damaged).
  * - [VoiceEngineChoice.PhoneRecognizer]: the phone's recognizer, which may send audio to its

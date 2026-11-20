@@ -67,8 +67,8 @@ fun interface ImagePaster {
 }
 
 /**
- * The keyboard's clipboard history (docs/PHASE4.md, PR C, simple history), shared by the whole
- * process. Everything copied is kept as is; the user deletes what they don't want. The only
+ * The keyboard's clipboard history (docs/archive/PHASE4.md, PR C, simple history), shared by the
+ * whole process. Everything copied is kept as is; the user deletes what they don't want. The only
  * protection goal is against other apps: the rows are in the encrypted database, image bytes in
  * Keystore-encrypted blobs, and images reach another app only through the non-exported
  * [ClipImageProvider].

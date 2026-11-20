@@ -28,9 +28,9 @@ fun interface Predictor {
     ): PredictResult? = null
 
     /**
-     * Decodes a swipe (docs/PHASE5.md), always on the decoder thread (previews and the final decode
-     * on lift, which the main thread only waits for briefly). [stale] works as in [predict]. The
-     * default knows no gestures: an empty result, so nothing is committed.
+     * Decodes a swipe (docs/archive/PHASE5.md), always on the decoder thread (previews and the
+     * final decode on lift, which the main thread only waits for briefly). [stale] works as in
+     * [predict]. The default knows no gestures: an empty result, so nothing is committed.
      */
     fun predictGesture(request: GestureRequest, stale: () -> Boolean): PredictResult =
         PredictResult(emptyList(), null, null, sequence = request.sequence)

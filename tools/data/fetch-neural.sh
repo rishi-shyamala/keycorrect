@@ -38,7 +38,7 @@ SOURCES=(
   # Qwen3-0.6B, Q8_0 (Qwen, Apache-2.0). Over the pack-size budget; kept as the quality reference.
   "Qwen3-0.6B-Q8_0.gguf|${HF}/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf|no"
   # Gemma 3 270M base, Q8_0 (ggml-org conversion of google/gemma-3-270m; Gemma Terms of Use, see
-  # docs/PHASE7.md). Benchmark only; not a shipping candidate.
+  # docs/archive/PHASE7.md). Benchmark only; not a shipping candidate.
   "gemma-3-270m-Q8_0.gguf|${HF}/ggml-org/gemma-3-270m-GGUF/resolve/360e988e4c99209d62d171ca1a46aceb4b224791/gemma-3-270m-Q8_0.gguf|no"
 )
 

@@ -12,10 +12,10 @@ import dev.keycorrect.core.input.TextEditor
 import kotlin.math.abs
 
 /**
- * What the buttons of the editing panel do (docs/PHASE4.md, PR A), with their label and description
- * strings. A button either sends a [key] (moves extend the selection while select mode is on), asks
- * the editor's context menu ([menu]), or selects around the cursor from the text ([expand]); the
- * toggle and ABC are handled by [EditingController].
+ * What the buttons of the editing panel do (docs/archive/PHASE4.md, PR A), with their label and
+ * description strings. A button either sends a [key] (moves extend the selection while select mode
+ * is on), asks the editor's context menu ([menu]), or selects around the cursor from the text
+ * ([expand]); the toggle and ABC are handled by [EditingController].
  */
 internal enum class EditingAction(
     @StringRes val label: Int,
@@ -109,9 +109,9 @@ internal class KeyPress(val code: Int, val meta: Int = 0, val moves: Boolean = f
 private fun moves(code: Int, meta: Int = 0) = KeyPress(code, meta, moves = true)
 
 /**
- * Editing beyond typing (docs/PHASE4.md, PR A): the spacebar cursor and the backspace word swipe
- * ([KeyGestures]), raw keys, the editing panel's actions and the selection strip's. Kept out of
- * [KeyboardController], which owns typing, layers and shift. Every move ends the composing word
+ * Editing beyond typing (docs/archive/PHASE4.md, PR A): the spacebar cursor and the backspace word
+ * swipe ([KeyGestures]), raw keys, the editing panel's actions and the selection strip's. Kept out
+ * of [KeyboardController], which owns typing, layers and shift. Every move ends the composing word
  * first ([endComposing]); the editor's selection update then settles prediction state as for any
  * external move.
  *

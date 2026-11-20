@@ -1,6 +1,6 @@
 package dev.keycorrect.core.settings
 
-/** How a held key is shown (docs/PHASE8.md, P8-5). */
+/** How a held key is shown (docs/archive/PHASE8.md, P8-5). */
 enum class PressStyle {
     /** The key takes the pressed color (the look before this was a setting). */
     Shade,

@@ -69,7 +69,7 @@ abstract class ComposeInputMethodService :
      * Marks the keyboard view's accessibility data as sensitive (API 34+) while [sensitive], so
      * accessibility services that are not accessibility tools (screen readers) cannot read the keys
      * typed into a password field. Reset when the field is not sensitive. Not FLAG_SECURE:
-     * screenshots stay possible (docs/PHASE9.md, P9-2).
+     * screenshots stay possible (docs/archive/PHASE9.md, P9-2).
      */
     protected fun setInputViewDataSensitive(sensitive: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

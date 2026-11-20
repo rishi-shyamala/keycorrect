@@ -19,9 +19,9 @@ sealed interface EngineOpening {
 }
 
 /**
- * What voice typing needs from the app (docs/PHASE6.md): the microphone permission, the microphone
- * itself, and the recognizer. The keyboard module holds none of it, so the controller is testable
- * with fakes. Every callback may come from any thread.
+ * What voice typing needs from the app (docs/archive/PHASE6.md): the microphone permission, the
+ * microphone itself, and the recognizer. The keyboard module holds none of it, so the controller is
+ * testable with fakes. Every callback may come from any thread.
  */
 interface VoiceEnvironment {
     /** Whether RECORD_AUDIO is granted. */

@@ -36,7 +36,7 @@ sealed interface KeyAction {
 
     /**
      * Starts voice typing (dictation). Only ever a key's [ResolvedKey.longPress], never a tap: the
-     * comma's (docs/PHASE6.md P6-3).
+     * comma's (docs/archive/PHASE6.md P6-3).
      */
     data object Voice : KeyAction
 

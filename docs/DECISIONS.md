@@ -20,11 +20,11 @@ Source: PLAN.md section 16 (D1-D12; D11 was a placeholder name, kept).
 | D10 | 2026-10-09 | Raw-text buffer for engine finetuning -> On by default with a toggle, encrypted, 7-day retention, never from sensitive fields. | core/learning, core/data |
 | D11 | 2026-10-09 | App identity -> "KeyCorrect", dev.keycorrect (placeholder — your call). | applicationId dev.keycorrect |
 | D12 | 2026-10-09 | Build environment -> You install JDK 21 + Android cmdline tools/SDK/NDK; I verify versions (see docs/DEVELOPMENT.md). | docs/DEVELOPMENT.md |
-| P4 | 2026-10-11 | Phase 4 entry points, defaults, delivery (feedback round 1 o... -> Decided 2026-10-11, see docs/PHASE4.md: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; | feature/keyboard-ui |
+| P4 | 2026-10-11 | Phase 4 entry points, defaults, delivery (feedback round 1 o... -> Decided 2026-10-11, see docs/archive/PHASE4.md: no toolbar (emoji key left of space, whose long-press opens the clipboard; long-press space opens the editing panel); clipboard history on, text and images; emoji strip suggestions on; | feature/keyboard-ui |
 
 ## Editing, clipboard, emoji, layout (Phase 4)
 
-Source: PHASE4.md decision and feedback tables (FRn-m = feedback round n, row m).
+Source: archive/PHASE4.md decision and feedback tables (FRn-m = feedback round n, row m).
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
@@ -67,7 +67,7 @@ Source: PHASE4.md decision and feedback tables (FRn-m = feedback round n, row m)
 
 ## Swipe typing (Phase 5)
 
-Source: PHASE5.md decisions.
+Source: archive/PHASE5.md decisions.
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
@@ -82,7 +82,7 @@ Source: PHASE5.md decisions.
 
 ## Voice typing (Phase 6)
 
-Source: PHASE6.md decisions.
+Source: archive/PHASE6.md decisions.
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
@@ -94,7 +94,7 @@ Source: PHASE6.md decisions.
 
 ## Neural and plugin engines (Phase 7)
 
-Source: PHASE7.md decisions.
+Source: archive/PHASE7.md decisions.
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
@@ -105,7 +105,7 @@ Source: PHASE7.md decisions.
 
 ## UI/UX customization (Phase 8)
 
-Source: PHASE8.md decisions.
+Source: archive/PHASE8.md decisions.
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
@@ -118,7 +118,7 @@ Source: PHASE8.md decisions.
 
 ## Hardening (Phase 9)
 
-Source: PHASE9.md decisions.
+Source: archive/PHASE9.md decisions.
 
 | Id | Date | Decision | Where |
 |---|---|---|---|
