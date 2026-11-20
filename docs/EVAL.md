@@ -373,8 +373,10 @@ tools/data/fetch-swipe.sh
 - **Results:** every swipe, and separately the swipes whose target is in the dictionary. A
   dictionary-bound decoder cannot return the other words at all, so the second number is the
   one a better decoder can move. Output goes to `<out>/swipe-real/`.
-- **Caveat:** some targets lost their apostrophe in the source sentences ("Ive"); "I've" then
-  counts as a miss.
+- **Caveats:** some targets lost their apostrophe in the source sentences ("Ive"); "I've" then
+  counts as a miss. No rows are filtered beyond FUTO's own validity checks on swipe-1: the 289
+  test rows flagged `potentially_invalid_sentence` and the dataset's `distance` field are ignored,
+  so every decoder is scored on the same rows.
 
 **SHARK² on real swipes** (test split, 2026-11-19, default config; 48,355 swipes, 759 taps and 856
 unswipeable words skipped; desktop latency):
