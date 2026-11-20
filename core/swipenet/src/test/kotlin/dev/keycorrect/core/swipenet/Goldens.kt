@@ -52,24 +52,27 @@ object Goldens {
     // needs no JSON library.
     private fun parse(json: String): List<GoldenCase> {
         val body = json.substringAfter("\"cases\"")
-        return OBJECT.findAll(body).map { obj ->
-            val fields = FIELD.findAll(obj.value).associate { it.groupValues[1] to it.groupValues[2] }
-            fun str(key: String) = fields.getValue(key).trim('"')
-            fun floats(key: String) = floatsOf(str(key))
-            GoldenCase(
-                name = str("name"),
-                chars = str("chars"),
-                x = floats("x"),
-                y = floats("y"),
-                t = floats("t"),
-                features = floats("features"),
-                keys = floats("keys"),
-                keyCount = str("keyCount").toInt(),
-                logEmissions = floats("logEmissions"),
-                coefficients = floats("coefficients"),
-                lambda = floats("lambda"),
-            )
-        }.toList()
+        return OBJECT.findAll(body)
+            .map { obj ->
+                val fields =
+                    FIELD.findAll(obj.value).associate { it.groupValues[1] to it.groupValues[2] }
+                fun str(key: String) = fields.getValue(key).trim('"')
+                fun floats(key: String) = floatsOf(str(key))
+                GoldenCase(
+                    name = str("name"),
+                    chars = str("chars"),
+                    x = floats("x"),
+                    y = floats("y"),
+                    t = floats("t"),
+                    features = floats("features"),
+                    keys = floats("keys"),
+                    keyCount = str("keyCount").toInt(),
+                    logEmissions = floats("logEmissions"),
+                    coefficients = floats("coefficients"),
+                    lambda = floats("lambda"),
+                )
+            }
+            .toList()
     }
 
     private fun floatsOf(b64: String): FloatArray {

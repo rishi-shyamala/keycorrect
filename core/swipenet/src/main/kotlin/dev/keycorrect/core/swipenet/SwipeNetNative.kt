@@ -16,7 +16,13 @@ interface SwipeNetBackend {
      * (non-zero = real key). Writes log emissions, coefficients and lambda, in that order, into
      * [out] ([SwipeEmissions.SIZE] floats). False on any error.
      */
-    fun run(handle: Long, features: FloatArray, keys: FloatArray, mask: ByteArray, out: FloatArray): Boolean
+    fun run(
+        handle: Long,
+        features: FloatArray,
+        keys: FloatArray,
+        mask: ByteArray,
+        out: FloatArray,
+    ): Boolean
 
     fun close(handle: Long)
 }

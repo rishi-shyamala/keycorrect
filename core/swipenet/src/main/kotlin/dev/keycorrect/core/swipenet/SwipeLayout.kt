@@ -20,8 +20,8 @@ data class SwipeFrame(val left: Float, val top: Float, val right: Float, val bot
 }
 
 /**
- * The keys handed to the encoder: up to [MAX_KEYS] keys with their centres in the [frame].
- * [chars] gives the character of each slot; slot `i` is emission class `i` (the blank is
+ * The keys handed to the encoder: up to [MAX_KEYS] keys with their centres in the [frame]. [chars]
+ * gives the character of each slot; slot `i` is emission class `i` (the blank is
  * [SwipeEmissions.BLANK]).
  */
 class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pair<Float, Float>>) {

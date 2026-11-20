@@ -242,4 +242,36 @@ class SignedPackLocatorTest {
         assertThat(NEURAL_PACK_SPEC.libraries).containsExactly("libkcllama.so")
         assertThat(NEURAL_PACK_SPEC.assets).containsExactly("models/default.gguf")
     }
+
+    @Test
+    fun theSwipeSpecNamesTheSwipePackAndRequiresItsLicence() {
+        assertThat(SWIPE_PACK_SPEC.packageName).isEqualTo("dev.keycorrect.swipe")
+        assertThat(SWIPE_PACK_SPEC.libraries).containsExactly("libkcswipenet.so")
+        assertThat(SWIPE_PACK_SPEC.assets)
+            .containsExactly("swipenet/model_int8.pte", "swipenet/LICENSE.md")
+    }
+
+    @Test
+    fun aSwipePackSignedByAnotherKeyIsRefusedAndItsLibraryNeverLoaded() {
+        val swipeLibs = tmp.newFolder("swipe-lib")
+        File(swipeLibs, "libkcswipenet.so").writeText("s")
+        val swipeSource = FakeSource(swipeLibs.path)
+        val swipeLoaded = mutableListOf<String>()
+        val swipe = SignedPackLocator(SWIPE_PACK_SPEC, swipeSource) { swipeLoaded += it }
+
+        swipeSource.packSigners = setOf("bb")
+        assertThat((swipe.locate() as PackResult.Unavailable).problem)
+            .isEqualTo(PackProblem.SignatureMismatch)
+        swipeSource.packSigners = null // unreadable
+        assertThat((swipe.locate() as PackResult.Unavailable).problem)
+            .isEqualTo(PackProblem.SignatureMismatch)
+        swipeSource.packSigners = setOf("aa", "bb") // a superset is not the keyboard's set either
+        assertThat((swipe.locate() as PackResult.Unavailable).problem)
+            .isEqualTo(PackProblem.SignatureMismatch)
+        assertThat(swipeLoaded).isEmpty()
+
+        swipeSource.packSigners = setOf("aa")
+        assertThat(swipe.locate()).isInstanceOf(PackResult.Available::class.java)
+        assertThat(swipeLoaded.map { File(it).name }).containsExactly("libkcswipenet.so")
+    }
 }

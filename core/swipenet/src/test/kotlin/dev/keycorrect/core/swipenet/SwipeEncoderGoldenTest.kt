@@ -46,7 +46,12 @@ class SwipeEncoderGoldenTest {
     @Test
     fun theModelCardsComputerSwipeDecodesToComputer() {
         for (case in Goldens.cases.filter { it.name.startsWith("computer") }) {
-            val e = encoder.emissions(SwipeResampler.features(case.x, case.y, case.t), case.keys, case.mask)!!
+            val e =
+                encoder.emissions(
+                    SwipeResampler.features(case.x, case.y, case.t),
+                    case.keys,
+                    case.mask,
+                )!!
             assertThat(case.greedy(e.logEmissions)).isEqualTo("computer")
         }
     }

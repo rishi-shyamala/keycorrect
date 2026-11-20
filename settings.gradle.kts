@@ -73,6 +73,8 @@ include(":neuralpack")
 
 include(":sampleplugin")
 
+include(":swipepack")
+
 include(":tools:dictbuild")
 
 include(":tools:emojibuild")

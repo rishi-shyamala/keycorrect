@@ -31,7 +31,11 @@ class SwipeEmissions(
         internal fun split(out: FloatArray): SwipeEmissions {
             val e = STEPS * CLASSES
             val c = e + STEPS * COEFFICIENTS
-            return SwipeEmissions(out.copyOfRange(0, e), out.copyOfRange(e, c), out.copyOfRange(c, SIZE))
+            return SwipeEmissions(
+                out.copyOfRange(0, e),
+                out.copyOfRange(e, c),
+                out.copyOfRange(c, SIZE),
+            )
         }
     }
 }
@@ -41,11 +45,11 @@ class SwipeNetException(message: String) : Exception(message)
 
 /**
  * FUTO Swipe's encoder, loaded from a `.pte` (docs/PHASE10.md, 10a-2). [emissions] may be called
- * from any thread; calls are serialised. The native library must be loaded first ([SwipeNetLibrary],
- * or the swipe pack's locator on Android).
+ * from any thread; calls are serialised. The native library must be loaded first
+ * ([SwipeNetLibrary], or the swipe pack's locator on Android).
  */
-class SwipeEncoder private constructor(private val backend: SwipeNetBackend, private var handle: Long) :
-    Closeable {
+class SwipeEncoder
+private constructor(private val backend: SwipeNetBackend, private var handle: Long) : Closeable {
     /**
      * Runs the encoder on [features] (from [SwipeResampler] or [SwipeLayout.features]) against the
      * [layout]'s keys. Null when the encoder is closed or the native call fails.
@@ -53,7 +57,9 @@ class SwipeEncoder private constructor(private val backend: SwipeNetBackend, pri
     fun emissions(features: FloatArray, layout: SwipeLayout): SwipeEmissions? =
         emissions(features, layout.keys, layout.mask)
 
-    /** The same with the raw `layout_keys` (`64 * 2` floats) and `layout_mask` (64 bytes) inputs. */
+    /**
+     * The same with the raw `layout_keys` (`64 * 2` floats) and `layout_mask` (64 bytes) inputs.
+     */
     @Synchronized
     fun emissions(features: FloatArray, keys: FloatArray, mask: ByteArray): SwipeEmissions? {
         require(features.size == 2 * SwipeResampler.POINTS) { "features: ${features.size}" }
@@ -61,7 +67,8 @@ class SwipeEncoder private constructor(private val backend: SwipeNetBackend, pri
         require(mask.size == SwipeLayout.MAX_KEYS) { "mask: ${mask.size}" }
         if (handle == 0L) return null
         val out = FloatArray(SwipeEmissions.SIZE)
-        return if (backend.run(handle, features, keys, mask, out)) SwipeEmissions.split(out) else null
+        return if (backend.run(handle, features, keys, mask, out)) SwipeEmissions.split(out)
+        else null
     }
 
     @Synchronized
@@ -76,7 +83,11 @@ class SwipeEncoder private constructor(private val backend: SwipeNetBackend, pri
          * [threads] sizes XNNPACK's process-wide pool; the encoder is small, so one is the default.
          */
         @Throws(SwipeNetException::class)
-        fun open(model: ByteArray, threads: Int = 1, backend: SwipeNetBackend = SwipeNetNative): SwipeEncoder {
+        fun open(
+            model: ByteArray,
+            threads: Int = 1,
+            backend: SwipeNetBackend = SwipeNetNative,
+        ): SwipeEncoder {
             val handle = backend.open(model, threads)
             if (handle == 0L) throw SwipeNetException("the encoder could not be loaded")
             return SwipeEncoder(backend, handle)

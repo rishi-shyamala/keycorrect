@@ -156,6 +156,10 @@ tasks.withType<Test>().configureEach {
         "kc.manifest.neuralpack",
         project(":neuralpack").file("src/main/AndroidManifest.xml").path,
     )
+    systemProperty(
+        "kc.manifest.swipepack",
+        project(":swipepack").file("src/main/AndroidManifest.xml").path,
+    )
 }
 
 // The baseline-profile plugin's build types are release-like and release-signed. They get their own

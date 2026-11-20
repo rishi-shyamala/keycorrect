@@ -37,12 +37,22 @@ object SwipeResampler {
      */
     internal fun to60Hz(x: FloatArray, y: FloatArray, t: FloatArray): Pair<FloatArray, FloatArray> {
         val n = x.size
-        if (n == 0) return FloatArray(0) to FloatArray(0)
-        if (n == 1) return floatArrayOf(x[0], x[0]) to floatArrayOf(y[0], y[0])
+        return when {
+            n == 0 -> FloatArray(0) to FloatArray(0)
+            n == 1 -> floatArrayOf(x[0], x[0]) to floatArrayOf(y[0], y[0])
+            t[n - 1] - t[0] <= EPS -> floatArrayOf(x[0], x[n - 1]) to floatArrayOf(y[0], y[n - 1])
+            else -> uniformInTime(x, y, t)
+        }
+    }
+
+    private fun uniformInTime(
+        x: FloatArray,
+        y: FloatArray,
+        t: FloatArray,
+    ): Pair<FloatArray, FloatArray> {
+        val n = x.size
         val t0 = t[0]
         val duration = t[n - 1] - t0
-        if (duration <= EPS) return floatArrayOf(x[0], x[n - 1]) to floatArrayOf(y[0], y[n - 1])
-
         // std::round rounds halves away from zero; the duration is positive, so roundToLong agrees.
         val count = maxOf(2L, (duration / INTERVAL_MS).roundToLong() + 1).toInt()
         val outX = FloatArray(count)
@@ -74,28 +84,23 @@ object SwipeResampler {
     }
 
     /**
-     * Resamples by index (the input is evenly spaced in time) to [POINTS] points, clamped to [0, 1],
-     * as `[x0..x63, y0..y63]`.
+     * Resamples by index (the input is evenly spaced in time) to [POINTS] points, clamped to
+     * [0, 1], as `[x0..x63, y0..y63]`; all zeros without points. (The original special-cases one
+     * point; the loop below gives the same result for it.)
      */
     internal fun toPoints(x: FloatArray, y: FloatArray): FloatArray {
         val n = x.size
         val out = FloatArray(2 * POINTS)
-        when (n) {
-            0 -> return out
-            1 -> {
-                out.fill(x[0].coerceIn(0f, 1f), 0, POINTS)
-                out.fill(y[0].coerceIn(0f, 1f), POINTS, 2 * POINTS)
-                return out
+        if (n > 0) {
+            for (i in 0 until POINTS) {
+                val fracPos = i.toFloat() / (POINTS - 1).toFloat()
+                val idx = fracPos * (n - 1).toFloat()
+                val idx0 = idx.toInt()
+                val idx1 = minOf(idx0 + 1, n - 1)
+                val frac = idx - idx0.toFloat()
+                out[i] = lerp(x[idx0], x[idx1], frac).coerceIn(0f, 1f)
+                out[POINTS + i] = lerp(y[idx0], y[idx1], frac).coerceIn(0f, 1f)
             }
-        }
-        for (i in 0 until POINTS) {
-            val fracPos = i.toFloat() / (POINTS - 1).toFloat()
-            val idx = fracPos * (n - 1).toFloat()
-            val idx0 = idx.toInt()
-            val idx1 = minOf(idx0 + 1, n - 1)
-            val frac = idx - idx0.toFloat()
-            out[i] = lerp(x[idx0], x[idx1], frac).coerceIn(0f, 1f)
-            out[POINTS + i] = lerp(y[idx0], y[idx1], frac).coerceIn(0f, 1f)
         }
         return out
     }

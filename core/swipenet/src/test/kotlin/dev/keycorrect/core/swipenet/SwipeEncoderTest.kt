@@ -15,7 +15,13 @@ class SwipeEncoderTest {
             return handle
         }
 
-        override fun run(handle: Long, features: FloatArray, keys: FloatArray, mask: ByteArray, out: FloatArray): Boolean {
+        override fun run(
+            handle: Long,
+            features: FloatArray,
+            keys: FloatArray,
+            mask: ByteArray,
+            out: FloatArray,
+        ): Boolean {
             for (i in out.indices) out[i] = i.toFloat()
             return ok
         }

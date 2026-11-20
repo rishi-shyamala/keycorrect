@@ -25,8 +25,10 @@ class SwipeLayoutTest {
     fun ourQwertyLandsInFutosFrame() {
         val layout = SwipeLayout.of(qwerty())!!
         assertThat(layout.chars.joinToString("")).isEqualTo("qwertyuiopasdfghjklzxcvbnm")
-        fun centre(c: Char) = layout.chars.indexOf(c).let { layout.keys[2 * it] to layout.keys[2 * it + 1] }
-        // The model card's QWERTY: q (0.05, 0.167), a (0.10, 0.5), z (0.20, 0.833), m (0.80, 0.833).
+        fun centre(c: Char) =
+            layout.chars.indexOf(c).let { layout.keys[2 * it] to layout.keys[2 * it + 1] }
+        // The model card's QWERTY: q (0.05, 0.167), a (0.10, 0.5), z (0.20, 0.833), m (0.80,
+        // 0.833).
         for ((c, x, y) in
             listOf(
                 Triple('q', 0.05f, 1 / 6f),
@@ -70,14 +72,24 @@ class SwipeLayoutTest {
         assertThat(layout.frame.y(q.top)).isWithin(1e-6f).of(0f)
         // A touch on the space bar is below the letters: clamped to the bottom edge by the
         // resampler.
-        val f = layout.features(floatArrayOf(q.centerX, q.centerX), floatArrayOf(q.centerY, 2000f), floatArrayOf(0f, 100f))
+        val f =
+            layout.features(
+                floatArrayOf(q.centerX, q.centerX),
+                floatArrayOf(q.centerY, 2000f),
+                floatArrayOf(0f, 100f),
+            )
         assertThat(f[SwipeResampler.POINTS]).isWithin(1e-5f).of(1 / 6f)
         assertThat(f[2 * SwipeResampler.POINTS - 1]).isEqualTo(1f)
     }
 
     @Test
     fun paddingAndLimits() {
-        val small = SwipeLayout(SwipeFrame(0f, 0f, 1f, 1f), listOf('a', 'b'), listOf(0.2f to 0.3f, 0.8f to 0.9f))
+        val small =
+            SwipeLayout(
+                SwipeFrame(0f, 0f, 1f, 1f),
+                listOf('a', 'b'),
+                listOf(0.2f to 0.3f, 0.8f to 0.9f),
+            )
         assertThat(small.keys.take(4)).containsExactly(0.2f, 0.3f, 0.8f, 0.9f).inOrder()
         assertThat(small.keys.drop(4).all { it == 0f }).isTrue()
         assertThat(small.mask.count { it == 1.toByte() }).isEqualTo(2)
