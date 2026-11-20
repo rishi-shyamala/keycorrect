@@ -29,6 +29,7 @@ About > Open-source licences & data.
 | Simple English Wikipedia `pages-articles` dump | formal-text n-gram counts | dump `20261001` | CC BY-SA 4.0 (also GFDL; we use CC BY-SA 4.0) |
 | Tatoeba `eng_sentences.tsv` | conversational n-gram counts, held-out eval set | rolling export of 2026-10-03, downloaded 2026-10-09 | CC BY 2.0 FR |
 | English Wikipedia "Lists of common misspellings/For machines" | **evaluation only** (`--mode misspell`); never shipped, not in the dictionary or language model | revision `1199637275` (2024-01-27) | CC BY-SA 4.0 |
+| swipe.futo.org dataset (FUTO) | **evaluation only** (`--mode swipe --real`): recorded swipes | Hugging Face commit `d71bf5f` (2026-06-25) | MIT |
 
 ## 1. AOSP LatinIME English wordlist
 
@@ -131,6 +132,22 @@ counts. Wikipedia counts for these names are unchanged; pass `--tatoeba-ignore-n
   The harness keeps entries whose misspelling is alphabetic (apostrophes allowed), is not itself a
   word of the shipped dictionary, and has at least one correction that is a single word the
   dictionary knows.
+
+## 5. swipe.futo.org recorded swipes (evaluation only)
+
+- **Files:** the swipe-1 `dev.jsonl` (304 MB) and `test.jsonl` (270 MB), `LICENSE`, `README.md`,
+  `swipe-5/README.md` and `swipe-5/layouts/qwerty.json` from
+  <https://huggingface.co/datasets/futo-org/swipe.futo.org> at commit
+  `d71bf5fd7f45b3e7c2ed2d76a21b0dbd3b4ba566`, fetched by `tools/data/fetch-swipe.sh` into the
+  git-ignored `data/raw/swipe/` and checked against `tools/data/swipe-sources.sha256` (the two
+  splits' SHA-256 equal their upstream LFS object ids). The 5.2 GB train split is not fetched.
+- **Licence:** MIT (Copyright 2025 FUTO). Volunteers swiped Wikipedia sentences from Mozilla Common
+  Voice on the swipe.futo.org site and agreed to public release. The data is used only as eval
+  input; nothing from it ships in the app.
+- **Format:** one swipe per line: the target `word` (the raw sentence token), `sentence`,
+  `word_idx`, `canvas_width`/`canvas_height`, `orientation`, `distance`, and `data`, the touch
+  points `{t, x, y}` with t in epoch milliseconds and x, y normalised to the three letter rows of
+  the collection keyboard (`qwerty.json`). See EVAL.md, "Real swipes".
 
 ## Pipeline output (`data/processed/`)
 

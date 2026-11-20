@@ -30,12 +30,13 @@ Copy N-3 to N-5 into DECISIONS.md once #30 (which adds N-1 and N-2) is merged.
 
 ## Parts (one PR each, against `main`)
 
-### 10a-1. Real-swipe eval (no model yet)
+### 10a-1. Real-swipe eval (no model yet) (done 2026-11-19)
 - `tools/data/fetch-swipe.sh` downloads the `swipe-1` dev and test splits (and the layouts) into `data/raw/swipe/`, pinned to commit `d71bf5f`, with SHA-256 in `tools/data/swipe-sources.sha256`. The data is git-ignored, as with the other fetch scripts, and documented in DATA_SOURCES.md.
 - Recover the collection keyboard's geometry: from `swipe-5/layouts/qwerty.json` if it covers the swipe-1 site, otherwise from the canvas aspect ratio and the paper.
 - Map each swipe's points onto our QWERTY layout geometry, in key-width units.
 - `eval --mode swipe --real <split>` reports top-1, top-3, wrong commits and latency for SHARK² on real swipes, using the same metrics as the synthetic eval.
 - **Exit:** the SHARK² baseline on real swipes, recorded in EVAL.md. If it is already close to the encoder's published accuracy, stop here and report back before building the rest.
+- **Result:** SHARK² gets 81.2% top-1 on 48,355 real test swipes, and 84.0% top-1 / 91.9% top-3 on dictionary words. Long words are weakest (72-78%). The mapping residual is 0.001 key widths, so the two QWERTYs line up. There is clear headroom, so the plan continues with 10a-2.
 
 ### 10a-2. Runtime and pack
 - A new `:swipepack` application module, `dev.keycorrect.swipe`, like `:voicepack`: no code, no permissions, signed with the app's key. It holds the ExecuTorch runtime (built with the NDK, or the prebuilt AAR's `.so` if its licence and size fit), `model_int8.pte`, and the FUTO licence text. It stays separate from the 141 MB neural pack, so swipe users don't need the LLM.
@@ -59,7 +60,7 @@ Copy N-3 to N-5 into DECISIONS.md once #30 (which adds N-1 and N-2) is merged.
 - **LoRA finetuning:** a long-term stretch goal (N-1).
 
 ## Risks
-- The dataset's points may not map cleanly onto our layout (different key pitch or row offsets). 10a-1 measures this before anything else depends on it.
+- ~~The dataset's points may not map cleanly onto our layout.~~ Measured in 10a-1: the affine fit's residual is 0.001 key widths.
 - ExecuTorch's runtime size, and building it with the NDK for arm64-v8a and x86_64.
 - The encoder's input normalisation must match FUTO's exactly. The model card and FUTO's library are the reference, and 10a-2's exit test checks it.
 - Licence compliance is a release requirement: the notice and the licence copy, in every build that ships the pack.

@@ -344,6 +344,50 @@ word; independent of what the engine returns):
 (p50/p95/p99/max; a 30-sentence untimed warm-up first), and a breakdown by word
 length. The latency is `decodeGestureNow` only, not the key-centre generation.
 
+### Real swipes (`--real FILE`)
+
+Phase 10 (docs/PHASE10.md): recorded human swipes instead of synthetic ones, from the
+swipe.futo.org dataset (MIT; `tools/data/fetch-swipe.sh`, see DATA_SOURCES.md). The synthetic
+generator follows the same model of a swipe that SHARK² decodes, so only recorded swipes show how
+the decoder does on real fingers.
+
+```
+tools/data/fetch-swipe.sh
+./gradlew :tools:eval:run --args="--mode swipe --real data/raw/swipe/test.jsonl"
+```
+
+| flag | meaning |
+|---|---|
+| `--real FILE` | a swipe-1 JSON Lines split (`test.jsonl` for results, `dev.jsonl` for tuning) |
+| `--real-layout FILE` | the dataset's QWERTY layout (default `data/raw/swipe/swipe-5/layouts/qwerty.json`) |
+| `--real-limit N` | rows to read, in file order (default all) |
+
+- **Mapping:** the dataset stores points normalised to its three letter rows. A least-squares
+  affine map from its 26 key centres onto the `EvalKeyboard` letter keys transforms every point;
+  the report prints the fit's residual (0.001 key widths: the two QWERTYs line up).
+- **Words:** `word` is the sentence token, so surrounding punctuation is trimmed ("Atri," is
+  "Atri"; digits stay, so "4th" is skipped). Taps (one point), one-letter words and words with
+  letters off the layer are skipped and counted, as in synthetic mode.
+- **Context:** the words of the swipe's sentence before it (oracle context: the dataset records
+  no committed text). Swipes are decoded in file order after a 500-swipe untimed warm-up.
+- **Results:** every swipe, and separately the swipes whose target is in the dictionary. A
+  dictionary-bound decoder cannot return the other words at all, so the second number is the
+  one a better decoder can move. Output goes to `<out>/swipe-real/`.
+- **Caveat:** some targets lost their apostrophe in the source sentences ("Ive"); "I've" then
+  counts as a miss.
+
+**SHARK² on real swipes** (test split, 2026-11-19, default config; 48,355 swipes, 759 taps and 856
+unswipeable words skipped; desktop latency):
+
+| Swipes | Top-1 | Top-3 | Wrong commits | Top-1 by length 2-3 / 4-6 / 7+ |
+|---|---|---|---|---|
+| All | 81.20% | 88.92% | 18.64% | 93.40 / 76.15 / 72.13% |
+| Dictionary words (46,768) | 83.96% | 91.94% | 15.88% | 93.66 / 78.65 / 77.75% |
+
+Real swipes score about 8 points below the clean synthetic run (89.5% at noise 0.25), close to the
+messy one (78.5% at 0.4). On dictionary words, half of the misses still have the target in the
+top 3 (a ranking problem); the other half don't (a shape problem). Long words lose the most.
+
 ## Caveats
 
 The typist is a model, not data. Real users make correlated errors (thumb

@@ -68,6 +68,12 @@ data class Options(
     val classifierConfig: Map<String, String> = emptyMap(),
     /** Swipe mode: jitter of every letter's control point, in key widths. */
     val swipeNoise: Float = 0.25f,
+    /** Swipe mode: a swipe.futo.org JSON Lines split; real swipes instead of synthetic ones. */
+    val realSwipes: Path? = null,
+    /** Swipe mode, real swipes: the dataset's QWERTY layout file. */
+    val realLayout: Path = Paths.get("data/raw/swipe/swipe-5/layouts/qwerty.json"),
+    /** Swipe mode, real swipes: rows to read (0 = all). */
+    val realLimit: Int = 0,
     /** Rerank arm: the language-model GGUF (null = no rerank arm). */
     val rerankModel: Path? = null,
     /**
@@ -173,6 +179,10 @@ data class Options(
 
               --mode swipe         synthetic swipe typing (outputs under <out>/swipe/); single-threaded; options:
               --swipe-noise F      jitter of each letter's control point in key widths (default 0.25)
+              --real FILE          real swipes from a swipe.futo.org split (tools/data/fetch-swipe.sh), e.g.
+                                   data/raw/swipe/test.jsonl; outputs under <out>/swipe-real/
+              --real-layout FILE   the dataset's QWERTY layout (default data/raw/swipe/swipe-5/layouts/qwerty.json)
+              --real-limit N       rows to read, in file order (default 0 = all)
                                    (--sentences, --split, --offset, --seed, --config, --oracle-context, --failures apply)
 
             config keys: ${ConfigOverrides.KEYS.joinToString(", ")}
@@ -302,6 +312,9 @@ data class Options(
                                 classifierConfig = o.classifierConfig + ConfigOverrides.parse(v())
                             )
                     "--swipe-noise" -> o = o.copy(swipeNoise = v().toFloat())
+                    "--real" -> o = o.copy(realSwipes = Paths.get(v()))
+                    "--real-layout" -> o = o.copy(realLayout = Paths.get(v()))
+                    "--real-limit" -> o = o.copy(realLimit = v().toInt())
                     "--tap-prob" -> o = o.copy(tapProbability = v().toFloat())
                     "--help",
                     "-h" -> o = o.copy(help = true)
