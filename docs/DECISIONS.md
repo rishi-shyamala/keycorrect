@@ -154,3 +154,4 @@ Source: user decision after the cleanup audit merged (#29).
 | Id | Date | Decision | Where |
 |---|---|---|---|
 | N-1 | 2026-11-19 | Next stages, in order: close out Phase 9 with an on-device test (the §14 budgets on the S23 Ultra, plus the security follow-ups), then Phase 10 neural swipe. On-device LoRA finetuning is a long-term stretch goal. | docs/PERF.md, docs/SECURITY.md, Phase 10 |
+| N-2 | 2026-11-19 | APK size: about 16 MB is acceptable when the size buys performance. The dictionary stays stored uncompressed (memory-mapped from the APK: no decompression, no second copy), and the published test APK drops the emulator-only x86_64 libraries (`release.sh` builds with `-Pkeycorrect.abis=arm64-v8a`); local, CI and benchmark builds keep x86_64. Supersedes the §14 "≤15 MB" APK budget. | app, tools/release |

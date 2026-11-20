@@ -5,7 +5,7 @@ setup (JDK 21, Android SDK) is in [SETUP.md](SETUP.md); daily commands are in [D
 
 ## Requirements
 
-- Android 12 or newer (minSdk 31), 64-bit ARM (arm64-v8a). x86_64 emulators also work.
+- Android 12 or newer (minSdk 31), 64-bit ARM (arm64-v8a). The published test APK is arm64 only; build it yourself for an x86_64 emulator.
 - `adb` on the computer (`/usr/bin/adb` here).
 
 ## 1. Prepare the device (once)
