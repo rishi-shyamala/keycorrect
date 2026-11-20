@@ -147,6 +147,35 @@ class SwipeEvaluator(
         return acc.result()
     }
 
+    /**
+     * Recorded swipes (see [RealSwipes]), one decode each with the swipe's own sentence as context.
+     * The first [warmup] swipes are decoded untimed and unscored. Returns the result over every
+     * swipe and over those whose target is in the dictionary.
+     */
+    fun evaluateReal(
+        swipes: List<RealSwipe>,
+        decoder: GestureDecoder,
+        warmup: Int = 0,
+        missLimit: Int = Int.MAX_VALUE,
+    ): Pair<SwipeResult, SwipeResult> {
+        for (s in swipes.take(warmup)) decoder.decode(request(s))
+        val all = Acc(missLimit)
+        val known = Acc(0)
+        swipes.forEachIndexed { i, s ->
+            val request = request(s)
+            val t0 = System.nanoTime()
+            val result = decoder.decode(request)
+            val dt = System.nanoTime() - t0
+            val top = result.candidates.take(maxCandidates).map { it.text }
+            record(all, i, s.target, top, dt)
+            if (s.inDictionary) record(known, i, s.target, top, dt)
+        }
+        return all.result() to known.result()
+    }
+
+    private fun request(s: RealSwipe) =
+        GestureRequest(TypingContext(tail(s.context)), s.gesture, keyboard.layout, maxCandidates)
+
     private class Acc(val missLimit: Int) {
         var words = 0
         var top1 = 0

@@ -1,0 +1,9 @@
+# SHA-256 of the real-swipe eval data (Phase 10) in data/raw/swipe/. Verified by
+# tools/data/fetch-swipe.sh. swipe.futo.org dataset (MIT, FUTO), Hugging Face commit
+# d71bf5fd7f45b3e7c2ed2d76a21b0dbd3b4ba566; recorded on 2026-11-20.
+60968505ce2909b45997d104b678eb42474d47174924338cd0fa652abe0fff60  LICENSE
+a201a99869afbdffded1e4fe4c8fdbe54d8f5debef77043050ea0bde8c944d40  README.md
+8d9d34ec1c12f564d02dcb69cf132ba19d45b75632a205af90d3a81290e24972  dev.jsonl
+d4e42e34ced1cae925a5ec94672bdaf48b4532598a1e39d72884f9c7b588721e  test.jsonl
+92d7eb461df9575b830a815f8e9af80dde74f6860c3ff39459150c8c8f9406f3  swipe-5/README.md
+1965ecd59c9e4bff89446bb56ff3a2d0070b16eeae4ce424ce08b06ed6864632  swipe-5/layouts/qwerty.json

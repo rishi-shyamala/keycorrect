@@ -111,7 +111,8 @@ tools/release/release.sh publish   # signed build of the clean, pushed HEAD -> p
 
 All downloads are git-ignored (`data/raw`, `data/processed`) with pinned checksums:
 `tools/data/fetch-sources.sh` (dictionary and eval corpora), `fetch-voice.sh` (speech models and
-sherpa-onnx), `fetch-neural.sh` (llama.cpp source and candidate GGUFs), `tools/llama/build-host.sh`
+sherpa-onnx), `fetch-neural.sh` (llama.cpp source and candidate GGUFs), `fetch-swipe.sh` (recorded
+swipes for the real-swipe eval), `tools/llama/build-host.sh`
 (host build of llama.cpp for eval). Licences: [DATA_SOURCES.md](DATA_SOURCES.md).
 
 ## Workflow and PR conventions
