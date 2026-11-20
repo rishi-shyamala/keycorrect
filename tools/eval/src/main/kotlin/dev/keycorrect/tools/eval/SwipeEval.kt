@@ -173,7 +173,7 @@ class SwipeEvaluator(
         return all.result() to known.result()
     }
 
-    private fun request(s: RealSwipe) =
+    internal fun request(s: RealSwipe) =
         GestureRequest(TypingContext(tail(s.context)), s.gesture, keyboard.layout, maxCandidates)
 
     private class Acc(val missLimit: Int) {

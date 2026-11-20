@@ -273,8 +273,8 @@ internal class GestureDecoder(
     }
 
     /**
-     * The channel log-likelihood of [t] (location + shape), or NaN as soon as `prior + channel`
-     * can no longer reach [bound] (early abandon; a bound of negative infinity scores in full).
+     * The channel log-likelihood of [t] (location + shape), or NaN as soon as `prior + channel` can
+     * no longer reach [bound] (early abandon; a bound of negative infinity scores in full).
      */
     @Suppress("ReturnCount") // early abandon in the hot loop
     private fun channel(t: Template, prior: Float, bound: Float): Float {

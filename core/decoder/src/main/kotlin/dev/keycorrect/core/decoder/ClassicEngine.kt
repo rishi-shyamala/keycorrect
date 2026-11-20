@@ -1,8 +1,8 @@
 package dev.keycorrect.core.decoder
 
 import dev.keycorrect.core.decoder.gesture.GestureDecoder
-import dev.keycorrect.core.decoder.gesture.GestureLayoutIndex
 import dev.keycorrect.core.decoder.gesture.GestureFusionFeatures
+import dev.keycorrect.core.decoder.gesture.GestureLayoutIndex
 import dev.keycorrect.core.decoder.gesture.GestureRescorer
 import dev.keycorrect.core.decoder.gesture.NeuralEmissions
 import dev.keycorrect.core.decoder.gesture.NeuralSearch
@@ -191,7 +191,9 @@ class ClassicEngine(
             if (request.layout.keys.isEmpty() || stale()) null
             else gestures.indexFor(request.layout)
         // The encoder also runs outside [lock]: it touches no engine state.
-        val emissions = if (index == null || stale()) null else neural.emissions(request.gesture, request.layout)
+        val emissions =
+            if (index == null || stale()) null
+            else neural.emissions(request.gesture, request.layout)
         return lock.withLock { decodeGestureLocked(request, index, emissions, stale) }
     }
 
@@ -263,8 +265,7 @@ class ClassicEngine(
         val floor = config.neural.neuralFloor
         for (i in 0 until count) {
             val key = gestures.keys[i]
-            neuralScores[i] =
-                if (key == null) floor else maxOf(neuralSearch.align(key, e), floor)
+            neuralScores[i] = if (key == null) floor else maxOf(neuralSearch.align(key, e), floor)
         }
         return count
     }

@@ -260,11 +260,11 @@ data class GestureConfig(
  * when the engine has an encoder; without one the gesture decode is SHARK² alone and these values
  * are never read. Weights were tuned on the real-swipe dev split (docs/EVAL.md, "Neural fusion").
  *
- * A candidate's fused score is
- * `channel + neuralWeight * neural + lmWeight * (lm + rightContextWeight * right)`, where `channel`
- * is SHARK²'s location + shape log-likelihood (floored at `-GestureConfig.maxChannelCost`),
- * `neural` the encoder's best-path log-likelihood of the word's keys, and `lm`/`right` the same
- * contextual language model terms SHARK² uses ([GestureConfig.rightContextWeight]).
+ * A candidate's fused score is `channel + neuralWeight * neural + lmWeight * (lm +
+ * rightContextWeight * right)`, where `channel` is SHARK²'s location + shape log-likelihood
+ * (floored at `-GestureConfig.maxChannelCost`), `neural` the encoder's best-path log-likelihood of
+ * the word's keys, and `lm`/`right` the same contextual language model terms SHARK² uses
+ * ([GestureConfig.rightContextWeight]).
  */
 data class NeuralSwipeConfig(
     /** Hypotheses kept per encoder step by the prefix beam search over the dictionary trie. */
@@ -272,9 +272,9 @@ data class NeuralSwipeConfig(
     /** Words the beam search adds to SHARK²'s shortlist (best first, skipping duplicates). */
     val beamCandidates: Int = 16,
     /**
-     * How much the intention gate scales each encoder step: a step's log-probabilities count
-     * `1 - gate + gate * lambda` times, so with 1 the steps the encoder marks as between keys
-     * (lambda near 0) are ignored and with 0 every step counts fully.
+     * How much the intention gate scales each encoder step: a step's log-probabilities count `1 -
+     * gate + gate * lambda` times, so with 1 the steps the encoder marks as between keys (lambda
+     * near 0) are ignored and with 0 every step counts fully.
      */
     val gate: Float = 0f,
     /** Weight of the neural log-likelihood in the fused score. */

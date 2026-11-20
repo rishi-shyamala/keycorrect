@@ -95,7 +95,9 @@ internal class GestureRescorer(
                         nc.neuralWeight * n[i] +
                         nc.lmWeight * lmTerm
                 }
-            trace?.add(GestureFusionFeatures(it, decoder.channel[i], n?.get(i) ?: Float.NaN, lmTerm))
+            trace?.add(
+                GestureFusionFeatures(it, decoder.channel[i], n?.get(i) ?: Float.NaN, lmTerm)
+            )
             Candidate(it, score, source)
         }
     }

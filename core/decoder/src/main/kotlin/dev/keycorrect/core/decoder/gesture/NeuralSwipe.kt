@@ -27,7 +27,9 @@ internal class KeyClasses(layout: SwipeLayout) {
     private val other = HashMap<Char, Int>()
 
     init {
-        layout.chars.forEachIndexed { i, c -> if (c.code < ASCII) ascii[c.code] = i else other[c] = i }
+        layout.chars.forEachIndexed { i, c ->
+            if (c.code < ASCII) ascii[c.code] = i else other[c] = i
+        }
     }
 
     fun of(c: Char): Int = if (c.code < ASCII) ascii[c.code] else other[c] ?: -1
@@ -115,8 +117,8 @@ internal class NeuralSwipe(
  * alignment (Viterbi, not the CTC sum): the word's keys, with apostrophes skipped and a repeated
  * key collapsed (a swipe can't show "ll"), are emitted in order, each for one or more steps, with
  * blanks before, between and after them; a step may also repeat the key just emitted.
- * - [beam] is a prefix beam search over the dictionary trie: [NeuralSwipeConfig.beamWidth]
- *   prefixes survive each step, and the best complete words are returned.
+ * - [beam] is a prefix beam search over the dictionary trie: [NeuralSwipeConfig.beamWidth] prefixes
+ *   survive each step, and the best complete words are returned.
  * - [align] scores one given word exactly (for SHARK²'s candidates the beam didn't keep).
  *
  * Not thread-safe (scratch buffers); the engine calls it under its lock. Allocation-free per step
@@ -312,8 +314,8 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
         }
 
     /**
-     * The best-alignment log-likelihood of [key] (a lowercase word) under [e], or negative
-     * infinity when a letter has no key or the word has more keys than the encoder has steps.
+     * The best-alignment log-likelihood of [key] (a lowercase word) under [e], or negative infinity
+     * when a letter has no key or the word has more keys than the encoder has steps.
      */
     fun align(key: String, e: NeuralEmissions): Float {
         var len = 0

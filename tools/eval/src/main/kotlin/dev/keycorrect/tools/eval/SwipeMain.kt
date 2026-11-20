@@ -2,6 +2,7 @@ package dev.keycorrect.tools.eval
 
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
+import dev.keycorrect.core.swipenet.SwipeEncoder
 import java.nio.file.Files
 import java.util.Locale
 
@@ -37,12 +38,13 @@ class SwipeMain(private val o: Options) {
                 "split, offset ${o.offset}, seed ${o.seed}), swipe noise ${o.swipeNoise} key " +
                 "widths, context ${if (o.oracleContext) "oracle" else "committed"}, " +
                 "${swipe.sampleIntervalMs} ms sampling, single thread\n" +
+                neuralLine() +
                 "dictionary ${o.dict.fileName} (${dictionary.wordCount} words)" +
                 (if (o.config.isNotEmpty()) "\nconfig overrides: ${o.config}" else "") +
                 "\n"
         println(header)
 
-        val engine = ClassicEngine(dictionary, baseConfig, random = kotlin.random.Random(o.seed))
+        val engine = engine()
         val evaluator =
             SwipeEvaluator(keyboard, SwipeGenerator(keyboard, swipe), o.seed, o.oracleContext)
         val result =
@@ -88,8 +90,9 @@ class SwipeMain(private val o: Options) {
         val header = realHeader(file, set)
         println(header)
 
-        val engine = ClassicEngine(dictionary, baseConfig, random = kotlin.random.Random(o.seed))
+        val engine = engine()
         val evaluator = SwipeEvaluator(keyboard, SwipeGenerator(keyboard), o.seed)
+        o.neuralDump?.let { dump(it, set, engine, evaluator) }
         val (all, known) =
             evaluator.evaluateReal(
                 set.swipes,
@@ -118,6 +121,68 @@ class SwipeMain(private val o: Options) {
         )
     }
 
+    /** The engine under test: SHARK² alone, or fused with the encoder under `--neural`. */
+    private fun engine(): ClassicEngine {
+        val encoder =
+            if (o.neural) {
+                SwipeEncoder.openDesktop(
+                    EvalMain.requireFile(
+                            o.swipenetLib,
+                            "swipenet library (tools/swipenet/build.sh host)",
+                        )
+                        .toAbsolutePath()
+                        .toString(),
+                    EvalMain.requireFile(
+                            o.swipenetModel,
+                            "swipenet model (tools/data/fetch-swipe-model.sh)",
+                        )
+                        .toFile(),
+                )
+            } else {
+                null
+            }
+        return ClassicEngine(
+            dictionary,
+            baseConfig,
+            random = kotlin.random.Random(o.seed),
+            swipeEncoder = { encoder },
+        )
+    }
+
+    private fun neuralLine(): String =
+        if (o.neural) {
+            "decoder: SHARK² fused with the neural encoder ${o.swipenetModel.fileName}\n"
+        } else {
+            ""
+        }
+
+    /**
+     * `--neural-dump`: every candidate's score parts per swipe, for tuning the fusion weights
+     * offline. Columns: swipe index, whether the target is in the dictionary, whether this
+     * candidate is the target, then SHARK²'s channel, the neural log-likelihood and the LM term.
+     */
+    private fun dump(
+        file: java.nio.file.Path,
+        set: RealSwipeSet,
+        engine: ClassicEngine,
+        evaluator: SwipeEvaluator,
+    ) {
+        Files.newBufferedWriter(file).use { w ->
+            w.write("swipe,in_dict,is_target,len,channel,neural,lm\n")
+            set.swipes.forEachIndexed { i, s ->
+                val target = s.target.replace('’', '\'').lowercase()
+                for (f in engine.gestureFusionFeatures(evaluator.request(s))) {
+                    val hit = f.text.replace('’', '\'').lowercase() == target
+                    w.write(
+                        "$i,${if (s.inDictionary) 1 else 0},${if (hit) 1 else 0}," +
+                            "${f.text.count { it.isLetter() }},${f.channel},${f.neural},${f.lm}\n"
+                    )
+                }
+            }
+        }
+        println("wrote ${file.toAbsolutePath().normalize()}")
+    }
+
     private fun realHeader(file: java.nio.file.Path, set: RealSwipeSet): String =
         "KeyCorrect real-swipe eval: ${file.fileName}, ${set.rows} rows read" +
             (if (o.realLimit > 0) " (limit ${o.realLimit})" else "") +
@@ -130,6 +195,7 @@ class SwipeMain(private val o: Options) {
                 set.map.rmsKeyWidths,
             ) +
             "context: the swipe's sentence before it (oracle); single thread\n" +
+            neuralLine() +
             "dictionary ${o.dict.fileName} (${dictionary.wordCount} words)" +
             (if (o.config.isNotEmpty()) "\nconfig overrides: ${o.config}" else "") +
             "\n"
@@ -147,6 +213,7 @@ class SwipeMain(private val o: Options) {
                 "real" to file.toString(),
                 "realLayout" to o.realLayout.toString(),
                 "realLimit" to o.realLimit,
+                "neural" to o.neural,
                 "configOverrides" to o.config,
                 "label" to o.label,
             )
@@ -171,6 +238,7 @@ class SwipeMain(private val o: Options) {
             "offset" to o.offset,
             "seed" to o.seed,
             "swipeNoise" to o.swipeNoise,
+            "neural" to o.neural,
             "oracleContext" to o.oracleContext,
             "configOverrides" to o.config,
             "label" to o.label,
