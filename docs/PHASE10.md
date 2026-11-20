@@ -5,13 +5,14 @@ by fusing a neural encoder with the SHARK² decoder. SHARK² scores 89.5% top-1 
 gestures and 78.5% on messy ones (docs/EVAL.md), but the generator follows SHARK²'s own model of a
 swipe, so its accuracy on real fingers is unknown. Measuring that comes first.
 
-## Decisions (user, 2026-11-19)
+## Decisions (user, 2026-11-19 and 2026-11-20)
 
 | # | Question | Decision |
 |---|---|---|
 | N-3 | Model source | **FUTO's encoder first, our own model later.** Ship FUTO Swipe's encoder (`model_int8.pte`, 1.0 MB, ExecuTorch) now. A model of our own, trained on the MIT-licensed swipe.futo.org data, follows as a separate part. It replaces FUTO's once it matches on the eval, which drops the attribution requirement. |
 | N-4 | Integration | **Fuse both.** The encoder's key probabilities are decoded against our dictionary and language model and merged with SHARK²'s candidates by a tuned score. SHARK² stays the decoder when the pack is missing. The fusion is kept only if it beats SHARK² on real swipes. |
 | N-5 | A new stage after this one | **Phase 11, simplification:** remove as many lines as possible without losing any feature or performance. Rework sections into their simplest form and justify every line of app code before keeping it. Recorded in PLAN §17; it gets its own plan when it starts. |
+| N-10 | Learning from swipes | **Add 10a-5, swipe learning, after 10a-3.** The encoder's weights stay fixed (on-device training is the N-1 stretch goal). Instead, learn swipe misdecodes from clear signals only, and learn a per-user path correction from accepted swipes. Keep each piece only if the eval shows a gain without new wrong commits. |
 
 Also recorded in [DECISIONS.md](DECISIONS.md).
 
@@ -54,6 +55,18 @@ Also recorded in [DECISIONS.md](DECISIONS.md).
 - A "Neural swipe" row (on when the pack is installed) in the swipe settings, from `SettingsRows.kt`. A visible "Powered by FUTO Swipe" line, with the licence text reachable from Settings → About and in THIRD_PARTY_NOTICES.md.
 - `release.sh publish` attaches the swipe pack like the others (`publish_pack`).
 - The test-build release notes explain the pack.
+
+### 10a-5. Swipe learning (N-10)
+The encoder's weights never change on the device. Swipes already teach the dictionary and the LM like typed words (word use, context, new-word promotion), and the fusion decoder uses both. This part adds the two things swipe lacks:
+- **Misdecode memory (PLAN §6 row 12, a stub today in `OutcomeClassifier`, `CommitMethod.Gesture`).** Only clear signals count, so a change of mind is not mistaken for a decoding error:
+  - **Strong:** the user taps another strip candidate right after the swipe.
+  - **Medium:** the user deletes the whole word within a few seconds and re-swipes a word that was in the first swipe's candidate list.
+  - **Ignored:** a delete followed by typing something unrelated, an edit made after the cursor moved, or a later edit.
+  - **Weak positive:** keeping the word.
+  - Evidence must repeat before it moves a ranking. It is bounded per word pair, keyed by a coarse gesture shape (the key sequence), and fades like the other learned data. Through the same privacy gates as all learning: none in password fields, incognito, no-learning fields or with learning off.
+- **Path calibration.** A small per-user correction (offset, scale and skew per axis, in key widths) fitted to the paths of accepted swipes against their words' key centres, applied before both decoders. It works like the touch model's tap offsets: bounded, slow to adapt, and reset with the learned data.
+- **Eval:** replay the real dev split as a simulated user who picks the right candidate or re-swipes after a misdecode (`--mode swipe --real --learn`), then score the held-out remainder. Report top-1, top-3 and wrong commits before and after. Tap and learn evals stay byte-identical.
+- **Exit:** each piece is kept only if it improves top-1 on the replay without increasing wrong commits; the extra decode cost stays within 10a-3's ≤30 ms p95 budget on the S23 Ultra.
 
 ### Later (not in 10a)
 - **10b, our own encoder:** trained on the `swipe-1` train split (MIT), exported to ExecuTorch, and compared on the same real test split. It replaces FUTO's when it matches, which removes the attribution. Needs a training setup (PyTorch; likely a GPU).
