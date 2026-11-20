@@ -25,6 +25,8 @@ internal class GestureDecoder(
     private val config: GestureConfig,
     /** Prior log-probability of a user word (`UserDataConfig.wordLogProb`). */
     private val userLogProb: Float,
+    /** Room after the shortlist for candidates added by [append] (the neural beam's words). */
+    extra: Int = 0,
 ) {
     private val n = config.resamplePoints
     private val words by lazy { GestureWordList(dict, config) }
@@ -52,13 +54,13 @@ internal class GestureDecoder(
 
     // Shortlist.
     private val k = config.shortlistSize
-    val keys = arrayOfNulls<String>(k)
+    val keys = arrayOfNulls<String>(k + extra)
 
     /** -1 for a dictionary-list word, else the user-lexicon index. */
-    val userIndex = IntArray(k)
+    val userIndex = IntArray(k + extra)
 
     /** Channel log-likelihood (location + shape, no prior). */
-    val channel = FloatArray(k)
+    val channel = FloatArray(k + extra)
 
     /** Shortlist ranking score: channel + unigramWeight * unigram. */
     private val rank = FloatArray(k)
@@ -66,6 +68,14 @@ internal class GestureDecoder(
         private set
 
     private var worst = Float.NEGATIVE_INFINITY
+
+    /**
+     * True after [run] if the gesture was long enough to decode (its channel can be scored by
+     * [channelOf] even when no word's ends fit the path).
+     */
+    var gestureReady = false
+        private set
+
     private var gestureLength = 0f
     private var locInv = 0f
     private var shapeInv = 0f
@@ -99,6 +109,7 @@ internal class GestureDecoder(
     ): Int {
         count = 0
         worst = Float.NEGATIVE_INFINITY
+        gestureReady = false
         return when {
             index == null -> 0
             stale() -> -1
@@ -109,8 +120,45 @@ internal class GestureDecoder(
     }
 
     /** Prepares the gesture and the per-decode tables; false if there is nothing to decode. */
-    private fun prepare(index: GestureLayoutIndex, input: GestureInput): Boolean =
-        prepareGesture(input, index.unit) && prepareTables(index)
+    private fun prepare(index: GestureLayoutIndex, input: GestureInput): Boolean {
+        gestureReady = prepareGesture(input, index.unit)
+        return gestureReady && prepareTables(index)
+    }
+
+    /**
+     * The channel log-likelihood of [key] (a lowercase word key) for the gesture of the last [run]
+     * on [index], scored in full (no pruning); negative infinity if a letter has no key. Only valid
+     * when [gestureReady].
+     */
+    fun channelOf(index: GestureLayoutIndex, key: String): Float {
+        val w = words.indexOf(key)
+        val t =
+            if (w >= 0) {
+                index.templateOf(w)
+            } else {
+                val seq = index.scratch()
+                val len = index.sequence(key, seq)
+                if (len == 0) return Float.NEGATIVE_INFINITY
+                index.templateOfSequence(seq, len)
+            }
+        return channel(t, 0f, Float.NEGATIVE_INFINITY)
+    }
+
+    /** True if [key] is one of the first [count] entries. */
+    fun contains(key: String): Boolean {
+        for (i in 0 until count) if (keys[i] == key) return true
+        return false
+    }
+
+    /** Adds a dictionary word after the shortlist (room permitting); see [channelOf]. */
+    fun append(key: String, chan: Float): Boolean {
+        if (count == keys.size) return false
+        keys[count] = key
+        userIndex[count] = -1
+        channel[count] = chan
+        count++
+        return true
+    }
 
     private fun prepareTables(index: GestureLayoutIndex): Boolean {
         val unit = index.unit
@@ -213,11 +261,23 @@ internal class GestureDecoder(
     }
 
     /** Scores [t] and offers it to the shortlist. */
-    @Suppress("ReturnCount") // early abandon in the hot loop
     private fun consider(t: Template, key: String, user: Int, unigramOrNaN: Float) {
         val uni = if (user >= 0) userLogProb else unigramOrNaN
         val prior = config.unigramWeight * uni
         val bound = maxOf(worst, prior - config.maxChannelCost)
+        val chan = channel(t, prior, bound)
+        if (chan.isNaN()) return
+        val score = prior + chan
+        if (score < bound) return
+        offer(key, user, chan, score)
+    }
+
+    /**
+     * The channel log-likelihood of [t] (location + shape), or NaN as soon as `prior + channel`
+     * can no longer reach [bound] (early abandon; a bound of negative infinity scores in full).
+     */
+    @Suppress("ReturnCount") // early abandon in the hot loop
+    private fun channel(t: Template, prior: Float, bound: Float): Float {
         val g = gesture
         val tp = t.pts
 
@@ -225,7 +285,9 @@ internal class GestureDecoder(
         var sum = 0f
         for (i in 0 until n) {
             sum += weights[i] * PathMath.dist(g[2 * i] - tp[2 * i], g[2 * i + 1] - tp[2 * i + 1])
-            if ((i and CHECK_MASK) == CHECK_MASK && prior - sum * sum * locInv < bound) return
+            if ((i and CHECK_MASK) == CHECK_MASK && prior - sum * sum * locInv < bound) {
+                return Float.NaN
+            }
         }
         val locCost = sum * sum * locInv
 
@@ -240,16 +302,13 @@ internal class GestureDecoder(
                 s += sqrt(dx * dx + dy * dy)
                 if ((i and CHECK_MASK) == CHECK_MASK) {
                     val m = s / n
-                    if (prior - locCost - m * m * shapeInv < bound) return
+                    if (prior - locCost - m * m * shapeInv < bound) return Float.NaN
                 }
             }
             val m = s / n
             shapeCost = m * m * shapeInv
         }
-        val chan = -(locCost + shapeCost)
-        val score = prior + chan
-        if (score < bound) return
-        offer(key, user, chan, score)
+        return -(locCost + shapeCost)
     }
 
     private fun offer(key: String, user: Int, chan: Float, score: Float) {

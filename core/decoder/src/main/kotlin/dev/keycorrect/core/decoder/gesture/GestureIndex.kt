@@ -51,6 +51,9 @@ internal class GestureWordList(dict: Dictionary, config: GestureConfig) {
 
     fun contains(key: String): Boolean = key in indexOfKey
 
+    /** The list index of [key], or -1. */
+    fun indexOf(key: String): Int = indexOfKey[key] ?: -1
+
     private companion object {
         const val EXCLUDED = WordFlags.POSSIBLY_OFFENSIVE or WordFlags.NOT_A_WORD
     }
