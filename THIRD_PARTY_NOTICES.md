@@ -26,3 +26,29 @@ MIT notice (ONNX Runtime, Moonshine, Silero VAD, llama.cpp and ggml): permission
 any person obtaining a copy of the software and associated files, to deal in it without
 restriction, subject to including the copyright notice and this permission notice in all copies or
 substantial portions; the software is provided "AS IS", without warranty of any kind.
+
+## Neural swipe (Phase 10)
+
+The first row is compiled into the keyboard's code; the rest ship only in the optional **swipe
+pack** APK (`dev.keycorrect.swipe`), which the keyboard loads at run time. Sources are pinned by
+`tools/data/fetch-swipe-model.sh`.
+
+| Component | Used for | Licence | Copyright |
+|---|---|---|---|
+| FUTO swipe-library, input resampler (`src/resampler.cpp` at commit `e8ade0e0`), ported to Kotlin in `core/swipenet/.../SwipeResampler.kt` (see its header) | Preparing a gesture for the encoder exactly as it was trained | GPL-3.0, https://gitlab.futo.org/keyboard/swipe-library/-/blob/main/LICENSE | FUTO |
+| FUTO Swipe encoder `honorable_sturgeon/model_int8.pte`, unmodified (`swipenet/model_int8.pte`, swipe pack; the licence text ships beside it as `swipenet/LICENSE.md`) | Turning a swipe into per-key probabilities | FUTO Model Weights License 1.0, https://huggingface.co/futo-org/futo-swipe/blob/main/LICENSE.md | FUTO Holdings, Inc. |
+| ExecuTorch v1.5.1, compiled into `libkcswipenet.so` (swipe pack) | Runs the encoder | BSD-3-Clause, https://github.com/pytorch/executorch/blob/main/LICENSE | Meta Platforms, Inc. and affiliates |
+| XNNPACK (ExecuTorch's pinned commit), in `libkcswipenet.so` | Neural-network kernels | BSD-3-Clause, https://github.com/google/XNNPACK/blob/master/LICENSE | Facebook, Inc. and affiliates; Google LLC |
+| cpuinfo and pthreadpool, in `libkcswipenet.so` | CPU feature detection, thread pool | BSD-2-Clause | Facebook Inc.; Google LLC; Georgia Institute of Technology; Marat Dukhan |
+| FP16 and FXdiv (headers), in `libkcswipenet.so` | Half-precision conversion, fast division | MIT | Facebook Inc.; Georgia Institute of Technology; Marat Dukhan |
+| FlatBuffers (headers), in `libkcswipenet.so` | Reading the `.pte` program format | Apache-2.0 | Google Inc. |
+
+FUTO Swipe terms: the weights may be used and redistributed for any purpose provided users see a
+notice that the product is powered by "FUTO Swipe" (shown in Settings once neural swipe is
+switched on; Phase 10a-4) and every redistribution carries a copy of the terms (the pack does).
+
+BSD notice (ExecuTorch, XNNPACK, cpuinfo, pthreadpool): redistribution and use in source and binary
+forms, with or without modification, are permitted provided that the copyright notice, this list
+of conditions and the disclaimer are retained; the software is provided "AS IS", without warranty
+of any kind, and the names of the copyright holders may not be used to endorse derived products.
+FP16 and FXdiv are under the MIT notice above; FlatBuffers under the Apache-2.0 notice above.
