@@ -88,8 +88,10 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                     phraseGenerator = neuralHost,
                     phrasesEnabled = { settingsFlow.value.neuralPhrases },
                 ),
+            swipeEncoder = appContainer.swipeNetHost::encoder,
         )
     }
+
     private val predictionHost by predictionHostLazy
 
     private val controller: KeyboardController by lazy {

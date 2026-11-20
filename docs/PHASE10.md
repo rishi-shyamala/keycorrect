@@ -22,6 +22,8 @@ swipe, so its accuracy on real fingers is unknown. Measuring that comes first.
 | N-8 | Reference for the exit test | **The official `executorch==1.5.1` pip wheel**, run once in a scratch venv outside the repo; only the small golden file is committed. |
 | N-9 | Working ahead | Phase 10 parts may be developed on local branches while the previous PR awaits merge, then rebased onto main before their own PR (still never stacked). |
 | N-10 | Learning from swipes | **Add 10a-5, swipe learning, after 10a-3.** The encoder's weights stay fixed (on-device training is the N-1 stretch goal). Instead, learn swipe misdecodes from clear signals only, and learn a per-user path correction from accepted swipes. Keep each piece only if the eval shows a gain without new wrong commits. |
+| N-11 | Intention gate | **The encoder's gate (lambda) stays as a tunable setting, default 0 (off),** because every gate > 0 lost accuracy on dev. |
+| N-12 | Loading the swipe pack | **It loads lazily on the first swipe.** A missing pack is looked for again at most every 60 s on a swipe; any other failure disables neural swipe until the process restarts. |
 
 All of these are also recorded in [DECISIONS.md](DECISIONS.md).
 
@@ -66,6 +68,12 @@ All of these are also recorded in [DECISIONS.md](DECISIONS.md).
 - Merge with SHARK²'s top candidates: a weighted sum of the neural log-likelihood, the SHARK² score and the LM, with the weights tuned on the dev split only.
 - Gestures with no encoder (pack missing, a layout with more than 64 keys, or a load failure) fall back to SHARK² alone.
 - **Exit:** a better top-1 than SHARK² on the real test split; no regression beyond noise on the synthetic swipe eval; tap eval byte-identical; decode on lift ≤30 ms p95 on the S23 Ultra (SHARK² alone is ~1.1 ms).
+- **Progress (2026-11-20):** built as planned (details and tuning in EVAL.md, "Neural fusion").
+  - `ClassicEngine` takes the encoder as an optional provider. `NeuralSwipe` runs the encoder on the decoder thread, outside the engine lock. `NeuralSearch` runs a best-path prefix beam search over the dictionary trie (32 prefixes per step; blank = class 64; a repeated key and apostrophes are free edges). Its 16 best words join SHARK²'s shortlist, and every word is ranked by `channel + 0.8 * neural + 1.0 * LM + 2.0 * letters`. The weights were tuned on dev.jsonl only.
+  - The intention gate is implemented (`NeuralSwipeConfig.gate`), but on dev every non-zero setting lost accuracy (0.25: -0.07 points, 1: -14.5). The encoder's lambda is about 1 minus its blank probability, so the default is 0.
+  - In the keyboard, one `SwipeNetHost` per process (in `AppContainer`) opens the swipe pack through `SwipePackLoader` on the IO dispatcher, triggered by the first swipe. A pack that isn't installed is looked for again after a minute. Any other failure is final for the process. The manifest's `<queries>` lists `dev.keycorrect.swipe`. There is no UI yet (10a-4).
+  - Fallback: with no encoder, a failed load, a layout `SwipeLayout.of` refuses, or an encoder error, the decode is SHARK² alone. Its output is byte-identical (`NeuralFusionTest`; the real dev and synthetic evals diff clean against the previous decoder).
+  - **Exit results.** Real test split: top-1 81.20% → **91.11%**, top-3 88.92% → 94.78%, wrong commits 18.64% → 8.81%. Synthetic: 89.53% → 94.28% (noise 0.25) and 78.53% → 83.85% (0.4). The tap eval is byte-identical. Decode on lift on the desktop: p50/p95 0.97/2.01 ms (SHARK² 0.21/1.35). The emulator numbers are in PERF.md. On the S23 Ultra (`SwipeNetBenchmark`, 50 runs) a fused decode on lift takes 2.86 ms median, 2.98 ms in the slowest run (SHARK² alone 1.19 ms), against the ≤30 ms target. Previews go out at most every 50 ms and cost about the same as a decode on lift (the encoder always sees 64 resampled points), so a swipe keeps the decoder thread about 6% busy.
 
 ### 10a-4. Settings, attribution, release
 - A "Neural swipe" row (on when the pack is installed) in the swipe settings, from `SettingsRows.kt`. A visible "Powered by FUTO Swipe" line, with the licence text reachable from Settings → About and in THIRD_PARTY_NOTICES.md.

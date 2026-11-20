@@ -390,6 +390,95 @@ Real swipes score about 8 points below the clean synthetic run (89.5% at noise 0
 messy one (78.5% at 0.4). On dictionary words, half of the misses still have the target in the
 top 3 (a ranking problem); the other half don't (a shape problem). Long words lose the most.
 
+### Neural fusion (`--neural`)
+
+Phase 10a-3 (docs/PHASE10.md): FUTO Swipe's encoder fused with SHARK². `--neural` works for
+synthetic and real swipes; it needs the host build of the encoder's library and the model
+(docs/DEVELOPMENT.md: `KC_SWIPENET_LIB` or `--swipenet-lib`, `--swipenet-model`).
+
+```
+./gradlew :tools:eval:run --args="--mode swipe --real data/raw/swipe/test.jsonl --neural"
+./gradlew :tools:eval:run --args="--mode swipe --sentences 2000 --seed 7 --neural"
+```
+
+**How a swipe is decoded** (`ClassicEngine.decodeGestureNow`, `gesture/NeuralSwipe.kt`):
+
+1. SHARK² builds its shortlist (32 words) as before.
+2. The encoder takes the gesture (resampled by the ported FUTO resampler, in the frame of the
+   layout's letter keys) and returns 32 steps of log-probabilities over the keys plus a blank.
+3. A prefix beam search over the dictionary trie (`NeuralSwipeConfig.beamWidth` = 32 prefixes per
+   step) decodes them. Each word's keys are emitted in order with blanks around them and a step
+   may repeat the key just emitted. Scores are best-path (Viterbi), not the CTC sum. A repeated
+   key ("ll") and apostrophes are free edges, as in SHARK²'s templates. Its 16 best words join
+   the shortlist, and SHARK²'s channel is computed for them.
+4. Every word of the union gets the encoder's exact alignment score, and the union is ranked by
+   `channel + 0.8 * neural + 1.0 * (lm + 0.3 * right) + 2.0 * letters`. Here `channel` is SHARK²'s
+   location + shape log-likelihood, floored at -40, and `neural` is floored at -60. `lm` and
+   `right` are the contextual LM terms SHARK² uses. The length bonus offsets the LM's preference
+   for short words, which the higher LM weight would otherwise make too strong.
+
+Without an encoder (no pack, a failed load, a layout the encoder can't take, an encoder error)
+the decode is SHARK² alone, and its output is byte-identical to the decoder before fusion.
+
+**Tuning (dev split only).** `--neural-dump FILE` writes every candidate's score parts. The
+weights were grid-searched offline on all 52,472 dev swipes. The top-1 plateau is flat: the
+neural weight 0.65-1.0, LM 0.8-1.2 and length bonus 1.5-2.5 are all within 0.1 point. Then
+the encoder settings were swept on the full dev split:
+
+| Setting (others default) | Dev top-1 | Dev top-3 | Desktop p50 / p95 ms |
+|---|---|---|---|
+| default (gate 0, beam 32, 16 beam words) | 91.39% | 94.69% | 0.98 / 1.99 |
+| intention gate 0.25 / 0.5 / 1 | 91.30 / 90.72 / 76.86% | 94.71 / 94.55 / 88.94% | |
+| beam width 16 / 64 | 91.25 / 91.45% | 94.48 / 94.77% | 0.76 / 1.84, 1.34 / 2.26 |
+| beam words 8 / 32 | 91.35 / 91.37% | 94.61 / 94.68% | |
+
+**Reproducing the weights.** `tools/swipenet/tune-fusion.py` (standard library only) grid-searches
+the channel floor, neural weight, LM weight, length bonus and neural floor on the dump of the dev
+split. It must never be given the test split's dump.
+
+```
+./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --neural --neural-dump /tmp/dev-dump.csv"
+python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --swipes 52472 # 405 points, about 13 minutes
+python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --quick    # a few points, seconds
+```
+
+The dump's `lm` already includes the right context (weight 0.3) and its `neural` is already
+floored at -60, so those two are not searched (the neural floor can only be raised). On all dev
+swipes the shipped weights score 91.40% top-1 and the best grid point 91.41% (neural weight 1.0,
+LM 1.2): the plateau is flat, the channel floor and neural floor change nothing, and the shipped
+point is within 0.01 points of the best (the script's 91.40% differs from the eval's 91.39% only
+in how it breaks exact ties).
+
+The intention gate (`NeuralSwipeConfig.gate`) scales each step's log-probabilities by
+`1 - gate + gate * lambda`. The encoder's lambda is close to 1 minus its blank probability, so
+the gate adds no information. Down-weighting the between-key steps also makes extra letters
+cheap there, so the gate only hurts and its default is 0. A beam of 64 gains 0.06 points for
+35% more decode time, so the beam stays at 32.
+
+**Results** (2026-11-20; test split scored once, after tuning; desktop latency, one thread):
+
+| Real swipes (test, 48,355) | Top-1 | Top-3 | Wrong commits | Top-1 by length 2-3 / 4-6 / 7+ | p50 / p95 ms |
+|---|---|---|---|---|---|
+| SHARK² | 81.20% | 88.92% | 18.64% | 93.40 / 76.15 / 72.13% | 0.21 / 1.35 |
+| **Fused** | **91.11%** | **94.78%** | **8.81%** | 96.19 / 88.88 / 87.50% | 0.97 / 2.01 |
+| SHARK², dictionary words (46,768) | 83.96% | 91.94% | 15.88% | 93.66 / 78.65 / 77.75% | |
+| **Fused, dictionary words** | **94.21%** | **98.00%** | **5.72%** | 96.46 / 91.80 / 94.32% | |
+
+On the dev split SHARK² scores 81.66% and the fusion 91.39% top-1 (94.72% on dictionary words).
+
+| Synthetic (2000 sentences, seed 7, 14,085 words) | Top-1 | Top-3 | p50 / p95 ms |
+|---|---|---|---|
+| SHARK², noise 0.25 | 89.53% | 95.53% | 0.16 / 1.10 |
+| Fused, noise 0.25 | 94.28% | 97.32% | 1.00 / 1.84 |
+| SHARK², noise 0.4 | 78.53% | 87.51% | 0.14 / 1.04 |
+| Fused, noise 0.4 | 83.85% | 91.42% | 0.98 / 1.77 |
+
+The fusion cuts wrong commits on real swipes by half. Long words gain the most: 7+ letters go from
+72% to 88% top-1. The synthetic eval improves too (the generator is not what the encoder was
+trained on), so there is no regression. The decode costs about 1 ms more on the desktop, almost
+all of it the encoder call (0.33 ms) and the beam search. Device numbers: docs/PERF.md and
+`SwipeNetBenchmark`.
+
 ## Caveats
 
 The typist is a model, not data. Real users make correlated errors (thumb

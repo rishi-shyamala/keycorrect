@@ -245,6 +245,18 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
       ART than on HotSpot.
     - Not done: incremental learning saves (they write only dirty rows; this is off the typing
       path, but each save is an allocation burst).
+  - **2026-11-20, Phase 10a-3 (neural swipe fusion).** Typing is unchanged (tap eval
+    byte-identical); swipes without the swipe pack are unchanged (SHARK² output byte-identical).
+    - Desktop real-swipe eval (test split), SHARK² → fused: p50/p95/p99 0.21/1.35/2.11 →
+      0.97/2.01/2.78 ms. The encoder call is about 0.33 ms; the rest is the beam search and the
+      larger candidate set.
+    - Emulator (x86_64 AVD `s23u`, relative only), `SwipeNetBenchmark` medians per swipe:
+      `sharkDecodeOnLift` 1.22 ms (371 allocations), `fusedDecodeOnLift` 3.28 ms (max run
+      3.61 ms; 1,030 allocations), `emissionsOneThread` 1.22 ms.
+    - S23 Ultra (release, 50 runs per benchmark): `sharkDecodeOnLift` 1.19 ms median (371
+      allocations), `fusedDecodeOnLift` 2.86 ms median, 2.98 ms slowest run (1,650 allocations),
+      `emissionsOneThread` 0.73 ms. Target fused p95 ≤ 30 ms: met. Previews (at most one per
+      50 ms, `SwipeController.PREVIEW_INTERVAL_MS`) cost about one decode each.
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.

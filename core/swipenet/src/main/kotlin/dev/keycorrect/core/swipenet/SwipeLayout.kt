@@ -63,28 +63,40 @@ class SwipeLayout(val frame: SwipeFrame, val chars: List<Char>, centres: List<Pa
          * them, or two slots typing the same letter (ignoring case), i.e. when the encoder can't be
          * used.
          */
-        fun of(geometry: KeyboardGeometry): SwipeLayout? {
-            val letters =
-                geometry.slots.filter {
-                    val text = (it.key.action as? KeyAction.Text)?.text
-                    text != null && text.length == 1 && text[0].isLetter()
+        fun of(geometry: KeyboardGeometry): SwipeLayout? =
+            of(
+                geometry.slots.mapNotNull { slot ->
+                    val text = (slot.key.action as? KeyAction.Text)?.text
+                    if (text == null || text.length != 1 || !text[0].isLetter()) null
+                    else text[0] to SwipeFrame(slot.left, slot.top, slot.right, slot.bottom)
                 }
+            )
+
+        /**
+         * The layout of [keys]: each the letter it types and its slot's bounds, in any one unit.
+         * Keys that don't type a letter are left out. Null under the same conditions as the
+         * geometry overload (no letters, more than [MAX_KEYS], or a letter typed twice).
+         */
+        fun of(keys: List<Pair<Char, SwipeFrame>>): SwipeLayout? {
+            val letters = keys.filter { it.first.isLetter() }
             // Two slots typing one letter would make the encoder's key table ambiguous.
-            val typed = letters.map { (it.key.action as KeyAction.Text).text[0].lowercaseChar() }
+            val typed = letters.map { it.first.lowercaseChar() }
             if (letters.isEmpty() || letters.size > MAX_KEYS || typed.toSet().size != typed.size) {
                 return null
             }
             val frame =
                 SwipeFrame(
-                    letters.minOf { it.left },
-                    letters.minOf { it.top },
-                    letters.maxOf { it.right },
-                    letters.maxOf { it.bottom },
+                    letters.minOf { it.second.left },
+                    letters.minOf { it.second.top },
+                    letters.maxOf { it.second.right },
+                    letters.maxOf { it.second.bottom },
                 )
             return SwipeLayout(
                 frame,
                 typed,
-                letters.map { frame.x(it.centerX) to frame.y(it.centerY) },
+                letters.map { (_, box) ->
+                    frame.x((box.left + box.right) / 2) to frame.y((box.top + box.bottom) / 2)
+                },
             )
         }
     }

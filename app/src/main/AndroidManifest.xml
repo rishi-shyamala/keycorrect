@@ -15,7 +15,7 @@
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Package visibility (Android 11+) for the speech recognizers and the voice pack. -->
+    <!-- Package visibility (Android 11+) for the speech recognizers and the voice, neural and swipe packs. -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -26,6 +26,7 @@
         </intent>
         <package android:name="dev.keycorrect.voice" />
         <package android:name="dev.keycorrect.neural" />
+        <package android:name="dev.keycorrect.swipe" />
     </queries>
 
     <application

@@ -19,5 +19,6 @@ dependencies {
     implementation(project(":core:layout"))
     implementation(project(":core:learning"))
     implementation(project(":core:llama"))
+    implementation(project(":core:swipenet"))
     implementation(libs.kotlinx.serialization.json)
 }
