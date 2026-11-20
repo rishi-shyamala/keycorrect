@@ -140,8 +140,8 @@ into every swipe decode (docs/PHASE10.md, 10a-3). Its cost on a device: install 
 (`./gradlew :swipepack:installDebug`) and run `SwipeNetBenchmark` (part of the device
 microbenchmarks; skipped without the pack). `emissionsOneThread` is one encoder call;
 `fusedDecodeOnLift` and `sharkDecodeOnLift` are one whole swipe decode with and without the
-encoder, one swipe per iteration, so the reported percentiles are per swipe (target on the S23
-Ultra: fused p95 ≤ 30 ms):
+encoder, one swipe per iteration, so the reported times are per swipe (each run averages its
+iterations; target on the S23 Ultra: fused p95 ≤ 30 ms, judged on the runs' maximum):
 
 ```sh
 ./gradlew :benchmark:connectedReleaseAndroidTest \

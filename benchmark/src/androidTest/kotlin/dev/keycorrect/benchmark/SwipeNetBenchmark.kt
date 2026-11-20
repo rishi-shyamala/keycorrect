@@ -28,7 +28,8 @@ import org.junit.runner.RunWith
  * [SwipeEncoder.emissions] call on a QWERTY gesture. [fusedDecodeOnLift] is one whole swipe decode
  * on lift with the encoder fused into SHARK² (encoder, beam search, rescoring), and
  * [sharkDecodeOnLift] the same swipes without the encoder: each iteration decodes the next of
- * [GestureInputs.requests], so the run's percentiles are per swipe. Needs the swipe pack signed
+ * [GestureInputs.requests], so the reported times are per swipe (each run averages the swipes of
+ * its iterations; the desktop eval gives the per-swipe distribution). Needs the swipe pack signed
  * with the same key as this test APK (the debug key: `./gradlew :swipepack:installDebug`); skipped
  * when it is missing.
  */
