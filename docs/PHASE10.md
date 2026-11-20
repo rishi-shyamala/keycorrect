@@ -50,7 +50,7 @@ All of these are also recorded in [DECISIONS.md](DECISIONS.md).
 
 ### 10a-2. Runtime and pack
 - A new `:swipepack` application module, `dev.keycorrect.swipe`, like `:voicepack`: no code, no permissions, signed with the app's key. It holds the ExecuTorch runtime (built from source with the NDK, N-6), `model_int8.pte`, and the FUTO licence text. It stays separate from the 141 MB neural pack, so swipe users don't need the LLM.
-- A new `:core:swipenet` module: JNI glue that loads the pack's library through `SignedPackLocator` (signature-checked, as for voice). It exposes one call, `emissions(points, keys, mask)`. It runs in the keyboard process on the decoder thread, because the encoder is small enough that an IPC round trip would cost more than it saves. To be confirmed with on-device latency.
+- A new `:core:swipenet` module: JNI glue that loads the pack's library through `SignedPackLocator` (signature-checked, as for voice). It exposes one call, `emissions(points, keys, mask)`. It runs in the keyboard process on the decoder thread, because the encoder is small enough that an IPC round trip would cost more than it saves. Confirmed on the S23 Ultra: 0.95 ms per call.
 - A desktop build of the same glue, so `tools/eval` can run the encoder on the host (as `:core:llama` does).
 - **Exit:** emissions identical (within float tolerance) to FUTO's reference on a few fixed inputs; the pack's signature check is tested; the cost per call is measured on the S23 Ultra.
 - **Progress (2026-11-20):** built as planned, with the runtime of N-6.
@@ -59,7 +59,7 @@ All of these are also recorded in [DECISIONS.md](DECISIONS.md).
   - The model takes the pack's `.pte` bytes (read from the uncompressed asset) rather than a path, so nothing is copied to disk.
   - `:core:swipenet` (JVM) has the resampler port, `SwipeLayout` (the letter-area frame of any layout, up to 64 letter keys) and `SwipeEncoder` (also opened on the desktop). `:core:packs` has `SwipePackLoader`, which opens the encoder through `SignedPackLocator`.
   - **Exit results.** Against the wheel's outputs on 5 fixed inputs (the model card's "computer" swipe on FUTO's and on our QWERTY, a 120 Hz stroke that leaves the frame, 40 random keys, and a two-point gesture), the host build's max abs difference is 1.9e-6 (tolerance 1e-4). The Kotlin resampler matches FUTO's reference within 1e-5, and "computer" greedy-decodes to "computer". The pack signature check is unit-tested (`SignedPackLocatorTest`).
-  - Cost per call: 0.33 ms on the desktop and 1.2 ms on the x86_64 emulator (one thread; relative only). `SwipeNetBenchmark` measures it on a phone with the debug pack installed. **The S23 Ultra number is still to be taken.**
+  - Cost per call: 0.33 ms on the desktop and 1.2 ms on the x86_64 emulator (one thread; relative only). On the S23 Ultra (`SwipeNetBenchmark`, debug pack, one thread, 50 runs): median 0.95 ms, min 0.84 ms, max 1.12 ms. That confirms running in the keyboard process on the decoder thread, with no IPC.
 
 ### 10a-3. Fusion decoder
 - A CTC-style prefix beam search over our dictionary trie with the encoder's emissions. The intention gate down-weights steps that aren't aimed at a key. Each beam word gets LM context from the existing `LanguageModel`.
