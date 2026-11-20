@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -72,8 +73,46 @@ fun EditingSettingsScreen(
             onCheckedChange = { v -> onUpdate { it.copy(gestureTrail = v) } },
             enabled = settings.gestureTyping,
         )
+        NeuralSwipeRow(settings, onUpdate)
 
         TryItSection()
+    }
+}
+
+/**
+ * The "Neural swipe" row. Without a usable swipe pack it stays visible but switched off and
+ * disabled, with the reason, so the option can be found; with the pack it shows the credit
+ * FUTO's licence requires.
+ */
+@Composable
+private fun NeuralSwipeRow(
+    settings: KeyboardSettings,
+    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
+) {
+    val pack = rememberSwipePackState()
+    val installed = pack is SwipePackState.Installed
+    SwitchRow(
+        title = stringResource(R.string.editing_neural_swipe),
+        supportingText =
+            stringResource(
+                when (pack) {
+                    is SwipePackState.Installed,
+                    SwipePackState.Checking -> R.string.editing_neural_swipe_summary
+                    SwipePackState.NotInstalled -> R.string.editing_neural_swipe_not_installed
+                    SwipePackState.Unusable -> R.string.editing_neural_swipe_unusable
+                }
+            ),
+        checked = installed && settings.neuralSwipe,
+        onCheckedChange = { v -> onUpdate { it.copy(neuralSwipe = v) } },
+        enabled = installed && settings.gestureTyping,
+    )
+    if (installed) {
+        Text(
+            stringResource(R.string.editing_neural_swipe_credit),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
     }
 }
 

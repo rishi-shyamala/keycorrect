@@ -44,8 +44,10 @@ pack** APK (`dev.keycorrect.swipe`), which the keyboard loads at run time. Sourc
 | FlatBuffers (headers), in `libkcswipenet.so` | Reading the `.pte` program format | Apache-2.0 | Google Inc. |
 
 FUTO Swipe terms: the weights may be used and redistributed for any purpose provided users see a
-notice that the product is powered by "FUTO Swipe" (shown in Settings once neural swipe is
-switched on; Phase 10a-4) and every redistribution carries a copy of the terms (the pack does).
+notice that the product is powered by "FUTO Swipe" (shown under Settings → Editing → Neural swipe
+whenever the pack is installed, and in Settings → About → Open-source licences) and every
+redistribution carries a copy of the terms. The pack carries it as `swipenet/LICENSE.md`; the
+keyboard bundles no copy and shows the installed pack's text in Settings → About.
 
 BSD notice (ExecuTorch, XNNPACK, cpuinfo, pthreadpool): redistribution and use in source and binary
 forms, with or without modification, are permitted provided that the copyright notice, this list

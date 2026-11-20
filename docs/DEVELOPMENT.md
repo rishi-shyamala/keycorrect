@@ -122,8 +122,8 @@ Macrobenchmark commands and numbers are in the baseline-profile section of [PERF
 
 ## Release flow (test builds)
 
-Test builds are GitHub pre-releases with the signed APK (and optionally the voice and neural pack
-APKs). Signing key and properties live outside the repo ([INSTALL.md](INSTALL.md), "Test releases").
+Test builds are GitHub pre-releases with the signed APK (and optionally the voice, neural and swipe
+pack APKs). Signing key and properties live outside the repo ([INSTALL.md](INSTALL.md), "Test releases").
 
 ```sh
 tools/release/release.sh bump      # next -test.N in version.properties, versionCode + 1; commit and push it
@@ -133,9 +133,14 @@ tools/release/release.sh publish   # signed build of the clean, pushed HEAD -> p
 `publish` attaches the packs only if their files are fetched (`tools/data/fetch-voice.sh`,
 `tools/data/fetch-neural.sh`; the neural pack also needs the NDK). Build packs alone with
 `./gradlew :voicepack:assembleRelease :neuralpack:assembleRelease`; they are not part of CI.
-The swipe pack (Phase 10, not attached by `publish` yet) needs `tools/data/fetch-swipe-model.sh`
-and `tools/swipenet/build.sh android` (NDK, and `KC_ET_PYTHON` as above) before
-`./gradlew :swipepack:assembleRelease`. When the pack is installed the keyboard fuses the encoder
+The swipe pack (Phase 10) is attached the same way (`publish_pack swipe`), when its files are
+there: `tools/data/fetch-swipe-model.sh` and `tools/swipenet/build.sh android` (NDK, and
+`KC_ET_PYTHON` as above) before `./gradlew :swipepack:assembleRelease`. Its release-notes entry says
+what it does, that it is optional, its size (about 3.2 MB) and the FUTO attribution; the FUTO
+Model Weights License text ships in the pack (`swipenet/LICENSE.md`), and Settings → About →
+Open-source licences shows it from the installed pack. Without the swipe files `publish` says so
+and releases without it. The "Neural swipe" row (Settings → Editing, on by default) gates it: off,
+the pack isn't loaded and swipes decode with SHARK² alone. When the pack is installed the keyboard fuses the encoder
 into every swipe decode (docs/PHASE10.md, 10a-3). Its cost on a device: install the debug pack
 (`./gradlew :swipepack:installDebug`) and run `SwipeNetBenchmark` (part of the device
 microbenchmarks; skipped without the pack). `emissionsOneThread` is one encoder call;

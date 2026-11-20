@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 class SwipeNetHost(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    private val enabled: () -> Boolean = { true },
     private val clock: () -> Long = System::nanoTime,
     private val open: () -> SwipePackResult,
 ) {
@@ -34,15 +35,21 @@ class SwipeNetHost(
         context: Context,
         scope: CoroutineScope,
         io: CoroutineDispatcher,
-    ) : this(scope, io, open = SwipePackLoader(context.applicationContext)::open)
+        enabled: () -> Boolean,
+    ) : this(scope, io, enabled, open = SwipePackLoader(context.applicationContext)::open)
 
     @Volatile private var loaded: SwipeEncoder? = null
     private val loading = AtomicBoolean(false)
     @Volatile private var settled = false
     @Volatile private var retryAt = Long.MIN_VALUE
 
-    /** The encoder if it has loaded; otherwise starts loading it (once) and returns null. */
+    /**
+     * The encoder if it has loaded; otherwise starts loading it (once) and returns null. While
+     * the "Neural swipe" setting is off ([enabled]) this returns null without loading anything,
+     * and an encoder that was already loaded is kept but not used (decoding is SHARK² alone).
+     */
     fun encoder(): SwipeEncoder? {
+        if (!enabled()) return null
         loaded?.let {
             return it
         }
