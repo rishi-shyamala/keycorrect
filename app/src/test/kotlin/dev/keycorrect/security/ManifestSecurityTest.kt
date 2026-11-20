@@ -105,7 +105,8 @@ class ManifestSecurityTest {
 
     @Test
     fun packsHaveNoPermissionsNoComponentsAndNoBackup() {
-        for (pack in listOf("kc.manifest.voicepack", "kc.manifest.neuralpack")) {
+        for (pack in
+            listOf("kc.manifest.voicepack", "kc.manifest.neuralpack", "kc.manifest.swipepack")) {
             val manifest = load(pack)
             assertThat(manifest.permissions()).isEmpty()
             assertThat(manifest.components()).isEmpty()

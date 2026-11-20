@@ -5,16 +5,25 @@ by fusing a neural encoder with the SHARK² decoder. SHARK² scores 89.5% top-1 
 gestures and 78.5% on messy ones (docs/EVAL.md), but the generator follows SHARK²'s own model of a
 swipe, so its accuracy on real fingers is unknown. Measuring that comes first.
 
-## Decisions (user, 2026-11-19 and 2026-11-20)
+## Decisions (user, 2026-11-19)
 
 | # | Question | Decision |
 |---|---|---|
 | N-3 | Model source | **FUTO's encoder first, our own model later.** Ship FUTO Swipe's encoder (`model_int8.pte`, 1.0 MB, ExecuTorch) now. A model of our own, trained on the MIT-licensed swipe.futo.org data, follows as a separate part. It replaces FUTO's once it matches on the eval, which drops the attribution requirement. |
 | N-4 | Integration | **Fuse both.** The encoder's key probabilities are decoded against our dictionary and language model and merged with SHARK²'s candidates by a tuned score. SHARK² stays the decoder when the pack is missing. The fusion is kept only if it beats SHARK² on real swipes. |
 | N-5 | A new stage after this one | **Phase 11, simplification:** remove as many lines as possible without losing any feature or performance. Rework sections into their simplest form and justify every line of app code before keeping it. Recorded in PLAN §17; it gets its own plan when it starts. |
+
+## Decisions (user, 2026-11-20)
+
+| # | Question | Decision |
+|---|---|---|
+| N-6 | Runtime | **ExecuTorch v1.5.1 built from source** (the version the model was exported with), with the NDK for arm64-v8a and x86_64 and on the host for tools/eval: the model's portable ops plus XNNPACK, statically linked into one small JNI library (`libkcswipenet.so`). Not the prebuilt AAR (9-12 MB per ABI, fbjni/SoLoader, no bool tensors in its Java API, Android only). |
+| N-7 | FUTO's C++ library | **Port only the input resampler** from swipe-library (GPL-3.0); the beam search stays ours (N-4). Attributed in THIRD_PARTY_NOTICES.md. |
+| N-8 | Reference for the exit test | **The official `executorch==1.5.1` pip wheel**, run once in a scratch venv outside the repo; only the small golden file is committed. |
+| N-9 | Working ahead | Phase 10 parts may be developed on local branches while the previous PR awaits merge, then rebased onto main before their own PR (still never stacked). |
 | N-10 | Learning from swipes | **Add 10a-5, swipe learning, after 10a-3.** The encoder's weights stay fixed (on-device training is the N-1 stretch goal). Instead, learn swipe misdecodes from clear signals only, and learn a per-user path correction from accepted swipes. Keep each piece only if the eval shows a gain without new wrong commits. |
 
-Also recorded in [DECISIONS.md](DECISIONS.md).
+All of these are also recorded in [DECISIONS.md](DECISIONS.md).
 
 ## External pieces (checked 2026-11-19)
 
@@ -27,7 +36,7 @@ Also recorded in [DECISIONS.md](DECISIONS.md).
 
   The weights ship only in the separately installed pack, not in the GPL app.
 - **Dataset** ([futo-org/swipe.futo.org](https://huggingface.co/datasets/futo-org/swipe.futo.org), MIT, commit `d71bf5f`). About 1.22M swipes as JSON Lines. `swipe-1` has train 939,550, dev 54,269 and test 49,970 rows. Each row has the target `word`, its `sentence`, `canvas_width`/`canvas_height`, `orientation`, and `data` points `{t, x, y}`, with x and y normalised to the canvas. Rows record no key positions; `swipe-5` adds a `layout` name, and `swipe-5/layouts/*.json` probably holds the geometry.
-- **Inference library:** FUTO's C++ `swipe-library` (said to be GPL; check before reading it for the preprocessing). No training code is published.
+- **Inference library:** FUTO's C++ `swipe-library` (GPL-3.0). Only its input resampler is ported (N-7). No training code is published.
 
 ## Parts (one PR each, against `main`)
 
@@ -40,10 +49,17 @@ Also recorded in [DECISIONS.md](DECISIONS.md).
 - **Result:** SHARK² gets 81.2% top-1 on 48,355 real test swipes, and 84.0% top-1 / 91.9% top-3 on dictionary words. Long words are weakest (72-78%). The mapping residual is 0.001 key widths, so the two QWERTYs line up. There is clear headroom, so the plan continues with 10a-2.
 
 ### 10a-2. Runtime and pack
-- A new `:swipepack` application module, `dev.keycorrect.swipe`, like `:voicepack`: no code, no permissions, signed with the app's key. It holds the ExecuTorch runtime (built with the NDK, or the prebuilt AAR's `.so` if its licence and size fit), `model_int8.pte`, and the FUTO licence text. It stays separate from the 141 MB neural pack, so swipe users don't need the LLM.
-- A new `:core:swipenet` module: JNI glue that loads the pack's library through `SignedPackLocator` (signature-checked, as for voice). It exposes one call, `emissions(points, keys, mask)`. It runs in the keyboard process on the decoder thread, because the encoder is small enough that an IPC round trip would cost more than it saves. To be confirmed with on-device latency.
+- A new `:swipepack` application module, `dev.keycorrect.swipe`, like `:voicepack`: no code, no permissions, signed with the app's key. It holds the ExecuTorch runtime (built from source with the NDK, N-6), `model_int8.pte`, and the FUTO licence text. It stays separate from the 141 MB neural pack, so swipe users don't need the LLM.
+- A new `:core:swipenet` module: JNI glue that loads the pack's library through `SignedPackLocator` (signature-checked, as for voice). It exposes one call, `emissions(points, keys, mask)`. It runs in the keyboard process on the decoder thread, because the encoder is small enough that an IPC round trip would cost more than it saves. Confirmed on the S23 Ultra: 0.95 ms per call.
 - A desktop build of the same glue, so `tools/eval` can run the encoder on the host (as `:core:llama` does).
 - **Exit:** emissions identical (within float tolerance) to FUTO's reference on a few fixed inputs; the pack's signature check is tested; the cost per call is measured on the S23 Ultra.
+- **Progress (2026-11-20):** built as planned, with the runtime of N-6.
+  - `tools/data/fetch-swipe-model.sh` pins the model, its licence and metadata (Hugging Face commit `0a9a44b`, SHA-256) and the ExecuTorch source (tag v1.5.1, commit `3b60683`).
+  - `tools/swipenet/build.sh android|host` builds `libkcswipenet.so`: the JNI glue, the ExecuTorch runtime, the 16 portable ops the model calls outside its delegate (`tools/swipenet/ops.txt`, derived from the model) and XNNPACK, all static. Stripped sizes: arm64-v8a 1.78 MB, x86_64 2.92 MB. The swipe pack APK is 3.2 MB with both ABIs.
+  - The model takes the pack's `.pte` bytes (read from the uncompressed asset) rather than a path, so nothing is copied to disk.
+  - `:core:swipenet` (JVM) has the resampler port, `SwipeLayout` (the letter-area frame of any layout, up to 64 letter keys) and `SwipeEncoder` (also opened on the desktop). `:core:packs` has `SwipePackLoader`, which opens the encoder through `SignedPackLocator`.
+  - **Exit results.** Against the wheel's outputs on 5 fixed inputs (the model card's "computer" swipe on FUTO's and on our QWERTY, a 120 Hz stroke that leaves the frame, 40 random keys, and a two-point gesture), the host build's max abs difference is 1.9e-6 (tolerance 1e-4). The Kotlin resampler matches FUTO's reference within 1e-5, and "computer" greedy-decodes to "computer". The pack signature check is unit-tested (`SignedPackLocatorTest`).
+  - Cost per call: 0.33 ms on the desktop and 1.2 ms on the x86_64 emulator (one thread; relative only). On the S23 Ultra (`SwipeNetBenchmark`, debug pack, one thread, 50 runs): median 0.95 ms, min 0.84 ms, max 1.12 ms. That confirms running in the keyboard process on the decoder thread, with no IPC.
 
 ### 10a-3. Fusion decoder
 - A CTC-style prefix beam search over our dictionary trie with the encoder's emissions. The intention gate down-weights steps that aren't aimed at a key. Each beam word gets LM context from the existing `LanguageModel`.
@@ -74,6 +90,6 @@ The encoder's weights never change on the device. Swipes already teach the dicti
 
 ## Risks
 - ~~The dataset's points may not map cleanly onto our layout.~~ Measured in 10a-1: the affine fit's residual is 0.001 key widths.
-- ExecuTorch's runtime size, and building it with the NDK for arm64-v8a and x86_64.
-- The encoder's input normalisation must match FUTO's exactly. The model card and FUTO's library are the reference, and 10a-2's exit test checks it.
+- ~~ExecuTorch's runtime size, and building it with the NDK for arm64-v8a and x86_64.~~ Built in 10a-2: 1.78 MB (arm64-v8a) and 2.92 MB (x86_64), stripped.
+- The encoder's input normalisation must match FUTO's exactly. The model card and FUTO's library are the reference, and 10a-2's exit test checks it. Checked in 10a-2 (1.9e-6 max abs difference).
 - Licence compliance is a release requirement: the notice and the licence copy, in every build that ships the pack.

@@ -59,6 +59,8 @@ include(":core:packs")
 
 include(":core:settings")
 
+include(":core:swipenet")
+
 include(":core:transfer")
 
 include(":core:voice")
@@ -70,6 +72,8 @@ include(":feature:voice-sherpa")
 include(":neuralpack")
 
 include(":sampleplugin")
+
+include(":swipepack")
 
 include(":tools:dictbuild")
 

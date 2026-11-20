@@ -30,6 +30,7 @@ About > Open-source licences & data.
 | Tatoeba `eng_sentences.tsv` | conversational n-gram counts, held-out eval set | rolling export of 2026-10-03, downloaded 2026-10-09 | CC BY 2.0 FR |
 | English Wikipedia "Lists of common misspellings/For machines" | **evaluation only** (`--mode misspell`); never shipped, not in the dictionary or language model | revision `1199637275` (2024-01-27) | CC BY-SA 4.0 |
 | swipe.futo.org dataset (FUTO) | **evaluation only** (`--mode swipe --real`): recorded swipes | Hugging Face commit `d71bf5f` (2026-06-25) | MIT |
+| FUTO Swipe encoder (FUTO) | the swipe pack's neural encoder (Phase 10); ships only in the pack, never in the app | Hugging Face commit `0a9a44b` | FUTO Model Weights License 1.0 |
 
 ## 1. AOSP LatinIME English wordlist
 
@@ -148,6 +149,23 @@ counts. Wikipedia counts for these names are unchanged; pass `--tatoeba-ignore-n
   `word_idx`, `canvas_width`/`canvas_height`, `orientation`, `distance`, and `data`, the touch
   points `{t, x, y}` with t in epoch milliseconds and x, y normalised to the three letter rows of
   the collection keyboard (`qwerty.json`). See EVAL.md, "Real swipes".
+
+## 6. FUTO Swipe encoder (swipe pack)
+
+- **Files:** `honorable_sturgeon/model_int8.pte` (1,020,932 bytes), `honorable_sturgeon/metadata.json`,
+  `LICENSE.md` and `README.md` (the model card) from <https://huggingface.co/futo-org/futo-swipe> at
+  commit `0a9a44bbe4d5b8aa8d1ff579ffc40d4861ae2467`, fetched by `tools/data/fetch-swipe-model.sh`
+  into the git-ignored `data/raw/swipenet/` and checked against
+  `tools/data/swipe-model-sources.sha256`. The same script clones the ExecuTorch source (BSD-3) at
+  tag v1.5.1, commit `3b60683923245cf472b7323426920e15623ba361`, with only the submodules the
+  XNNPACK build needs, into `data/raw/swipenet/x/` (built by `tools/swipenet/build.sh`).
+- **Licence:** FUTO Model Weights License 1.0 (FUTO Holdings, Inc.): use and redistribution for
+  any purpose, provided users see a "powered by FUTO Swipe" notice and every redistribution carries
+  the terms; modifying the weights requires a notice. The model ships unmodified, and only in the
+  separately installed swipe pack, with `LICENSE.md` beside it; the GPL app contains no weights.
+  See THIRD_PARTY_NOTICES.md.
+- **Use:** the model takes a gesture resampled to 64 points and the layout's key centres; the
+  golden test (`:core:swipenet`) checks our runtime against the official ExecuTorch wheel.
 
 ## Pipeline output (`data/processed/`)
 

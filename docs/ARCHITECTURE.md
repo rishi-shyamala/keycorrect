@@ -29,10 +29,11 @@ The list is `settings.gradle.kts`; dependencies are the `project(":...")` lines 
 | `:core:designsystem` | Material 3 theme, wallpaper colors, presets, key style |
 | `:core:emoji`, `:core:clipboard` | Emoji catalog and search; clipboard history model (JVM) |
 | `:core:voice` | `SttEngine`/`SttSession` contract, VAD, dictation types (JVM) |
-| `:core:packs` | Optional-pack discovery and the signature check |
+| `:core:packs` | Optional-pack discovery and the signature check; `SwipePackLoader` opens the swipe encoder from the swipe pack |
 | `:core:llama` | JNI binding for llama.cpp (the native library lives in the neural pack) |
+| `:core:swipenet` | FUTO Swipe encoder on ExecuTorch (JVM): input resampler (ported from FUTO's swipe-library), layout frame, JNI binding; the C++ glue in `src/main/cpp` is built by `tools/swipenet/build.sh` into the swipe pack. Not used by the keyboard yet (Phase 10a-3) |
 | `:core:transfer` | `.kcbackup` export/import format and crypto |
-| `:voicepack`, `:neuralpack` | Separate APKs (`dev.keycorrect.voice`, `dev.keycorrect.neural`): models and native libraries, no code, no permissions |
+| `:voicepack`, `:neuralpack`, `:swipepack` | Separate APKs (`dev.keycorrect.voice`, `dev.keycorrect.neural`, `dev.keycorrect.swipe`): models and native libraries, no code, no permissions |
 | `:sampleplugin` | Example third-party engine APK (uses `:core:engine-sdk`) |
 | `:baselineprofile`, `:benchmark` | Baseline profile generation and macrobenchmarks; on-device microbenchmarks |
 | `:tools:dictbuild`, `:tools:emojibuild`, `:tools:eval` | Offline JVM tools: dictionary and emoji data builders; the evaluation harness |
@@ -44,7 +45,7 @@ designsystem, emoji, engine-api, input, layout, learning, llama, settings and vo
 only on engine-api; `:core:data` on learning. Storage reaches the keyboard through interfaces the
 app implements (`*Environment`, `LearningSink`, `PredictionBackend`), so `:feature:keyboard-ui` stays
 testable on the JVM against simulated editors. Tools never depend on `:app` or `:feature:*`
-(`:tools:eval` uses decoder, dictionary, layout, learning, llama).
+(`:tools:eval` uses decoder, dictionary, layout, learning, llama). `:core:packs` depends on `:core:swipenet`, which depends on `:core:layout`.
 
 ## Processes and threads
 
@@ -87,7 +88,7 @@ the snapshot. Evidence is eval-checked ([EVAL.md](EVAL.md), "Learning").
 
 ## Optional packs and plugins
 
-- **Voice pack** and **neural pack**: separate APKs, installed by the user, found through
+- **Voice pack**, **neural pack** and **swipe pack** (FUTO Swipe encoder, Phase 10; not loaded by the keyboard yet): separate APKs, installed by the user, found through
   `<queries>` and `PackageManager`. `:core:packs` (`PackSigning.kt`) refuses a pack unless its
   signing certificates equal the keyboard's own set exactly; the keyboard loads the pack's native
   code into its process, so the check is the trust boundary. After a pack update the keyboard asks

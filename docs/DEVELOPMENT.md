@@ -30,6 +30,21 @@ Learning-curve tests (slow, minutes) are skipped unless asked for:
 ./gradlew :feature:keyboard-ui:testDebugUnitTest --tests "*LearningCurveTest*" -Pkeycorrect.learncurve=true --rerun
 ```
 
+The swipe encoder's golden and latency tests (`:core:swipenet`, checked against the official
+ExecuTorch wheel) run only with the host build of its library and the model; otherwise they are
+skipped:
+
+```sh
+tools/data/fetch-swipe-model.sh                          # model, licence, ExecuTorch v1.5.1 source
+export KC_ET_PYTHON=/path/to/venv/bin/python             # a Python with torch 2.14.0 and pyyaml (codegen)
+export KC_SWIPENET_LIB=$(tools/swipenet/build.sh host | tail -1)
+./gradlew :core:swipenet:test
+```
+
+`tools/swipenet/make-goldens.py` regenerates the golden file (see its header; the wheel lives in a
+scratch venv outside the repo). `tools/swipenet/ops.txt` lists the kernels the build compiles;
+regenerate it when the model changes.
+
 The neural arm also needs the host build of llama.cpp (`tools/llama/build-host.sh`) and
 `-Pkeycorrect.learncurve.lib` / `.model` (see `feature/keyboard-ui/build.gradle.kts`); the report lands in `feature/keyboard-ui/build/learning-curve/report.md`.
 
@@ -115,14 +130,26 @@ tools/release/release.sh publish   # signed build of the clean, pushed HEAD -> p
 `publish` attaches the packs only if their files are fetched (`tools/data/fetch-voice.sh`,
 `tools/data/fetch-neural.sh`; the neural pack also needs the NDK). Build packs alone with
 `./gradlew :voicepack:assembleRelease :neuralpack:assembleRelease`; they are not part of CI.
+The swipe pack (Phase 10, not attached by `publish` yet) needs `tools/data/fetch-swipe-model.sh`
+and `tools/swipenet/build.sh android` (NDK, and `KC_ET_PYTHON` as above) before
+`./gradlew :swipepack:assembleRelease`. Its per-call cost on a device: install the debug pack
+(`./gradlew :swipepack:installDebug`) and run `SwipeNetBenchmark` (part of the device
+microbenchmarks; skipped without the pack):
+
+```sh
+./gradlew :benchmark:connectedReleaseAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.keycorrect.benchmark.SwipeNetBenchmark
+# on the emulator also: -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
+```
 
 ## Data fetch scripts
 
 All downloads are git-ignored (`data/raw`, `data/processed`) with pinned checksums:
 `tools/data/fetch-sources.sh` (dictionary and eval corpora), `fetch-voice.sh` (speech models and
 sherpa-onnx), `fetch-neural.sh` (llama.cpp source and candidate GGUFs), `fetch-swipe.sh` (recorded
-swipes for the real-swipe eval), `tools/llama/build-host.sh`
-(host build of llama.cpp for eval). Licences: [DATA_SOURCES.md](DATA_SOURCES.md).
+swipes for the real-swipe eval), `fetch-swipe-model.sh` (FUTO Swipe encoder and the ExecuTorch
+source), `tools/llama/build-host.sh` (host build of llama.cpp for eval), `tools/swipenet/build.sh`
+(the swipe encoder's library, host and Android). Licences: [DATA_SOURCES.md](DATA_SOURCES.md).
 
 ## Workflow and PR conventions
 
@@ -151,3 +178,7 @@ swipes for the real-swipe eval), `tools/llama/build-host.sh`
   functions under 60 lines: fix the code, never add baseline entries.
 - If the JDK is upgraded while a Gradle daemon runs, spawning `adb` fails ("Failed to exec spawn
   helper"): `./gradlew --stop` and retry.
+- ExecuTorch's CMake insists that its source directory is named exactly `executorch` (hence
+  `data/raw/swipenet/x/executorch-v1.5.1-src/executorch`), and its size-optimised build turns off
+  C++ exceptions, which XNNPACK's weight cache needs: `core/swipenet/src/main/cpp/CMakeLists.txt`
+  turns them back on for that one target, so the source stays unpatched.
