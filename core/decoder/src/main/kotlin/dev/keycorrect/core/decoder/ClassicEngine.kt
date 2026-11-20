@@ -204,7 +204,7 @@ class ClassicEngine(
      */
     fun gestureFusionFeatures(request: GestureRequest): List<GestureFusionFeatures> {
         val out = ArrayList<GestureFusionFeatures>()
-        rescorer.trace = out
+        rescorer.trace = out::add
         try {
             decodeGestureNow(request) { false }
         } finally {
@@ -227,7 +227,7 @@ class ClassicEngine(
                 gestures.run(index, request.gesture, lexicon, stale)
             }
         var scores: FloatArray? = null
-        if (emissions != null && index != null && count >= 0 && gestures.gestureReady) {
+        if (emissions != null && index != null && fusable(count)) {
             count = fuse(index, emissions, stale)
             scores = neuralScores
         }
@@ -248,6 +248,9 @@ class ClassicEngine(
             sequence = request.sequence,
         )
     }
+
+    /** Whether SHARK²'s pass (which returned [count]) left a gesture the fusion can score. */
+    private fun fusable(count: Int) = count >= 0 && gestures.gestureReady
 
     /**
      * Adds the neural beam search's words to SHARK²'s shortlist (scoring their channel) and scores

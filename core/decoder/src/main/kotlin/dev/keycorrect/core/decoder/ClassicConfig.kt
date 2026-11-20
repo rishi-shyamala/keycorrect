@@ -286,8 +286,11 @@ data class NeuralSwipeConfig(
     /** Added per letter of the candidate. */
     val lengthBonus: Float = 2f,
     /** Floor of the neural log-likelihood, so one word the encoder rules out is not -infinity. */
-    val neuralFloor: Float = -60f,
+    val neuralFloor: Float = NEURAL_FLOOR,
 )
 
 /** The beam width of [NeuralSwipeConfig.beamWidth]. */
 const val NEURAL_BEAM_WIDTH = 32
+
+/** The default of [NeuralSwipeConfig.neuralFloor]. */
+const val NEURAL_FLOOR = -60f

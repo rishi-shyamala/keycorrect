@@ -57,10 +57,11 @@ internal class NeuralSwipe(
     /** The encoder's emissions for [input] on [layout], or null (see the class comment). */
     @Suppress("TooGenericExceptionCaught") // any failure of the encoder means "use SHARK² alone"
     fun emissions(input: GestureInput, layout: KeyLayoutModel): NeuralEmissions? {
-        val enc = encoder() ?: return null
-        val c = cachedFor(layout)
-        val swipeLayout = c.layout ?: return null
-        val classes = c.classes ?: return null
+        val enc = encoder()
+        val c = if (enc == null) null else cachedFor(layout)
+        val swipeLayout = c?.layout
+        val classes = c?.classes
+        if (enc == null || swipeLayout == null || classes == null) return null
         return try {
             val pts = input.points
             val t0 = pts[0].timeMillis
@@ -126,13 +127,13 @@ internal class NeuralSwipe(
  */
 // Small private steps of one search; splitting the class would only add indirection.
 @Suppress("TooManyFunctions")
-internal class NeuralSearch(private val dict: Dictionary, private val config: NeuralSwipeConfig) {
+internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeConfig) {
     private val width = config.beamWidth.coerceAtLeast(1)
 
     // The beam: trie node, the class of its last key (-1 at the root) and the score.
-    private var node = IntArray(width)
-    private var cls = IntArray(width)
-    private var score = FloatArray(width)
+    private val node = IntArray(width)
+    private val cls = IntArray(width)
+    private val score = FloatArray(width)
     private var size = 0
 
     // Next step's hypotheses, merged by node through an open-addressing table (generation-cleared).
@@ -160,12 +161,14 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
         node[0] = dict.root
         cls[0] = -1
         score[0] = 0f
-        for (t in 0 until SwipeEmissions.STEPS) {
-            if (stale()) return -1
-            step(e, t * SwipeEmissions.CLASSES)
-            if (size == 0) return 0
+        var t = 0
+        var gaveUp = false
+        while (t < SwipeEmissions.STEPS && size > 0 && !gaveUp) {
+            gaveUp = stale()
+            if (!gaveUp) step(e, t * SwipeEmissions.CLASSES)
+            t++
         }
-        return finish(out)
+        return if (gaveUp) -1 else finish(out)
     }
 
     /** One encoder step: extend every prefix, merge by node, close over free edges, prune. */
@@ -299,13 +302,7 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
             var best = -1
             for (h in 0 until size) {
                 if (taken[h] || !dict.isTerminal(node[h])) continue
-                if (
-                    best < 0 ||
-                        score[h] > score[best] ||
-                        (score[h] == score[best] && node[h] < node[best])
-                ) {
-                    best = h
-                }
+                if (best < 0 || better(h, best)) best = h
             }
             if (best < 0) break
             taken[best] = true
@@ -313,6 +310,9 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
         }
         return n
     }
+
+    private fun better(a: Int, b: Int) =
+        score[a] > score[b] || (score[a] == score[b] && node[a] < node[b])
 
     private fun keyAt(n: Int): String? =
         try {
@@ -326,14 +326,8 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
      * when a letter has no key or the word has more keys than the encoder has steps.
      */
     fun align(key: String, e: NeuralEmissions): Float {
-        var len = 0
-        for (ch in key) {
-            if (Text.isApostrophe(ch)) continue
-            val c = e.classOf(ch)
-            if (c < 0 || len == MAX_KEYS) return Float.NEGATIVE_INFINITY
-            if (len == 0 || seq[len - 1] != c) seq[len++] = c
-        }
-        if (len == 0 || len > SwipeEmissions.STEPS) return Float.NEGATIVE_INFINITY
+        val len = keySequence(key, e)
+        if (len <= 0) return Float.NEGATIVE_INFINITY
         dp.fill(Float.NEGATIVE_INFINITY, 0, len + 1)
         dp[0] = 0f
         val lp = e.logProbs
@@ -352,8 +346,26 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
         return dp[len]
     }
 
+    /**
+     * Writes [key]'s classes to [seq] (apostrophes skipped, repeats collapsed) and returns how
+     * many; -1 if a letter has no key or there are more keys than the encoder has steps.
+     */
+    private fun keySequence(key: String, e: NeuralEmissions): Int {
+        var len = 0
+        for (ch in key) {
+            val c = if (Text.isApostrophe(ch)) APOSTROPHE else e.classOf(ch)
+            when {
+                c == APOSTROPHE -> Unit
+                c < 0 || len == MAX_KEYS -> return -1
+                len == 0 || seq[len - 1] != c -> seq[len++] = c
+            }
+        }
+        return len
+    }
+
     private companion object {
         const val INITIAL = 256
+        const val APOSTROPHE = -2
 
         /** Fibonacci hashing: 2^32 / golden ratio, as a signed Int. */
         const val GOLDEN = -0x61c88647

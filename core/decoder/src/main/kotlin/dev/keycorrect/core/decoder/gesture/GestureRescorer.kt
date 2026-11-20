@@ -33,7 +33,7 @@ internal class GestureRescorer(
     private var neural: FloatArray? = null
 
     /** When set, [rescore] adds every candidate's score parts here (for tuning, tools/eval). */
-    var trace: MutableList<GestureFusionFeatures>? = null
+    var trace: ((GestureFusionFeatures) -> Unit)? = null
 
     /**
      * Scores the first [count] shortlist entries of [decoder] and returns them best first, or null
@@ -96,7 +96,7 @@ internal class GestureRescorer(
                         nc.lmWeight * lmTerm +
                         nc.lengthBonus * letters(it)
                 }
-            trace?.add(
+            trace?.invoke(
                 GestureFusionFeatures(it, decoder.channel[i], n?.get(i) ?: Float.NaN, lmTerm)
             )
             Candidate(it, score, source)
