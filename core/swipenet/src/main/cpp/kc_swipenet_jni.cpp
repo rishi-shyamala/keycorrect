@@ -101,20 +101,20 @@ JNIEXPORT jlong JNICALL Java_dev_keycorrect_core_swipenet_SwipeNetNative_open(
   const jsize size = env->GetArrayLength(model);
   if (size <= 0) return 0;
   executorch::runtime::runtime_init();
-  if (threads > 0) {
-    // ExecuTorch's XNNPACK runtimes keep a raw pointer to the process-wide pool from load time, and
-    // a reset frees the old one, so resizing while an encoder is open is a use-after-free. Size it
-    // once, on the first open with threads > 0; the first count wins and later opens never reset.
-    static std::once_flag poolSized;
-    std::call_once(poolSized, [threads] {
-      if (auto* pool = executorch::extension::threadpool::get_threadpool()) {
+  // ExecuTorch's XNNPACK runtimes keep a raw pointer to the process-wide pool from load time, and a
+  // reset frees the old one, so resizing while an encoder is open is a use-after-free. The pool is
+  // settled once, on the first open of the process: resized if that open asks for threads > 0, else
+  // left at ExecuTorch's default. Later opens never reset it, whatever count they pass.
+  static std::once_flag poolSettled;
+  std::call_once(poolSettled, [threads] {
+    if (threads <= 0) return;
+    if (auto* pool = executorch::extension::threadpool::get_threadpool()) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        pool->_unsafe_reset_threadpool(static_cast<uint32_t>(threads));
+      pool->_unsafe_reset_threadpool(static_cast<uint32_t>(threads));
 #pragma GCC diagnostic pop
-      }
-    });
-  }
+    }
+  });
   // Exceptions are off (EXECUTORCH_OPTIMIZE_SIZE), so an allocation failure below (bad_alloc under
   // OOM) terminates the process instead of returning 0; only the explicit checks can fail softly.
   const size_t rounded = (static_cast<size_t>(size) + kAlignment - 1) / kAlignment * kAlignment;
