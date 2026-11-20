@@ -28,6 +28,7 @@ import dev.keycorrect.ime.AppEmojiEnvironment
 import dev.keycorrect.ime.FlushReason
 import dev.keycorrect.ime.GatedEmojiHistoryStore
 import dev.keycorrect.ime.LearningHost
+import dev.keycorrect.ime.SwipeNetHost
 import dev.keycorrect.neural.LlamaRuntime
 import dev.keycorrect.neural.ModelRuntimes
 import dev.keycorrect.neural.ModelStore
@@ -39,6 +40,7 @@ import dev.keycorrect.voice.VoiceHost
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -76,7 +78,10 @@ class KeyCorrectApp : Application() {
 }
 
 /** Process-wide singletons, created once in [KeyCorrectApp]. Manual DI keeps startup cheap. */
-class AppContainer(private val context: Context) {
+class AppContainer(
+    private val context: Context,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+) {
     /** Outlives any screen: for writes that must complete even if the UI goes away. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
@@ -99,6 +104,14 @@ class AppContainer(private val context: Context) {
      * not direct-boot aware, so the user has unlocked by the time anything touches it).
      */
     val database: KeyCorrectDatabase by lazy { KeyCorrectDatabase.create(context) }
+    /**
+     * The neural swipe encoder's host: one per process, so switching the keyboard away and back
+     * (which recreates the service) never opens a second native encoder. It loads on
+     * [applicationScope], so a load that finishes after a service is destroyed still lands here.
+     */
+    val swipeNetHost: SwipeNetHost by lazy {
+        SwipeNetHost(context, applicationScope, io)
+    }
     val userDictionary: UserDictionaryStore by lazy { SqlUserDictionaryStore(database) }
     val shortcuts: ShortcutStore by lazy { SqlShortcutStore(database) }
 

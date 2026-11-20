@@ -44,7 +44,8 @@ internal class KeyClasses(layout: SwipeLayout) {
  * gesture, so a pack that loads later is picked up; null means "no encoder" and the engine decodes
  * with SHARK² alone. Safe from any thread: the layout cache is guarded here, the encoder serialises
  * its own calls. Any failure (no encoder, a layout the encoder can't take, a failed native call)
- * yields null, never an exception, so the caller falls back to SHARK².
+ * yields null, never an exception, so the caller falls back to SHARK². So does a NaN anywhere in
+ * the encoder's output.
  */
 internal class NeuralSwipe(
     private val encoder: () -> SwipeEncoder?,
@@ -71,13 +72,21 @@ internal class NeuralSwipe(
                     FloatArray(pts.size) { pts[it].y },
                     FloatArray(pts.size) { (pts[it].timeMillis - t0).toFloat() },
                 )
-            enc.emissions(features, swipeLayout)?.let { NeuralEmissions(gated(it), classes) }
+            // A NaN anywhere would poison every score it touches: fall back to SHARK² alone.
+            enc.emissions(features, swipeLayout)
+                ?.takeUnless { it.hasNaN() }
+                ?.let { gated(it) }
+                ?.takeUnless { out -> out.any { it.isNaN() } }
+                ?.let { NeuralEmissions(it, classes) }
         } catch (_: RuntimeException) {
             null
         } catch (_: LinkageError) {
             null
         }
     }
+
+    private fun SwipeEmissions.hasNaN() =
+        logEmissions.any { it.isNaN() } || lambda.any { it.isNaN() }
 
     /** The log-probabilities, each step scaled by `1 - gate + gate * lambda`. */
     private fun gated(e: SwipeEmissions): FloatArray {
@@ -141,6 +150,9 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
     private var nCls = IntArray(INITIAL)
     private var nScore = FloatArray(INITIAL)
     private var nSize = 0
+
+    // Lowest index [push] raised since it was last reset ([closeFreeEdges]).
+    private var raisedMin = Int.MAX_VALUE
     private var table = IntArray(INITIAL * 2)
     private var tableGen = IntArray(INITIAL * 2)
     private var gen = 0
@@ -198,7 +210,9 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
 
     /**
      * Adds, at no cost, the children of every hypothesis reached by an apostrophe or by its own
-     * last key again ("hel" -> "hell"), so "hello" and "don't" align like "helo" and "dont".
+     * last key again ("hel" -> "hell"), so "hello" and "don't" align like "helo" and "dont". Runs
+     * to a fixed point, so chains of free edges (a repeat then an apostrophe) all get the best
+     * score.
      */
     private fun closeFreeEdges(e: NeuralEmissions) {
         var h = 0
@@ -206,6 +220,7 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
             val n = nNode[h]
             val c = nCls[h]
             val count = if (c >= 0) dict.childCount(n) else 0
+            raisedMin = Int.MAX_VALUE
             if (count > 0) {
                 val first = dict.firstChild(n)
                 for (i in 0 until count) {
@@ -214,8 +229,27 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
                     if (Text.isApostrophe(ch) || e.classOf(ch) == c) push(child, c, nScore[h])
                 }
             }
-            h++
+            // A free edge that raised a hypothesis already closed (index <= h) leaves its free
+            // children stale: go back to it. Scores only rise, so this reaches a fixed point.
+            h = if (raisedMin <= h) raisedMin else h + 1
         }
+    }
+
+    /**
+     * For tests: whether, in the current beam, every free edge between two surviving hypotheses
+     * leaves the child scoring at least what its parent does (the fixed point of [closeFreeEdges]).
+     */
+    internal fun freeEdgesClosed(e: NeuralEmissions): Boolean =
+        (0 until size).all { h -> cls[h] < 0 || (0 until size).all { g -> childOk(e, h, g) } }
+
+    /** Whether hypothesis [g] is not a free child of [h] scoring below it. */
+    private fun childOk(e: NeuralEmissions, h: Int, g: Int): Boolean {
+        val first = dict.firstChild(node[h])
+        val inRange = dict.childCount(node[h]) > 0 && node[g] >= first
+        val child = inRange && node[g] < first + dict.childCount(node[h])
+        val ch = if (child) dict.nodeChar(node[g]) else ' '
+        val free = child && (Text.isApostrophe(ch) || e.classOf(ch) == cls[h])
+        return !free || score[g] >= score[h]
     }
 
     /**
@@ -263,7 +297,10 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
         while (tableGen[i] == gen) {
             val h = table[i]
             if (nNode[h] == n) {
-                if (s > nScore[h]) nScore[h] = s
+                if (s > nScore[h]) {
+                    nScore[h] = s
+                    if (h < raisedMin) raisedMin = h
+                }
                 return
             }
             i = (i + 1) and mask

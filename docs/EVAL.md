@@ -432,6 +432,23 @@ the encoder settings were swept on the full dev split:
 | beam width 16 / 64 | 91.25 / 91.45% | 94.48 / 94.77% | 0.76 / 1.84, 1.34 / 2.26 |
 | beam words 8 / 32 | 91.35 / 91.37% | 94.61 / 94.68% | |
 
+**Reproducing the weights.** `tools/swipenet/tune-fusion.py` (standard library only) grid-searches
+the channel floor, neural weight, LM weight, length bonus and neural floor on the dump of the dev
+split. It must never be given the test split's dump.
+
+```
+./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --neural --neural-dump /tmp/dev-dump.csv"
+python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv            # 405 points, about 13 minutes
+python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --quick    # a few points, seconds
+```
+
+The dump's `lm` already includes the right context (weight 0.3) and its `neural` is already
+floored at -60, so those two are not searched (the neural floor can only be raised). On all dev
+swipes the shipped weights score 91.40% top-1 and the best grid point 91.41% (neural weight 1.0,
+LM 1.2): the plateau is flat, the channel floor and neural floor change nothing, and the shipped
+point is within 0.01 points of the best (the script's 91.40% differs from the eval's 91.39% only
+in how it breaks exact ties).
+
 The intention gate (`NeuralSwipeConfig.gate`) scales each step's log-probabilities by
 `1 - gate + gate * lambda`. The encoder's lambda is close to 1 minus its blank probability, so
 the gate adds no information. Down-weighting the between-key steps also makes extra letters

@@ -1,9 +1,15 @@
 package dev.keycorrect.core.decoder.gesture
 
 import com.google.common.truth.Truth.assertThat
+import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.decoder.NeuralSwipeConfig
+import dev.keycorrect.core.decoder.TestDictionary
 import dev.keycorrect.core.decoder.TestKeyboard
+import dev.keycorrect.core.dictionary.Dictionary
+import dev.keycorrect.core.dictionary.DictionaryData
+import dev.keycorrect.core.dictionary.DictionaryWriter
+import dev.keycorrect.core.dictionary.WordEntry
 import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeySpec
 import dev.keycorrect.core.engineapi.PredictResult
@@ -13,7 +19,9 @@ import dev.keycorrect.core.swipenet.SwipeEncoder
 import dev.keycorrect.core.swipenet.SwipeFrame
 import dev.keycorrect.core.swipenet.SwipeLayout
 import dev.keycorrect.core.swipenet.SwipeNetBackend
+import java.nio.ByteBuffer
 import kotlin.math.ln
+import kotlin.random.Random
 import org.junit.Test
 
 /**
@@ -47,6 +55,8 @@ class NeuralFusionTest {
             Fails,
             Throws,
             Spells,
+            SpellsNaNEmission,
+            SpellsNaNLambda,
         }
 
         var runs = 0
@@ -64,8 +74,12 @@ class NeuralFusionTest {
             return when (mode) {
                 Mode.Fails -> false
                 Mode.Throws -> error("native failure")
-                Mode.Spells -> {
+                Mode.Spells,
+                Mode.SpellsNaNEmission,
+                Mode.SpellsNaNLambda -> {
                     spell(word, layout!!).copyInto(out)
+                    if (mode == Mode.SpellsNaNEmission) out[5] = Float.NaN
+                    if (mode == Mode.SpellsNaNLambda) out[SwipeEmissions.SIZE - 1] = Float.NaN
                     true
                 }
             }
@@ -115,6 +129,24 @@ class NeuralFusionTest {
             val engine = ClassicEngine(dictionary, swipeEncoder = { encoder })
             assertThat(decodeAll(engine).summary()).isEqualTo(shark)
             assertThat(backend.runs).isEqualTo(words.size)
+        }
+    }
+
+    @Test
+    fun aNaNInTheEncoderOutputFallsBackToSharkExactly() {
+        for (mode in listOf(FakeBackend.Mode.SpellsNaNEmission, FakeBackend.Mode.SpellsNaNLambda)) {
+            for (gate in listOf(0f, 0.5f)) {
+                val backend = FakeBackend(mode, swipeLayout, "them")
+                val encoder = SwipeEncoder.open(ByteArray(1), backend = backend)
+                val engine =
+                    ClassicEngine(
+                        dictionary,
+                        swipeEncoder = { encoder },
+                        config = ClassicConfig(neural = NeuralSwipeConfig(gate = gate)),
+                    )
+                assertThat(decodeAll(engine).summary()).isEqualTo(shark)
+                assertThat(backend.runs).isEqualTo(words.size)
+            }
         }
     }
 
@@ -174,6 +206,56 @@ class NeuralFusionTest {
             assertThat(out[0]).isEqualTo(word)
             // The beam's best word scores what an exact alignment of it scores.
             assertThat(search.align(word, e)).isGreaterThan(search.align("hold", e))
+        }
+    }
+
+    @Test
+    fun freeEdgesStayClosedWhenOneRaisesAnAlreadyClosedHypothesis() {
+        // "hell's" is a repeat then an apostrophe. A free edge can raise a hypothesis that was
+        // already closed, so its own free children must be closed again.
+        val letters = listOf('h', 'e', 'l', 's')
+        val build = Random(5)
+        val vocabulary =
+            (listOf("hel", "hell", "hell's") +
+                    List(120) {
+                        buildString {
+                            repeat(2 + build.nextInt(6)) {
+                                append(if (build.nextInt(7) == 0) '\'' else letters.random(build))
+                            }
+                        }
+                    })
+                .distinct()
+        val small =
+            Dictionary.open(
+                ByteBuffer.wrap(
+                    DictionaryWriter.write(
+                        DictionaryData(
+                            TestDictionary.data.metadata,
+                            vocabulary.map { WordEntry.fromCount(it, 100L, 10_000L, 0) },
+                        ),
+                        skipUnknownNgrams = true,
+                    )
+                )
+            )
+        val classes = KeyClasses(swipeLayout)
+        val keys = letters.map { swipeLayout.chars.indexOf(it) }
+        val random = Random(11)
+        repeat(2000) {
+            val search = NeuralSearch(small, NeuralSwipeConfig(beamWidth = 2 + it % 9))
+            val raw = FloatArray(EMISSIONS)
+            for (t in 0 until SwipeEmissions.STEPS) {
+                val row = t * SwipeEmissions.CLASSES
+                val hot = if (random.nextInt(3) == 0) SwipeEmissions.BLANK else keys.random(random)
+                for (c in 0 until SwipeEmissions.CLASSES) {
+                    raw[row + c] = if (c == hot) -0.2f else -1f - 4f * random.nextFloat()
+                }
+            }
+            val e = NeuralEmissions(raw, classes)
+            search.beam(e, arrayOfNulls(1)) {
+                assertThat(search.freeEdgesClosed(e)).isTrue()
+                false
+            }
+            assertThat(search.freeEdgesClosed(e)).isTrue()
         }
     }
 

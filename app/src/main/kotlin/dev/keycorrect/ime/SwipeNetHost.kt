@@ -14,9 +14,10 @@ import kotlinx.coroutines.launch
 /**
  * The neural swipe encoder for the keyboard (docs/PHASE10.md, 10a-3). The swipe pack is opened the
  * first time a swipe asks for the encoder, on [io] (never on the main or the decoder thread), and
- * the encoder is kept for the life of the process. Until it has loaded, or when the pack is
- * missing, signed with another key or fails to load, [encoder] returns null and swipes decode with
- * SHARK² alone.
+ * the encoder is kept for the life of the process: there is one host per process (`AppContainer`),
+ * on the application scope, so recreating the keyboard service neither loads a second encoder nor
+ * loses one whose load was still running. Until it has loaded, or when the pack is missing, signed
+ * with another key or fails to load, [encoder] returns null and swipes decode with SHARK² alone.
  *
  * A pack that isn't installed is looked for again at most every [RETRY_NANOS], so installing it
  * takes effect without a restart. Any other failure is final for the process: the pack's library
