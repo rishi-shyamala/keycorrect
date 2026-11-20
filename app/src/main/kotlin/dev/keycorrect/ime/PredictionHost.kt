@@ -19,6 +19,7 @@ import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.learning.Personalization
+import dev.keycorrect.core.learning.foldApostrophes
 import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
@@ -198,11 +199,11 @@ class PredictionHost(
         shortcutStore.snapshot[trigger]?.let { ShortcutRule(it.expansion) }
 
     /**
-     * Apostrophes are normalised (curly and modifier forms to `'`) and the user's words are
+     * Apostrophes are folded as learning folds them ([foldApostrophes]) and the user's words are
      * compared case-insensitively, so "Don’t" and "DON'T" are as known as "don't".
      */
     override fun isKnownWord(word: String): Boolean {
-        val plain = normaliseApostrophes(word)
+        val plain = foldApostrophes(word)
         val user = userDictionary.snapshot
         if (word in user || plain in user) return true
         if (foldedWords(user).contains(plain.lowercase(Locale.ROOT))) return true
@@ -222,7 +223,7 @@ class PredictionHost(
         val cached = foldedUserWords
         if (cached != null && cached.source === snapshot) return cached.folded
         val folded =
-            snapshot.words.keys.mapTo(HashSet()) { normaliseApostrophes(it).lowercase(Locale.ROOT) }
+            snapshot.words.keys.mapTo(HashSet()) { foldApostrophes(it).lowercase(Locale.ROOT) }
         foldedUserWords = FoldedWords(snapshot, folded)
         return folded
     }
@@ -252,9 +253,6 @@ class PredictionHost(
         }
         installedProvider = null
     }
-
-    private fun normaliseApostrophes(word: String): String =
-        word.replace('’', '\'').replace('‘', '\'').replace('ʼ', '\'')
 
     private fun shortcutExpansions(): Map<String, String> {
         val snapshot = shortcutStore.snapshot

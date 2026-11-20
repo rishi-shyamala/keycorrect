@@ -1,5 +1,6 @@
 package dev.keycorrect.core.learning.model
 
+import dev.keycorrect.core.learning.foldApostrophe
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.pow
@@ -9,16 +10,7 @@ internal object Text {
     /** Separator for composite keys; never occurs in a normalised word. */
     const val SEP = '\u001F'
 
-    private fun foldChar(c: Char): Char =
-        when (c) {
-            '’',
-            '‘',
-            'ʼ',
-            '´',
-            '`',
-            '′' -> '\''
-            else -> c
-        }
+    private fun foldChar(c: Char): Char = foldApostrophe(c)
 
     /** Folds apostrophe variants to `'` but keeps case. */
     fun fold(s: String): String =
