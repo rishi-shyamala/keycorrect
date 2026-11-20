@@ -438,7 +438,7 @@ split. It must never be given the test split's dump.
 
 ```
 ./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --neural --neural-dump /tmp/dev-dump.csv"
-python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv            # 405 points, about 13 minutes
+python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --swipes 52472 # 405 points, about 13 minutes
 python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --quick    # a few points, seconds
 ```
 

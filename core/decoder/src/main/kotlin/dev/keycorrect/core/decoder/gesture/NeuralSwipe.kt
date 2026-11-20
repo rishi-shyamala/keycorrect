@@ -150,9 +150,6 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
     private var nCls = IntArray(INITIAL)
     private var nScore = FloatArray(INITIAL)
     private var nSize = 0
-
-    // Lowest index [push] raised since it was last reset ([closeFreeEdges]).
-    private var raisedMin = Int.MAX_VALUE
     private var table = IntArray(INITIAL * 2)
     private var tableGen = IntArray(INITIAL * 2)
     private var gen = 0
@@ -210,17 +207,16 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
 
     /**
      * Adds, at no cost, the children of every hypothesis reached by an apostrophe or by its own
-     * last key again ("hel" -> "hell"), so "hello" and "don't" align like "helo" and "dont". Runs
-     * to a fixed point, so chains of free edges (a repeat then an apostrophe) all get the best
-     * score.
+     * last key again ("hel" -> "hell"), so "hello" and "don't" align like "helo" and "dont".
      */
+    // Insertion order suffices: within a step an ancestor precedes its descendants in the table,
+    // and [align] rescores every word exactly anyway.
     private fun closeFreeEdges(e: NeuralEmissions) {
         var h = 0
         while (h < nSize) {
             val n = nNode[h]
             val c = nCls[h]
             val count = if (c >= 0) dict.childCount(n) else 0
-            raisedMin = Int.MAX_VALUE
             if (count > 0) {
                 val first = dict.firstChild(n)
                 for (i in 0 until count) {
@@ -229,27 +225,8 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
                     if (Text.isApostrophe(ch) || e.classOf(ch) == c) push(child, c, nScore[h])
                 }
             }
-            // A free edge that raised a hypothesis already closed (index <= h) leaves its free
-            // children stale: go back to it. Scores only rise, so this reaches a fixed point.
-            h = if (raisedMin <= h) raisedMin else h + 1
+            h++
         }
-    }
-
-    /**
-     * For tests: whether, in the current beam, every free edge between two surviving hypotheses
-     * leaves the child scoring at least what its parent does (the fixed point of [closeFreeEdges]).
-     */
-    internal fun freeEdgesClosed(e: NeuralEmissions): Boolean =
-        (0 until size).all { h -> cls[h] < 0 || (0 until size).all { g -> childOk(e, h, g) } }
-
-    /** Whether hypothesis [g] is not a free child of [h] scoring below it. */
-    private fun childOk(e: NeuralEmissions, h: Int, g: Int): Boolean {
-        val first = dict.firstChild(node[h])
-        val inRange = dict.childCount(node[h]) > 0 && node[g] >= first
-        val child = inRange && node[g] < first + dict.childCount(node[h])
-        val ch = if (child) dict.nodeChar(node[g]) else ' '
-        val free = child && (Text.isApostrophe(ch) || e.classOf(ch) == cls[h])
-        return !free || score[g] >= score[h]
     }
 
     /**
@@ -297,10 +274,7 @@ internal class NeuralSearch(private val dict: Dictionary, config: NeuralSwipeCon
         while (tableGen[i] == gen) {
             val h = table[i]
             if (nNode[h] == n) {
-                if (s > nScore[h]) {
-                    nScore[h] = s
-                    if (h < raisedMin) raisedMin = h
-                }
+                if (s > nScore[h]) nScore[h] = s
                 return
             }
             i = (i + 1) and mask

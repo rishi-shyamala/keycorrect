@@ -96,8 +96,7 @@ class SwipeNetHostTest {
     @Test
     fun aLoadThatFinishesAfterTheAskerIsGoneStillLandsInTheHost() {
         // The service that asked has been destroyed by the time the load finishes; the host (one
-        // per
-        // process, on the application scope) keeps the encoder for the next service.
+        // per process, on the application scope) keeps the encoder for the next service.
         val gate = java.util.concurrent.CountDownLatch(1)
         val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
         var opens = 0

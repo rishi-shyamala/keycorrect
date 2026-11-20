@@ -14,7 +14,7 @@ the best one. Standard library only:
 
   ./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --neural \
       --neural-dump /tmp/dev-dump.csv"
-  python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv [--quick] [--max-swipes N]
+  python3 -I tools/swipenet/tune-fusion.py /tmp/dev-dump.csv --swipes N [--quick] [--max-swipes N]
 """
 
 import argparse
@@ -40,7 +40,7 @@ QUICK = {
 }
 
 
-def load(file, max_swipes):
+def load(file, max_swipes, total):
     """Per swipe: a list of (channel, neural, lm, letters, is_target)."""
     swipes = {}
     with open(file, newline="") as f:
@@ -54,7 +54,10 @@ def load(file, max_swipes):
             swipes.setdefault(i, []).append(
                 (float(row["channel"]), neural, float(row["lm"]), int(row["len"]), row["is_target"] == "1")
             )
-    total = (max(swipes) + 1) if swipes else 0
+    # Swipes with no candidates have no rows, so --swipes gives the real count (misses count).
+    total = max(total, (max(swipes) + 1) if swipes else 0)
+    if max_swipes:
+        total = min(total, max_swipes)
     return [swipes.get(i, []) for i in range(total)]
 
 
@@ -77,9 +80,10 @@ def main():
     ap.add_argument("dump", help="the --neural-dump CSV of the dev split")
     ap.add_argument("--quick", action="store_true", help="a small grid (neural weight and letters only)")
     ap.add_argument("--max-swipes", type=int, default=0, help="use only the first N swipes")
+    ap.add_argument("--swipes", type=int, default=0, help="the number of swipes evaluated (the eval report's figure); swipes with no candidates count as misses")
     args = ap.parse_args()
 
-    swipes = load(args.dump, args.max_swipes)
+    swipes = load(args.dump, args.max_swipes, args.swipes)
     grid = QUICK if args.quick else GRID
     names = list(GRID)
     points = list(itertools.product(*(grid[n] for n in names)))
