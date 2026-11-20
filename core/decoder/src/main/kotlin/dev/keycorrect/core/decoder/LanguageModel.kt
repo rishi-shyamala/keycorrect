@@ -45,6 +45,21 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     private var lnBase = 0f
     private var userContext: List<String> = emptyList()
 
+    /** [userNextWords] memo: valid while [user] and [userContext] are the same instances. */
+    private var nextFor: Personalization? = null
+    private var nextForContext: List<String>? = null
+    private var nextMemo: List<String> = emptyList()
+
+    private fun userNextWords(): List<String> {
+        val u = user ?: return emptyList()
+        if (u !== nextFor || userContext !== nextForContext) {
+            nextMemo = u.userNextWords(userContext)
+            nextFor = u
+            nextForContext = userContext
+        }
+        return nextMemo
+    }
+
     /** Binds [p] (null for none) for the following requests; call before [setContext]. */
     fun bindPersonalization(p: Personalization?, weight: Float) {
         user = if (p === Personalization.None || weight <= 0f) null else p
@@ -239,15 +254,14 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
 
     /** Whether the user has typed anything known after the current context. */
     val hasUserNextWords: Boolean
-        get() = user?.userNextWords(userContext)?.isNotEmpty() == true
+        get() = userNextWords().isNotEmpty()
 
     /**
      * What a phrase step is judged by: [logProb], or the user's own estimate when higher. The blend
      * weighs the user at [UserDataConfig.userNgramWeight], below the phrase gate, so a phrase of
      * the user's own words could otherwise never be offered, however often it is typed.
      */
-    fun phraseStepLogProb(id: Int): Float {
-        val blended = logProb(id)
+    fun phraseStepLogProb(id: Int, blended: Float = logProb(id)): Float {
         val own =
             if (id < Dictionary.FIRST_WORD_ID) null
             else user?.userLogProb(userContext, dict.word(id))
@@ -327,7 +341,7 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
      */
     private fun addUserNextWords(): Int {
         var n = 0
-        user?.userNextWords(userContext)?.forEach { key ->
+        userNextWords().forEach { key ->
             for (id in dict.idsForKey(key)) n = addToPool(n, id)
         }
         return n

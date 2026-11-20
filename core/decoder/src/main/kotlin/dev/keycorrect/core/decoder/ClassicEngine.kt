@@ -764,7 +764,7 @@ class ClassicEngine(
             val n = lm.nextWords(1, phraseIds, phraseLogProbs, allowEnd = !lm.hasUserNextWords)
             val step =
                 if (n == 0 || phraseIds[0] == Dictionary.EOS_ID) Float.NEGATIVE_INFINITY
-                else lm.phraseStepLogProb(phraseIds[0])
+                else lm.phraseStepLogProb(phraseIds[0], phraseLogProbs[0])
             // A repeat of the previous word ("ha ha ha") is not a phrase.
             if (step < minStep || phraseIds[0] == previousId) break
             previousId = phraseIds[0]

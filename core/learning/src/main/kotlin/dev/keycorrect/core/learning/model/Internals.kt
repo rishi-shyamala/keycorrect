@@ -109,7 +109,7 @@ internal class Decay(val halfLifeMillis: Double) {
  * shards touched since the previous publish, so a 100k-entry table costs a few hundred entries per
  * publish, not a full copy. Values must be immutable. Not thread-safe (single writer).
  */
-internal class ShardedMap<V : Any>(private val shardCount: Int = 128) {
+internal class ShardedMap<V : Any>(private val shardCount: Int = 512) {
     private val live = Array(shardCount) { HashMap<String, V>() }
     private var frozenShards: Array<Map<String, V>> = Array(shardCount) { emptyMap() }
     private val dirty = BooleanArray(shardCount)

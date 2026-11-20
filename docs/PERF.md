@@ -248,3 +248,20 @@ Caveats: the start benchmark's metric is the Settings activity's time to initial
 runs in the same process, and the host is brought up after it); the keyboard's own first frame is
 not isolated. Frame durations were not reported on the emulator (only `frameCount`), so typing frame
 timing needs a real device. Device numbers pending.
+
+## 2026-11-16: learning and next-word fixes (desktop JVM, relative only)
+
+Outputs identical (tap eval failures.csv and accuracy, learn eval report, learning-curve report)
+after each fix. Throwaway benchmarks, not committed: NgramModel add + enforceCaps + freeze per word
+(synthetic vocabulary), and a learned `predictNow` next-word loop (600 requests, phrase words 3).
+
+| Fix | Before | After |
+| --- | --- | --- |
+| ShardedMap 128 -> 512 shards (1024 was worse on small tables) | 150k words (at caps): 5.3 s, 71.7 KB/word; 3k words: 7 ms, 8.6 KB/word | 3.1 s, 41 KB/word; 3k words: 10 ms, 17 KB/word |
+| Next words memoised per context; phrase step reuses the pooled probability | next-word, 3k learned: 29 us, 8.8 KB; 40k learned: 35-37 us, 12.1 KB | 27-28 us, 8.3 KB; 34-37 us, 11.5 KB (about -5% allocation, CPU within noise) |
+
+Tried and dropped: a per-context direct-mapped memo of the bigram/trigram counts in
+`FrozenNgrams.logProb` (avoids the key concatenation on repeated candidates) made next-word decode
+slower (29 -> 30 us, 8.8 -> 10.4 KB; 36 -> 45 us, 12.1 -> 14.0 KB), since next-word candidates are
+all distinct. Not attempted: per-candidate allocation in the composing path, cheaper
+`enforceCaps`/`rebuildNext`, dictionary mmap reads.
