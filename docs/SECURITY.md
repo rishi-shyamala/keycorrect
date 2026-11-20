@@ -17,7 +17,17 @@ Scope: PLAN.md section 15, archive/PHASE9.md decisions P9-1 and P9-2. Audited at
 
 `app/src/test/kotlin/dev/keycorrect/security/ManifestSecurityTest.kt` runs in `testDebugUnitTest`. The app module's tests depend on `processReleaseMainManifest` (app and sampleplugin) and read the merged release manifest. It fails on: any permission outside the approved set (so INTERNET), any exported component beyond the IME service (with BIND_INPUT_METHOD) and the launcher activity (the one allowed extra is androidx `ProfileInstallReceiver`, which must keep `android.permission.DUMP`), an exported provider, a component without an explicit `exported`, `allowBackup` other than false, missing `dataExtractionRules`, `directBootAware`, debuggable or cleartext, Field Lab in release, and any permission or component in the pack manifests.
 
-## Follow-ups
+## Device checks (2026-11-19, s23u emulator, API 36)
 
-- Device check of `isSensitiveData` on an API 34+ emulator or phone with a non-tool accessibility service.
-- Release logcat check on a device while typing (Log.w remains by design: class names only).
+- **Password fields, non-tool accessibility service.** A throwaway probe service
+  (`isAccessibilityTool=false`, window content and interactive windows on) logged what it could see
+  of the input-method window in Field Lab:
+  - **Plain text field:** 72 nodes, including every key label. Events from the keyboard window
+    carried the strip's suggestions.
+  - **Password field:** 16 nodes, the only labels being the system's navigation buttons ("Back",
+    "Switch input method"). No events at all came from the keyboard window while typing. The host
+    field's own text events stay masked by the platform; Android's "Show passwords" setting reveals
+    the last character there, which is outside the keyboard.
+- **Release logcat while typing.** `0.5.0-test.22` (release, R8): a plain field, then a password
+  field. The two keyboard processes logged 28 lines, all from the framework (graphics, class
+  loaders, GC, `ImeTracker`). Nothing contained the typed text.
