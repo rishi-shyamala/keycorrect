@@ -146,3 +146,11 @@ Source: user decisions during the 2026-11 cleanup audit.
 |---|---|---|---|
 | CA-1 | 2026-11-15 | The recent-sentence buffer stays as it is (no change from the cleanup audit). | core/learning, core/data |
 | CA-2 | 2026-11-15 | The unused voice helpers `SubstitutionLearner` and `HotwordPicker` are kept for a later voice-learning feature; do not delete them as dead code. | core/voice, feature/voice-sherpa |
+
+## After Phase 9 (2026-11-19)
+
+Source: user decision after the cleanup audit merged (#29).
+
+| Id | Date | Decision | Where |
+|---|---|---|---|
+| N-1 | 2026-11-19 | Next stages, in order: close out Phase 9 with an on-device test (the §14 budgets on the S23 Ultra, plus the security follow-ups), then Phase 10 neural swipe. On-device LoRA finetuning is a long-term stretch goal. | docs/PERF.md, docs/SECURITY.md, Phase 10 |
