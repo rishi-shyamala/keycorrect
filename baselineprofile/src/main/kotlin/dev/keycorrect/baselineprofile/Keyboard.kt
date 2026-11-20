@@ -9,14 +9,40 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 
 /** Drives the real KeyCorrect IME from a test: enable/select it, focus a field, tap keys. */
-internal class Keyboard(targetPackage: String) {
+internal class Keyboard(private val targetPackage: String) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     val device: UiDevice = UiDevice.getInstance(instrumentation)
     private val imeId = "$targetPackage/dev.keycorrect.ime.KeyCorrectImeService"
 
     fun enableAndSelectIme() {
+        enableIme()
+        selectIme()
+    }
+
+    /** Adds the keyboard to the enabled list. Unlike [selectIme] this binds nothing. */
+    fun enableIme() {
         shell("ime enable $imeId")
+    }
+
+    /** Makes the keyboard the current one; some devices (One UI) bind and start it at once. */
+    fun selectIme() {
         shell("ime set $imeId")
+    }
+
+    /**
+     * Makes [otherIme] the current keyboard and waits until the target process is gone, so the next
+     * focus cold-starts it. A selected keyboard is bound at once on some devices, which keeps the
+     * process alive and fails Macrobenchmark's cold-start check.
+     */
+    fun deselectAndStop(otherIme: String) {
+        shell("ime set $otherIme")
+        val end = System.currentTimeMillis() + STOP_TIMEOUT_MS
+        while (System.currentTimeMillis() < end) {
+            shell("am force-stop $targetPackage")
+            if (shell("pidof $targetPackage").isBlank()) return
+            Thread.sleep(POLL_MS)
+        }
+        error("$targetPackage kept running after switching the keyboard to $otherIme")
     }
 
     /** Opens [HostActivity], focuses its field and returns the keyboard window bounds. */
@@ -90,5 +116,7 @@ internal class Keyboard(targetPackage: String) {
 
     private companion object {
         val ROWS = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+        const val STOP_TIMEOUT_MS = 10_000L
+        const val POLL_MS = 200L
     }
 }
