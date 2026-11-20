@@ -35,14 +35,20 @@ class KeyboardBenchmark {
             iterations = 5,
             setupBlock = {
                 pressHome()
-                Keyboard(TARGET).enableAndSelectIme()
+                // Not selected yet: a selected keyboard is bound at once on One UI, and a running
+                // process fails the cold-start check. The device's own keyboard holds the slot.
+                val kb = Keyboard(TARGET)
+                kb.enableIme()
+                kb.deselectAndStop(checkNotNull(ime.savedDefault) { "No default keyboard to hold" })
             },
         ) {
-            // The app process was killed in setup, so focusing the host field cold-starts the IME
-            // service; openHost returns once the keyboard window is on screen. The host activity
-            // is in the test process, so the measured launch is the app's Settings activity.
+            // The measured launch is the app's Settings activity (the host activity is in the
+            // test process). Selecting the keyboard afterwards and focusing the host field brings
+            // up the IME service; openHost returns once the keyboard window is on screen.
             startActivityAndWait()
-            Keyboard(TARGET).openHost()
+            val kb = Keyboard(TARGET)
+            kb.selectIme()
+            kb.openHost()
         }
 
     private fun typing(mode: CompilationMode) =

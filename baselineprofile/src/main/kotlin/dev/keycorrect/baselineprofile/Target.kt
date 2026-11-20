@@ -30,11 +30,16 @@ internal fun shell(cmd: String): String =
  * test fails, so a run never leaves the device on the benchmark keyboard.
  */
 class ImeGuard : TestRule {
+    /** The device's own default keyboard as saved before the test; null if there was none. */
+    var savedDefault: String? = null
+        private set
+
     override fun apply(base: Statement, description: Description) =
         object : Statement() {
             override fun evaluate() {
                 Target.requireSafe()
                 val default = shell("settings get secure default_input_method").trim()
+                savedDefault = default.takeIf { it.isNotEmpty() && it != "null" }
                 val enabled = shell("settings get secure enabled_input_methods").trim()
                 try {
                     base.evaluate()

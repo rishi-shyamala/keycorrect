@@ -60,7 +60,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Target devices are arm64; x86_64 kept for emulators. Drops ~5 MB of unused SQLCipher
         // native code. 32-bit-only devices (armeabi-v7a, x86) are intentionally unsupported.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // `-Pkeycorrect.abis=arm64-v8a` builds the phone-only APK that test releases publish.
+        val abis =
+            providers.gradleProperty("keycorrect.abis").orNull?.split(',')?.map { it.trim() }
+                ?: listOf("arm64-v8a", "x86_64")
+        ndk { abiFilters += abis }
     }
 
     signingConfigs {

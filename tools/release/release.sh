@@ -112,7 +112,8 @@ case "${1:-}" in
             exit 1
         fi
         rm -f app/build/outputs/apk/release/app-release.apk
-        ./gradlew --console=plain -q :app:assembleRelease
+        # Phones only: the x86_64 libraries are for emulators (2.2 MB of SQLCipher; decision N-2).
+        ./gradlew --console=plain -q -Pkeycorrect.abis=arm64-v8a :app:assembleRelease
         apk=app/build/outputs/apk/release/app-release.apk
         if [[ ! -f $apk ]]; then
             if [[ -f app/build/outputs/apk/release/app-release-unsigned.apk ]]; then

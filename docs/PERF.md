@@ -91,6 +91,37 @@ per-item cost. "Before" is this branch with the three perf commits reverted.
 The keystroke path gained more on the device (−68%) than on the desktop: ART doesn't remove the
 allocations HotSpot's escape analysis did. Decode stays far inside the §14 budget (≤8 ms p95).
 
+### Device (ARM, ART, release), Galaxy S23 Ultra, 2026-11-19
+
+Medians of `:benchmark` on SM-S918U (API 37), at `phase-9-closeout` (after the cleanup audit and
+its performance fixes). Per item = median / batch.
+
+| Benchmark (batch) | Median | Allocations | Per item |
+|---|---|---|---|
+| `DecoderBenchmark.composing` (200 predictions) | 55.3 ms | 42k | 0.28 ms |
+| `DecoderBenchmark.composingPersonalized` (200) | 76.0 ms | 169k | 0.38 ms |
+| `GestureBenchmark.decodeOnLift` (~60 swipes) | 67.4 ms | 20k | ~1.1 ms |
+| `GestureBenchmark.decodeCold` | 1.3 ms | 1.5k | once |
+| `GestureBenchmark.warmUp` | 5.3 ms | 149 | once |
+| `KeystrokeBenchmark.cannedPredictor` (~480 keys) | 3.6 ms | 50k | ~7 µs |
+| `LearningBenchmark.applyWordEvents` (200 events) | 5.2 ms | 29k | 0.026 ms |
+| `EmojiBenchmark.readCatalog` | 4.2 ms | 62k | once per process |
+| `EmojiBenchmark.filterByGlyph` | 2.9 ms | 2.4k | once per process |
+
+Learning apply fell from 33.2 ms on the Tab S9 in October to 5.2 ms (a different device; the
+`ShardedMap` shard count is the main code change in between).
+
+**§14 budgets on the S23 Ultra:**
+
+| Budget | Result |
+|---|---|
+| Fast decode ≤8 ms p95 | Met: 0.28-0.38 ms per prediction (median of batches) |
+| Touch → feedback ≤1 frame (8.3 ms at 120 Hz) | Typing frame CPU p95 6.7 ms with the baseline profile; p99 10.8 ms, so about 1-2% of frames overrun |
+| `onCreateInputView` cold ≤150 ms | Not isolated: the cold-start benchmark measures the Settings activity (266 ms with the profile) |
+| IME memory ≤80 MB PSS | The installed `test.18` after a long uptime: about 17 MB resident, 104 MB PSS including 86 MB swapped out under memory pressure. A clean `test.22` measurement is pending |
+| Idle CPU 0 when hidden | Met: about 0 over 30 s with no focus changes; binder work follows the user's app switches |
+| APK ≤15 MB | Superseded by N-2 (about 16 MB acceptable): the arm64-only test APK is 15.9 MB |
+
 To see where device time goes, add a stack-sampling profile to a run:
 `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling`.
 The `.trace` files land next to the JSON results; open them in Android Studio or Perfetto.
@@ -247,7 +278,18 @@ ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndr
 Caveats: the start benchmark's metric is the Settings activity's time to initial display (the IME
 runs in the same process, and the host is brought up after it); the keyboard's own first frame is
 not isolated. Frame durations were not reported on the emulator (only `frameCount`), so typing frame
-timing needs a real device. Device numbers pending.
+timing needs a real device.
+
+**S23 Ultra numbers (SM-S918U, API 37, release, 2026-11-19; 5 iterations, median):**
+
+| Benchmark | None | Baseline profile |
+| --- | --- | --- |
+| Cold start, time to initial display (ms) | 396 (290-449) | 266 (255-370) |
+| Typing run, frame CPU time p50 / p95 / p99 (ms) | 4.1 / 8.4 / 14.3 | 3.6 / 6.7 / 10.8 |
+| Typing run, frame overrun p95 / p99 (ms) | 1.9 / 14.3 | 0.3 / 8.1 |
+
+One UI binds a selected keyboard immediately, so the cold-start setup leaves the device's own
+keyboard selected and switches to the benchmark copy only after the measured launch.
 
 ## 2026-11-16: learning and next-word fixes (desktop JVM, relative only)
 
