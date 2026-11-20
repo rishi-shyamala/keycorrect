@@ -11,8 +11,9 @@ swipe, so its accuracy on real fingers is unknown. Measuring that comes first.
 |---|---|---|
 | N-3 | Model source | **FUTO's encoder first, our own model later.** Ship FUTO Swipe's encoder (`model_int8.pte`, 1.0 MB, ExecuTorch) now. A model of our own, trained on the MIT-licensed swipe.futo.org data, follows as a separate part. It replaces FUTO's once it matches on the eval, which drops the attribution requirement. |
 | N-4 | Integration | **Fuse both.** The encoder's key probabilities are decoded against our dictionary and language model and merged with SHARK²'s candidates by a tuned score. SHARK² stays the decoder when the pack is missing. The fusion is kept only if it beats SHARK² on real swipes. |
+| N-5 | A new stage after this one | **Phase 11, simplification:** remove as many lines as possible without losing any feature or performance. Rework sections into their simplest form and justify every line of app code before keeping it. Recorded in PLAN §17; it gets its own plan when it starts. |
 
-Copy N-3 and N-4 into DECISIONS.md once #30 (which adds N-1 and N-2) is merged.
+Copy N-3 to N-5 into DECISIONS.md once #30 (which adds N-1 and N-2) is merged.
 
 ## External pieces (checked 2026-11-19)
 
