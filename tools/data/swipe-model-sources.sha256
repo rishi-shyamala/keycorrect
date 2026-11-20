@@ -1,0 +1,8 @@
+# SHA-256 of the neural swipe encoder (Phase 10a-2) in data/raw/swipenet/. Verified by
+# tools/data/fetch-swipe-model.sh. FUTO Swipe (FUTO Model Weights License 1.0), Hugging Face
+# commit 0a9a44bbe4d5b8aa8d1ff579ffc40d4861ae2467; recorded on 2026-11-20. ExecuTorch is pinned by
+# its git commit in the script.
+ef6b4f6437efa0a2929de351b10c16a8c870b32e1c23054ac76af61531f5db21  LICENSE.md
+776cd48f48ea17169f172b28246b684a9680fda5e339b0956170b70639acd653  README.md
+3480b20064b4336e7036b5b4430909f4303a9074154a0af8c75af3e458045511  honorable_sturgeon/model_int8.pte
+af24e004ca7241aa31d0e97f5730b9e6daf7f388abd2e775bf80a2024b8f071f  honorable_sturgeon/metadata.json

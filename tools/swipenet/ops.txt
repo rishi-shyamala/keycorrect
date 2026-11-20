@@ -1,0 +1,22 @@
+# Portable kernels FUTO Swipe's encoder (model_int8.pte) calls outside its XNNPACK delegate; the
+# build compiles only these (EXECUTORCH_SELECT_OPS_LIST). Derived from the model, not guessed, with
+# the executorch==1.5.1 wheel:
+#   python -I -m executorch.codegen.tools.gen_oplist --model_file_path=<model_int8.pte> \
+#     --output_path=selected_operators.yaml
+# Regenerate when the model changes.
+aten::_log_softmax.out
+aten::arange.start_out
+aten::atan2.out
+aten::bitwise_not.out
+aten::cumsum.out
+aten::expand_copy.out
+aten::full_like.out
+aten::gt.Scalar_out
+aten::lt.Scalar_out
+aten::scalar_tensor.out
+aten::select_copy.int_out
+aten::split_with_sizes_copy.out
+aten::squeeze_copy.dims_out
+aten::unsqueeze_copy.out
+aten::where.self_out
+dim_order_ops::_to_dim_order_copy.out
