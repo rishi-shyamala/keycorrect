@@ -5,7 +5,6 @@ import android.text.InputType
 import android.view.KeyEvent
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.keycorrect.core.emoji.Emoji
@@ -15,7 +14,6 @@ import dev.keycorrect.core.input.EnterAction
 import dev.keycorrect.core.input.FieldKind
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.input.TextEditor
-import dev.keycorrect.core.layout.BottomRowVariant
 import dev.keycorrect.core.layout.ComposeOptions
 import dev.keycorrect.core.layout.FieldMode
 import dev.keycorrect.core.layout.KeyAction
@@ -40,7 +38,6 @@ import dev.keycorrect.feature.keyboard.prediction.SelectionState
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
 import dev.keycorrect.feature.keyboard.prediction.SwipeCase
-import dev.keycorrect.feature.keyboard.prediction.WordTouchLog
 import dev.keycorrect.feature.keyboard.voice.MainThread
 import dev.keycorrect.feature.keyboard.voice.Scheduler
 import dev.keycorrect.feature.keyboard.voice.VoiceController
@@ -60,10 +57,10 @@ import kotlin.math.roundToInt
  * cached, and asked of the editor (a blocking call) only otherwise: when input starts, after an
  * external cursor move, or in fields where nothing is read.
  */
-@Suppress("LargeClass") // the keyboard's one coordinator; swipe logic lives in SwipeController
+@Suppress("LargeClass") // the keyboard's one coordinator; collaborators hold the rest
 class KeyboardController(
     private val editor: TextEditor,
-    private val composer: KeyboardComposer,
+    composer: KeyboardComposer,
     prediction: PredictionEnvironment = PredictionEnvironment.Disabled,
     private val clock: () -> Long = SystemClock::uptimeMillis,
     learning: LearningSink = LearningSink.None,
@@ -83,10 +80,7 @@ class KeyboardController(
     voiceScheduler: Scheduler = MainThread.scheduler,
     voicePost: (() -> Unit) -> Unit = MainThread::post,
 ) {
-    private val keyboardSet = KeyboardSet.Default
     private var settings = KeyboardSettings()
-    private var variant = BottomRowVariant.Text
-    private var options = ComposeOptions()
     private val ownEdits = OwnEditTracker(clock)
     private val tracked = TrackedEditor(editor, ownEdits)
     private var layoutId = 0L
@@ -177,9 +171,7 @@ class KeyboardController(
     private fun settleForVoice() {
         input.endComposingForMove()
         composingNow = input.isComposing
-        sawText = true
-        zeroChecked = false
-        if (fieldEmpty) fieldEmpty = false
+        fieldEmpty.noteTextTyped()
         updateAutoCapitalize()
     }
 
@@ -220,13 +212,11 @@ class KeyboardController(
         override fun onSwipeCancel() = swipes.onCancel()
     }
 
-    /** Touches of recently committed words, in memory only (for Phase 3 learning). */
-    val touchLog: WordTouchLog
-        get() = input.touchLog
+    private val layers = LayerComposition(composer) { profile }
 
     /** The layer being shown, composed for the current field and settings. */
-    var layer: KeyboardLayer by mutableStateOf(composer.compose(keyboardSet, KeyboardSet.LETTERS))
-        private set
+    val layer: KeyboardLayer
+        get() = layers.layer
 
     var state by mutableStateOf(KeyboardState())
         private set
@@ -240,6 +230,31 @@ class KeyboardController(
 
     var enterAction: EnterAction by mutableStateOf(EnterAction.NewLine)
         private set
+
+    /** Whether a physical keyboard is attached (from the configuration, see [updateDevice]). */
+    var hardwareKeyboardAttached: Boolean by mutableStateOf(false)
+        private set
+
+    /** With a physical keyboard: the full on-screen keyboard is up instead of the slim bar. */
+    var fullKeyboardShown: Boolean by mutableStateOf(false)
+        private set
+
+    /**
+     * Whether the full keyboard is the default with a physical keyboard (the system's "show
+     * on-screen keyboard" setting); a new field and attaching or detaching a keyboard return to it.
+     */
+    var fullKeyboardByDefault: Boolean = false
+        set(value) {
+            if (field != value) fullKeyboardShown = value
+            field = value
+        }
+
+    /** Combines a dead-key accent with a character (`KeyCharacterMap.getDeadChar`); 0 for none. */
+    var deadCharCombiner: (accent: Int, char: Int) -> Int
+        get() = physicalKeys.deadCharCombiner
+        set(value) {
+            physicalKeys.deadCharCombiner = value
+        }
 
     /** What fills the key area: the keys or a panel (Phase 4). */
     var panel: KeyboardPanel by mutableStateOf(KeyboardPanel.Keys)
@@ -277,14 +292,9 @@ class KeyboardController(
         }
     }
 
-    /**
-     * Keyboard height in row units (multiples of the key height setting), the same on every layer
-     * of the field: the letters layer's total row weight for the current field and options. Shorter
-     * layers (symbols, numpad) stretch their rows to fill it, so switching layers never resizes the
-     * IME window.
-     */
-    var heightUnits: Float by mutableFloatStateOf(DEFAULT_HEIGHT_UNITS)
-        private set
+    /** Keyboard height in row units, the same on every layer of the field. */
+    val heightUnits: Float
+        get() = layers.heightUnits
 
     /**
      * Prepares the keyboard for a field. The keyboard opens on the field's home layer (letters for
@@ -319,28 +329,32 @@ class KeyboardController(
         input.onStartInput(effective, settings, newField = !sameField, selectionState())
         composingNow = input.isComposing
         if (initialSelection.known || !sameField) ownEdits.reset(initialSelection)
-        refreshFieldEmpty(newField = !sameField)
+        fieldEmpty.refresh(newField = !sameField)
         val newOptions = composeOptions(effective, settings)
         if (sameField) {
-            applyOptions(newOptions)
+            layers.applyOptions(newOptions, state.layerId)
             updateLayoutKey()
             updateAutoCapitalize()
             warmUpSwipe()
             return
         }
         panel = KeyboardPanel.Keys
+        fullKeyboardShown = fullKeyboardByDefault
+        physicalKeys.clearPendingAccent()
         emojiSearch.close()
         clipboardPanel.reset()
         editing.reset()
+        terminalModifiers.reset()
+        rebuildLayers(effective, newOptions)
+    }
+
+    /** Starts the layers over for the field's [effective] profile: its home layer, shift off. */
+    private fun rebuildLayers(effective: FieldProfile, newOptions: ComposeOptions) {
         shiftHeld = false
         shiftChorded = false
-        terminalModifiers.reset()
-        variant = variantFor(effective.kind)
-        options = newOptions
-        val layerId = homeLayerFor(effective.kind)
+        val layerId = LayerComposition.homeLayerFor(effective.kind)
         state = KeyboardState(layerId)
-        layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
+        layers.rebuild(effective.kind, newOptions, layerId)
         updateLayoutKey()
         updateAutoCapitalize()
         warmUpSwipe()
@@ -354,7 +368,7 @@ class KeyboardController(
         this.settings = settings
         if (!settings.voiceEnabled) voice.stopNow()
         input.updateSettings(settings)
-        applyOptions(composeOptions(profile, settings))
+        layers.applyOptions(composeOptions(profile, settings), state.layerId)
         updateLayoutKey()
         if (!settings.autoCapitalize && state.shift == ShiftState.Auto) {
             state = state.withAutoShift(false)
@@ -372,9 +386,7 @@ class KeyboardController(
         if (searching) onSearchKey(action) else onTypingKey(action, touch)
         composingNow = input.isComposing
         if (!searching && (action is KeyAction.Text || action == KeyAction.Space)) {
-            sawText = true
-            zeroChecked = false
-            if (fieldEmpty) fieldEmpty = false
+            fieldEmpty.noteTextTyped()
         }
     }
 
@@ -417,7 +429,7 @@ class KeyboardController(
         if (!sendWithModifiers(TerminalKey(KeyEvent.KEYCODE_SPACE))) input.onSeparator(" ")
         state = state.afterCharacter(shiftHeld)
         updateAutoCapitalize()
-        if (afterSymbol) switchLayer(homeLayerFor(profile.kind))
+        if (afterSymbol) switchLayer(LayerComposition.homeLayerFor(profile.kind))
     }
 
     private fun onBackspaceKey() {
@@ -448,22 +460,6 @@ class KeyboardController(
         updateAutoCapitalize()
     }
 
-    private fun variantFor(kind: FieldKind): BottomRowVariant =
-        when (kind) {
-            FieldKind.Email -> BottomRowVariant.Email
-            FieldKind.Url -> BottomRowVariant.Url
-            else -> BottomRowVariant.Text
-        }
-
-    /** The layer a field of [kind] opens on, and ABC returns to from a panel. */
-    private fun homeLayerFor(kind: FieldKind): String =
-        when (kind) {
-            FieldKind.Number -> NUMPAD
-            FieldKind.Phone -> PHONE
-            FieldKind.DateTime -> DATETIME
-            else -> KeyboardSet.LETTERS
-        }
-
     /**
      * The user picked [mode] for a plain text field (the popup of ?123): the keyboard becomes that
      * kind's, with its layout, bottom row and suggestion and autocorrect rules, until the field
@@ -479,31 +475,18 @@ class KeyboardController(
         profile = effective
         input.onStartInput(effective, settings, newField = false, selectionState())
         composingNow = input.isComposing
-        shiftHeld = false
-        shiftChorded = false
-        variant = variantFor(effective.kind)
-        options = composeOptions(effective, settings)
-        val layerId = homeLayerFor(effective.kind)
-        state = KeyboardState(layerId)
-        layer = composer.compose(keyboardSet, layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { layerId == KeyboardSet.LETTERS })
-        updateLayoutKey()
-        updateAutoCapitalize()
-        warmUpSwipe()
+        rebuildLayers(effective, composeOptions(effective, settings))
     }
 
     private fun switchLayer(layerId: String) {
         // A user-edited layout may name a layer that doesn't exist; stay put rather than crash
         // the keyboard.
-        val next =
-            runCatching { composer.compose(keyboardSet, layerId, variant, options) }.getOrNull()
-                ?: return
+        if (!layers.show(layerId)) return
         input.onLayerSwitch()
         lastTypedOnSymbols = null
         shiftHeld = false
         shiftChorded = false
         state = state.withLayer(layerId)
-        layer = next
         updateLayoutKey()
         updateAutoCapitalize()
     }
@@ -559,7 +542,7 @@ class KeyboardController(
         val verdict = ownEdits.onUpdate(update)
         if (ownEdits.lastUpdateConfirmed) input.confirmEdits()
         // Our own edits don't change what a cursor at 0 has after it; anything else might.
-        refreshFieldEmpty(externalChange = verdict == UpdateVerdict.External)
+        fieldEmpty.refresh(externalChange = verdict == UpdateVerdict.External)
         // The user (or the app) moved things: a waiting Word/Line/Sentence no longer applies.
         if (verdict == UpdateVerdict.External) {
             editing.dropDeferred()
@@ -596,8 +579,11 @@ class KeyboardController(
     fun showPanel(panel: KeyboardPanel) {
         showPanelKeepingLayer(panel)
         // The panels' ABC key: back to the letters, not to the symbols page that was up before.
-        if (panel == KeyboardPanel.Keys && state.layerId != homeLayerFor(profile.kind)) {
-            switchLayer(homeLayerFor(profile.kind))
+        if (
+            panel == KeyboardPanel.Keys &&
+                state.layerId != LayerComposition.homeLayerFor(profile.kind)
+        ) {
+            switchLayer(LayerComposition.homeLayerFor(profile.kind))
         }
     }
 
@@ -614,32 +600,10 @@ class KeyboardController(
         if (panel == KeyboardPanel.Keys) updateAutoCapitalize()
     }
 
-    /**
-     * An emoji or kaomoji [value] was picked in the emoji panel ([base] is its grid entry; it is
-     * [record]ed as used unless a kaomoji). Nothing happens in a sensitive field.
-     *
-     * Settling: like a cursor move ([PredictiveInput.endComposingForMove]), not like a separator.
-     * The composing word is finished as typed and abandoned rather than learned or autocorrected,
-     * pending suggestions and a held revert are dropped, and the text cache is reset (it is read
-     * again on the next word). The emoji is then committed through [tracked], so [OwnEditTracker]
-     * expects its selection update. An emoji is never a word and never a separator.
-     */
-    fun onEmojiPicked(value: String, base: String = value, record: Boolean = true) {
-        if (profile.sensitive || value.isEmpty()) return
-        input.endComposingForMove()
-        tracked.commitText(value, 1)
-        // Nothing is remembered where the field asks for no learning (incognito tabs and the like).
-        if (record && profile.learningEnabled) emoji.onEmojiUsed(value, base)
-        updateAutoCapitalize()
-    }
-
     // ------------------------------------------------------------------ clipboard (PR C)
 
     /** Clipboard UI state: the card whose actions are open, and the clear-all confirmation. */
     internal val clipboardPanel = ClipboardPanelState()
-
-    /** A clip tapped on the strip chip is not offered again; set here so the chip hides. */
-    private var chipDismissedFor by mutableStateOf<Long?>(null)
 
     /**
      * Mirrors [PredictiveInput.isComposing] as observable state, so the chip hides while typing.
@@ -648,11 +612,11 @@ class KeyboardController(
 
     /**
      * Gesture typing is on for the current field: the setting is on and the field is a text, email,
-     * URL, name or address field that takes suggestions and has an engine (docs/PHASE5.md P5-5),
-     * and the letters are showing (not a panel, not the symbols, not the emoji search). Off in
-     * password, number, phone, date and terminal fields, and where the app asks for no suggestions;
-     * also off while suggestions are switched off, as the swiped word is committed like a picked
-     * suggestion. Read by the touch layer.
+     * URL, name or address field that takes suggestions and has an engine (docs/archive/PHASE5.md
+     * P5-5), and the letters are showing (not a panel, not the symbols, not the emoji search). Off
+     * in password, number, phone, date and terminal fields, and where the app asks for no
+     * suggestions; also off while suggestions are switched off, as the swiped word is committed
+     * like a picked suggestion. Read by the touch layer.
      */
     val swipeTypingActive: Boolean
         get() =
@@ -662,7 +626,7 @@ class KeyboardController(
                 profile.kind in SWIPE_KINDS &&
                 input.canSwipe()
 
-    /** The casing the shift state gives a word swiped now (docs/PHASE5.md). */
+    /** The casing the shift state gives a word swiped now (docs/archive/PHASE5.md). */
     private fun swipeCase(): SwipeCase =
         when (effectiveShift) {
             ShiftState.Locked -> SwipeCase.All
@@ -684,19 +648,13 @@ class KeyboardController(
         markChord()
         state = state.afterCharacter(shiftHeld)
         composingNow = input.isComposing
-        sawText = true
-        zeroChecked = false
-        if (fieldEmpty) fieldEmpty = false
+        fieldEmpty.noteTextTyped()
         updateAutoCapitalize()
     }
 
-    /**
-     * The clipboard panel is offered when history is on and the field is not sensitive (a password
-     * field has no emoji key, so there is nothing to long-press). The chip, [stripClip], is shown
-     * in any field, password fields included: pasting there is a normal use.
-     */
+    /** Whether the clipboard panel is offered (see [ClipboardController.available]). */
     val clipboardAvailable: Boolean
-        get() = clipboard.enabled && !profile.sensitive
+        get() = clipboards.available
 
     /**
      * A key was held. Only the emoji key has a long press: it opens the clipboard when
@@ -715,19 +673,9 @@ class KeyboardController(
     /** Opens the clipboard panel; does nothing when it is not [clipboardAvailable]. */
     fun openClipboard() = showPanel(KeyboardPanel.Clipboard)
 
-    /**
-     * The clip shown as a chip in the strip: only when the strip would otherwise be empty (keys
-     * showing, no word being composed, no suggestions, no selection strip), history is on, the host
-     * has a fresh clip and the user hasn't dismissed or pasted it. Autofill chips outrank it in the
-     * UI. Reads observable state only, so a keystroke recomposes just the chip. The host must back
-     * [ClipboardEnvironment.freshClip] with state (and age it out), as there is no timer here.
-     */
+    /** The clip shown as a chip in the strip (see [ClipboardController.stripClip]). */
     val stripClip: ClipItem?
-        get() {
-            if (!clipboard.enabled || panel != KeyboardPanel.Keys) return null
-            if (composingNow || !strip.isEmpty || selectionStripVisible) return null
-            return clipboard.freshClip()?.takeIf { it.id != chipDismissedFor }
-        }
+        get() = clipboards.stripClip
 
     /**
      * Whether the strip has content besides the tools (see [stripBusy]), so they sit small at its
@@ -736,56 +684,77 @@ class KeyboardController(
     val stripBusy: Boolean
         get() =
             stripBusy(
-                fieldHasText = !fieldEmpty,
+                fieldHasText = !fieldEmpty.empty,
                 stripEmpty = strip.isEmpty,
                 composing = composingNow,
                 selectionStrip = selectionStripVisible,
                 hasClip = stripClip != null,
             )
 
-    /**
-     * Whether the field has no text at all (nothing before or after the cursor), which is when the
-     * strip's tools spread out. Known from the selection updates: a cursor past 0 or a range means
-     * text. A cursor at 0 is empty as long as no text has been seen in the field ([sawText]: this
-     * costs no editor read, so opening a field is as cheap as before); once text has been there
-     * (deleted back to the start, cleared by the app) the editor is asked for one char after the
-     * cursor. Sensitive fields are never read, and where the editor can't say, the field counts as
-     * having text.
-     */
-    private var fieldEmpty by mutableStateOf(true)
-    private var sawText = false
+    /** Whether the field has no text at all, which is when the strip's tools spread out. */
+    private val fieldEmpty =
+        FieldEmptyTracker(
+            selection = { selection },
+            sensitive = { profile.sensitive },
+            textAfterCursor = { editor.textAfterCursor(1) },
+        )
 
-    /** The editor was asked about the text after a cursor at 0, and has not moved since. */
-    private var zeroChecked = false
-
-    private fun refreshFieldEmpty(newField: Boolean = false, externalChange: Boolean = false) {
-        if (newField) sawText = false
-        if (newField || externalChange) zeroChecked = false
-        val sel = selection
-        val hasText = sel.known && (sel.selStart > 0 || !sel.collapsed)
-        if (hasText) sawText = true
-        val atZero = sel.known && sel.collapsed && sel.selStart == 0 && canAskEditor()
-        val empty = !hasText && (if (atZero && zeroChecked) fieldEmpty else askFieldEmpty(sel))
-        zeroChecked = atZero
-        if (fieldEmpty != empty) fieldEmpty = empty
-    }
-
-    private fun canAskEditor() = sawText && !profile.sensitive
-
-    /** Empty by the editor when it can be asked, else by whether text was ever seen. */
-    private fun askFieldEmpty(sel: EditorSelection): Boolean =
-        if (sel.known && canAskEditor()) editor.textAfterCursor(1)?.isEmpty() ?: false else !sawText
+    /** What the on-screen keys' touches are recorded as; physical keys are their own profile. */
+    private var touchDevice = DeviceClass.Phone
+    private var landscape = false
 
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>
-        get() = toolsFor(profile.sensitive, clipboardAvailable)
+        get() = toolsFor(profile.sensitive, clipboardAvailable, keyboardToggle = physicalMode)
 
     /**
-     * Whether the strip shows its tools: while the keys or the editing panel are up (the emoji and
-     * clipboard panels use the strip for their own headers).
+     * Whether a physical keyboard is attached and the user wants suggestions for it: the host shows
+     * the slim bar (or the full keyboard, see [fullKeyboardShown]) and routes its keys here.
      */
-    val toolsVisible: Boolean
-        get() = panel == KeyboardPanel.Keys || panel == KeyboardPanel.Editing
+    val physicalMode: Boolean
+        get() = hardwareKeyboardAttached && settings.physicalKeyboardSuggestions
+
+    /** The hardware Back key: closes an open panel and returns true; false when none is open. */
+    fun onHardwareBack(): Boolean {
+        if (panel == KeyboardPanel.Keys) return false
+        showPanel(KeyboardPanel.Keys)
+        return true
+    }
+
+    /** Whether Back belongs to the app: the physical-keyboard mode shows only the slim bar. */
+    val backGoesToApp: Boolean
+        get() = physicalMode && !fullKeyboardShown
+
+    /** Shows the full on-screen keyboard, or goes back to the slim bar. */
+    fun toggleFullKeyboard() {
+        fullKeyboardShown = !fullKeyboardShown
+        if (!fullKeyboardShown && panel != KeyboardPanel.Keys)
+            showPanelKeepingLayer(KeyboardPanel.Keys)
+    }
+
+    private val physicalKeys =
+        PhysicalKeyRouter(
+            input,
+            { physicalMode },
+            { profile },
+            { searching },
+            voice::stopNow,
+            ::onSearchKey,
+            { touchDevice },
+            { landscape },
+            { typed ->
+                composingNow = input.isComposing
+                if (typed) fieldEmpty.noteTextTyped()
+            },
+        )
+
+    /**
+     * A key of the physical keyboard. Returns whether it was handled (the app must not see it);
+     * false means the app gets it untouched, after the word in progress has been finished as typed
+     * where that matters. Nothing is handled in sensitive and terminal fields, with suggestions
+     * off, or when [physicalMode] is off.
+     */
+    fun onPhysicalKey(key: PhysicalKey): Boolean = physicalKeys.onKey(key)
 
     /**
      * Whether the strip's Edit tool is drawn selected: exactly while the editing panel is open,
@@ -800,89 +769,95 @@ class KeyboardController(
         else editing.openPanel()
     }
 
+    /** The panels live in the key area, so the slim bar gives way to the full keyboard for them. */
+    private fun openFullKeyboard() {
+        if (physicalMode) fullKeyboardShown = true
+    }
+
     /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
     internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
         when (tool) {
-            StripTool.Edit -> toggleEditingPanel()
-            StripTool.Emoji -> showPanel(KeyboardPanel.Emoji)
-            StripTool.Clipboard -> openClipboard()
+            StripTool.Edit -> {
+                openFullKeyboard()
+                toggleEditingPanel()
+            }
+            StripTool.Emoji -> {
+                openFullKeyboard()
+                showPanel(KeyboardPanel.Emoji)
+            }
+            StripTool.Clipboard -> {
+                openFullKeyboard()
+                openClipboard()
+            }
+            StripTool.Keyboard -> toggleFullKeyboard()
             StripTool.Settings -> openSettings()
         }
     }
 
+    private val clipboards =
+        ClipboardController(
+            clipboard,
+            clipboardPanel,
+            input,
+            tracked,
+            { profile },
+            { panel },
+            { composingNow },
+            { strip.isEmpty },
+            { selectionStripVisible },
+            { composingNow = false },
+            { showPanelKeepingLayer(KeyboardPanel.Keys) },
+            ::updateAutoCapitalize,
+        )
+
     /** The chip's ✕: hides it for [id] (the clip stays in the history). */
-    fun dismissClipChip(id: Long) {
-        chipDismissedFor = id
-    }
+    fun dismissClipChip(id: Long) = clipboards.dismissClipChip(id)
 
-    /**
-     * Clip [id] was tapped in the panel or on the chip: pastes it into the field.
-     *
-     * Settling is the same as for an emoji ([onEmojiPicked]): the composing word is finished as
-     * typed and abandoned, not corrected or learned, pending suggestions are dropped, and the text
-     * is then committed through [tracked] so [OwnEditTracker] expects its selection update. Pasted
-     * text is never a word to learn from and no learning event is produced. Allowed in a sensitive
-     * field (that is how a copied code reaches a password field); the text is never read back.
-     * Images are committed by the host. The panel then returns to the keys, unless the paste
-     * failed.
-     */
-    fun onClipPicked(id: Long) {
-        input.endComposingForMove()
-        val pasted =
-            clipboard.paste(id) { text -> if (text.isNotEmpty()) tracked.commitText(text, 1) }
-        composingNow = false
-        // A failed paste (an image the field refused and the clipboard could not take) leaves the
-        // panel open, so the user sees nothing happened and can pick again.
-        if (!pasted) return
-        chipDismissedFor = id
-        showPanelKeepingLayer(KeyboardPanel.Keys)
-        updateAutoCapitalize()
-    }
+    /** Clip [id] was tapped in the panel or on the chip: pastes it into the field. */
+    fun onClipPicked(id: Long) = clipboards.onClipPicked(id)
 
-    fun pinClip(id: Long, pinned: Boolean) = clipboard.setPinned(id, pinned)
+    fun pinClip(id: Long, pinned: Boolean) = clipboards.pinClip(id, pinned)
 
-    fun deleteClip(id: Long) {
-        clipboard.delete(id)
-        clipboardPanel.closeMenu()
-    }
+    fun deleteClip(id: Long) = clipboards.deleteClip(id)
 
-    fun cleanClipUrl(id: Long) {
-        clipboard.cleanUrl(id)
-        clipboardPanel.closeMenu()
-    }
+    fun cleanClipUrl(id: Long) = clipboards.cleanClipUrl(id)
 
     /** "Clear" confirmed: deletes every unpinned clip. */
-    fun clearClips() {
-        clipboard.clearUnpinned()
-        clipboardPanel.reset()
-    }
+    fun clearClips() = clipboards.clearClips()
+
+    private val emojiPanelActions =
+        EmojiPanelController(
+            emoji,
+            emojiSearch,
+            input,
+            tracked,
+            { profile },
+            { settings },
+            { panel },
+            { state.layerId },
+            ::switchLayer,
+            ::updateAutoCapitalize,
+        )
+
+    /** An emoji or kaomoji was picked in the emoji panel (see [EmojiPanelController]). */
+    fun onEmojiPicked(value: String, base: String = value, record: Boolean = true) =
+        emojiPanelActions.onEmojiPicked(value, base, record)
 
     /** A grid emoji was tapped: inserts its preferred variant, else the default tone, else base. */
-    fun onEmojiTap(item: Emoji) = onEmojiPicked(emojiValue(item), item.value)
+    fun onEmojiTap(item: Emoji) = emojiPanelActions.onEmojiTap(item)
 
     /** The form of [item] a tap inserts. */
-    internal fun emojiValue(item: Emoji): String =
-        EmojiChoice.resolve(item, emoji.preferredVariant(item.value), settings.emojiSkinTone)
+    internal fun emojiValue(item: Emoji): String = emojiPanelActions.emojiValue(item)
 
     /** [variant] was chosen from [item]'s long-press popup: inserts it and remembers the choice. */
-    fun onEmojiVariantPicked(item: Emoji, variant: String) {
-        if (profile.sensitive) return
-        if (profile.learningEnabled) emoji.setPreferredVariant(item.value, variant)
-        onEmojiPicked(variant, item.value)
-    }
+    fun onEmojiVariantPicked(item: Emoji, variant: String) =
+        emojiPanelActions.onEmojiVariantPicked(item, variant)
 
     /** Switches the emoji panel to search: the letters layer, typing edits the query. */
-    fun openEmojiSearch() {
-        if (profile.sensitive || panel != KeyboardPanel.Emoji) return
-        emojiSearch.open()
-        if (state.layerId != KeyboardSet.LETTERS) switchLayer(KeyboardSet.LETTERS)
-    }
+    fun openEmojiSearch() = emojiPanelActions.openEmojiSearch()
 
     /** Leaves the emoji search, back to the emoji grid. */
-    fun closeEmojiSearch() {
-        emojiSearch.close()
-        updateAutoCapitalize()
-    }
+    fun closeEmojiSearch() = emojiPanelActions.closeEmojiSearch()
 
     /** A key pressed while the emoji search is active: it edits the query and nothing else. */
     private fun onSearchKey(action: KeyAction) {
@@ -906,6 +881,7 @@ class KeyboardController(
 
     /** The keyboard left the field (input finished or hidden): ends any composing word. */
     fun onFinishInput() {
+        physicalKeys.clearPendingAccent()
         voice.stopNow()
         selection = EditorSelection()
         editing.reset()
@@ -960,13 +936,14 @@ class KeyboardController(
      * the configuration. Call on start and whenever the configuration changes.
      */
     fun updateDevice(tablet: Boolean, landscape: Boolean, hardwareKeyboard: Boolean = false) {
-        val device =
-            when {
-                hardwareKeyboard -> DeviceClass.HardwareKeyboard
-                tablet -> DeviceClass.Tablet
-                else -> DeviceClass.Phone
-            }
-        input.setDevice(device, landscape)
+        if (hardwareKeyboard != hardwareKeyboardAttached) {
+            fullKeyboardShown = fullKeyboardByDefault
+            physicalKeys.clearPendingAccent()
+        }
+        hardwareKeyboardAttached = hardwareKeyboard
+        touchDevice = if (tablet) DeviceClass.Tablet else DeviceClass.Phone
+        this.landscape = landscape
+        input.setDevice(touchDevice, landscape)
     }
 
     /**
@@ -983,8 +960,10 @@ class KeyboardController(
      * positions change (g2: shared key unit, Samsung-like bottom row and symbol pages).
      */
     private fun updateLayoutKey() {
-        val rows = (if (options.numberRow) "+nr" else "") + (if (options.terminalRow) "+tr" else "")
-        val bottom = (options.bottomKeyWidth * PERCENT).roundToInt()
+        val rows =
+            (if (layers.options.numberRow) "+nr" else "") +
+                (if (layers.options.terminalRow) "+tr" else "")
+        val bottom = (layers.options.bottomKeyWidth * PERCENT).roundToInt()
         input.setLayoutKey(
             "${state.layerId}$rows@${settings.keyHeightDp}dp/b$bottom/$GEOMETRY_VERSION"
         )
@@ -1018,60 +997,7 @@ class KeyboardController(
     }
 
     private fun composeOptions(profile: FieldProfile, settings: KeyboardSettings): ComposeOptions =
-        if (profile.kind == FieldKind.Number) {
-            ComposeOptions(
-                numberRow = settings.numberRow || profile.sensitive,
-                signedNumber = profile.signedNumber,
-                decimalNumber = profile.decimalNumber,
-                fieldModes = declaredProfile.kind == FieldKind.Text,
-            )
-        } else {
-            ComposeOptions(
-                numberRow = settings.numberRow || profile.sensitive,
-                terminalRow = profile.kind == FieldKind.Terminal,
-                bottomKeyWidth = settings.bottomKeyWidth,
-                modeEnterKeyWidth = settings.modeEnterKeyWidth,
-                symbolHints = settings.symbolHints,
-                // No emoji (nor, from PR C, clipboard) in password fields.
-                emojiKey = !profile.sensitive,
-                fieldModes = declaredProfile.kind == FieldKind.Text,
-                // Voice typing (long-press the comma) is off in password fields and by setting.
-                voiceKey = settings.voiceEnabled && !profile.sensitive,
-            )
-        }
-
-    /** Adopts [newOptions]; recomposes the current layer and the height if they changed. */
-    private fun applyOptions(newOptions: ComposeOptions) {
-        if (newOptions == options) return
-        options = newOptions
-        layer = composer.compose(keyboardSet, state.layerId, variant, options)
-        heightUnits = referenceHeightUnits(layer.takeIf { state.layerId == KeyboardSet.LETTERS })
-    }
-
-    /**
-     * Total row weight of the letters layer for the current field. The number row is left out for
-     * numeric fields: their pads already have the digits, so it would only make them taller.
-     */
-    private fun referenceHeightUnits(composedLetters: KeyboardLayer? = null): Float {
-        val numeric =
-            profile.kind == FieldKind.Number ||
-                profile.kind == FieldKind.Phone ||
-                profile.kind == FieldKind.DateTime
-        // The letters layer just composed with these options is the reference: compose it once.
-        val reference =
-            composedLetters?.takeIf { !numeric }
-                ?: runCatching {
-                    composer.compose(
-                        keyboardSet,
-                        KeyboardSet.LETTERS,
-                        variant,
-                        if (numeric) options.copy(numberRow = false) else options,
-                    )
-                }
-                    .getOrNull()
-                ?: return heightUnits
-        return reference.rows.sumOf { it.height.toDouble() }.toFloat()
-    }
+        LayerComposition.composeOptions(profile, settings, declaredProfile.kind == FieldKind.Text)
 
     /**
      * Sets [ShiftState.Auto] when the editor wants a capital at the cursor, clears it otherwise.
@@ -1096,10 +1022,6 @@ class KeyboardController(
         /** Bumped when built-in key positions change, so old touch offsets aren't mixed in. */
         const val GEOMETRY_VERSION = "g2"
         const val PERCENT = 100f
-        const val NUMPAD = "numpad"
-        const val PHONE = "phone"
-        const val DATETIME = "datetime"
-        const val DEFAULT_HEIGHT_UNITS = 4f
 
         /** Fields where a swipe types a word (P5-5). */
         val SWIPE_KINDS =

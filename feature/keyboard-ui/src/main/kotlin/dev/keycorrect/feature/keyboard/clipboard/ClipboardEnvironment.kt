@@ -2,7 +2,7 @@ package dev.keycorrect.feature.keyboard.clipboard
 
 import androidx.compose.ui.graphics.ImageBitmap
 
-/** One clipboard history entry as the keyboard shows it (docs/PHASE4.md, PR C). */
+/** One clipboard history entry as the keyboard shows it (docs/archive/PHASE4.md, PR C). */
 data class ClipItem(
     val id: Long,
     val kind: Kind,

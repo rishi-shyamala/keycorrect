@@ -4,10 +4,10 @@ import dev.keycorrect.core.engineapi.GestureInput
 import dev.keycorrect.core.engineapi.TouchPoint
 
 /**
- * The points of the swipe in progress (docs/PHASE5.md), in keyboard pixel coordinates. The touch
- * layer appends on the main thread; readers on the main thread (the trail, the controller) see it
- * grow. Primitive arrays, so a swipe allocates only when it outgrows the capacity. [toGestureInput]
- * copies the points for the decoder thread.
+ * The points of the swipe in progress (docs/archive/PHASE5.md), in keyboard pixel coordinates. The
+ * touch layer appends on the main thread; readers on the main thread (the trail, the controller)
+ * see it grow. Primitive arrays, so a swipe allocates only when it outgrows the capacity.
+ * [toGestureInput] copies the points for the decoder thread.
  */
 class SwipePath(initialCapacity: Int = 256) {
     private var xs = FloatArray(initialCapacity)

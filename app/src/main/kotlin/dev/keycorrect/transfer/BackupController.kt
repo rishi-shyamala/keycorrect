@@ -143,13 +143,18 @@ class BackupController(
     /**
      * A backup file was picked: [open] gives its stream, [sizeHint] the size the system reports.
      */
-    fun pickFile(sizeHint: Long?, open: () -> InputStream?) {
+    fun pickFile(sizeHint: Long?, open: () -> InputStream?) = pickFile({ sizeHint }, open)
+
+    /**
+     * As above, with the size looked up lazily on the I/O dispatcher (a content query can block).
+     */
+    fun pickFile(sizeHint: () -> Long?, open: () -> InputStream?) {
         _import.value = ImportState.Working
         scope.launch {
             val bytes =
                 withContext(io) {
                     try {
-                        open()?.use { TransferCodec.readFile(it, sizeHint) }
+                        open()?.use { TransferCodec.readFile(it, sizeHint()) }
                     } catch (e: TransferException.TooLarge) {
                         TOO_LARGE
                     } catch (e: IOException) {

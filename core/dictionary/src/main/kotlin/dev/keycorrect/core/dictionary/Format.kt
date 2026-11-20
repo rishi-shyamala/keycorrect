@@ -32,10 +32,26 @@ internal object Fmt {
     /** Sections whose bytes are covered by the header CRC (all small). */
     val CRC_SECTIONS = intArrayOf(SEC_META, SEC_PARAMS, SEC_ALPHABET)
 
-    const val NODE_RECORD = 3
+    /**
+     * Bytes of a 24-bit field (node record, terminal value, id-to-node entry, case-pool offset).
+     */
+    const val U24_BYTES = 3
+    const val NODE_RECORD = U24_BYTES
+    const val CASE_INDEX_ENTRY = 6
     const val SAMPLE_STRIDE = 16
     const val BITMAP_BLOCK_BYTES = 12
+
+    /** Terminal bitmap: 64 nodes per block, so node n is in block `n ushr BITMAP_SHIFT`. */
+    const val BITMAP_SHIFT = 6
+    const val BITMAP_BLOCK_NODES = 64
+    const val BITMAP_BIT_MASK = 63
+
+    /** Size of the block's running-rank prefix before its 64 bits. */
+    const val BITMAP_RANK_BYTES = 4
     const val MULTI_FLAG = 0x800000
+
+    /** Offset part of a terminal value that has [MULTI_FLAG] set. */
+    const val MULTI_OFFSET_MASK = 0x7FFFFF
     const val NO_NODE = 0xFFFFFF
 
     /** Max entries per n-gram block (skip granularity). */

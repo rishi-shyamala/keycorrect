@@ -2,7 +2,9 @@ package dev.keycorrect.feature.voicesherpa
 
 import kotlin.math.abs
 
-/** Timing of the live words and of the split-and-retry (docs/PHASE6.md, "Long dictation"). */
+/**
+ * Timing of the live words and of the split-and-retry (docs/archive/PHASE6.md, "Long dictation").
+ */
 internal object LiveTuning {
     private const val RATE = SherpaTuning.SAMPLE_RATE
 
@@ -34,8 +36,8 @@ internal object LiveTuning {
     const val MAX_RAISED_MS = 3000L
 
     /**
-     * Moonshine fails above about 9.25 s (docs/PHASE6.md); nothing longer than this is ever handed
-     * to the recognizer: a longer stretch is split first.
+     * Moonshine fails above about 9.25 s (docs/archive/PHASE6.md); nothing longer than this is ever
+     * handed to the recognizer: a longer stretch is split first.
      */
     const val MAX_DECODE_SAMPLES = RATE * 9
 
@@ -197,12 +199,12 @@ internal fun fitsSegment(text: String, samples: Int): Boolean {
 }
 
 /**
- * Decodes [segment]. Moonshine fails outright on long audio (docs/PHASE6.md) and a decode may come
- * back empty or with a few words for a long stretch of speech; then the segment is cut at its
- * quietest point near the middle and the halves are decoded (again cut when still long), and the
- * result with more words wins. Speech is never dropped silently. A decode stuck in a loop is split
- * the same way, as shorter audio often frees the decoder; what still repeats is collapsed, so a
- * loop never reaches the text.
+ * Decodes [segment]. Moonshine fails outright on long audio (docs/archive/PHASE6.md) and a decode
+ * may come back empty or with a few words for a long stretch of speech; then the segment is cut at
+ * its quietest point near the middle and the halves are decoded (again cut when still long), and
+ * the result with more words wins. Speech is never dropped silently. A decode stuck in a loop is
+ * split the same way, as shorter audio often frees the decoder; what still repeats is collapsed, so
+ * a loop never reaches the text.
  */
 internal fun recognizeSplitting(
     recognizer: SegmentRecognizer,

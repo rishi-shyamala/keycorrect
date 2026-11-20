@@ -92,9 +92,10 @@ private val SizesSaver =
     )
 
 /**
- * "Keyboard fit" (docs/PHASE8.md, P8-6): a heat map of where taps land on the letter keys, the
- * evidence behind it, and, when worthwhile, one suggested size change with a preview. Apply never
- * happens automatically; Undo restores the previous sizes for as long as the screen state lives.
+ * "Keyboard fit" (docs/archive/PHASE8.md, P8-6): a heat map of where taps land on the letter keys,
+ * the evidence behind it, and, when worthwhile, one suggested size change with a preview. Apply
+ * never happens automatically; Undo restores the previous sizes for as long as the screen state
+ * lives.
  */
 @Composable
 fun KeyboardFitScreen(

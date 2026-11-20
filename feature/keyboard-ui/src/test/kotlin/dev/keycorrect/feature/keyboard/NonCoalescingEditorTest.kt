@@ -70,7 +70,6 @@ class NonCoalescingEditorTest {
         assertThat(text()).isEqualTo("the ")
         backspace() // the undo is a batch of delete + commit
         assertThat(text()).isEqualTo("teh")
-        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
     }
 
     @Test

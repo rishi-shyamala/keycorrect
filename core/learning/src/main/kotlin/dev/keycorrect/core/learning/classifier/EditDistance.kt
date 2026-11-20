@@ -1,5 +1,7 @@
 package dev.keycorrect.core.learning.classifier
 
+import dev.keycorrect.core.learning.foldApostrophes
+
 /** Optimal-string-alignment distance (Levenshtein plus adjacent transposition = 1). */
 fun editDistance(a: String, b: String): Int {
     if (a == b) return 0
@@ -22,4 +24,4 @@ fun editDistance(a: String, b: String): Int {
 }
 
 /** Lowercase with typographic apostrophes folded, the comparison form used across learning. */
-fun fold(s: String): String = s.lowercase().replace('’', '\'').replace('‘', '\'')
+fun fold(s: String): String = foldApostrophes(s.lowercase())

@@ -3,7 +3,7 @@ package dev.keycorrect.feature.keyboard.emoji
 import dev.keycorrect.core.emoji.Emoji
 import dev.keycorrect.core.settings.SkinTone
 
-/** Which form of a grid emoji a tap inserts (docs/PHASE4.md, PR B). */
+/** Which form of a grid emoji a tap inserts (docs/archive/PHASE4.md, PR B). */
 internal object EmojiChoice {
     /**
      * The value to insert for [emoji]: the [preferred] variant the user chose for it (the base

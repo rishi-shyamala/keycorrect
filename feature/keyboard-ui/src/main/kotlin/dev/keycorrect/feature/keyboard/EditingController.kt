@@ -12,10 +12,10 @@ import dev.keycorrect.core.input.TextEditor
 import kotlin.math.abs
 
 /**
- * What the buttons of the editing panel do (docs/PHASE4.md, PR A), with their label and description
- * strings. A button either sends a [key] (moves extend the selection while select mode is on), asks
- * the editor's context menu ([menu]), or selects around the cursor from the text ([expand]); the
- * toggle and ABC are handled by [EditingController].
+ * What the buttons of the editing panel do (docs/archive/PHASE4.md, PR A), with their label and
+ * description strings. A button either sends a [key] (moves extend the selection while select mode
+ * is on), asks the editor's context menu ([menu]), or selects around the cursor from the text
+ * ([expand]); the toggle and ABC are handled by [EditingController].
  */
 internal enum class EditingAction(
     @StringRes val label: Int,
@@ -109,9 +109,9 @@ internal class KeyPress(val code: Int, val meta: Int = 0, val moves: Boolean = f
 private fun moves(code: Int, meta: Int = 0) = KeyPress(code, meta, moves = true)
 
 /**
- * Editing beyond typing (docs/PHASE4.md, PR A): the spacebar cursor and the backspace word swipe
- * ([KeyGestures]), raw keys, the editing panel's actions and the selection strip's. Kept out of
- * [KeyboardController], which owns typing, layers and shift. Every move ends the composing word
+ * Editing beyond typing (docs/archive/PHASE4.md, PR A): the spacebar cursor and the backspace word
+ * swipe ([KeyGestures]), raw keys, the editing panel's actions and the selection strip's. Kept out
+ * of [KeyboardController], which owns typing, layers and shift. Every move ends the composing word
  * first ([endComposing]); the editor's selection update then settles prediction state as for any
  * external move.
  *
@@ -145,13 +145,6 @@ constructor(
     /** True while a backspace swipe is previewing a selection. */
     var swipeActive: Boolean by mutableStateOf(false)
         private set
-
-    /**
-     * The "send selection to the engine" hook (Phase 7). It stays off, and has no UI, until then:
-     * nothing calls [sendSelectionToEngine] and it does nothing unless this flag is set.
-     */
-    var engineHookEnabled = false
-    var engineHook: ((String) -> Unit)? = null
 
     private var swipe: Swipe? = null
     private var swipeTried = false
@@ -472,16 +465,10 @@ constructor(
 
     // ------------------------------------------------------------------ selection strip
 
-    /** The selection grows to the word(s) around it. False where that is not possible. */
-    fun expandSelectionToWord(): Boolean = selectAround(TextUnits::expandWord)
-
-    /** The selection grows to the sentence(s) around it. */
-    fun expandSelectionToSentence(): Boolean = selectAround(TextUnits::expandSentence)
-
-    /** The selection grows to the line(s) around it. */
-    fun expandSelectionToLine(): Boolean = selectAround(TextUnits::expandLine)
-
-    /** The selection grows to the whole [unit]s around it (the strip's Word, Sentence, Line). */
+    /**
+     * The selection grows to the whole [unit]s around it (the strip's Word, Sentence, Line). False
+     * where that is not possible.
+     */
     fun expandSelection(unit: SelectionUnit): Boolean =
         selectAround(expand = { text, start, end -> TextUnits.expand(unit, text, start, end) })
 
@@ -511,18 +498,6 @@ constructor(
             editor.setSelection(selected.range.start, selected.range.start + next.length)
         }
         return true
-    }
-
-    /** Copies the selection to the clipboard. */
-    fun copySelection(): Boolean {
-        endComposing()
-        return editor.contextMenuAction(EditAction.Copy)
-    }
-
-    /** Hands the selected text to the engine hook. Does nothing until Phase 7 switches it on. */
-    fun sendSelectionToEngine(): Boolean {
-        val hook = engineHook?.takeIf { engineHookEnabled }
-        return hook?.let { send -> readSelected()?.text?.also(send) } != null
     }
 
     /** Forgets what belongs to one field: the select mode and any swipe under way. */

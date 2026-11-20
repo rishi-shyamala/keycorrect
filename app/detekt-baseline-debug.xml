@@ -3,7 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:SettingsApp.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsApp</ID>
-    <ID>CyclomaticComplexMethod:ShortcutsScreen.kt:@Composable private fun ShortcutDialog</ID>
     <ID>InjectDispatcher:KeyCorrectApp.kt:AppContainer$Default</ID>
     <ID>InjectDispatcher:KeyCorrectImeService.kt:KeyCorrectImeService$IO</ID>
     <ID>LongMethod:FeedbackSettingsScreen.kt:@Composable fun FeedbackSettingsScreen</ID>

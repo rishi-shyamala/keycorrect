@@ -237,7 +237,7 @@ private class Compiler(val data: DictionaryData, val skipUnknown: Boolean) {
             maxQ[i] = m
         }
 
-        val nodes = ByteSink(nodeCount * 3)
+        val nodes = ByteSink(nodeCount * Fmt.U24_BYTES)
         for (i in 0 until nodeCount) {
             nodes.u8(childCnt[i])
             nodes.u8(if (i == 0) 0 else labelOf[qChar[i].code])
@@ -247,7 +247,7 @@ private class Compiler(val data: DictionaryData, val skipUnknown: Boolean) {
         for (i in 0 until nodeCount step Fmt.SAMPLE_STRIDE) samples.u32(firstChild[i])
 
         val bitmap = ByteSink()
-        val termValues = ByteSink(keyCount * 3)
+        val termValues = ByteSink(keyCount * Fmt.U24_BYTES)
         val multi = ByteSink()
         val idToNode = IntArray(wordCount) { Fmt.NO_NODE }
         var cum = 0
@@ -278,7 +278,7 @@ private class Compiler(val data: DictionaryData, val skipUnknown: Boolean) {
             block++
         }
         require(multi.size < Fmt.MULTI_FLAG) { "multi-id section too large" }
-        val idNode = ByteSink(wordCount * 3)
+        val idNode = ByteSink(wordCount * Fmt.U24_BYTES)
         for (n in idToNode) idNode.u24(n)
 
         // ---- n-grams

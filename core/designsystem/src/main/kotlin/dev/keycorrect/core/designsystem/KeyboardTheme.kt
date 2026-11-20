@@ -73,7 +73,7 @@ data class KeyboardColors(
             )
 
         /** Inverse of [toArgb]; null unless [argb] has one color per role. */
-        fun fromArgb(argb: List<Int>): KeyboardColors? {
+        internal fun fromArgb(argb: List<Int>): KeyboardColors? {
             if (argb.size != ThemeColors.COUNT) return null
             return ThemeRole.entries.fold(BLANK) { acc, role ->
                 acc.with(role, Color(argb[role.ordinal] or OPAQUE))
@@ -145,7 +145,7 @@ fun contrastRatio(a: Int, b: Int): Double {
 fun KeyboardColors.keyContrast(): Double = contrastRatio(keyText.toArgb(), key.toArgb())
 
 /** Whether the key text is too faint on the key (below [MIN_TEXT_CONTRAST]). */
-fun KeyboardColors.lowContrast(): Boolean = keyContrast() < MIN_TEXT_CONTRAST
+internal fun KeyboardColors.lowContrast(): Boolean = keyContrast() < MIN_TEXT_CONTRAST
 
 private const val OPAQUE_LONG = 0xFF000000
 

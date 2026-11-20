@@ -47,6 +47,9 @@
     <string name="keyboard_long_press_delay">Long-press delay</string>
     <string name="keyboard_auto_capitalize">Auto-capitalisation</string>
     <string name="keyboard_auto_capitalize_summary">Capitalise the first letter of each sentence</string>
+    <string name="keyboard_physical_section">Physical keyboard</string>
+    <string name="keyboard_physical_suggestions">Show suggestions while typing on a physical keyboard</string>
+    <string name="keyboard_physical_suggestions_summary">With a hardware keyboard attached, show a slim suggestion bar and correct what you type. Shortcuts like Ctrl+C go to the app untouched.</string>
     <string name="keyboard_inline_autofill">Password manager suggestions</string>
     <string name="keyboard_inline_autofill_summary">Show autofill suggestions from your password manager in the suggestion bar</string>
 
@@ -317,7 +320,6 @@
     <string name="fit_not_now">Not now</string>
     <string name="fit_applied">Applied. You can undo this until you leave the app.</string>
     <string name="fit_undo">Undo</string>
-    <string name="fit_undone">Restored your previous sizes.</string>
     <string name="learning_accuracy_title">Typing accuracy (beta)</string>
     <string name="learning_accuracy_body">How closely your taps land on the keys you meant. Only positions are recorded, never text. Spread is in key sizes: smaller means more precise.</string>
     <string name="learning_accuracy_none">No data yet. It builds up as you type.</string>

@@ -1,7 +1,7 @@
 # KeyCorrect — Build and install on a device
 
 How to build the keyboard on this machine and put it on an Android phone or tablet. Toolchain
-setup (JDK 21, Android SDK) is in `docs/SETUP.md`.
+setup (JDK 21, Android SDK) is in [SETUP.md](SETUP.md); daily commands are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Requirements
 
@@ -55,7 +55,7 @@ smoothness.
 
 ### Release build (fast; for daily use)
 
-There is no release signing key yet, so sign the release APK with the local debug key:
+Without the release signing properties (see "Test releases" below) the release APK is unsigned. For a local install, sign it with the debug key (note: a pack APK must be signed with the same key as the keyboard):
 
 ```bash
 ./gradlew :app:assembleRelease
@@ -130,7 +130,7 @@ tools/release/release.sh publish
 and publishes the keyboard alone. To build the pack by itself: `./gradlew :voicepack:assembleRelease`
 (it is not part of `assembleDebug` or CI). The neural pack is handled the same way: `publish`
 attaches it when `tools/data/fetch-neural.sh` has filled `data/raw/neural/` (it also needs the
-Android NDK, see docs/SETUP.md), and `./gradlew :neuralpack:assembleRelease` builds it by itself.
+Android NDK, see SETUP.md), and `./gradlew :neuralpack:assembleRelease` builds it by itself.
 
 ## 3. Turn the keyboard on
 

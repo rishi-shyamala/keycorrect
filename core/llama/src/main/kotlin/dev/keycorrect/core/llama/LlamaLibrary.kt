@@ -13,10 +13,6 @@ object LlamaLibrary {
     val loadedPath: String?
         get() = path
 
-    /** True once [load] has succeeded. */
-    val isLoaded: Boolean
-        get() = loadedPath != null
-
     /**
      * Loads the library at the absolute [path] with [System.load]. Loading the same path again does
      * nothing. A different path is refused: a process can load one copy, and a pack that changed on

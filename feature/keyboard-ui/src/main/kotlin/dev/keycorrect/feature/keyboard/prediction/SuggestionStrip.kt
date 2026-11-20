@@ -72,10 +72,7 @@ data class StripModel(
     }
 }
 
-/**
- * The accessibility label of this slot, a string resource taking [StripSlot.label]. A shortcut that
- * would be applied on space reads as an autocorrection.
- */
+/** The accessibility label of this slot, a string resource taking [StripSlot.label]. */
 @StringRes
 internal fun StripSlot.labelRes(): Int =
     when (kind) {
@@ -83,11 +80,10 @@ internal fun StripSlot.labelRes(): Int =
         SlotKind.Autocorrect -> R.string.strip_autocorrect
         SlotKind.Literal -> if (addsWord) R.string.strip_add_word else R.string.strip_literal
         SlotKind.Phrase -> R.string.strip_phrase
-        SlotKind.Shortcut -> if (bold) R.string.strip_autocorrect else R.string.strip_shortcut
+        SlotKind.Shortcut -> R.string.strip_shortcut
         SlotKind.Emoji -> R.string.strip_emoji
     }
 
-/** Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested. */
 /** An emoji for the strip: the [form] to show and insert (the user's skin tone), and its [name]. */
 internal class EmojiSuggestion(val form: String, val name: String)
 
@@ -95,9 +91,10 @@ private const val ADD_WORD_MARK = "+ "
 
 internal object StripBuilder {
     /**
+     * Lays a [PredictResult] out into the three strip slots. Pure, so the rules are unit-tested.
+     *
      * @param typed the composing word ("" for next-word predictions).
-     * @param pending the candidate applied on space/punctuation (an autocorrect or an
-     *   auto-expanding shortcut), or null.
+     * @param pending the autocorrect applied on space/punctuation, or null.
      * @param emoji the emoji a strong keyword match suggests for [typed], or null. It takes the
      *   right slot, whatever was there, and is never the pending correction.
      * @param unknownWord [typed] is in no dictionary and could be added: its slot says so.
@@ -136,7 +133,7 @@ internal object StripBuilder {
         val (left, centre, right) =
             when {
                 // A shortcut always takes the middle; it expands only if tapped.
-                shortcut != null && shortcut.text != pending?.text ->
+                shortcut != null ->
                     Triple(
                         pendingSlot ?: typedWord,
                         slot(shortcut, false, preview),
@@ -178,13 +175,7 @@ internal object StripBuilder {
         val shown = if (c.source == CandidateSource.Shortcut) preview(c.text) else c.text
         return when {
             c.isPhrase -> StripSlot(shown, SlotKind.Phrase, c.text)
-            c.source == CandidateSource.Shortcut ->
-                StripSlot(
-                    shown,
-                    SlotKind.Shortcut,
-                    c.text,
-                    bold = autocorrect,
-                )
+            c.source == CandidateSource.Shortcut -> StripSlot(shown, SlotKind.Shortcut, c.text)
             autocorrect ->
                 StripSlot(
                     shown,

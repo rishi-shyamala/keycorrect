@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The editing panel (docs/PHASE4.md), laid out like Gboard's: a big 3 x 3 pad in the middle
+ * The editing panel (docs/archive/PHASE4.md), laid out like Gboard's: a big 3 x 3 pad in the middle
  * (word-left / up / word-right, left / Select / right, Home / down / End), a helper column on the
  * left (select all, copy, cut, ABC) and one on the right (paste, undo, redo, backspace). Selecting
  * a word, sentence or line is in the selection strip. It takes the place of the keys, at the same

@@ -10,8 +10,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.isSensitiveData
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardGeometry
@@ -35,6 +37,7 @@ internal fun KeySemantics(
     onKey: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
     terminalModifiers: TerminalModifiers? = null,
+    sensitive: Boolean = false,
     onClipboard: (() -> Unit)? = null,
     onVoice: (() -> Unit)? = null,
 ) {
@@ -56,6 +59,7 @@ internal fun KeySemantics(
                                     latchOf(key, terminalModifiers),
                                 )
                             role = Role.Button
+                            if (sensitive) isSensitiveData = true
                             if (key.action == KeyAction.Emoji && onClipboard != null) {
                                 // The long press has no gesture for a screen reader.
                                 customActions = clipboardActions(clipboardLabel, onClipboard)
@@ -110,3 +114,10 @@ private fun clipboardActions(label: String, open: () -> Unit) =
             }
         }
     )
+
+/**
+ * Marks this node's accessibility data as sensitive (API 34+) while [sensitive]: services that are
+ * not accessibility tools then cannot read it. A no-op otherwise, so there is no node to change.
+ */
+internal fun Modifier.dataSensitive(sensitive: Boolean): Modifier =
+    if (sensitive) semantics { isSensitiveData = true } else this

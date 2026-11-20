@@ -7,8 +7,9 @@ import dev.keycorrect.core.emoji.Emoji
 import dev.keycorrect.core.emoji.EmojiCatalog
 
 /**
- * The emoji search (docs/PHASE4.md, PR B): while [active] the letter keys edit [query] instead of
- * the app's text. Only ever held in memory: nothing typed here is committed, decoded or learned.
+ * The emoji search (docs/archive/PHASE4.md, PR B): while [active] the letter keys edit [query]
+ * instead of the app's text. Only ever held in memory: nothing typed here is committed, decoded or
+ * learned.
  */
 internal class EmojiSearch {
     var active: Boolean by mutableStateOf(false)

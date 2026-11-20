@@ -1,9 +1,9 @@
 package dev.keycorrect.core.voice
 
 /**
- * A speech recognizer (docs/PLAN.md §5.1, docs/PHASE6.md): the built-in sherpa-onnx engine with a
- * model from the voice pack, or an installed system recognizer. Engines are created when dictation
- * starts and released when it ends, so a model is only in memory while the mic is on.
+ * A speech recognizer (docs/PLAN.md §5.1, docs/archive/PHASE6.md): the built-in sherpa-onnx engine
+ * with a model from the voice pack, or an installed system recognizer. Engines are created when
+ * dictation starts and released when it ends, so a model is only in memory while the mic is on.
  */
 interface SttEngine {
     val info: SttEngineInfo

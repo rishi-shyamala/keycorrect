@@ -232,7 +232,7 @@ class InMemoryLearningStore : LearningStore {
         synchronized(journal) { journal.clear() }
     }
 
-    fun journalSize(): Int = synchronized(journal) { journal.size }
+    internal fun journalSize(): Int = synchronized(journal) { journal.size }
 }
 
 /**

@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
-      Voice typing (docs/PHASE6.md): the microphone, only while dictating. Runtime permission,
+      Voice typing (docs/archive/PHASE6.md): the microphone, only while dictating. Runtime permission,
       requested by MicPermissionActivity (a keyboard cannot show the dialog). Audio never leaves the
       device: there is no INTERNET permission.
     -->
@@ -20,7 +20,7 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
-        <!-- Plugin engines (docs/PHASE7.md): services that answer the text-engine action. -->
+        <!-- Plugin engines (docs/archive/PHASE7.md): services that answer the text-engine action. -->
         <intent>
             <action android:name="dev.keycorrect.TEXT_ENGINE" />
         </intent>
@@ -67,7 +67,7 @@
             android:grantUriPermissions="true" />
 
         <!--
-          The built-in language-model engine (docs/PHASE7.md), in its own process so a crash or
+          The built-in language-model engine (docs/archive/PHASE7.md), in its own process so a crash or
           out-of-memory there never takes the keyboard down. Bound explicitly by the keyboard:
           no intent filter, not exported.
         -->

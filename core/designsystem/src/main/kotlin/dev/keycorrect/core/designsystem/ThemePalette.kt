@@ -27,7 +27,6 @@ private const val HINT_ALPHA = 0.7f
 private const val HINT_ALPHA_STEP = 0.1f
 internal const val TONE_SHIFT = 0.12f
 internal const val PRESS_SHIFT = 0.25f
-private const val LIGHT_FILL = 0.4
 
 /** The user's key text where it reads on [fill] (4.5:1), else black or white. */
 fun KeyboardColors.textOn(fill: Color): Color =
@@ -50,14 +49,6 @@ fun hintOn(text: Color, fill: Color): Color {
 
 private fun Color.orIfFaint(fill: Color, minimum: Double, fallback: Color): Color =
     if (contrastRatio(toArgb(), fill.toArgb()) >= minimum) this else fallback
-
-/** A shade of [fill] a step lighter (on a dark one) or darker (on a light one). */
-fun tonalShift(fill: Color, amount: Float = TONE_SHIFT): Color =
-    lerp(
-        fill,
-        if (relativeLuminance(fill.toArgb()) > LIGHT_FILL) Color.Black else Color.White,
-        amount,
-    )
 
 /** The colors to draw on every fill of these theme colors. */
 fun KeyboardColors.palette(): ThemePalette {

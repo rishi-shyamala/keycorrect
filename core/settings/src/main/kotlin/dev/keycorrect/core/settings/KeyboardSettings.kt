@@ -1,6 +1,9 @@
 package dev.keycorrect.core.settings
 
-/** How fast the spacebar joystick moves the cursor: a multiplier on its speeds (docs/PHASE4.md). */
+/**
+ * How fast the spacebar joystick moves the cursor: a multiplier on its speeds
+ * (docs/archive/PHASE4.md).
+ */
 enum class CursorSpeed(val joystickScale: Float) {
     Slow(SLOW_SCALE),
     Normal(NORMAL_SCALE),
@@ -25,7 +28,7 @@ enum class ClipRetention(val millis: Long) {
     Month(MONTH_MS),
 }
 
-/** Which speech recognizer voice typing uses (docs/PHASE6.md). */
+/** Which speech recognizer voice typing uses (docs/archive/PHASE6.md). */
 enum class VoiceEngineChoice {
     /**
      * The built-in model from the KeyCorrect voice pack, on this device. Never falls back to the
@@ -49,6 +52,12 @@ enum class VoiceEngineChoice {
             }
     }
 }
+
+/** [this] clamped to [range], or [default] when it is NaN. */
+internal fun Float.coerceInOrDefault(
+    range: ClosedFloatingPointRange<Float>,
+    default: Float,
+): Float = if (isNaN()) default else coerceIn(range)
 
 private const val HOUR_MS = 3_600_000L
 private const val DAY_MS = 86_400_000L
@@ -95,6 +104,11 @@ data class KeyboardSettings(
     val soundVolume: Float = 0.5f,
     /** Show the autofill service's (password manager) inline suggestions in the strip. */
     val inlineAutofill: Boolean = true,
+    /**
+     * With a physical keyboard attached: show the suggestion bar (no keys) and feed the keys typed
+     * on it through the prediction pipeline.
+     */
+    val physicalKeyboardSuggestions: Boolean = true,
     /** Show word suggestions in the strip. */
     val suggestionsEnabled: Boolean = true,
     /** Replace likely typos on space/punctuation (one backspace undoes). */
@@ -145,10 +159,10 @@ data class KeyboardSettings(
     val unknownWordPulseMs: Int = DEFAULT_HAPTIC_PULSE_MS,
     /**
      * Dragging on the spacebar moves the cursor (right half) or selects (left half);
-     * docs/PHASE4.md.
+     * docs/archive/PHASE4.md.
      */
     val spacebarCursor: Boolean = true,
-    /** Gesture (swipe) typing on letter keys (docs/PHASE5.md). */
+    /** Gesture (swipe) typing on letter keys (docs/archive/PHASE5.md). */
     val gestureTyping: Boolean = true,
     /** Draw the swipe's trail under the finger. */
     val gestureTrail: Boolean = true,
@@ -169,7 +183,10 @@ data class KeyboardSettings(
     val clipboardRetention: ClipRetention = ClipRetention.Week,
     /** Copied images are kept too (encrypted, 20 MB in all). */
     val clipboardImages: Boolean = true,
-    /** Voice typing: long-press the comma (docs/PHASE6.md). Never offered in password fields. */
+    /**
+     * Voice typing: long-press the comma (docs/archive/PHASE6.md). Never offered in password
+     * fields.
+     */
     val voiceEnabled: Boolean = true,
     val voiceEngine: VoiceEngineChoice = VoiceEngineChoice.BuiltIn,
     /** Ask the recognizer for punctuation and capitalisation. */
@@ -308,11 +325,15 @@ data class KeyboardSettings(
                 clipboardMaxItems = clipboardMaxItems.coerceIn(CLIPBOARD_MAX_ITEMS_RANGE),
                 keyHeightDp = keyHeightDp.coerceIn(KEY_HEIGHT_DP_RANGE),
                 bottomKeyWidth =
-                    if (bottomKeyWidth.isNaN()) DEFAULT_BOTTOM_KEY_WIDTH
-                    else bottomKeyWidth.coerceIn(BOTTOM_KEY_WIDTH_RANGE),
+                    bottomKeyWidth.coerceInOrDefault(
+                        BOTTOM_KEY_WIDTH_RANGE,
+                        DEFAULT_BOTTOM_KEY_WIDTH,
+                    ),
                 modeEnterKeyWidth =
-                    if (modeEnterKeyWidth.isNaN()) DEFAULT_MODE_ENTER_KEY_WIDTH
-                    else modeEnterKeyWidth.coerceIn(MODE_ENTER_KEY_WIDTH_RANGE),
+                    modeEnterKeyWidth.coerceInOrDefault(
+                        MODE_ENTER_KEY_WIDTH_RANGE,
+                        DEFAULT_MODE_ENTER_KEY_WIDTH,
+                    ),
                 edgePaddingDp = edgePaddingDp.coerceIn(EDGE_PADDING_DP_RANGE),
                 keyGapDp = keyGapDp.coerceIn(KEY_GAP_DP_RANGE),
                 longPressDelayMs = longPressDelayMs.coerceIn(LONG_PRESS_DELAY_MS_RANGE),
@@ -326,8 +347,7 @@ data class KeyboardSettings(
                         .coerceIn(REVERTS_RANGE)
                         .coerceAtLeast(implicitAddReverts.coerceIn(REVERTS_RANGE)),
                 soundVolume =
-                    if (soundVolume.isNaN()) DEFAULT_SOUND_VOLUME
-                    else soundVolume.coerceIn(SOUND_VOLUME_RANGE),
+                    soundVolume.coerceInOrDefault(SOUND_VOLUME_RANGE, DEFAULT_SOUND_VOLUME),
                 voicePhraseMs = voicePhraseMs.coerceIn(VOICE_PHRASE_MS_RANGE),
                 // Never more than half the phrase: a longer pause would not fit in it.
                 voicePauseMs =
@@ -359,16 +379,14 @@ data class KeyboardSettings(
                         .sorted()
                         .take(SizeProfile.ALL.size)
                         .toSet(),
-                lmStrength =
-                    if (lmStrength.isNaN()) DEFAULT_LM_STRENGTH
-                    else lmStrength.coerceIn(LM_STRENGTH_RANGE),
+                lmStrength = lmStrength.coerceInOrDefault(LM_STRENGTH_RANGE, DEFAULT_LM_STRENGTH),
             )
             .sanitizedLook()
 
     private fun sanitizedLook(): KeyboardSettings =
         copy(
             keyRadiusDp = keyRadiusDp.coerceIn(KEY_RADIUS_DP_RANGE),
-            labelScale = if (labelScale.isNaN()) 1f else labelScale.coerceIn(LABEL_SCALE_RANGE),
+            labelScale = labelScale.coerceInOrDefault(LABEL_SCALE_RANGE, 1f),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
         )
@@ -396,7 +414,7 @@ data class KeyboardSettings(
         val REVERTS_RANGE = 1..5
         val CLIPBOARD_MAX_ITEMS_RANGE = 5..100
 
-        /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/PHASE6.md). */
+        /** 3 s to 8.5 s: Moonshine v2 tiny starts failing at 9.25 s (docs/archive/PHASE6.md). */
         val VOICE_PHRASE_MS_RANGE = 3000..8000
         const val DEFAULT_VOICE_PHRASE_MS = 7000
         val VOICE_PAUSE_MS_RANGE = 300..1500

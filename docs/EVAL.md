@@ -294,7 +294,7 @@ Tuning swept them at both noise levels. The wider end radius costs about 1 point
 gestures and gains about 6 on messy ones, so it was preferred because real fingers are messier
 than the generator.
 
-Phase 5 (docs/PHASE5.md): synthetic swipes for the words of test-split
+Phase 5 (docs/archive/PHASE5.md): synthetic swipes for the words of test-split
 sentences, decoded by the engine's gesture decoder (`decodeGestureNow`). It
 shares the corpus, split, `--sentences`, `--offset`, `--seed`, `--names`,
 `--config`, `--oracle-context` and `--failures` with the tap eval, and leaves

@@ -2,8 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$!uniMin.isFinite() || !uniStep.isFinite() || !bgMin.isFinite() || !bgStep.isFinite() || !tgMin.isFinite() || !tgStep.isFinite()</ID>
-    <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$buf.get(0) != 'K'.code.toByte() || buf.get(1) != 'C'.code.toByte() || buf.get(2) != 'D'.code.toByte() || buf.get(3) != '1'.code.toByte()</ID>
     <ID>ComplexCondition:Dictionary.kt:Dictionary.Companion$wordCount &lt; Dictionary.FIRST_WORD_ID || wordCount &gt; Fmt.MAX_ID || nodeCount &lt; 1 || keyCount &lt; 0 || keyCount &gt; nodeCount || caseCount &lt; 0 || bgLists &lt; 0 || tgLists &lt; 0 || bgCount &lt; 0 || tgCount &lt; 0</ID>
     <ID>ComplexCondition:DictionaryWriter.kt:Compiler$i1 == null || i2 == null || i1 == Dictionary.EOS_ID || i2 == Dictionary.BOS_ID</ID>
     <ID>ComplexCondition:DictionaryWriter.kt:Compiler$i1 == null || i2 == null || i3 == null || i1 == Dictionary.EOS_ID || i2 == Dictionary.EOS_ID || i2 == Dictionary.BOS_ID || i3 == Dictionary.BOS_ID</ID>
@@ -21,15 +19,10 @@
     <ID>LongParameterList:NgramTable.kt:NgramTable</ID>
     <ID>LongParameterList:NgramTable.kt:NgramTable$private fun collect: Int</ID>
     <ID>LoopWithTooManyJumpStatements:NgramTable.kt:NgramTable$for</ID>
-    <ID>MagicNumber:Dictionary.kt:Dictionary$0x7FFFFF</ID>
-    <ID>MagicNumber:Dictionary.kt:Dictionary$0x80L</ID>
     <ID>MagicNumber:Dictionary.kt:Dictionary$256</ID>
-    <ID>MagicNumber:Dictionary.kt:Dictionary$3</ID>
     <ID>MagicNumber:Dictionary.kt:Dictionary$4</ID>
     <ID>MagicNumber:Dictionary.kt:Dictionary$6</ID>
-    <ID>MagicNumber:Dictionary.kt:Dictionary$63</ID>
     <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$255</ID>
-    <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$3</ID>
     <ID>MagicNumber:Dictionary.kt:Dictionary.Companion$4</ID>
     <ID>MagicNumber:DictionaryWriter.kt:ByteSink$0x7F</ID>
     <ID>MagicNumber:DictionaryWriter.kt:ByteSink$0x80</ID>

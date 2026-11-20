@@ -12,7 +12,6 @@ import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.settings.KeyboardSettings
-import dev.keycorrect.feature.keyboard.prediction.CommitMethod
 import dev.keycorrect.feature.keyboard.prediction.ShortcutExpander
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
@@ -244,7 +243,6 @@ class PredictiveControllerTest {
         assertThat(editor.readCalls).isEqualTo(0)
         assertThat(predictor.requests).isEmpty()
         assertThat(controller.strip.isEmpty).isTrue()
-        assertThat(controller.touchLog.size).isEqualTo(0)
         assertThat(editor.deletes).containsExactly(true)
     }
 
@@ -259,7 +257,6 @@ class PredictiveControllerTest {
         assertThat(editor.composeCalls).isEqualTo(0)
         assertThat(editor.readCalls).isEqualTo(0)
         assertThat(predictor.requests).isEmpty()
-        assertThat(controller.touchLog.size).isEqualTo(0)
     }
 
     // ------------------------------------------------------------------ autocorrect
@@ -305,7 +302,6 @@ class PredictiveControllerTest {
         assertThat(text()).isEqualTo("teh")
         assertThat(editor.composing).isEqualTo("teh")
         assertThat(editor.cursor).isEqualTo(3)
-        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
         // The word is not corrected again, and the user's space does not double up.
         space()
         assertThat(text()).isEqualTo("teh ")
@@ -323,25 +319,8 @@ class PredictiveControllerTest {
         assertThat(text()).isEqualTo("teh.")
         assertThat(editor.composing).isEmpty()
         assertThat(editor.cursor).isEqualTo(4)
-        assertThat(controller.touchLog.snapshot().last().reverted).isTrue()
         space()
         assertThat(text()).isEqualTo("teh. ")
-    }
-
-    @Test
-    fun theRestoredWordIsNotLoggedAgainWithEmptyTouches() {
-        predictor.word("teh", listOf("the"), autocorrect = "the")
-        start()
-        controller.onKey(KeyAction.Text("t"), TouchPoint(1f, 1f, 1))
-        controller.onKey(KeyAction.Text("e"), TouchPoint(2f, 1f, 1))
-        controller.onKey(KeyAction.Text("h"), TouchPoint(3f, 1f, 1))
-        space()
-        val first = controller.touchLog.snapshot().single()
-        backspace()
-        space() // the restored word is finished again
-        assertThat(controller.touchLog.snapshot()).hasSize(1)
-        assertThat(controller.touchLog.snapshot().single().reverted).isTrue()
-        assertThat(first.touches.filterNotNull()).hasSize(3)
     }
 
     @Test
@@ -437,22 +416,6 @@ class PredictiveControllerTest {
         space()
         assertThat(text()).isEqualTo("$shown ")
         assertThat(calls - decodesBefore).isAtMost(1) // only the next-word decode, no re-decode
-    }
-
-    @Test
-    fun touchLogIsClearedWhenTheFieldChangesOrInputFinishes() {
-        start()
-        type("hello")
-        space()
-        assertThat(controller.touchLog.size).isGreaterThan(0)
-        controller.onFinishInput()
-        assertThat(controller.touchLog.size).isEqualTo(0)
-        start()
-        type("world")
-        space()
-        assertThat(controller.touchLog.size).isGreaterThan(0)
-        start() // a new field
-        assertThat(controller.touchLog.size).isEqualTo(0)
     }
 
     @Test
@@ -679,8 +642,6 @@ class PredictiveControllerTest {
         controller.onSuggestionTap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("help ")
         assertThat(editor.composing).isEmpty()
-        assertThat(controller.touchLog.snapshot().last().method)
-            .isEqualTo(CommitMethod.SuggestionTap)
     }
 
     @Test
@@ -823,33 +784,6 @@ class PredictiveControllerTest {
         controller.onSuggestionTap(controller.strip.centre!!)
         assertThat(text()).isEqualTo("Best, Rishi")
         assertThat(editor.cursor).isEqualTo("Best,".length)
-    }
-
-    // ------------------------------------------------------------------ touch log
-
-    @Test
-    fun committedWordsAreLoggedWithTheirTouches() {
-        start()
-        controller.onKey(KeyAction.Text("h"), TouchPoint(1f, 2f, 3))
-        controller.onKey(KeyAction.Text("i"), TouchPoint(4f, 5f, 6))
-        space()
-        val record = controller.touchLog.snapshot().single()
-        assertThat(record.typed).isEqualTo("hi")
-        assertThat(record.touches).hasSize(2)
-        assertThat(record.method).isEqualTo(CommitMethod.Typed)
-    }
-
-    @Test
-    fun nothingIsLoggedWhereLearningIsOff() {
-        start(
-            FieldProfile.from(
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
-                0,
-            )
-        )
-        type("hi")
-        space()
-        assertThat(controller.touchLog.size).isEqualTo(0)
     }
 
     // ------------------------------------------------------------------ auto-capitalisation
@@ -1036,7 +970,6 @@ class PredictiveControllerTest {
         editor.moveCursor(3) // the app moved the cursor; we haven't heard about it yet
         backspace()
         assertThat(text()).isEqualTo("ab the ") // a plain backspace, nothing rewritten
-        assertThat(controller.touchLog.snapshot().none { it.reverted }).isTrue()
     }
 
     @Test
@@ -1122,12 +1055,10 @@ class PredictiveControllerTest {
         start()
         type("hel")
         controller.onFinishInput()
-        val records = controller.touchLog.size
         val composeCalls = editor.composeCalls
         controller.onFinishInput()
         assertThat(text()).isEqualTo("hel")
         assertThat(editor.composing).isEmpty()
-        assertThat(controller.touchLog.size).isEqualTo(records)
         assertThat(editor.composeCalls).isEqualTo(composeCalls)
         assertThat(controller.strip.isEmpty).isTrue()
         start()

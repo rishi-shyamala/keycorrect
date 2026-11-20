@@ -13,7 +13,7 @@ data class DeviceProfile(
     val landscape: Boolean,
     val hardwareKeyboard: Boolean,
 ) {
-    /** Which per-profile keyboard sizes apply here (docs/PHASE8.md, P8-2). */
+    /** Which per-profile keyboard sizes apply here (docs/archive/PHASE8.md, P8-2). */
     val sizeProfile: SizeProfile
         get() = SizeProfile(tablet, landscape)
 
@@ -29,9 +29,11 @@ data class DeviceProfile(
             DeviceProfile(
                 tablet = smallestScreenWidthDp >= TABLET_MIN_SMALLEST_WIDTH_DP,
                 landscape = orientation == Configuration.ORIENTATION_LANDSCAPE,
+                // Any keyboard type but NOKEYS counts: book-cover and some USB/Bluetooth keyboards
+                // report UNDEFINED or 12KEY rather than QWERTY. A slid-away one is hidden.
                 hardwareKeyboard =
                     keyboard != Configuration.KEYBOARD_NOKEYS &&
-                        hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO,
+                        hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_YES,
             )
 
         fun from(config: Configuration) =

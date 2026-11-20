@@ -62,9 +62,9 @@ internal object MainThread {
 }
 
 /**
- * Voice typing for one keyboard (docs/PHASE6.md): the long-press on the comma starts it, the
- * recognizer's results become editor edits through a [DictationAssembler], and the strip shows the
- * state ([state], [level]).
+ * Voice typing for one keyboard (docs/archive/PHASE6.md): the long-press on the comma starts it,
+ * the recognizer's results become editor edits through a [DictationAssembler], and the strip shows
+ * the state ([state], [level]).
  *
  * Everything runs on the main thread: engine and microphone callbacks are posted there through
  * [post], and a late callback of a dictation that has ended is dropped (a generation count). The

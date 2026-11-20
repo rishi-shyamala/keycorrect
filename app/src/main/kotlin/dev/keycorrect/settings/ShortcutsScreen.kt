@@ -72,73 +72,67 @@ fun ShortcutsScreen(contentPadding: PaddingValues, container: AppContainer) {
         onAdd = { editing = "" }.takeIf { state is LoadState.Loaded },
         snackbarHostState = snackbar,
     ) { inner ->
-        when (state) {
-            LoadState.Loading -> Box(Modifier.fillMaxSize().padding(inner))
-            is LoadState.Failed ->
-                DataErrorState(
-                    error = state.cause,
-                    onRetry = { attempt++ },
-                    onReset = { container.resetPersonalData { attempt++ } },
+        LoadedContent(
+            state,
+            inner,
+            onRetry = { attempt++ },
+            onReset = { container.resetPersonalData { attempt++ } },
+        ) { shortcuts ->
+            if (shortcuts.isEmpty()) {
+                EmptyState(
+                    title = stringResource(R.string.shortcuts_empty_title),
+                    body = stringResource(R.string.shortcuts_empty_body),
                 )
-            is LoadState.Loaded -> {
-                val shortcuts = state.value
-                if (shortcuts.isEmpty()) {
-                    EmptyState(
-                        title = stringResource(R.string.shortcuts_empty_title),
-                        body = stringResource(R.string.shortcuts_empty_body),
-                    )
-                } else {
-                    ShortcutList(
-                        padding = inner,
-                        shortcuts = shortcuts,
-                        onEdit = { editing = it.trigger },
-                        onDelete = { shortcut ->
-                            container.write(::reportFailure) { store.remove(shortcut.trigger) }
-                            scope.launch {
-                                snackbar.currentSnackbarData?.dismiss()
-                                val result =
-                                    snackbar.showSnackbar(
-                                        message =
-                                            resources.getString(
-                                                R.string.shortcuts_removed,
-                                                shortcut.trigger,
-                                            ),
-                                        actionLabel =
-                                            resources.getString(R.string.data_action_undo),
-                                        duration = SnackbarDuration.Long,
-                                        withDismissAction = true,
-                                    )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    container.write(::reportFailure) {
-                                        store.put(
+            } else {
+                ShortcutList(
+                    padding = inner,
+                    shortcuts = shortcuts,
+                    onEdit = { editing = it.trigger },
+                    onDelete = { shortcut ->
+                        container.write(::reportFailure) { store.remove(shortcut.trigger) }
+                        scope.launch {
+                            snackbar.currentSnackbarData?.dismiss()
+                            val result =
+                                snackbar.showSnackbar(
+                                    message =
+                                        resources.getString(
+                                            R.string.shortcuts_removed,
                                             shortcut.trigger,
-                                            shortcut.expansion,
-                                            shortcut.mode,
-                                        )
-                                    }
+                                        ),
+                                    actionLabel = resources.getString(R.string.data_action_undo),
+                                    duration = SnackbarDuration.Long,
+                                    withDismissAction = true,
+                                )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                container.write(::reportFailure) {
+                                    store.put(
+                                        shortcut.trigger,
+                                        shortcut.expansion,
+                                        shortcut.mode,
+                                    )
                                 }
                             }
-                        },
-                    )
-                }
+                        }
+                    },
+                )
+            }
 
-                editing?.let { key ->
-                    val initial = shortcuts.firstOrNull { it.trigger == key }
-                    ShortcutDialog(
-                        initial = initial,
-                        takenTriggers = shortcuts.mapTo(HashSet()) { it.trigger },
-                        onDismiss = { editing = null },
-                        onConfirm = { trigger, expansion, mode ->
-                            editing = null
-                            container.write(::reportFailure) {
-                                store.put(trigger, expansion, mode)
-                                if (initial != null && initial.trigger != trigger) {
-                                    store.remove(initial.trigger)
-                                }
+            editing?.let { key ->
+                val initial = shortcuts.firstOrNull { it.trigger == key }
+                ShortcutDialog(
+                    initial = initial,
+                    takenTriggers = shortcuts.mapTo(HashSet()) { it.trigger },
+                    onDismiss = { editing = null },
+                    onConfirm = { trigger, expansion, mode ->
+                        editing = null
+                        container.write(::reportFailure) {
+                            store.put(trigger, expansion, mode)
+                            if (initial != null && initial.trigger != trigger) {
+                                store.remove(initial.trigger)
                             }
-                        },
-                    )
-                }
+                        }
+                    },
+                )
             }
         }
     }

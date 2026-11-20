@@ -1,6 +1,6 @@
 # KeyCorrect — Performance check
 
-A profiling pass runs **before every PR** (workflow rule, `docs/HANDOFF.md` §2). It looks for
+A profiling pass runs **before every PR** (workflow rule, `CLAUDE.md`, `docs/DEVELOPMENT.md`). It looks for
 regressions and new hotspots in the code that runs on every keystroke or every word, and checks
 the budgets in `docs/PLAN.md` §14.
 
@@ -21,7 +21,7 @@ the budgets in `docs/PLAN.md` §14.
 
 ```sh
 tools/profile/profile.sh                                    # desktop: decoder, learning, keystroke
-ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device # + on-device microbenchmarks
+ANDROID_SERIAL=<serial> tools/profile/profile.sh --device # + on-device microbenchmarks
 ```
 
 - **Output:** a summary goes to stdout, and the full output (JFR recordings, eval reports) to
@@ -43,7 +43,7 @@ ANDROID_SERIAL=R52X204HLZV tools/profile/profile.sh --device # + on-device micro
 | Decode with personalization | decoder thread | learn eval (learning arm) | `DecoderBenchmark.composingPersonalized` |
 | Keyboard's own per-key work | **UI thread**, every keystroke | `KeystrokeBenchmarkTest` (opt-in) | `KeystrokeBenchmark.cannedPredictor` |
 | Learning updates, snapshot publish | learning thread, every word | learn eval + JFR | `LearningBenchmark` |
-| Frames (Compose) | UI thread | (none) | `dumpsys gfxinfo` on a release build (HANDOFF §4), when UI changed |
+| Frames (Compose) | UI thread | (none) | `dumpsys gfxinfo` on a release build (docs/DEVELOPMENT.md, emulator testing), when UI changed |
 
 ## Checklist before a PR
 
@@ -124,7 +124,7 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
 
 #### Scorer latency inside the eval (desktop, relative), 2026-10-19
 
-`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/PHASE7.md "Eval (reranker arm)".
+`tools/eval --rerank` on 3000 test sentences, default options (about 82k scorer calls per run: every key press, completion prefix and next-word decode), real classic candidate lists of up to 16 texts, 40 words of context, 4 llama threads, uncached. Full tables are in docs/archive/PHASE7.md "Eval (reranker arm)".
 
 | Model | mean | p50 | p95 | p99 | max | Over 40 ms |
 |---|---:|---:|---:|---:|---:|---:|
@@ -215,3 +215,53 @@ One `score` call = a context of 20 words (~24 tokens) and 8 candidates (`LlamaIn
   - Not yet improved: `LearningBenchmark` (learning thread, off the typing path) and the
     personalized decoder's ~925 allocations per prediction (ranking features, candidate objects).
     Candidates for a later pass, measured on the device.
+
+## Baseline profile and Macrobenchmarks (phase 9c)
+
+`:baselineprofile` (com.android.test + `androidx.baselineprofile` 1.5.0, works with AGP 9.4) generates
+`app/src/release/generated/baselineProfiles/{baseline,startup}-prof.txt`, which ships in the release
+build (profileinstaller installs it). The generator launches Settings, selects the KeyCorrect IME
+through `ime enable/set`, focuses an EditText in a test host activity (`HostActivity`, works on
+release-like builds without Field Lab), types a sentence by tapping key positions, swipes once and
+opens the emoji panel. Key positions are fractions of the IME window (calibrated on 1440x3088);
+change `Keyboard.kt` if the layout moves. Everything needs a device and is on demand only; normal
+CI just compiles the module. The profile and benchmarks run against the `dev.keycorrect.benchmark` package (same release signing, so pack signature checks pass), never the installed `dev.keycorrect`; `ImeGuard` restores the device's default/enabled keyboards after each test and the run refuses to target `dev.keycorrect`.
+
+```sh
+# Regenerate the profile (commit the resulting files):
+ANDROID_SERIAL=<serial> ./gradlew :app:generateBaselineProfile
+# Macrobenchmarks (cold start, typing frames; CompilationMode None vs baseline profile):
+ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.keycorrect.baselineprofile.KeyboardBenchmark
+# Add -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
+# on an emulator only. Results: baselineprofile/build/outputs/connected_android_test_additional_output.
+```
+
+**Emulator numbers (s23u AVD, 1440x3088, x86_64, relative only; 5 iterations, median):**
+
+| Benchmark | None | Baseline profile |
+| --- | --- | --- |
+| Cold start, time to initial display (ms) | 434 | 353 |
+| Typing run, frame count | 75 | 79 |
+
+Caveats: the start benchmark's metric is the Settings activity's time to initial display (the IME
+runs in the same process, and the host is brought up after it); the keyboard's own first frame is
+not isolated. Frame durations were not reported on the emulator (only `frameCount`), so typing frame
+timing needs a real device. Device numbers pending.
+
+## 2026-11-16: learning and next-word fixes (desktop JVM, relative only)
+
+Outputs identical (tap eval failures.csv and accuracy, learn eval report, learning-curve report)
+after each fix. Throwaway benchmarks, not committed: NgramModel add + enforceCaps + freeze per word
+(synthetic vocabulary), and a learned `predictNow` next-word loop (600 requests, phrase words 3).
+
+| Fix | Before | After |
+| --- | --- | --- |
+| ShardedMap 128 -> 512 shards (1024 was worse on small tables) | 150k words (at caps): 5.3 s, 71.7 KB/word; 3k words: 7 ms, 8.6 KB/word | 3.1 s, 41 KB/word; 3k words: 10 ms, 17 KB/word |
+| Next words memoised per context; phrase step reuses the pooled probability | next-word, 3k learned: 29 us, 8.8 KB; 40k learned: 35-37 us, 12.1 KB | 27-28 us, 8.3 KB; 34-37 us, 11.5 KB (about -5% allocation, CPU within noise) |
+
+Tried and dropped: a per-context direct-mapped memo of the bigram/trigram counts in
+`FrozenNgrams.logProb` (avoids the key concatenation on repeated candidates) made next-word decode
+slower (29 -> 30 us, 8.8 -> 10.4 KB; 36 -> 45 us, 12.1 -> 14.0 KB), since next-word candidates are
+all distinct. Not attempted: per-candidate allocation in the composing path, cheaper
+`enforceCaps`/`rebuildNext`, dictionary mmap reads.

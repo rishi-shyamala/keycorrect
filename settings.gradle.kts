@@ -25,6 +25,8 @@ rootProject.name = "keycorrect"
 
 include(":app")
 
+include(":baselineprofile")
+
 include(":benchmark")
 
 include(":core:clipboard")

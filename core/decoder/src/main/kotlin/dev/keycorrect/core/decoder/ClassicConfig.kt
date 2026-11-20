@@ -151,7 +151,7 @@ data class AutocorrectConfig(
      * Whether a language-model rerank bonus (`PredictRequest.lmBonus`) may autocorrect a word that
      * is in the dictionary or the user's words. Off: the model only reorders suggestions and helps
      * choose among corrections of non-words. On by default: the eval showed that turning it off
-     * halves the accuracy gain without reducing false corrections (docs/PHASE7.md, "Eval").
+     * halves the accuracy gain without reducing false corrections (docs/archive/PHASE7.md, "Eval").
      */
     val lmReplacesRealWords: Boolean = true,
     /**
@@ -206,9 +206,9 @@ data class UserDataConfig(
 )
 
 /**
- * Swipe (gesture) decoder, SHARK²-style (docs/PHASE5.md). Distances are in key widths unless noted;
- * log-likelihoods are natural logs. Defaults are hand-set against the synthetic test dictionary;
- * the swipe eval's dev split tunes them.
+ * Swipe (gesture) decoder, SHARK²-style (docs/archive/PHASE5.md). Distances are in key widths
+ * unless noted; log-likelihoods are natural logs. Defaults are hand-set against the synthetic test
+ * dictionary; the swipe eval's dev split tunes them.
  */
 data class GestureConfig(
     /** Points both the gesture and every word template are resampled to. */

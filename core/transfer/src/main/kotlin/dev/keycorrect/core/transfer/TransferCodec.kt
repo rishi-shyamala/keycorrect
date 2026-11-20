@@ -219,6 +219,9 @@ object TransferCodec {
             }
         } catch (e: IOException) {
             throw TransferException.Corrupt(e.javaClass.simpleName, e)
+        } catch (e: IllegalArgumentException) {
+            // A zip entry name that is not valid in the zip's charset.
+            throw TransferException.Corrupt("bad zip entry", e)
         }
         return files
     }

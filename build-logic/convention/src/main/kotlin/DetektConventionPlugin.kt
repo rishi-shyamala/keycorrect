@@ -18,8 +18,9 @@ class DetektConventionPlugin : Plugin<Project> {
                 config.setFrom(rootProject.file("config/detekt/detekt.yml"))
                 baseline.set(file("detekt-baseline.xml"))
                 parallel.set(true)
-                // Release has the same sources as debug; analysing both only duplicates baselines.
-                ignoredBuildTypes.set(listOf("release"))
+                // Release (and the baseline-profile variants of it) has the same sources as debug;
+                // analysing both only duplicates baselines.
+                ignoredBuildTypes.set(listOf("release", "nonMinifiedRelease", "benchmarkRelease"))
             }
         }
 }

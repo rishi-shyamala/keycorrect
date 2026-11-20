@@ -22,8 +22,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
 /**
- * The keyboard's side of the language-model engine (docs/PHASE7.md): keeps an [EngineClient] bound
- * only while it can be useful, and scores for the [NeuralReranker].
+ * The keyboard's side of the language-model engine (docs/archive/PHASE7.md): keeps an
+ * [EngineClient] bound only while it can be useful, and scores for the [NeuralReranker].
  *
  * Which engine: the built-in one (in the `:engine` process), or the plugin the user chose, but a
  * plugin only while it is approved for its current signing certificate; otherwise the built-in

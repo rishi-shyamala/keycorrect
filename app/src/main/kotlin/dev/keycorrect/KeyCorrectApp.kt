@@ -49,6 +49,10 @@ class KeyCorrectApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    /** False in the :engine process, which has no [AppContainer]. */
+    val hasContainer: Boolean
+        get() = ::container.isInitialized
+
     override fun onCreate() {
         super.onCreate()
         // The :engine process (NeuralEngineService) needs none of the keyboard's stores, and
@@ -77,13 +81,16 @@ class AppContainer(private val context: Context) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsRepository = SettingsRepository(SettingsStore.create(context))
 
+    /** Wall clock for learning events and the learning thread; one definition for both. */
+    val wallClock: () -> Long = System::currentTimeMillis
+
     /**
      * The app and declared type of the last field typed in, for Settings to explain why a field
      * behaves as it does. Never its text; in memory only, never logged.
      */
     @Volatile var lastField: String? = null
 
-    /** Imported language models (docs/PHASE7.md); the engine process reads them by path. */
+    /** Imported language models (docs/archive/PHASE7.md); the engine process reads them by path. */
     val modelStore by lazy { ModelStore(context) }
     val keyboardComposer = KeyboardComposer(BuiltInLayouts.repository())
 
@@ -203,9 +210,6 @@ class AppContainer(private val context: Context) {
         return result
     }
 
-    /** Wall clock for learning events and the learning thread; one definition for both. */
-    val wallClock: () -> Long = System::currentTimeMillis
-
     /**
      * The learning system (docs/PLAN.md §6), shared by the keyboard and the settings screens. Its
      * own thread restores the saved model in the background as soon as it is first used; until then
@@ -238,4 +242,8 @@ private const val EMOJI_ASSET = "emoji/emoji_en.kce"
 private const val CLIPS_DIR = "clips"
 
 val Context.appContainer: AppContainer
-    get() = (applicationContext as KeyCorrectApp).container
+    get() {
+        val app = applicationContext as KeyCorrectApp
+        check(app.hasContainer) { "AppContainer is not available in the :engine process" }
+        return app.container
+    }

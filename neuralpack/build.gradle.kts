@@ -5,7 +5,8 @@ import org.gradle.process.ExecOperations
 
 plugins { id("keycorrect.android.application") }
 
-// The neural pack APK (package dev.keycorrect.neural, docs/PHASE7.md): llama.cpp plus the JNI glue
+// The neural pack APK (package dev.keycorrect.neural, docs/archive/PHASE7.md): llama.cpp plus the
+// JNI glue
 // built with the NDK into libkcllama.so, and the default language model as an uncompressed asset.
 // It has no code and no permissions. Its inputs are downloaded by tools/data/fetch-neural.sh into
 // the git-ignored data/raw/neural/; CI doesn't build it. Without those files the debug variant
@@ -31,9 +32,9 @@ val releaseSigning =
 /**
  * Re-aligns the built APK so every stored entry starts on a 32-byte boundary, then signs it again
  * with the variant's key. AGP only aligns stored entries to 4 bytes, but the model is mapped in
- * place by llama.cpp, which needs the entry's data offset to be a multiple of 32 (docs/PHASE7.md).
- * The data offset depends on the compressed size of everything before the model, so it cannot be
- * fixed by ordering or naming.
+ * place by llama.cpp, which needs the entry's data offset to be a multiple of 32
+ * (docs/archive/PHASE7.md). The data offset depends on the compressed size of everything before the
+ * model, so it cannot be fixed by ordering or naming.
  */
 abstract class AlignApk @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:Internal abstract val apk: RegularFileProperty
@@ -121,7 +122,7 @@ val verifyNeuralFiles by tasks.registering {
             throw GradleException(
                 "The neural pack needs files that are not downloaded yet " +
                     "(${missing.size} missing, e.g. ${missing.first()}).\n" +
-                    "Run tools/data/fetch-neural.sh first (docs/PHASE7.md)."
+                    "Run tools/data/fetch-neural.sh first (docs/archive/PHASE7.md)."
             )
         }
     }

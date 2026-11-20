@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.DeadObjectException
 import android.os.IBinder
 import android.os.RemoteException
+import android.os.SystemClock
 
 /** What the keyboard asks of an engine; [EngineConnection] is the one that binds a service. */
 interface TextEngineLink : AutoCloseable {
@@ -104,7 +105,7 @@ internal constructor(
         requireAdmission: Boolean = false,
     ) : this(
         AndroidBinding(context.applicationContext, component),
-        System::currentTimeMillis,
+        SystemClock::elapsedRealtime,
         { ITextEngine.Stub.asInterface(it) },
         onConnected,
         requireAdmission,

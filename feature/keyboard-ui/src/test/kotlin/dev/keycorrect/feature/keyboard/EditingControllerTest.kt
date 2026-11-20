@@ -459,14 +459,10 @@ class EditingControllerTest {
     @Test
     fun theEditToolTogglesThePanel() {
         start("hello")
-        assertThat(controller.toolsVisible).isTrue()
         controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Editing)
-        assertThat(controller.toolsVisible).isTrue()
         controller.toggleEditingPanel()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)
-        controller.showPanel(KeyboardPanel.Emoji)
-        assertThat(controller.toolsVisible).isFalse()
     }
 
     @Test
@@ -616,7 +612,7 @@ class EditingControllerTest {
         editor.setSelection(0, 3)
         assertThat(controller.selection.collapsed).isFalse()
         assertThat(controller.selectionStripVisible).isFalse()
-        assertThat(controller.editing.expandSelectionToWord()).isFalse()
+        assertThat(controller.editing.expandSelection(SelectionUnit.Word)).isFalse()
         assertThat(controller.editing.cycleCase()).isFalse()
         assertThat(editor.readCalls).isEqualTo(0)
     }
@@ -633,21 +629,21 @@ class EditingControllerTest {
     fun wordExpandsTheSelectionToWholeWords() {
         start("one two three four")
         editor.setSelection(5, 10) // "wo th"
-        assertThat(controller.editing.expandSelectionToWord()).isTrue()
+        assertThat(controller.editing.expandSelection(SelectionUnit.Word)).isTrue()
         assertThat(editor.selected).isEqualTo("two three")
         assertThat(controller.selectionStripVisible).isTrue()
         // Already whole words: nothing to do.
-        assertThat(controller.editing.expandSelectionToWord()).isFalse()
+        assertThat(controller.editing.expandSelection(SelectionUnit.Word)).isFalse()
     }
 
     @Test
     fun sentenceExpandsTheSelectionToWholeSentences() {
         start("Hi there. Good morning to you. Bye now.")
         editor.setSelection(14, 18) // "d mo"
-        assertThat(controller.editing.expandSelectionToSentence()).isTrue()
+        assertThat(controller.editing.expandSelection(SelectionUnit.Sentence)).isTrue()
         assertThat(editor.selected).isEqualTo("Good morning to you.")
         editor.setSelection(5, 16) // spans two sentences
-        assertThat(controller.editing.expandSelectionToSentence()).isTrue()
+        assertThat(controller.editing.expandSelection(SelectionUnit.Sentence)).isTrue()
         assertThat(editor.selected).isEqualTo("Hi there. Good morning to you.")
     }
 
@@ -655,7 +651,7 @@ class EditingControllerTest {
     fun copyUsesTheEditorsMenu() {
         start("hello world")
         editor.setSelection(0, 5)
-        assertThat(controller.editing.copySelection()).isTrue()
+        controller.editing.perform(EditingAction.Copy)
         assertThat(editor.menuActions).containsExactly(EditAction.Copy)
         assertThat(editor.clipboard).isEqualTo("hello")
     }
@@ -692,18 +688,6 @@ class EditingControllerTest {
         editor.setSelection(0, 3)
         assertThat(controller.editing.cycleCase()).isFalse()
         assertThat(editor.text.toString()).isEqualTo("123")
-    }
-
-    @Test
-    fun engineHookIsOffUnlessSwitchedOn() {
-        start("hello world")
-        editor.setSelection(0, 5)
-        val sent = mutableListOf<String>()
-        controller.editing.engineHook = { sent += it }
-        assertThat(controller.editing.sendSelectionToEngine()).isFalse()
-        controller.editing.engineHookEnabled = true
-        assertThat(controller.editing.sendSelectionToEngine()).isTrue()
-        assertThat(sent).containsExactly("hello")
     }
 
     @Test

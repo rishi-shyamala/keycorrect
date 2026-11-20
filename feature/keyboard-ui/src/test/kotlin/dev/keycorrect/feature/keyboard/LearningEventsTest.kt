@@ -1251,12 +1251,12 @@ class LearningEventsTest {
     }
 
     @Test
-    fun aHardwareKeyboardWinsOverTheScreenClass() {
+    fun onScreenTapsKeepTheScreenClassWithAHardwareKeyboardAttached() {
         controller.updateDevice(tablet = true, landscape = false, hardwareKeyboard = true)
         start()
         type("hello")
         space()
-        assertThat(committed().single().profile.device).isEqualTo(DeviceClass.HardwareKeyboard)
+        assertThat(committed().single().profile.device).isEqualTo(DeviceClass.Tablet)
     }
 
     @Test

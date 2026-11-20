@@ -1,8 +1,8 @@
 package dev.keycorrect.feature.keyboard
 
 /**
- * Gestures on keys beyond a tap (docs/PHASE4.md, PR A), recognised by [TouchStateMachine] and
- * carried out by [KeyboardController]: the spacebar cursor and the backspace word swipe.
+ * Gestures on keys beyond a tap (docs/archive/PHASE4.md, PR A), recognised by [TouchStateMachine]
+ * and carried out by [KeyboardController]: the spacebar cursor and the backspace word swipe.
  */
 interface KeyGestures {
     /**
@@ -22,8 +22,8 @@ interface KeyGestures {
     fun onBackspaceSwipeEnd(commit: Boolean)
 
     /**
-     * A press on a letter key turned into a swipe (gesture typing, docs/PHASE5.md). [path] is the
-     * touch layer's live path: it keeps growing until [onSwipeEnd] or [onSwipeCancel] and is
+     * A press on a letter key turned into a swipe (gesture typing, docs/archive/PHASE5.md). [path]
+     * is the touch layer's live path: it keeps growing until [onSwipeEnd] or [onSwipeCancel] and is
      * cleared after them, so keep no reference beyond those calls.
      */
     fun onSwipeStart(path: SwipePath) = Unit
@@ -49,7 +49,10 @@ interface KeyGestures {
     }
 }
 
-/** What fills the key area (docs/PHASE4.md): the keys, or one of the panels at the same height. */
+/**
+ * What fills the key area (docs/archive/PHASE4.md): the keys, or one of the panels at the same
+ * height.
+ */
 enum class KeyboardPanel {
     Keys,
     Editing,

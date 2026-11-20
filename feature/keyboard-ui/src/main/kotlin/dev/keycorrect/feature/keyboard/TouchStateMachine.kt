@@ -123,8 +123,8 @@ internal interface TouchHost {
         get() = KeyGestures.None
 
     /**
-     * Gesture typing is on for this field (setting and field type, docs/PHASE5.md): a press on a
-     * letter key that travels far enough becomes a swipe ([KeyGestures.onSwipeStart]).
+     * Gesture typing is on for this field (setting and field type, docs/archive/PHASE5.md): a press
+     * on a letter key that travels far enough becomes a swipe ([KeyGestures.onSwipeStart]).
      */
     val swipeTyping: Boolean
         get() = false

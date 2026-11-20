@@ -34,6 +34,18 @@ class LearningWiringTest {
                 Configuration.HARDKEYBOARDHIDDEN_YES,
             )
         assertThat(hidden.hardwareKeyboard).isFalse()
+
+        // Book-cover keyboards may report an undefined or 12-key type.
+        for (type in listOf(Configuration.KEYBOARD_UNDEFINED, Configuration.KEYBOARD_12KEY)) {
+            val profile =
+                DeviceProfile.from(
+                    800,
+                    Configuration.ORIENTATION_LANDSCAPE,
+                    type,
+                    Configuration.HARDKEYBOARDHIDDEN_UNDEFINED,
+                )
+            assertThat(profile.hardwareKeyboard).isTrue()
+        }
     }
 
     @Test

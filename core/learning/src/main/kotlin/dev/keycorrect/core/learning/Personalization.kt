@@ -95,4 +95,4 @@ data class RankingFeatures(
 
 /** Context bucket for correction memory: previous word (lowercase, folded) + field class. */
 fun contextBucket(context: List<String>, field: String): String =
-    (context.lastOrNull()?.lowercase()?.replace('’', '\'')?.replace('‘', '\'') ?: "^") + "|" + field
+    (context.lastOrNull()?.let { foldApostrophes(it.lowercase()) } ?: "^") + "|" + field

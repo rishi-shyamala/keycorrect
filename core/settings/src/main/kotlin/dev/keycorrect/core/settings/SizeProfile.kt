@@ -2,7 +2,8 @@ package dev.keycorrect.core.settings
 
 /**
  * Which screen shape a keyboard size belongs to: phone or tablet (smallest width of at least
- * [TABLET_MIN_SMALLEST_WIDTH_DP]) crossed with portrait or landscape (docs/PHASE8.md, P8-2).
+ * [TABLET_MIN_SMALLEST_WIDTH_DP]) crossed with portrait or landscape (docs/archive/PHASE8.md,
+ * P8-2).
  */
 data class SizeProfile(val tablet: Boolean, val landscape: Boolean) {
     /** The stable name used in stored keys, e.g. `phone_landscape`. */
@@ -41,11 +42,15 @@ data class SizeSettings(
         copy(
             keyHeightDp = keyHeightDp.coerceIn(KeyboardSettings.KEY_HEIGHT_DP_RANGE),
             bottomKeyWidth =
-                if (bottomKeyWidth.isNaN()) KeyboardSettings.DEFAULT_BOTTOM_KEY_WIDTH
-                else bottomKeyWidth.coerceIn(KeyboardSettings.BOTTOM_KEY_WIDTH_RANGE),
+                bottomKeyWidth.coerceInOrDefault(
+                    KeyboardSettings.BOTTOM_KEY_WIDTH_RANGE,
+                    KeyboardSettings.DEFAULT_BOTTOM_KEY_WIDTH,
+                ),
             modeEnterKeyWidth =
-                if (modeEnterKeyWidth.isNaN()) KeyboardSettings.DEFAULT_MODE_ENTER_KEY_WIDTH
-                else modeEnterKeyWidth.coerceIn(KeyboardSettings.MODE_ENTER_KEY_WIDTH_RANGE),
+                modeEnterKeyWidth.coerceInOrDefault(
+                    KeyboardSettings.MODE_ENTER_KEY_WIDTH_RANGE,
+                    KeyboardSettings.DEFAULT_MODE_ENTER_KEY_WIDTH,
+                ),
             edgePaddingDp = edgePaddingDp.coerceIn(KeyboardSettings.EDGE_PADDING_DP_RANGE),
             keyGapDp = keyGapDp.coerceIn(KeyboardSettings.KEY_GAP_DP_RANGE),
         )

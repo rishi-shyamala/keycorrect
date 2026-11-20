@@ -108,11 +108,11 @@ internal data class SessionTuning(
  * Segments are cut at a pause (0.5 s by default) and at the phrase limit (7 s by default).
  *
  * Moonshine v2 tiny fails outright on audio longer than about 9.25 s (the decoder's cross-attention
- * shapes don't broadcast; sherpa-onnx then returns an empty result): measured in docs/PHASE6.md.
- * The default limit is 7 s, about 75% of that, and the most the user can set is
- * [MAX_PHRASE_MILLIS]. The VAD's own maximum is only a hint (it cuts at a quiet moment and waits
- * for one: segments of 12 s and more were seen with it set to 3 s), so [SegmentedDictation] cuts a
- * phrase at the limit itself.
+ * shapes don't broadcast; sherpa-onnx then returns an empty result): measured in
+ * docs/archive/PHASE6.md. The default limit is 7 s, about 75% of that, and the most the user can
+ * set is [MAX_PHRASE_MILLIS]. The VAD's own maximum is only a hint (it cuts at a quiet moment and
+ * waits for one: segments of 12 s and more were seen with it set to 3 s), so [SegmentedDictation]
+ * cuts a phrase at the limit itself.
  */
 internal object SherpaTuning {
     const val SAMPLE_RATE = 16_000

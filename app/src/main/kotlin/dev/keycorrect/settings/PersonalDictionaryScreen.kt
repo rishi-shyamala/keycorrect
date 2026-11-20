@@ -65,55 +65,50 @@ fun PersonalDictionaryScreen(contentPadding: PaddingValues, container: AppContai
         onAdd = { adding = true }.takeIf { state is LoadState.Loaded },
         snackbarHostState = snackbar,
     ) { inner ->
-        when (state) {
-            LoadState.Loading -> Box(Modifier.fillMaxSize().padding(inner))
-            is LoadState.Failed ->
-                DataErrorState(
-                    error = state.cause,
-                    onRetry = { attempt++ },
-                    onReset = { container.resetPersonalData { attempt++ } },
-                )
-            is LoadState.Loaded -> {
-                val words = state.value
-                val filtered by
-                    remember(words, query) {
-                        derivedStateOf {
-                            val q = query.trim().lowercase(Locale.getDefault())
-                            if (q.isEmpty()) words
-                            else words.filter { it.word.lowercase(Locale.getDefault()).contains(q) }
-                        }
+        LoadedContent(
+            state,
+            inner,
+            onRetry = { attempt++ },
+            onReset = { container.resetPersonalData { attempt++ } },
+        ) { words ->
+            val filtered by
+                remember(words, query) {
+                    derivedStateOf {
+                        val q = query.trim().lowercase(Locale.getDefault())
+                        if (q.isEmpty()) words
+                        else words.filter { it.word.lowercase(Locale.getDefault()).contains(q) }
                     }
-                WordList(
-                    padding = inner,
-                    allWords = words,
-                    shown = filtered,
-                    query = query,
-                    onQueryChange = { query = it },
-                    onDelete = { word ->
-                        container.write(::reportFailure) {
-                            store.remove(word.word)
-                            // Tell the learning system so it does not promote the word again.
-                            container.learningHost.onUserWordRemoved(word.word)
-                        }
-                        scope.launch {
-                            snackbar.currentSnackbarData?.dismiss()
-                            val result =
-                                snackbar.showSnackbar(
-                                    message =
-                                        resources.getString(R.string.dictionary_removed, word.word),
-                                    actionLabel = resources.getString(R.string.data_action_undo),
-                                    duration = SnackbarDuration.Long,
-                                    withDismissAction = true,
-                                )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                container.write(::reportFailure) {
-                                    store.add(word.word, word.frequency, word.locale)
-                                }
+                }
+            WordList(
+                padding = inner,
+                allWords = words,
+                shown = filtered,
+                query = query,
+                onQueryChange = { query = it },
+                onDelete = { word ->
+                    container.write(::reportFailure) {
+                        store.remove(word.word)
+                        // Tell the learning system so it does not promote the word again.
+                        container.learningHost.onUserWordRemoved(word.word)
+                    }
+                    scope.launch {
+                        snackbar.currentSnackbarData?.dismiss()
+                        val result =
+                            snackbar.showSnackbar(
+                                message =
+                                    resources.getString(R.string.dictionary_removed, word.word),
+                                actionLabel = resources.getString(R.string.data_action_undo),
+                                duration = SnackbarDuration.Long,
+                                withDismissAction = true,
+                            )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            container.write(::reportFailure) {
+                                store.add(word.word, word.frequency, word.locale)
                             }
                         }
-                    },
-                )
-            }
+                    }
+                },
+            )
         }
     }
 

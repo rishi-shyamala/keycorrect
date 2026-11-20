@@ -234,14 +234,6 @@ class StripToolTest {
     }
 
     @Test
-    fun theToolsShowOnTheKeysAndEditingPanelsOnly() {
-        start()
-        assertThat(controller.toolsVisible).isTrue()
-        controller.onTool(StripTool.Emoji) {}
-        assertThat(controller.toolsVisible).isFalse()
-    }
-
-    @Test
     fun theControllerListsTheFieldsTools() {
         start()
         assertThat(controller.tools).contains(StripTool.Clipboard)
@@ -283,7 +275,7 @@ class StripToolTest {
             controller.onSelectionChanged(a, b, a, b)
             assertThat(controller.editToolSelected).isFalse()
         }
-        controller.editing.expandSelectionToWord()
+        controller.editing.expandSelection(SelectionUnit.Word)
         controller.editing.cycleCase()
         assertThat(controller.editToolSelected).isFalse()
         assertThat(controller.panel).isEqualTo(KeyboardPanel.Keys)

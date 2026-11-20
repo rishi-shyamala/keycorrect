@@ -14,7 +14,10 @@ import dev.keycorrect.feature.keyboard.emoji.EmojiEnvironment
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import org.junit.Test
 
-/** The emoji chip in the strip (docs/PHASE4.md P4-5): a strong match, right slot, not learned. */
+/**
+ * The emoji chip in the strip (docs/archive/PHASE4.md P4-5): a strong match, right slot, not
+ * learned.
+ */
 class EmojiSuggestionTest {
     private val pizza = Emoji("🍕", "pizza", listOf("cheese", "slice"), emptyList(), "Food")
     private val grin = Emoji("😀", "grinning face", listOf("happy"), emptyList(), "Smileys")

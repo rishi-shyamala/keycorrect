@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("keycorrect.android.application")
     id("keycorrect.android.compose")
+    id("keycorrect.baselineprofile.consumer")
 }
 
 // The version lives in version.properties; every build appends the commit it was built from, so
@@ -116,6 +117,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.compose.foundation)
+    implementation(libs.androidx.profileinstaller)
+    "baselineProfile"(project(":baselineprofile"))
 
     testImplementation(libs.kotlinx.coroutines.test)
 
@@ -126,4 +129,38 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.truth)
+}
+
+// Security guard (docs/SECURITY.md): the manifest test reads the merged release manifests, so a
+// library that quietly adds INTERNET or an exported component fails the unit tests.
+tasks.withType<Test>().configureEach {
+    dependsOn(":app:processReleaseMainManifest", ":sampleplugin:processReleaseMainManifest")
+    val mergedApp =
+        layout.buildDirectory.file(
+            "intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml"
+        )
+    systemProperty("kc.manifest.app", mergedApp.get().asFile.path)
+    systemProperty(
+        "kc.manifest.sampleplugin",
+        project(":sampleplugin").file("src/main/AndroidManifest.xml").path,
+    )
+    systemProperty(
+        "kc.manifest.voicepack",
+        project(":voicepack").file("src/main/AndroidManifest.xml").path,
+    )
+    systemProperty(
+        "kc.manifest.neuralpack",
+        project(":neuralpack").file("src/main/AndroidManifest.xml").path,
+    )
+}
+
+// The baseline-profile plugin's build types are release-like and release-signed. They get their own
+// application id so installing one (and the test run's uninstall) can never replace or wipe a real
+// dev.keycorrect installation.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        if (variant.buildType == "benchmarkRelease" || variant.buildType == "nonMinifiedRelease") {
+            variant.applicationId.set("dev.keycorrect.benchmark")
+        }
+    }
 }

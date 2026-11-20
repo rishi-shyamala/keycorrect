@@ -74,11 +74,19 @@ fun KeyboardScreen(
                         WindowInsets.navigationBars.union(WindowInsets.tappableElement)
                     )
                     .padding(settings.edgePaddingDp.dp)
+                    // Password fields: accessibility services that aren't tools can't read the
+                    // keys or the strip (docs/SECURITY.md). Not FLAG_SECURE.
+                    .dataSensitive(controller.profile.sensitive)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     SuggestionArea(controller, settings, feedback, autofill, onOpenSettings)
-                    KeyArea(controller, settings, feedback, touch)
+                    // With a physical keyboard the slim bar is just the strip, no keys.
+                    val slimBar =
+                        controller.hardwareKeyboardAttached &&
+                            settings.physicalKeyboardSuggestions &&
+                            !controller.fullKeyboardShown
+                    if (!slimBar) KeyArea(controller, settings, feedback, touch)
                 }
                 KeyOverlay(
                     touch = touch,
@@ -166,6 +174,7 @@ private fun Keys(
             onKey = onSemanticKey,
             modifier = Modifier.matchParentSize(),
             terminalModifiers = controller.terminalModifiers,
+            sensitive = controller.profile.sensitive,
             onClipboard = if (controller.clipboardAvailable) controller::openClipboard else null,
             onVoice = controller.voice::toggle,
         )

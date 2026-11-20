@@ -57,11 +57,12 @@ import dev.keycorrect.feature.keyboard.emoji.BackspaceButton
 import dev.keycorrect.feature.keyboard.emoji.BarButton
 
 /**
- * The clipboard panel (docs/PHASE4.md, PR C), in the place of the keys and as tall as they are: a
- * grid of the history (pinned first, as the host orders it) and a bar with ABC and backspace. A tap
- * pastes ([KeyboardController.onClipPicked]); a long press or the ⋮ button swaps the card's content
- * for Pin/Delete/Clean-link actions. The title row with "Clear" is [ClipboardTitleStrip], in the
- * strip's place. Clip text is shown but never logged. [onPress] is the key feedback.
+ * The clipboard panel (docs/archive/PHASE4.md, PR C), in the place of the keys and as tall as they
+ * are: a grid of the history (pinned first, as the host orders it) and a bar with ABC and
+ * backspace. A tap pastes ([KeyboardController.onClipPicked]); a long press or the ⋮ button swaps
+ * the card's content for Pin/Delete/Clean-link actions. The title row with "Clear" is
+ * [ClipboardTitleStrip], in the strip's place. Clip text is shown but never logged. [onPress] is
+ * the key feedback.
  */
 @Composable
 internal fun ClipboardPanel(

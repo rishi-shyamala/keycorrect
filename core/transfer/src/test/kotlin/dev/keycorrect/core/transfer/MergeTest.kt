@@ -53,6 +53,16 @@ class MergeTest {
     }
 
     @Test
+    fun blockedFoldsDuplicatesOnBothSidesKeepingTheEarliestTime() {
+        val r =
+            Merge.blocked(
+                listOf(BlockedWord("Foo", 5), BlockedWord("foo", 3)),
+                listOf(BlockedWord("FOO", 4), BlockedWord("bar", 1)),
+            )
+        assertThat(r).containsExactly(BlockedWord("Foo", 3), BlockedWord("bar", 1)).inOrder()
+    }
+
+    @Test
     fun shortcutsKeepExistingUnlessReplace() {
         val mine = listOf(ShortcutEntry("omw", "mine"))
         val theirs = listOf(ShortcutEntry("OMW", "theirs"), ShortcutEntry("brb", "be right back"))

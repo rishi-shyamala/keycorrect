@@ -2,7 +2,7 @@ import java.util.Properties
 
 plugins { id("keycorrect.android.application") }
 
-// The voice pack APK (package dev.keycorrect.voice, docs/PHASE6.md): the speech models as
+// The voice pack APK (package dev.keycorrect.voice, docs/archive/PHASE6.md): the speech models as
 // uncompressed assets and the sherpa-onnx native libraries, extracted to disk so the keyboard can
 // load them. It has no code and no permissions. Its inputs are downloaded by
 // tools/data/fetch-voice.sh into the git-ignored data/raw/voice/; CI doesn't build it. Without
@@ -48,7 +48,7 @@ val verifyVoiceFiles by tasks.registering {
             throw GradleException(
                 "The voice pack needs files that are not downloaded yet " +
                     "(${missing.size} missing, e.g. ${missing.first()}).\n" +
-                    "Run tools/data/fetch-voice.sh first (docs/PHASE6.md)."
+                    "Run tools/data/fetch-voice.sh first (docs/archive/PHASE6.md)."
             )
         }
     }

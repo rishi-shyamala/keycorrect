@@ -1,5 +1,6 @@
 package dev.keycorrect.core.learning.model
 
+import dev.keycorrect.core.learning.foldApostrophe
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.pow
@@ -9,16 +10,7 @@ internal object Text {
     /** Separator for composite keys; never occurs in a normalised word. */
     const val SEP = '\u001F'
 
-    private fun foldChar(c: Char): Char =
-        when (c) {
-            '’',
-            '‘',
-            'ʼ',
-            '´',
-            '`',
-            '′' -> '\''
-            else -> c
-        }
+    private fun foldChar(c: Char): Char = foldApostrophe(c)
 
     /** Folds apostrophe variants to `'` but keeps case. */
     fun fold(s: String): String =
@@ -109,7 +101,7 @@ internal class Decay(val halfLifeMillis: Double) {
  * shards touched since the previous publish, so a 100k-entry table costs a few hundred entries per
  * publish, not a full copy. Values must be immutable. Not thread-safe (single writer).
  */
-internal class ShardedMap<V : Any>(private val shardCount: Int = 128) {
+internal class ShardedMap<V : Any>(private val shardCount: Int = 512) {
     private val live = Array(shardCount) { HashMap<String, V>() }
     private var frozenShards: Array<Map<String, V>> = Array(shardCount) { emptyMap() }
     private val dirty = BooleanArray(shardCount)

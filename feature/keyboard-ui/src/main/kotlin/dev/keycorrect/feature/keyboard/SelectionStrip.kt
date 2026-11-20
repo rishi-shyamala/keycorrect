@@ -34,12 +34,12 @@ import androidx.compose.ui.unit.dp
 import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 
 /**
- * The strip shown in place of the predictions while a range is selected (docs/PHASE4.md, feedback
- * round 4): `[start back, forward] Word Sentence Line [end back, forward]` and the case change. A
- * unit button expands the selection to whole units and makes that unit current (highlighted, Word
- * at first; forgotten when the strip leaves with the selection). The left pair moves the
- * selection's start a current unit back or forward, the right pair its end. All icons, so nothing
- * is cut off on a narrow phone. The actions are [EditingController]'s.
+ * The strip shown in place of the predictions while a range is selected (docs/archive/PHASE4.md,
+ * feedback round 4): `[start back, forward] Word Sentence Line [end back, forward]` and the case
+ * change. A unit button expands the selection to whole units and makes that unit current
+ * (highlighted, Word at first; forgotten when the strip leaves with the selection). The left pair
+ * moves the selection's start a current unit back or forward, the right pair its end. All icons, so
+ * nothing is cut off on a narrow phone. The actions are [EditingController]'s.
  */
 @Composable
 internal fun SelectionStrip(editing: EditingController, modifier: Modifier = Modifier) {

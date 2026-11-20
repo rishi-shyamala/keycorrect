@@ -4,7 +4,7 @@ import dev.keycorrect.core.emoji.Emoji
 import dev.keycorrect.core.emoji.EmojiCatalog
 import dev.keycorrect.core.emoji.EmojiGroup
 
-/** Hides the emoji the device font cannot draw (no EmojiCompat; docs/PHASE4.md). */
+/** Hides the emoji the device font cannot draw (no EmojiCompat; docs/archive/PHASE4.md). */
 object EmojiGlyphFilter {
     /**
      * [catalog] without the emoji [hasGlyph] rejects. A base emoji the font lacks goes with all its

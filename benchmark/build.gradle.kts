@@ -3,7 +3,7 @@ plugins { id("keycorrect.android.benchmark") }
 // Device microbenchmarks (androidx.benchmark): the hot paths measured under ART on the target
 // hardware, which the desktop HotSpot profiling in tools/profile cannot represent. Everything lives
 // in androidTest; run it with `./gradlew :benchmark:connectedReleaseAndroidTest` (see
-// docs/HANDOFF.md). Microbenchmarks refuse to run in a debuggable APK, hence testBuildType.
+// docs/archive/HANDOFF.md). Microbenchmarks refuse to run in a debuggable APK, hence testBuildType.
 android {
     namespace = "dev.keycorrect.benchmark"
 
