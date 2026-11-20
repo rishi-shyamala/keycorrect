@@ -215,7 +215,11 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
         }
     }
 
-    /** Keeps the best [width] of the next step's hypotheses as the beam. */
+    /**
+     * Keeps the best [width] of the next step's hypotheses as the beam: everything above the
+     * width-th best score, then hypotheses tied with it (in insertion order) until the beam is
+     * full.
+     */
     private fun prune() {
         var cut = Float.NEGATIVE_INFINITY
         if (nSize > width) {
@@ -225,14 +229,18 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
             cut = sortScratch[nSize - width]
         }
         size = 0
+        for (h in 0 until nSize) if (nScore[h] > cut) keep(h)
         for (h in 0 until nSize) {
-            if (nScore[h] >= cut && size < width && nScore[h] > Float.NEGATIVE_INFINITY) {
-                node[size] = nNode[h]
-                cls[size] = nCls[h]
-                score[size] = nScore[h]
-                size++
-            }
+            if (size == width) break
+            if (nScore[h] == cut && cut > Float.NEGATIVE_INFINITY) keep(h)
         }
+    }
+
+    private fun keep(h: Int) {
+        node[size] = nNode[h]
+        cls[size] = nCls[h]
+        score[size] = nScore[h]
+        size++
     }
 
     private fun newStep() {
@@ -347,13 +355,16 @@ internal class NeuralSearch(private val dict: Dictionary, private val config: Ne
     private companion object {
         const val INITIAL = 256
 
+        /** Fibonacci hashing: 2^32 / golden ratio, as a signed Int. */
+        const val GOLDEN = -0x61c88647
+        const val HALF_BITS = 16
+
         /** Longest key sequence [align] takes (more than the encoder's steps anyway). */
         const val MAX_KEYS = SwipeEmissions.STEPS
 
         fun mix(n: Int): Int {
-            var x = n * -0x61c88647
-            x = x xor (x ushr 16)
-            return x
+            val x = n * GOLDEN
+            return x xor (x ushr HALF_BITS)
         }
     }
 }

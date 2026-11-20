@@ -13,12 +13,12 @@ The list is `settings.gradle.kts`; dependencies are the `project(":...")` lines 
 
 | Module | Role |
 |---|---|
-| `:app` | The only application. IME service, settings UI (Compose), `KeyCorrectApp` (wiring), `LearningHost`, `PredictionHost`, `NeuralHost`/`EngineClient` (talk to the engine process), `VoiceHost`, backup/transfer UI, clipboard image provider |
+| `:app` | The only application. IME service, settings UI (Compose), `KeyCorrectApp` (wiring), `LearningHost`, `PredictionHost`, `SwipeNetHost` (loads the swipe pack), `NeuralHost`/`EngineClient` (talk to the engine process), `VoiceHost`, backup/transfer UI, clipboard image provider |
 | `:feature:keyboard-ui` | The keyboard: single-canvas renderer, `TouchStateMachine`, `KeyboardController`, `PredictiveInput`, `DecoderLoop`, strip, editing/emoji/clipboard panels, swipe, voice controller |
 | `:feature:voice-sherpa` | sherpa-onnx speech engine (loaded from the voice pack), segmented dictation |
 | `:core:engine-api` | `TextEngine` tiers (Predict, Gesture) and request/result types (JVM) |
 | `:core:engine-sdk` | AIDL contract and `TextEngineService` base class for plugins and the built-in engine |
-| `:core:decoder` | `ClassicEngine`: spatial model, trie search, back-off LM, autocorrect policy, gesture decoder, `NeuralReranker` (JVM) |
+| `:core:decoder` | `ClassicEngine`: spatial model, trie search, back-off LM, autocorrect policy, gesture decoder (SHARK², fused with the neural swipe encoder when the swipe pack is loaded), `NeuralReranker` (JVM) |
 | `:core:dictionary` | KCD1 memory-mapped dictionary reader/writer (JVM) |
 | `:core:learning` | Learning events, `OutcomeClassifier`, `PersonalModel` and snapshots, touch model, fusion ranker (JVM) |
 | `:core:data` | SQLCipher database (`SqlLearningStore`), user dictionary, shortcuts, clipboard store |
@@ -31,7 +31,7 @@ The list is `settings.gradle.kts`; dependencies are the `project(":...")` lines 
 | `:core:voice` | `SttEngine`/`SttSession` contract, VAD, dictation types (JVM) |
 | `:core:packs` | Optional-pack discovery and the signature check; `SwipePackLoader` opens the swipe encoder from the swipe pack |
 | `:core:llama` | JNI binding for llama.cpp (the native library lives in the neural pack) |
-| `:core:swipenet` | FUTO Swipe encoder on ExecuTorch (JVM): input resampler (ported from FUTO's swipe-library), layout frame, JNI binding; the C++ glue in `src/main/cpp` is built by `tools/swipenet/build.sh` into the swipe pack. Not used by the keyboard yet (Phase 10a-3) |
+| `:core:swipenet` | FUTO Swipe encoder on ExecuTorch (JVM): input resampler (ported from FUTO's swipe-library), layout frame, JNI binding; the C++ glue in `src/main/cpp` is built by `tools/swipenet/build.sh` into the swipe pack. `ClassicEngine` runs it on the decoder thread (`NeuralSwipe`) |
 | `:core:transfer` | `.kcbackup` export/import format and crypto |
 | `:voicepack`, `:neuralpack`, `:swipepack` | Separate APKs (`dev.keycorrect.voice`, `dev.keycorrect.neural`, `dev.keycorrect.swipe`): models and native libraries, no code, no permissions |
 | `:sampleplugin` | Example third-party engine APK (uses `:core:engine-sdk`) |
@@ -41,11 +41,11 @@ The list is `settings.gradle.kts`; dependencies are the `project(":...")` lines 
 
 **Direction:** `:app` -> `:feature:*` -> `:core:*`. `:feature:keyboard-ui` depends on decoder,
 designsystem, emoji, engine-api, input, layout, learning, llama, settings and voice, never on
-`:core:data`. `:core:decoder` depends on dictionary, engine-api, layout and learning; `:core:learning`
+`:core:data`. `:core:decoder` depends on dictionary, engine-api, learning and swipenet; `:core:learning`
 only on engine-api; `:core:data` on learning. Storage reaches the keyboard through interfaces the
 app implements (`*Environment`, `LearningSink`, `PredictionBackend`), so `:feature:keyboard-ui` stays
 testable on the JVM against simulated editors. Tools never depend on `:app` or `:feature:*`
-(`:tools:eval` uses decoder, dictionary, layout, learning, llama). `:core:packs` depends on `:core:swipenet`, which depends on `:core:layout`.
+(`:tools:eval` uses decoder, dictionary, layout, learning, llama, swipenet). `:core:packs` depends on `:core:swipenet`, which depends on `:core:layout`.
 
 ## Processes and threads
 
@@ -73,7 +73,13 @@ testable on the JVM against simulated editors. Tools never depend on `:app` or `
    reranked result replaces the classic one only if it arrives within the deadline. Otherwise the
    classic result stands.
 5. The result goes to the suggestion strip (and the autocorrect decision).
-6. On a separator, the main thread waits for the current result at most `SEPARATOR_WAIT_MS` = 30 ms
+6. A swipe goes the same way through `ClassicEngine.decodeGestureNow` on the decoder thread: SHARK²
+   shortlists words by path shape and location; when the swipe pack has loaded (`SwipeNetHost`
+   opens it on first use, off the main thread), the encoder's emissions are also decoded by a
+   prefix beam search over the dictionary trie, the two candidate lists are merged and every word
+   is ranked by a weighted sum of the SHARK² channel, the encoder's log-likelihood and the LM
+   (`NeuralSwipeConfig`). Without the pack, or on any encoder failure, the decode is SHARK² alone.
+7. On a separator, the main thread waits for the current result at most `SEPARATOR_WAIT_MS` = 30 ms
    (swipe lift: `GESTURE_WAIT_MS` = 50 ms), then commits as typed if nothing is ready.
 
 ## Learning flow
@@ -88,7 +94,7 @@ the snapshot. Evidence is eval-checked ([EVAL.md](EVAL.md), "Learning").
 
 ## Optional packs and plugins
 
-- **Voice pack**, **neural pack** and **swipe pack** (FUTO Swipe encoder, Phase 10; not loaded by the keyboard yet): separate APKs, installed by the user, found through
+- **Voice pack**, **neural pack** and **swipe pack** (FUTO Swipe encoder, Phase 10): separate APKs, installed by the user, found through
   `<queries>` and `PackageManager`. `:core:packs` (`PackSigning.kt`) refuses a pack unless its
   signing certificates equal the keyboard's own set exactly; the keyboard loads the pack's native
   code into its process, so the check is the trust boundary. After a pack update the keyboard asks

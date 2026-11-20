@@ -88,7 +88,12 @@ class KeyCorrectImeService : ComposeInputMethodService() {
                     phraseGenerator = neuralHost,
                     phrasesEnabled = { settingsFlow.value.neuralPhrases },
                 ),
+            swipeEncoder = swipeNetHost::encoder,
         )
+    }
+
+    private val swipeNetHost by lazy {
+        SwipeNetHost(this, appContainer.applicationScope, Dispatchers.IO)
     }
     private val predictionHost by predictionHostLazy
 

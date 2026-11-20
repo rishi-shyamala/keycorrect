@@ -93,7 +93,8 @@ internal class GestureRescorer(
                     val nc = config.neural
                     maxOf(decoder.channel[i], -gc.maxChannelCost) +
                         nc.neuralWeight * n[i] +
-                        nc.lmWeight * lmTerm
+                        nc.lmWeight * lmTerm +
+                        nc.lengthBonus * letters(it)
                 }
             trace?.add(
                 GestureFusionFeatures(it, decoder.channel[i], n?.get(i) ?: Float.NaN, lmTerm)
@@ -118,6 +119,12 @@ internal class GestureRescorer(
             }
         }
         return bestId
+    }
+
+    private fun letters(s: String): Int {
+        var n = 0
+        for (c in s) if (c.isLetter()) n++
+        return n
     }
 
     private companion object {

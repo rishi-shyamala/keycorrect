@@ -261,10 +261,12 @@ data class GestureConfig(
  * are never read. Weights were tuned on the real-swipe dev split (docs/EVAL.md, "Neural fusion").
  *
  * A candidate's fused score is `channel + neuralWeight * neural + lmWeight * (lm +
- * rightContextWeight * right)`, where `channel` is SHARK²'s location + shape log-likelihood
- * (floored at `-GestureConfig.maxChannelCost`), `neural` the encoder's best-path log-likelihood of
- * the word's keys, and `lm`/`right` the same contextual language model terms SHARK² uses
- * ([GestureConfig.rightContextWeight]).
+ * rightContextWeight * right) + lengthBonus * letters`, where `channel` is SHARK²'s location +
+ * shape log-likelihood (floored at `-GestureConfig.maxChannelCost`), `neural` the encoder's
+ * best-alignment log-likelihood of the word's keys (floored at [neuralFloor]), `lm`/`right` the
+ * contextual language-model terms SHARK² uses ([GestureConfig.rightContextWeight]) and `letters`
+ * the candidate's letter count. The length bonus offsets the language model's preference for short
+ * words, which the fused LM weight (higher than SHARK²'s own) would otherwise make too strong.
  */
 data class NeuralSwipeConfig(
     /** Hypotheses kept per encoder step by the prefix beam search over the dictionary trie. */
@@ -278,9 +280,11 @@ data class NeuralSwipeConfig(
      */
     val gate: Float = 0f,
     /** Weight of the neural log-likelihood in the fused score. */
-    val neuralWeight: Float = 1f,
+    val neuralWeight: Float = 0.8f,
     /** Weight of the contextual language model in the fused score. */
-    val lmWeight: Float = 0.3f,
+    val lmWeight: Float = 1f,
+    /** Added per letter of the candidate. */
+    val lengthBonus: Float = 2f,
     /** Floor of the neural log-likelihood, so one word the encoder rules out is not -infinity. */
     val neuralFloor: Float = -60f,
 )
