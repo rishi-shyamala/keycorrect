@@ -226,8 +226,9 @@ data class KeyboardSettings(
     /** Suggestion strip text size in sp, [SUGGESTION_TEXT_SIZE_RANGE]. */
     val suggestionTextSize: Int = DEFAULT_SUGGESTION_TEXT_SIZE,
     /**
-     * Smallest size in sp a suggestion shrinks to before it is ellipsized, [SUGGESTION_MIN_SIZE_RANGE];
-     * the effective minimum is never above [suggestionTextSize] (see [suggestionMinSize]).
+     * Smallest size in sp a suggestion shrinks to before it is ellipsized,
+     * [SUGGESTION_MIN_SIZE_RANGE]; the effective minimum is never above [suggestionTextSize] (see
+     * [suggestionMinSize]).
      */
     val suggestionMinTextSize: Int = DEFAULT_SUGGESTION_MIN_TEXT_SIZE,
     /** Key label size scale, [LABEL_SCALE_RANGE]. */
@@ -302,7 +303,9 @@ data class KeyboardSettings(
     /** The sizes to use on [profile]. */
     fun sizeFor(profile: SizeProfile): SizeSettings = sizes[profile] ?: globalSizes
 
-    /** The size in sp suggestions shrink to at most: [suggestionMinTextSize], capped at the size. */
+    /**
+     * The size in sp suggestions shrink to at most: [suggestionMinTextSize], capped at the size.
+     */
     val suggestionMinSize: Int
         get() = minOf(suggestionMinTextSize, suggestionTextSize)
 

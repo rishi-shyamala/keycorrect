@@ -1,5 +1,6 @@
 package dev.keycorrect.feature.keyboard
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -23,39 +24,37 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Draws [text] on one line at [base] size, shrunk continuously to no less than [min] when it does
- * not fit the width it is given, and ellipsized at the start if it still does not (see [decideFit]). One measure pass and one draw, no composition of
- * its own: the text is laid out in the layout phase, where the width is known, instead of in a
- * `BoxWithConstraints` (a subcomposition) that picks the size for a `Text` to lay out again. Laid
- * out text is cached per width in the node, and by [measurer] across nodes.
+ * not fit the width it is given, and ellipsized at the start if it still does not (see
+ * [decideFit]). One measure pass and one draw, no composition of its own: the text is laid out in
+ * the layout phase, where the width is known, instead of in a `BoxWithConstraints` (a
+ * subcomposition) that picks the size for a `Text` to lay out again. Laid out text is cached per
+ * width in the node, and by [measurer] across nodes.
  */
 internal fun Modifier.fitText(
     text: String,
     style: TextStyle,
     color: Color,
-    base: TextUnit,
-    min: TextUnit,
+    range: ShrinkRange,
     measurer: TextMeasurer,
-): Modifier = this then FitTextElement(text, style, color, base, min, measurer)
+): Modifier = this then FitTextElement(text, style, color, range, measurer)
 
 private data class FitTextElement(
     val text: String,
     val style: TextStyle,
     val color: Color,
-    val base: TextUnit,
-    val min: TextUnit,
+    val range: ShrinkRange,
     val measurer: TextMeasurer,
 ) : ModifierNodeElement<FitTextNode>() {
-    override fun create() = FitTextNode(text, style, color, base, min, measurer)
+    override fun create() = FitTextNode(text, style, color, range, measurer)
 
-    override fun update(node: FitTextNode) = node.update(text, style, color, base, min, measurer)
+    override fun update(node: FitTextNode) = node.update(text, style, color, range, measurer)
 }
 
 private class FitTextNode(
     private var text: String,
     private var style: TextStyle,
     private var color: Color,
-    private var base: TextUnit,
-    private var min: TextUnit,
+    private var range: ShrinkRange,
     private var measurer: TextMeasurer,
 ) : Modifier.Node(), LayoutModifierNode, DrawModifierNode {
     private var layout: TextLayoutResult? = null
@@ -65,20 +64,17 @@ private class FitTextNode(
         text: String,
         style: TextStyle,
         color: Color,
-        base: TextUnit,
-        min: TextUnit,
+        range: ShrinkRange,
         measurer: TextMeasurer,
     ) {
         val remeasure =
             text != this.text ||
                 style != this.style ||
-                base != this.base ||
-                min != this.min ||
+                range != this.range ||
                 measurer !== this.measurer
         this.text = text
         this.style = style
-        this.base = base
-        this.min = min
+        this.range = range
         this.measurer = measurer
         val recolour = color != this.color
         this.color = color
@@ -111,28 +107,38 @@ private class FitTextNode(
         return layout(size.width, size.height) { placeable.place(0, 0) }
     }
 
-    /** Full size if it fits [available] px, else shrunk down to [min], else cut at the start. */
+    /**
+     * Full size if it fits [available] px, else shrunk down to the minimum, else cut at the start.
+     */
     private fun fit(available: Int): TextLayoutResult {
-        if (available == Constraints.Infinity) return measureAt(text, base.value, Constraints())
+        val natural = measureAt(text, range.base.value, Constraints())
+        return if (available == Constraints.Infinity) natural else fitTo(natural, available)
+    }
+
+    private fun fitTo(natural: TextLayoutResult, available: Int): TextLayoutResult {
         val limit = Constraints(maxWidth = available)
-        val natural = measureAt(text, base.value, Constraints())
         val decision =
             decideFit(
-                base = base.value,
-                min = min.value,
+                base = range.base.value,
+                min = range.min.value,
                 available = available.toFloat(),
                 widthAtBase = natural.size.width.toFloat(),
-                widthAtMin = { measureAt(text, minOf(min.value, base.value), Constraints()).size.width.toFloat() },
+                widthAtMin = {
+                    measureAt(text, minOf(range.min.value, range.base.value), Constraints())
+                        .size
+                        .width
+                        .toFloat()
+                },
             )
-        if (decision.ellipsizeStart) return cutAtStart(decision.size, limit)
         var size = decision.size
-        var result = measureAt(text, size, limit)
+        var result = if (decision.ellipsizeStart) null else measureAt(text, size, limit)
         // Glyph rounding can leave the estimate a pixel wide; step down until it fits.
-        while (result.didOverflowWidth && size > decision.floor) {
+        while (result != null && result.didOverflowWidth && size > decision.floor) {
             size = maxOf(decision.floor, size * RETRY_FACTOR)
             result = measureAt(text, size, limit)
         }
-        return if (result.didOverflowWidth) cutAtStart(decision.floor, limit) else result
+        return if (result == null || result.didOverflowWidth) cutAtStart(decision.floor, limit)
+        else result
     }
 
     /** [text] with the front replaced by an ellipsis, as much of its end as fits at [size]. */
@@ -164,6 +170,9 @@ private class FitTextNode(
     }
 }
 
+/** The sizes in sp a word is drawn at: [base], shrunk as far as [min] to fit its slot. */
+@Immutable internal data class ShrinkRange(val base: TextUnit, val min: TextUnit)
+
 private const val RETRY_FACTOR = 0.97f
 
 /** How a word is drawn in its slot: at [size] sp, with the front cut off if [ellipsizeStart]. */
@@ -183,16 +192,17 @@ internal fun decideFit(
     widthAtMin: () -> Float,
 ): FitDecision {
     val floor = minOf(min, base)
-    if (widthAtBase <= available) return FitDecision(base, floor, false)
-    val scaled = base * available / widthAtBase
-    if (scaled >= floor) return FitDecision(scaled, floor, false)
-    return FitDecision(floor, floor, widthAtMin() > available)
+    val scaled = if (widthAtBase <= available) base else base * available / widthAtBase
+    return if (scaled >= floor) FitDecision(scaled, floor, false)
+    else FitDecision(floor, floor, widthAtMin() > available)
 }
 
-/** The last [keep] characters of [text] after an ellipsis, never starting inside a surrogate pair. */
+/**
+ * The last [keep] characters of [text] after an ellipsis, never starting inside a surrogate pair.
+ */
 internal fun startEllipsized(text: String, keep: Int): String {
     if (keep >= text.length) return text
-    var start = (text.length - keep).coerceAtLeast(0)
+    var start = (text.length - keep).coerceIn(0, text.length)
     if (start in 1 until text.length && text[start].isLowSurrogate()) start++
     return "…" + text.substring(start)
 }

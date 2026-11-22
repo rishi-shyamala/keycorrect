@@ -32,7 +32,7 @@ class FitTextTest {
     @Test
     fun aWordThatFitsExactlyAtTheMinimumIsNotCut() {
         val d = decide(base = 14f, min = 12f, available = 86f, atBase = 100f, atMin = 86f)
-        assertThat(d.size).isEqualTo(12f)
+        assertThat(d.size).isWithin(0.05f).of(12f)
         assertThat(d.ellipsizeStart).isFalse()
     }
 

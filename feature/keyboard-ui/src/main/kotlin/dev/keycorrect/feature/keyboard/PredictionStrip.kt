@@ -45,9 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import dev.keycorrect.core.designsystem.stripTextColor
+import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
 import dev.keycorrect.feature.keyboard.prediction.StripModel
 import dev.keycorrect.feature.keyboard.prediction.StripSlot
@@ -81,17 +81,21 @@ internal fun PredictionStrip(
     val blockable = canBlock()
     val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
     Row(modifier = modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        val sizes = SlotSizes(textSize, minTextSize)
-        Slot(model.left, measurer, sizes, onSlot, onSlotLongPress, blockable)
+        val text =
+            remember(measurer, textSize, minTextSize) { SlotText(measurer, textSize, minTextSize) }
+        Slot(model.left, text, onSlot, onSlotLongPress, blockable)
         SlotDivider()
-        Slot(model.centre, measurer, sizes, onSlot, onSlotLongPress, blockable)
+        Slot(model.centre, text, onSlot, onSlotLongPress, blockable)
         SlotDivider()
-        Slot(model.right, measurer, sizes, onSlot, onSlotLongPress, blockable)
+        Slot(model.right, text, onSlot, onSlotLongPress, blockable)
     }
 }
 
-/** The chosen text size and the smallest a word shrinks to before it is ellipsized. */
-@Immutable private class SlotSizes(val size: TextUnit, val min: TextUnit)
+/** What a slot measures its word with, and the size it draws it at (see [ShrinkRange]). */
+@Immutable
+private class SlotText(val measurer: TextMeasurer, size: TextUnit, min: TextUnit) {
+    val range = ShrinkRange(size, min)
+}
 
 /** A thin line between two slots, half the strip tall and centred. */
 @Composable
@@ -176,8 +180,7 @@ private class SlotLabels(val description: String, val neverAction: String)
 @Composable
 private fun RowScope.Slot(
     slot: StripSlot?,
-    measurer: TextMeasurer,
-    sizes: SlotSizes,
+    text: SlotText,
     onSlot: (StripSlot) -> Unit,
     onLongPress: (StripSlot) -> Unit,
     blockable: Boolean,
@@ -250,7 +253,7 @@ private fun RowScope.Slot(
                 Text(PHRASE_HINT, color = accentOnBackgroundColor(), maxLines = 1)
             }
         } else {
-            ShrinkingText(slot, measurer, sizes, color, weight)
+            ShrinkingText(slot, text, color, weight)
         }
     }
 }
@@ -264,8 +267,7 @@ private fun RowScope.Slot(
 @Composable
 private fun ShrinkingText(
     slot: StripSlot,
-    measurer: TextMeasurer,
-    sizes: SlotSizes,
+    text: SlotText,
     color: Color,
     weight: FontWeight,
 ) {
@@ -281,7 +283,7 @@ private fun ShrinkingText(
     }
     val local = LocalTextStyle.current
     val style = remember(local, weight) { local.copy(fontWeight = weight) }
-    Spacer(Modifier.fitText(slot.text, style, color, sizes.size, sizes.min, measurer))
+    Spacer(Modifier.fitText(slot.text, style, color, text.range, text.measurer))
 }
 
 /**
