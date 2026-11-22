@@ -97,11 +97,27 @@ class KeyboardController(
     var strip: StripModel by mutableStateOf(StripModel.Empty)
         private set
 
+    /**
+     * Whether the strip shows the tool icons in place of the suggestions (the user tapped the
+     * chevron). Cleared by the next strip change (a keystroke or swipe), a new field, a tool tap or
+     * a second tap on the chevron.
+     */
+    var toolsRevealed: Boolean by mutableStateOf(false)
+        private set
+
+    /** Shows or hides the tools in place of the suggestions (see [toolsRevealed]). */
+    fun toggleToolsRevealed() {
+        toolsRevealed = !toolsRevealed
+    }
+
     private val input =
         PredictiveInput(
             tracked,
             prediction,
-            { strip = it },
+            {
+                if (it != strip) toolsRevealed = false
+                strip = it
+            },
             learning,
             clock,
             wallClock,
@@ -316,6 +332,7 @@ class KeyboardController(
         initialSelEnd: Int = -1,
     ) {
         voice.stopNow()
+        toolsRevealed = false
         val initialSelection = EditorSelection(initialSelStart, initialSelEnd)
         val sameField = identity != null && identity.continues(this.identity, restarting)
         this.identity = identity
@@ -703,6 +720,14 @@ class KeyboardController(
     private var touchDevice = DeviceClass.Phone
     private var landscape = false
 
+    /**
+     * Whether the strip shows suggestions (or a prompt on them) that the tools give way to, see
+     * [stripToolsMode]. Derived, so typing within a busy strip recomposes nothing.
+     */
+    internal val suggestionsShown: Boolean by derivedStateOf {
+        !strip.isEmpty && !selectionStripVisible
+    }
+
     /** The strip's tools for the current field (see [toolsFor]). */
     internal val tools: List<StripTool>
         get() = toolsFor(profile.sensitive, clipboardAvailable, keyboardToggle = physicalMode)
@@ -776,6 +801,7 @@ class KeyboardController(
 
     /** Runs a tool's action; [openSettings] is the host's way to open its settings. */
     internal fun onTool(tool: StripTool, openSettings: () -> Unit) {
+        toolsRevealed = false
         when (tool) {
             StripTool.Edit -> {
                 openFullKeyboard()

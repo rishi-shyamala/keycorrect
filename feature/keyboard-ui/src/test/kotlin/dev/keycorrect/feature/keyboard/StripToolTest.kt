@@ -163,7 +163,46 @@ class StripToolTest {
         assertThat((0..1).map { two.x(it, 1f) }).containsExactly(0, 368).inOrder()
     }
 
+    @Test
+    fun suggestionsCollapseTheToolsAndATapRevealsThem() {
+        assertThat(
+                stripToolsMode(suggestionsShown = false, autofillActive = false, revealed = false)
+            )
+            .isEqualTo(StripToolsMode.Full)
+        assertThat(
+                stripToolsMode(suggestionsShown = true, autofillActive = false, revealed = false)
+            )
+            .isEqualTo(StripToolsMode.Collapsed)
+        assertThat(stripToolsMode(suggestionsShown = true, autofillActive = false, revealed = true))
+            .isEqualTo(StripToolsMode.Revealed)
+        // Autofill chips and a stale reveal on an idle strip keep today's layout.
+        assertThat(stripToolsMode(suggestionsShown = true, autofillActive = true, revealed = false))
+            .isEqualTo(StripToolsMode.Full)
+        assertThat(
+                stripToolsMode(suggestionsShown = false, autofillActive = false, revealed = true)
+            )
+            .isEqualTo(StripToolsMode.Full)
+    }
+
     // ------------------------------------------------------------------ on the controller
+
+    @Test
+    fun revealedToolsGiveWayToTheNextKeystrokeOrAToolTap() {
+        start()
+        controller.toggleToolsRevealed()
+        assertThat(controller.toolsRevealed).isTrue()
+        controller.toggleToolsRevealed()
+        assertThat(controller.toolsRevealed).isFalse()
+        controller.toggleToolsRevealed()
+        controller.onKey(KeyAction.Text("h"))
+        assertThat(controller.toolsRevealed).isFalse()
+        controller.toggleToolsRevealed()
+        controller.onTool(StripTool.Settings) {}
+        assertThat(controller.toolsRevealed).isFalse()
+        controller.toggleToolsRevealed()
+        start()
+        assertThat(controller.toolsRevealed).isFalse()
+    }
 
     @Test
     fun theStripIsIdleUntilTyping() {
