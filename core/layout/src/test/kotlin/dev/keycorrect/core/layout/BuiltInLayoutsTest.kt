@@ -704,6 +704,8 @@ class BuiltInLayoutsTest {
                 .isEqualTo(digit.toString())
         }
         assertThat(keys.getValue("a").hint).isEqualTo("!")
+        assertThat(keys.getValue("h").hint).isEqualTo("&")
+        assertThat(keys.getValue("l").hint).isEqualTo(")")
         assertThat(keys.getValue("z").hint).isEqualTo("-")
         // Accents come after the symbol.
         assertThat(keys.getValue("e").popup.map { it.label })
