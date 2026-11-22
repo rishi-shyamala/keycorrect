@@ -24,11 +24,14 @@ sealed interface SwipePackState {
     data object Checking : SwipePackState
 
     /** Installed and signed with the keyboard's key; [license] is its FUTO licence text. */
-    data class Installed(val license: String?) : SwipePackState
+    data class Installed(val license: String) : SwipePackState
 
     data object NotInstalled : SwipePackState
 
-    /** Installed but the keyboard won't load it (another key, a missing file, a failed load). */
+    /**
+     * Installed but unusable here: another key, or a licence asset that can't be read (the credit
+     * and the setting are only offered with the licence text reachable).
+     */
     data object Unusable : SwipePackState
 }
 
@@ -40,14 +43,15 @@ sealed interface SwipePackState {
 fun probeSwipePack(context: Context): SwipePackState =
     when (val result = SignedPackLocator(context.applicationContext, SWIPE_PACK_SPEC).locate()) {
         is PackResult.Available ->
-            SwipePackState.Installed(
-                runCatching {
+            runCatching {
                     result.pack.assets.open(SwipePackLayout.LICENSE).use {
                         it.readBytes().decodeToString()
                     }
                 }
-                    .getOrNull()
-            )
+                .fold(
+                    onSuccess = { SwipePackState.Installed(it) },
+                    onFailure = { SwipePackState.Unusable },
+                )
         is PackResult.Unavailable ->
             if (result.problem == PackProblem.NotInstalled) SwipePackState.NotInstalled
             else SwipePackState.Unusable

@@ -140,8 +140,9 @@ what it does, that it is optional, its size (about 3.2 MB) and the FUTO attribut
 Model Weights License text ships in the pack (`swipenet/LICENSE.md`), and Settings → About →
 Open-source licences shows it from the installed pack. Without the swipe files `publish` says so
 and releases without it. The "Neural swipe" row (Settings → Editing, on by default) gates it: off,
-the pack isn't loaded and swipes decode with SHARK² alone. When the pack is installed the keyboard fuses the encoder
-into every swipe decode (docs/PHASE10.md, 10a-3). Its cost on a device: install the debug pack
+the pack isn't loaded and swipes decode with SHARK² alone.
+
+When the pack is installed the keyboard fuses the encoder into every swipe decode (docs/PHASE10.md, 10a-3). Its cost on a device: install the debug pack
 (`./gradlew :swipepack:installDebug`) and run `SwipeNetBenchmark` (part of the device
 microbenchmarks; skipped without the pack). `emissionsOneThread` is one encoder call;
 `fusedDecodeOnLift` and `sharkDecodeOnLift` are one whole swipe decode with and without the

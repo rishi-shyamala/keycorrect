@@ -110,7 +110,7 @@ class AppContainer(
      * [applicationScope], so a load that finishes after a service is destroyed still lands here.
      */
     val swipeNetHost: SwipeNetHost by lazy {
-        neuralSwipeGate.value
+        neuralSwipeGate.value // start following the setting before the first encoder() call
         SwipeNetHost(context, applicationScope, io, enabled = { neuralSwipeEnabled })
     }
 
