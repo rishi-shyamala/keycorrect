@@ -6,6 +6,8 @@ dependencies {
     api(project(":core:dictionary"))
     // Part of the public API: ClassicEngine takes a Personalization provider (Phase 3).
     api(project(":core:learning"))
+    // Part of the public API: ClassicEngine takes the neural swipe encoder (Phase 10a-3).
+    api(project(":core:swipenet"))
 
     testImplementation(project(":core:layout"))
 }

@@ -22,6 +22,7 @@ import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.foldApostrophes
 import dev.keycorrect.core.learning.model.FieldRankingFeatureProvider
 import dev.keycorrect.core.settings.KeyboardSettings
+import dev.keycorrect.core.swipenet.SwipeEncoder
 import dev.keycorrect.feature.keyboard.prediction.PredictionBackend
 import dev.keycorrect.feature.keyboard.prediction.Predictor
 import dev.keycorrect.feature.keyboard.prediction.ShortcutRule
@@ -75,6 +76,11 @@ class PredictionHost(
      * only. A request is only refined when it has `engineAllowed`.
      */
     private val reranker: NeuralReranker? = null,
+    /**
+     * The neural swipe encoder ([SwipeNetHost.encoder]), read per swipe on the decoder thread; null
+     * decodes swipes with SHARK² alone.
+     */
+    private val swipeEncoder: () -> SwipeEncoder? = { null },
 ) : PredictionBackend {
     /**
      * Snapshot state: the keyboard reads it while composing (gesture typing is on only with an
@@ -162,6 +168,7 @@ class PredictionHost(
                             Personalization.None
                         },
                 touchKey = touchKey,
+                swipeEncoder = swipeEncoder,
             )
         engine.load()
         installRankingProvider(engine)

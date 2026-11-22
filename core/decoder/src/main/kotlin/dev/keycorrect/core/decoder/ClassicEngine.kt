@@ -1,8 +1,12 @@
 package dev.keycorrect.core.decoder
 
 import dev.keycorrect.core.decoder.gesture.GestureDecoder
+import dev.keycorrect.core.decoder.gesture.GestureFusionFeatures
 import dev.keycorrect.core.decoder.gesture.GestureLayoutIndex
 import dev.keycorrect.core.decoder.gesture.GestureRescorer
+import dev.keycorrect.core.decoder.gesture.NeuralEmissions
+import dev.keycorrect.core.decoder.gesture.NeuralSearch
+import dev.keycorrect.core.decoder.gesture.NeuralSwipe
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.dictionary.WordFlags
 import dev.keycorrect.core.engineapi.Candidate
@@ -18,6 +22,7 @@ import dev.keycorrect.core.engineapi.PredictiveEngine
 import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.RankingFeatures
 import dev.keycorrect.core.learning.contextBucket
+import dev.keycorrect.core.swipenet.SwipeEncoder
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.math.ln
@@ -79,6 +84,12 @@ class ClassicEngine(
     private val personalization: () -> Personalization = { Personalization.None },
     private val touchKey: () -> String? = { null },
     private val random: Random? = null,
+    /**
+     * The neural swipe encoder (docs/PHASE10.md, 10a-3), read per gesture; null (the default, or
+     * whenever the pack is missing or failed to load) decodes swipes with SHARK² alone, exactly as
+     * without it.
+     */
+    swipeEncoder: () -> SwipeEncoder? = { null },
 ) : PredictiveEngine, GestureEngine {
     /** The autocorrect policy; adjust [AutocorrectPolicy.threshold] to tune aggressiveness. */
     val autocorrectPolicy = AutocorrectPolicy(config.autocorrect)
@@ -116,8 +127,18 @@ class ClassicEngine(
     private val phraseIds = IntArray(1)
     private val phraseLogProbs = FloatArray(1)
 
-    private val gestures = GestureDecoder(dictionary, config.gesture, config.user.wordLogProb)
+    private val gestures =
+        GestureDecoder(
+            dictionary,
+            config.gesture,
+            config.user.wordLogProb,
+            extra = config.neural.beamCandidates,
+        )
     private val rescorer by lazy { GestureRescorer(dictionary, config, lm, lexicon, gestures) }
+    private val neural = NeuralSwipe(swipeEncoder, config.neural)
+    private val neuralSearch by lazy { NeuralSearch(dictionary, config.neural) }
+    private val beamKeys = arrayOfNulls<String>(config.neural.beamCandidates.coerceAtLeast(0))
+    private var neuralScores = FloatArray(0)
 
     private val lock = ReentrantLock()
 
@@ -169,27 +190,53 @@ class ClassicEngine(
         val index =
             if (request.layout.keys.isEmpty() || stale()) null
             else gestures.indexFor(request.layout)
-        return lock.withLock { decodeGestureLocked(request, index, stale) }
+        // The encoder also runs outside [lock]: it touches no engine state.
+        val emissions =
+            if (index == null || stale()) null
+            else neural.emissions(request.gesture, request.layout)
+        return lock.withLock { decodeGestureLocked(request, index, emissions, stale) }
+    }
+
+    /**
+     * The score parts of every candidate of the swipe decode of [request] (see
+     * [GestureFusionFeatures]), for tuning the fusion weights in tools/eval; empty when the decode
+     * has no candidates.
+     */
+    fun gestureFusionFeatures(request: GestureRequest): List<GestureFusionFeatures> {
+        val out = ArrayList<GestureFusionFeatures>()
+        rescorer.trace = out::add
+        try {
+            decodeGestureNow(request) { false }
+        } finally {
+            rescorer.trace = null
+        }
+        return out
     }
 
     private fun decodeGestureLocked(
         request: GestureRequest,
         index: GestureLayoutIndex?,
+        emissions: NeuralEmissions?,
         stale: () -> Boolean,
     ): PredictResult {
-        val count =
+        var count =
             if (stale()) {
                 -1
             } else {
                 lexicon.refresh()
                 gestures.run(index, request.gesture, lexicon, stale)
             }
+        var scores: FloatArray? = null
+        if (emissions != null && index != null && fusable(count)) {
+            count = fuse(index, emissions, stale)
+            scores = neuralScores
+        }
         val ranked =
             if (count > 0) {
                 pers = personalization()
                 active = pers !== Personalization.None
                 lm.bindPersonalization(pers, config.user.userNgramWeight)
-                rescorer.rescore(count, request, pers.takeIf { active }, stale)
+                rescorer.rescore(count, request, pers.takeIf { active }, stale, scores)
             } else {
                 null
             }
@@ -200,6 +247,30 @@ class ClassicEngine(
             autocorrect = top.firstOrNull(),
             sequence = request.sequence,
         )
+    }
+
+    /** Whether SHARK²'s pass (which returned [count]) left a gesture the fusion can score. */
+    private fun fusable(count: Int) = count >= 0 && gestures.gestureReady
+
+    /**
+     * Adds the neural beam search's words to SHARK²'s shortlist (scoring their channel) and scores
+     * every entry under the encoder ([neuralScores]). Returns the new entry count, or -1 if stale.
+     */
+    private fun fuse(index: GestureLayoutIndex, e: NeuralEmissions, stale: () -> Boolean): Int {
+        val found = neuralSearch.beam(e, beamKeys, stale)
+        if (found < 0) return -1
+        for (i in 0 until found) {
+            val key = beamKeys[i] ?: continue
+            if (!gestures.contains(key)) gestures.append(key, gestures.channelOf(index, key))
+        }
+        val count = gestures.count
+        if (neuralScores.size < count) neuralScores = FloatArray(gestures.keys.size)
+        val floor = config.neural.neuralFloor
+        for (i in 0 until count) {
+            val key = gestures.keys[i]
+            neuralScores[i] = if (key == null) floor else maxOf(neuralSearch.align(key, e), floor)
+        }
+        return count
     }
 
     /**

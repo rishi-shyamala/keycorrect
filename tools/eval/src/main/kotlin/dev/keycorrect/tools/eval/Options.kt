@@ -74,6 +74,15 @@ data class Options(
     val realLayout: Path = Paths.get("data/raw/swipe/swipe-5/layouts/qwerty.json"),
     /** Swipe mode, real swipes: rows to read (0 = all). */
     val realLimit: Int = 0,
+    /** Swipe mode: fuse the neural swipe encoder with SHARK² (docs/EVAL.md, "Neural fusion"). */
+    val neural: Boolean = false,
+    /** Swipe mode, neural: the host build of libkcswipenet (`tools/swipenet/build.sh host`). */
+    val swipenetLib: Path =
+        Paths.get(System.getenv("KC_SWIPENET_LIB") ?: "build/swipenet-host/libkcswipenet.so"),
+    /** Swipe mode, neural: the encoder model. */
+    val swipenetModel: Path = Paths.get("data/raw/swipenet/honorable_sturgeon/model_int8.pte"),
+    /** Swipe mode, neural: write every candidate's score parts to this CSV (weight tuning). */
+    val neuralDump: Path? = null,
     /** Rerank arm: the language-model GGUF (null = no rerank arm). */
     val rerankModel: Path? = null,
     /**
@@ -183,6 +192,10 @@ data class Options(
                                    data/raw/swipe/test.jsonl; outputs under <out>/swipe-real/
               --real-layout FILE   the dataset's QWERTY layout (default data/raw/swipe/swipe-5/layouts/qwerty.json)
               --real-limit N       rows to read, in file order (default 0 = all)
+              --neural             fuse the neural swipe encoder with SHARK² (synthetic and real swipes)
+              --swipenet-lib FILE  host libkcswipenet (default ${'$'}KC_SWIPENET_LIB, else build/swipenet-host/libkcswipenet.so)
+              --swipenet-model FILE  encoder (default data/raw/swipenet/honorable_sturgeon/model_int8.pte)
+              --neural-dump FILE   real swipes: write each candidate's score parts as CSV (weight tuning)
                                    (--sentences, --split, --offset, --seed, --config, --oracle-context, --failures apply)
 
             config keys: ${ConfigOverrides.KEYS.joinToString(", ")}
@@ -315,6 +328,10 @@ data class Options(
                     "--real" -> o = o.copy(realSwipes = Paths.get(v()))
                     "--real-layout" -> o = o.copy(realLayout = Paths.get(v()))
                     "--real-limit" -> o = o.copy(realLimit = v().toInt())
+                    "--neural" -> o = o.copy(neural = true)
+                    "--swipenet-lib" -> o = o.copy(swipenetLib = Paths.get(v()))
+                    "--swipenet-model" -> o = o.copy(swipenetModel = Paths.get(v()))
+                    "--neural-dump" -> o = o.copy(neuralDump = Paths.get(v()))
                     "--tap-prob" -> o = o.copy(tapProbability = v().toFloat())
                     "--help",
                     "-h" -> o = o.copy(help = true)

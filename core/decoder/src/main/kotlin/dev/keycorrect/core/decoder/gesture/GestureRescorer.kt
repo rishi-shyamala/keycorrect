@@ -30,18 +30,26 @@ internal class GestureRescorer(
 ) {
     private var pers: Personalization? = null
     private var bestLm = Float.NEGATIVE_INFINITY
+    private var neural: FloatArray? = null
+
+    /** When set, [rescore] adds every candidate's score parts here (for tuning, tools/eval). */
+    var trace: ((GestureFusionFeatures) -> Unit)? = null
 
     /**
      * Scores the first [count] shortlist entries of [decoder] and returns them best first, or null
-     * when [stale] fires. [personalization] is null when the user has none.
+     * when [stale] fires. [personalization] is null when the user has none. With [neuralScores]
+     * (the encoder's log-likelihood of each entry) the score is the fused one of
+     * [dev.keycorrect.core.decoder.NeuralSwipeConfig]; without, SHARK²'s own.
      */
     fun rescore(
         count: Int,
         request: GestureRequest,
         personalization: Personalization?,
         stale: () -> Boolean,
+        neuralScores: FloatArray? = null,
     ): List<Candidate>? {
         pers = personalization
+        neural = neuralScores
         lm.setContext(request.context.before)
         val right = lm.parseRightContext(request.context.after)
         val out = ArrayList<Candidate>(count)
@@ -76,8 +84,21 @@ internal class GestureRescorer(
         return surface?.let {
             val gc = config.gesture
             val rightLm = if (right >= 0) lm.rightLogProb(id, right) else 0f
+            val lmTerm = bestLm + gc.rightContextWeight * rightLm
+            val n = neural
             val score =
-                decoder.channel[i] + gc.lmWeight * (bestLm + gc.rightContextWeight * rightLm)
+                if (n == null) {
+                    decoder.channel[i] + gc.lmWeight * lmTerm
+                } else {
+                    val nc = config.neural
+                    maxOf(decoder.channel[i], -gc.maxChannelCost) +
+                        nc.neuralWeight * n[i] +
+                        nc.lmWeight * lmTerm +
+                        nc.lengthBonus * letters(it)
+                }
+            trace?.invoke(
+                GestureFusionFeatures(it, decoder.channel[i], n?.get(i) ?: Float.NaN, lmTerm)
+            )
             Candidate(it, score, source)
         }
     }
@@ -100,7 +121,25 @@ internal class GestureRescorer(
         return bestId
     }
 
+    private fun letters(s: String): Int {
+        var n = 0
+        for (c in s) if (c.isLetter()) n++
+        return n
+    }
+
     private companion object {
         const val EXCLUDED_FLAGS = WordFlags.POSSIBLY_OFFENSIVE or WordFlags.NOT_A_WORD
     }
 }
+
+/**
+ * The parts of one swipe candidate's score, for tuning the fusion weights offline (tools/eval):
+ * SHARK²'s [channel], the encoder's [neural] log-likelihood (NaN without an encoder) and the
+ * contextual language-model term [lm] (with the right context folded in).
+ */
+data class GestureFusionFeatures(
+    val text: String,
+    val channel: Float,
+    val neural: Float,
+    val lm: Float,
+)
