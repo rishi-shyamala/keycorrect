@@ -44,15 +44,18 @@ class SwipeNetHost(
     @Volatile private var retryAt = Long.MIN_VALUE
 
     /**
-     * The encoder if it has loaded; otherwise starts loading it (once) and returns null. While
-     * the "Neural swipe" setting is off ([enabled]) this returns null without loading anything,
-     * and an encoder that was already loaded is kept but not used (decoding is SHARK² alone).
+     * The encoder if it has loaded; otherwise starts loading it (once) and returns null. While the
+     * "Neural swipe" setting is off ([enabled]) this returns null without loading anything, and an
+     * encoder that was already loaded is kept but not used (decoding is SHARK² alone).
      */
     fun encoder(): SwipeEncoder? {
         if (!enabled()) return null
-        loaded?.let {
-            return it
-        }
+        val ready = loaded
+        if (ready == null) startLoad()
+        return ready
+    }
+
+    private fun startLoad() {
         if (!settled && clock() >= retryAt && loading.compareAndSet(false, true)) {
             scope.launch(io) {
                 try {
@@ -62,7 +65,6 @@ class SwipeNetHost(
                 }
             }
         }
-        return null
     }
 
     private fun load() {

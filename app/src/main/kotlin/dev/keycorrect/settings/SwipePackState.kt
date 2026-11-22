@@ -34,18 +34,18 @@ sealed interface SwipePackState {
 
 /**
  * Asks the package manager and the pack itself; call it off the main thread. The pack's signature
- * is checked, so a pack signed by another key never counts and its licence text is never shown.
- * The licence is the pack's own `swipenet/LICENSE.md` asset.
+ * is checked, so a pack signed by another key never counts and its licence text is never shown. The
+ * licence is the pack's own `swipenet/LICENSE.md` asset.
  */
 fun probeSwipePack(context: Context): SwipePackState =
     when (val result = SignedPackLocator(context.applicationContext, SWIPE_PACK_SPEC).locate()) {
         is PackResult.Available ->
             SwipePackState.Installed(
                 runCatching {
-                        result.pack.assets.open(SwipePackLayout.LICENSE).use {
-                            it.readBytes().decodeToString()
-                        }
+                    result.pack.assets.open(SwipePackLayout.LICENSE).use {
+                        it.readBytes().decodeToString()
                     }
+                }
                     .getOrNull()
             )
         is PackResult.Unavailable ->

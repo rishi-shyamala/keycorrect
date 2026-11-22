@@ -81,8 +81,8 @@ fun EditingSettingsScreen(
 
 /**
  * The "Neural swipe" row. Without a usable swipe pack it stays visible but switched off and
- * disabled, with the reason, so the option can be found; with the pack it shows the credit
- * FUTO's licence requires.
+ * disabled, with the reason, so the option can be found; with the pack it shows the credit FUTO's
+ * licence requires.
  */
 @Composable
 private fun NeuralSwipeRow(
