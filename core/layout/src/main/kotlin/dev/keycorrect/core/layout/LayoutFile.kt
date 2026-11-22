@@ -51,6 +51,7 @@ internal data class Key(
     val style: String? = null,
     val description: String? = null,
     val longPress: String? = null,
+    val letterHint: Boolean = true,
 )
 
 /** Accepts a bare string as shorthand for `{ "label": ... }`. */
