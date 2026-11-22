@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -97,10 +96,10 @@ private class SlotText(val measurer: TextMeasurer, size: TextUnit, min: TextUnit
     val range = ShrinkRange(size, min)
 }
 
-/** A thin line between two slots, half the strip tall and centred. */
+/** A thin line between two slots, half the strip tall and centred, in the theme's strip colour. */
 @Composable
 private fun SlotDivider() {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = DIVIDER_ALPHA)
+    val color = stripTextColor().copy(alpha = DIVIDER_ALPHA)
     Box(Modifier.width(DividerWidth).fillMaxHeight(DIVIDER_HEIGHT_FRACTION).background(color))
 }
 
@@ -246,11 +245,17 @@ private fun RowScope.Slot(
                     slot.text,
                     modifier = Modifier.weight(1f, fill = false),
                     color = color,
+                    fontSize = text.range.base,
                     fontWeight = weight,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(PHRASE_HINT, color = accentOnBackgroundColor(), maxLines = 1)
+                Text(
+                    PHRASE_HINT,
+                    color = accentOnBackgroundColor(),
+                    fontSize = text.range.base,
+                    maxLines = 1,
+                )
             }
         } else {
             ShrinkingText(slot, text, color, weight)
