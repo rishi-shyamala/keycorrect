@@ -143,16 +143,11 @@ private class FitTextNode(
 
     /** [text] with the front replaced by an ellipsis, as much of its end as fits at [size]. */
     private fun cutAtStart(size: Float, limit: Constraints): TextLayoutResult {
-        var keep = text.length - 1
-        var result = measureAt(startEllipsized(text, keep), size, limit)
-        // Estimate the count to keep from the width, then trim until it fits.
-        val ratio = limit.maxWidth.toFloat() / maxOf(1, result.size.width)
-        keep = minOf(keep, (keep * ratio).toInt())
-        while (true) {
-            result = measureAt(startEllipsized(text, keep), size, limit)
-            if (!result.didOverflowWidth || keep <= 1) return result
-            keep--
-        }
+        val keep =
+            largestFitting(text.length - 1) {
+                !measureAt(startEllipsized(text, it), size, limit).didOverflowWidth
+            }
+        return measureAt(startEllipsized(text, keep), size, limit)
     }
 
     private fun measureAt(content: String, size: Float, limit: Constraints) =
@@ -174,6 +169,20 @@ private class FitTextNode(
 @Immutable internal data class ShrinkRange(val base: TextUnit, val min: TextUnit)
 
 private const val RETRY_FACTOR = 0.97f
+
+/**
+ * The largest count in 1..[max] for which [fits] holds, by binary search (about log2([max]) calls),
+ * assuming that fitting is monotone: fewer characters never fit worse. 1 when none fits.
+ */
+internal fun largestFitting(max: Int, fits: (Int) -> Boolean): Int {
+    var lo = 1
+    var hi = maxOf(1, max)
+    while (lo < hi) {
+        val mid = (lo + hi + 1) / 2
+        if (fits(mid)) lo = mid else hi = mid - 1
+    }
+    return lo
+}
 
 /** How a word is drawn in its slot: at [size] sp, with the front cut off if [ellipsizeStart]. */
 internal data class FitDecision(val size: Float, val floor: Float, val ellipsizeStart: Boolean)

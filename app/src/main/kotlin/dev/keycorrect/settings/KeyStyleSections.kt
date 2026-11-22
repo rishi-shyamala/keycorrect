@@ -126,7 +126,13 @@ internal fun SuggestionTextSection(
         title = stringResource(R.string.theme_suggestion_min_size),
         supportingText = stringResource(R.string.theme_suggestion_min_size_summary),
         value = settings.suggestionMinSize.toFloat(),
-        valueRange = KeyboardSettings.SUGGESTION_MIN_SIZE_RANGE.toFloatRange(),
+        // Never above the text size (the stored value is clamped to it too).
+        valueRange =
+            KeyboardSettings.SUGGESTION_MIN_SIZE_RANGE.first.toFloat()..minOf(
+                        KeyboardSettings.SUGGESTION_MIN_SIZE_RANGE.last,
+                        settings.suggestionTextSize,
+                    )
+                    .toFloat(),
         valueLabel = { stringResource(R.string.value_sp, it.roundToInt()) },
         onValueCommitted = { v -> onUpdate { it.copy(suggestionMinTextSize = v.roundToInt()) } },
         snap = { it.roundToInt().toFloat() },

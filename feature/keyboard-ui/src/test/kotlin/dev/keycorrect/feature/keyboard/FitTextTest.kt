@@ -44,6 +44,21 @@ class FitTextTest {
     }
 
     @Test
+    fun largestFittingFindsTheBoundaryInLogarithmicMeasures() {
+        for (limit in 0..40) {
+            var calls = 0
+            val keep =
+                largestFitting(40) {
+                    calls++
+                    it <= limit
+                }
+            assertThat(keep).isEqualTo(maxOf(1, limit))
+            assertThat(calls).isAtMost(6)
+        }
+        assertThat(largestFitting(0) { false }).isEqualTo(1)
+    }
+
+    @Test
     fun startEllipsisKeepsTheEndOfTheWord() {
         assertThat(startEllipsized("computing", 4)).isEqualTo("…ting")
         assertThat(startEllipsized("cat", 5)).isEqualTo("cat")

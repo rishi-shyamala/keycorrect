@@ -205,6 +205,21 @@ class StripToolTest {
     }
 
     @Test
+    fun revealedToolsResetWhenTheSelectionStripShowsOrHides() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Text("i"))
+        controller.toggleToolsRevealed()
+        editor.setSelection(0, 2)
+        assertThat(controller.selectionStripVisible).isTrue()
+        assertThat(controller.toolsRevealed).isFalse()
+        controller.toggleToolsRevealed()
+        editor.setSelection(2, 2)
+        assertThat(controller.selectionStripVisible).isFalse()
+        assertThat(controller.toolsRevealed).isFalse()
+    }
+
+    @Test
     fun theStripIsIdleUntilTyping() {
         start()
         assertThat(controller.stripBusy).isFalse()

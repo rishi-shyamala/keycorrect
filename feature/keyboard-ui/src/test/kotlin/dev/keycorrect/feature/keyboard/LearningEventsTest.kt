@@ -1049,6 +1049,22 @@ class LearningEventsTest {
     }
 
     @Test
+    fun theNeverSuggestPromptResetsTheRevealAndTakesTheStrip() {
+        predictor.word("hel", listOf("help", "hello", "held"))
+        start()
+        type("hel")
+        controller.toggleToolsRevealed()
+        controller.onSuggestionLongPress(controller.strip.left!!)
+        assertThat(controller.strip.neverSuggest).isNotNull()
+        assertThat(controller.toolsRevealed).isFalse()
+        // No chevron and no revealed tools over the Yes/Cancel.
+        assertThat(controller.suggestionsShown).isFalse()
+        controller.onNeverSuggestCancel()
+        assertThat(controller.toolsRevealed).isFalse()
+        assertThat(controller.suggestionsShown).isTrue()
+    }
+
+    @Test
     fun cancelOnThePromptReportsNothing() {
         predictor.word("hel", listOf("help", "hello", "held"))
         start()

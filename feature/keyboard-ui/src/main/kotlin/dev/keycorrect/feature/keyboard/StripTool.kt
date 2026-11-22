@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -256,6 +257,11 @@ private fun CollapsibleTools(
             progress = FullSizeIcons,
             selected = null,
             modifier = Modifier.width(CollapseButtonWidth),
+            stateDescription =
+                stringResource(
+                    if (revealed) R.string.shortcut_tools_expanded
+                    else R.string.shortcut_tools_collapsed
+                ),
         ) {
             onPress()
             controller.toggleToolsRevealed()
@@ -323,6 +329,7 @@ private fun ToolButton(
     progress: State<Float>,
     selected: Boolean?,
     modifier: Modifier = Modifier,
+    stateDescription: String? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -338,6 +345,7 @@ private fun ToolButton(
                     contentDescription = description
                     role = Role.Button
                     if (selected != null) this.selected = selected
+                    if (stateDescription != null) this.stateDescription = stateDescription
                 },
         contentAlignment = Alignment.Center,
     ) {

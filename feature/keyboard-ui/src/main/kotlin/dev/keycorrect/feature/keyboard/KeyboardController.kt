@@ -99,8 +99,9 @@ class KeyboardController(
 
     /**
      * Whether the strip shows the tool icons in place of the suggestions (the user tapped the
-     * chevron). Cleared by the next strip change (a keystroke or swipe), a new field, a tool tap or
-     * a second tap on the chevron.
+     * chevron). Cleared by the next strip change (a keystroke, a swipe or the never-suggest prompt
+     * opening or closing), the selection strip showing or hiding, a new field, a tool tap or a
+     * second tap on the chevron.
      */
     var toolsRevealed: Boolean by mutableStateOf(false)
         private set
@@ -115,6 +116,7 @@ class KeyboardController(
             tracked,
             prediction,
             {
+                // Any change, the never-suggest prompt opening or closing included.
                 if (it != strip) toolsRevealed = false
                 strip = it
             },
@@ -554,7 +556,9 @@ class KeyboardController(
         composingEnd: Int = -1,
     ) {
         val update = EditorSelection(selStart, selEnd, composingStart, composingEnd)
+        val selectionStripWas = selectionStripVisible
         selection = update.normalised()
+        if (selectionStripVisible != selectionStripWas) toolsRevealed = false
         input.noteSelection(update.collapsed.takeIf { update.known })
         val verdict = ownEdits.onUpdate(update)
         if (ownEdits.lastUpdateConfirmed) input.confirmEdits()
@@ -721,11 +725,12 @@ class KeyboardController(
     private var landscape = false
 
     /**
-     * Whether the strip shows suggestions (or a prompt on them) that the tools give way to, see
-     * [stripToolsMode]. Derived, so typing within a busy strip recomposes nothing.
+     * Whether the strip shows suggestions that the tools give way to, see [stripToolsMode]. Not
+     * while the never-suggest prompt is up (its Yes/Cancel own the strip) or the selection strip
+     * shows. Derived, so typing within a busy strip recomposes nothing.
      */
     internal val suggestionsShown: Boolean by derivedStateOf {
-        !strip.isEmpty && !selectionStripVisible
+        !strip.isEmpty && strip.neverSuggest == null && !selectionStripVisible
     }
 
     /** The strip's tools for the current field (see [toolsFor]). */
