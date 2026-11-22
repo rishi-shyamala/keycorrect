@@ -188,6 +188,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         return with(p) {
             copy(
                 keyRadiusDp = this[KEY_RADIUS_DP] ?: d.keyRadiusDp,
+                suggestionTextSize = this[SUGGESTION_TEXT_SIZE] ?: d.suggestionTextSize,
+                suggestionMinTextSize = this[SUGGESTION_MIN_TEXT_SIZE] ?: d.suggestionMinTextSize,
                 keyBorder = this[KEY_BORDER] ?: d.keyBorder,
                 labelScale = this[LABEL_SCALE] ?: d.labelScale,
                 boldLabels = this[BOLD_LABELS] ?: d.boldLabels,
@@ -322,6 +324,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     private fun MutablePreferences.writeLookAndEngines(s: KeyboardSettings) {
         this[KEY_RADIUS_DP] = s.keyRadiusDp
+        this[SUGGESTION_TEXT_SIZE] = s.suggestionTextSize
+        this[SUGGESTION_MIN_TEXT_SIZE] = s.suggestionMinTextSize
         this[KEY_BORDER] = s.keyBorder
         this[LABEL_SCALE] = s.labelScale
         this[BOLD_LABELS] = s.boldLabels
@@ -411,6 +415,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val NEURAL_MODEL = stringPreferencesKey("neural_model")
         val NEURAL_ENGINE = stringPreferencesKey("neural_engine")
         val KEY_RADIUS_DP = intPreferencesKey("key_radius_dp")
+        val SUGGESTION_TEXT_SIZE = intPreferencesKey("suggestion_text_size")
+        val SUGGESTION_MIN_TEXT_SIZE = intPreferencesKey("suggestion_min_text_size")
         val KEY_BORDER = booleanPreferencesKey("key_border")
         val LABEL_SCALE = floatPreferencesKey("label_scale")
         val BOLD_LABELS = booleanPreferencesKey("bold_labels")
@@ -461,6 +467,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             setOf(
                 KEY_HEIGHT_DP.name,
                 KEY_RADIUS_DP.name,
+                SUGGESTION_TEXT_SIZE.name,
+                SUGGESTION_MIN_TEXT_SIZE.name,
                 EDGE_PADDING_DP.name,
                 KEY_GAP_DP.name,
                 LONG_PRESS_DELAY_MS.name,

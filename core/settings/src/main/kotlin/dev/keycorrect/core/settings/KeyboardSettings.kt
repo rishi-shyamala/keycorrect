@@ -223,6 +223,13 @@ data class KeyboardSettings(
     val keyRadiusDp: Int = DEFAULT_KEY_RADIUS_DP,
     /** Draw a thin outline around every key. */
     val keyBorder: Boolean = false,
+    /** Suggestion strip text size in sp, [SUGGESTION_TEXT_SIZE_RANGE]. */
+    val suggestionTextSize: Int = DEFAULT_SUGGESTION_TEXT_SIZE,
+    /**
+     * Smallest size in sp a suggestion shrinks to before it is ellipsized, [SUGGESTION_MIN_SIZE_RANGE];
+     * the effective minimum is never above [suggestionTextSize] (see [suggestionMinSize]).
+     */
+    val suggestionMinTextSize: Int = DEFAULT_SUGGESTION_MIN_TEXT_SIZE,
     /** Key label size scale, [LABEL_SCALE_RANGE]. */
     val labelScale: Float = 1f,
     val boldLabels: Boolean = false,
@@ -294,6 +301,10 @@ data class KeyboardSettings(
 
     /** The sizes to use on [profile]. */
     fun sizeFor(profile: SizeProfile): SizeSettings = sizes[profile] ?: globalSizes
+
+    /** The size in sp suggestions shrink to at most: [suggestionMinTextSize], capped at the size. */
+    val suggestionMinSize: Int
+        get() = minOf(suggestionMinTextSize, suggestionTextSize)
 
     /** A copy with [profile]'s sizes replaced by [size]. */
     fun withSizes(profile: SizeProfile, size: SizeSettings): KeyboardSettings =
@@ -386,6 +397,8 @@ data class KeyboardSettings(
     private fun sanitizedLook(): KeyboardSettings =
         copy(
             keyRadiusDp = keyRadiusDp.coerceIn(KEY_RADIUS_DP_RANGE),
+            suggestionTextSize = suggestionTextSize.coerceIn(SUGGESTION_TEXT_SIZE_RANGE),
+            suggestionMinTextSize = suggestionMinTextSize.coerceIn(SUGGESTION_MIN_SIZE_RANGE),
             labelScale = labelScale.coerceInOrDefault(LABEL_SCALE_RANGE, 1f),
             customLightColors = ThemeColors.sanitize(customLightColors),
             customDarkColors = ThemeColors.sanitize(customDarkColors),
@@ -399,6 +412,10 @@ data class KeyboardSettings(
         val KEY_GAP_DP_RANGE = 0..6
         val KEY_RADIUS_DP_RANGE = 0..40
         val LABEL_SCALE_RANGE = 0.8f..1.3f
+        val SUGGESTION_TEXT_SIZE_RANGE = 10..24
+        val SUGGESTION_MIN_SIZE_RANGE = 8..20
+        const val DEFAULT_SUGGESTION_TEXT_SIZE = 14
+        const val DEFAULT_SUGGESTION_MIN_TEXT_SIZE = 12
         /** The look before the radius was a setting: 10 dp keys at every size. */
         const val DEFAULT_KEY_RADIUS_DP = 10
         const val DEFAULT_BOTTOM_KEY_WIDTH = 0.75f

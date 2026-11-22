@@ -356,6 +356,7 @@
     <string name="learning_unavailable_reset_title">Reset learning data?</string>
 
     <string name="value_dp">%1$d dp</string>
+    <string name="value_sp">%1$d sp</string>
     <string name="value_ms">%1$d ms</string>
     <string name="value_percent">%1$d%%</string>
     <string name="value_system_default">System default</string>
@@ -431,6 +432,10 @@
     <string name="theme_key_radius_summary">From square keys to pill-shaped keys</string>
     <string name="theme_key_radius_pill">Pill</string>
     <string name="theme_section_labels">Labels</string>
+    <string name="theme_section_suggestions">Suggestions</string>
+    <string name="theme_suggestion_size">Suggestion text size</string>
+    <string name="theme_suggestion_min_size">Smallest suggestion text size</string>
+    <string name="theme_suggestion_min_size_summary">Long words shrink to this size, then are cut at the start</string>
     <string name="theme_role_automatic">Set automatically</string>
     <string name="theme_pair_key_text">Key text on the keys</string>
     <string name="theme_pair_modifier_text">Key text on the modifier keys</string>

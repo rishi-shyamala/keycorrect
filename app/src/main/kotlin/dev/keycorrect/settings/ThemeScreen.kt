@@ -120,6 +120,7 @@ fun ThemeScreen(
 
         KeyShapeSection(settings, onUpdate)
         KeyLabelsSection(settings, onUpdate)
+        SuggestionTextSection(settings, onUpdate)
     }
 }
 

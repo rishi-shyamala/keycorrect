@@ -1,6 +1,7 @@
 package dev.keycorrect.feature.keyboard
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -10,10 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.takeOrElse
+import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.core.designsystem.accentOnBackgroundColor
 import dev.keycorrect.core.designsystem.stripTextColor
 import dev.keycorrect.feature.keyboard.prediction.SlotKind
@@ -64,6 +68,8 @@ internal fun PredictionStrip(
     onNeverYes: () -> Unit = {},
     onNeverCancel: () -> Unit = {},
     canBlock: () -> Boolean = { false },
+    textSize: TextUnit = KeyboardSettings.DEFAULT_SUGGESTION_TEXT_SIZE.sp,
+    minTextSize: TextUnit = KeyboardSettings.DEFAULT_SUGGESTION_MIN_TEXT_SIZE.sp,
 ) {
     val model = strip()
     if (model.isEmpty) return
@@ -75,10 +81,23 @@ internal fun PredictionStrip(
     val blockable = canBlock()
     val measurer = rememberTextMeasurer(cacheSize = MEASURE_CACHE)
     Row(modifier = modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        Slot(model.left, measurer, onSlot, onSlotLongPress, blockable)
-        Slot(model.centre, measurer, onSlot, onSlotLongPress, blockable)
-        Slot(model.right, measurer, onSlot, onSlotLongPress, blockable)
+        val sizes = SlotSizes(textSize, minTextSize)
+        Slot(model.left, measurer, sizes, onSlot, onSlotLongPress, blockable)
+        SlotDivider()
+        Slot(model.centre, measurer, sizes, onSlot, onSlotLongPress, blockable)
+        SlotDivider()
+        Slot(model.right, measurer, sizes, onSlot, onSlotLongPress, blockable)
     }
+}
+
+/** The chosen text size and the smallest a word shrinks to before it is ellipsized. */
+@Immutable private class SlotSizes(val size: TextUnit, val min: TextUnit)
+
+/** A thin line between two slots, half the strip tall and centred. */
+@Composable
+private fun SlotDivider() {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = DIVIDER_ALPHA)
+    Box(Modifier.width(DividerWidth).fillMaxHeight(DIVIDER_HEIGHT_FRACTION).background(color))
 }
 
 /**
@@ -158,6 +177,7 @@ private class SlotLabels(val description: String, val neverAction: String)
 private fun RowScope.Slot(
     slot: StripSlot?,
     measurer: TextMeasurer,
+    sizes: SlotSizes,
     onSlot: (StripSlot) -> Unit,
     onLongPress: (StripSlot) -> Unit,
     blockable: Boolean,
@@ -230,20 +250,22 @@ private fun RowScope.Slot(
                 Text(PHRASE_HINT, color = accentOnBackgroundColor(), maxLines = 1)
             }
         } else {
-            ShrinkingText(slot, measurer, color, weight)
+            ShrinkingText(slot, measurer, sizes, color, weight)
         }
     }
 }
 
 /**
- * A slot's word, in full when it can be: the font shrinks to [SHRINK_FACTOR] of its size (not below
- * [MIN_SLOT_SIZE]) when the text overflows its slot, and only text that still doesn't fit is
- * ellipsized. Measured once per text and slot width, in the layout phase (see [fitText]).
+ * A slot's word, in full when it can be: the font shrinks continuously from the chosen size down to
+ * the chosen minimum when the text overflows its slot, and only text that still doesn't fit is
+ * ellipsized, at the start so the end of the word stays readable. Measured once per text and slot
+ * width, in the layout phase (see [fitText]).
  */
 @Composable
 private fun ShrinkingText(
     slot: StripSlot,
     measurer: TextMeasurer,
+    sizes: SlotSizes,
     color: Color,
     weight: FontWeight,
 ) {
@@ -259,13 +281,8 @@ private fun ShrinkingText(
     }
     val local = LocalTextStyle.current
     val style = remember(local, weight) { local.copy(fontWeight = weight) }
-    val base = style.fontSize.takeOrElse { DEFAULT_SLOT_SIZE }
-    Spacer(Modifier.fitText(slot.text, style, color, base, measurer))
+    Spacer(Modifier.fitText(slot.text, style, color, sizes.size, sizes.min, measurer))
 }
-
-/** [base] shrunk to [SHRINK_FACTOR] of its size, but never below [MIN_SLOT_SIZE] (or [base]). */
-internal fun shrunkSize(base: TextUnit): TextUnit =
-    minOf(base.value, maxOf(base.value * SHRINK_FACTOR, MIN_SLOT_SIZE.value)).sp
 
 /**
  * The share of the strip a slot gets, proportional to its text (with a minimum, and a maximum so a
@@ -281,9 +298,9 @@ internal fun slotWeight(slot: StripSlot?): Float {
 private const val PHRASE_HINT = " →"
 private const val MIN_SLOT_WEIGHT = 5f
 private const val MAX_SLOT_WEIGHT = 14f
-private const val SHRINK_FACTOR = 0.8f
-private val DEFAULT_SLOT_SIZE = 14.sp
-private val MIN_SLOT_SIZE = 12.sp
+private const val DIVIDER_ALPHA = 0.3f
+private const val DIVIDER_HEIGHT_FRACTION = 0.5f
+private val DividerWidth = 1.dp
 private const val MEASURE_CACHE = 24
 private val SlotCorner = 8.dp
 private val SlotPadding = 4.dp

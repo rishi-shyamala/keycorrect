@@ -77,6 +77,32 @@ class KeyStyleSettingsTest {
     }
 
     @Test
+    fun suggestionTextSizeDefaultsAndRoundTrips() = runTest {
+        val d = repo.settings.first()
+        assertThat(d.suggestionTextSize).isEqualTo(14)
+        assertThat(d.suggestionMinTextSize).isEqualTo(12)
+        repo.update { it.copy(suggestionTextSize = 20, suggestionMinTextSize = 9) }
+        val s = repo.settings.first()
+        assertThat(s.suggestionTextSize).isEqualTo(20)
+        assertThat(s.suggestionMinTextSize).isEqualTo(9)
+        val exported = repo.exportValues()
+        assertThat(exported["suggestion_text_size"]).isEqualTo(20)
+        assertThat(exported["suggestion_min_text_size"]).isEqualTo(9)
+    }
+
+    @Test
+    fun suggestionTextSizesAreClampedAndTheMinimumNeverExceedsTheSize() {
+        val low = KeyboardSettings(suggestionTextSize = 1, suggestionMinTextSize = 1).sanitized()
+        assertThat(low.suggestionTextSize).isEqualTo(10)
+        assertThat(low.suggestionMinTextSize).isEqualTo(8)
+        val high = KeyboardSettings(suggestionTextSize = 99, suggestionMinTextSize = 99).sanitized()
+        assertThat(high.suggestionTextSize).isEqualTo(24)
+        assertThat(high.suggestionMinTextSize).isEqualTo(20)
+        val capped = KeyboardSettings(suggestionTextSize = 10, suggestionMinTextSize = 16)
+        assertThat(capped.suggestionMinSize).isEqualTo(10)
+    }
+
+    @Test
     fun unknownPressStyleFallsBack() {
         assertThat(PressStyle.parse("Glow")).isNull()
         assertThat(PressStyle.parse("None")).isEqualTo(PressStyle.None)

@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.keycorrect.core.layout.KeyAction
 import dev.keycorrect.core.settings.KeyboardSettings
@@ -218,7 +219,7 @@ private fun SuggestionArea(
                 autofillActive = items.isNotEmpty(),
                 modifier = modifier,
             ) {
-                StripContent(controller, items, press)
+                StripContent(controller, settings, items, press)
             }
         }
     }
@@ -228,6 +229,7 @@ private fun SuggestionArea(
 @Composable
 private fun StripContent(
     controller: KeyboardController,
+    settings: KeyboardSettings,
     items: List<InlineSuggestionItem>,
     onPress: () -> Unit,
 ) {
@@ -245,6 +247,8 @@ private fun StripContent(
             onNeverYes = remember(controller) { controller::onNeverSuggestConfirm },
             onNeverCancel = remember(controller) { controller::onNeverSuggestCancel },
             canBlock = remember(controller) { { controller.canBlockSuggestions } },
+            textSize = settings.suggestionTextSize.sp,
+            minTextSize = settings.suggestionMinSize.sp,
         )
         // Only when the strip above is empty (see KeyboardController.stripClip).
         ClipChip(controller, onPress = onPress)
