@@ -72,6 +72,10 @@ data class Options(
     val realSwipes: Path? = null,
     /** Swipe mode, real swipes: the dataset's QWERTY layout file. */
     val realLayout: Path = Paths.get("data/raw/swipe/swipe-5/layouts/qwerty.json"),
+    /** Swipe mode, real swipes: replay sessions as simulated users (docs/EVAL.md). */
+    val learn: Boolean = false,
+    /** Swipe mode, learn replay: sessions with fewer swipes than this are dropped. */
+    val learnMinSwipes: Int = 100,
     /** Swipe mode, real swipes: rows to read (0 = all). */
     val realLimit: Int = 0,
     /** Swipe mode: fuse the neural swipe encoder with SHARK² (docs/EVAL.md, "Neural fusion"). */
@@ -194,6 +198,10 @@ data class Options(
                                    data/raw/swipe/test.jsonl; outputs under <out>/swipe-real/
               --real-layout FILE   the dataset's QWERTY layout (default data/raw/swipe/swipe-5/layouts/qwerty.json)
               --real-limit N       rows to read, in file order (default 0 = all)
+              --learn              real swipes: replay each session as one user (learn over the first half,
+                                   score the second; baseline / word-use learning / oracle path calibration);
+                                   outputs under <out>/swipe-learn/
+              --learn-min-swipes N sessions with fewer swipes are dropped (default 100)
               --neural             fuse the neural swipe encoder with SHARK² (synthetic and real swipes)
               --swipenet-lib FILE  host libkcswipenet (default ${'$'}KC_SWIPENET_LIB, else build/swipenet-host/libkcswipenet.so)
               --swipenet-model FILE  encoder (default data/raw/swipenet/honorable_sturgeon/model_int8.pte)
@@ -331,6 +339,8 @@ data class Options(
                     "--real" -> o = o.copy(realSwipes = Paths.get(v()))
                     "--real-layout" -> o = o.copy(realLayout = Paths.get(v()))
                     "--real-limit" -> o = o.copy(realLimit = v().toInt())
+                    "--learn" -> o = o.copy(learn = true)
+                    "--learn-min-swipes" -> o = o.copy(learnMinSwipes = v().toInt())
                     "--neural" -> o = o.copy(neural = true)
                     "--swipenet-lib" -> o = o.copy(swipenetLib = Paths.get(v()))
                     "--swipenet-model" -> o = o.copy(swipenetModel = Paths.get(v()))

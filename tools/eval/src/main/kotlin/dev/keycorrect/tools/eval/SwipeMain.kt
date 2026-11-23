@@ -2,6 +2,8 @@ package dev.keycorrect.tools.eval
 
 import dev.keycorrect.core.decoder.ClassicConfig
 import dev.keycorrect.core.decoder.ClassicEngine
+import dev.keycorrect.core.learning.classifier.ClassifierConfig
+import dev.keycorrect.core.learning.model.PersonalModelConfig
 import dev.keycorrect.core.swipenet.SwipeEncoder
 import java.nio.file.Files
 import java.util.Locale
@@ -87,6 +89,10 @@ class SwipeMain(private val o: Options) {
                 val node = dictionary.findNode(it.replace('’', '\'').lowercase())
                 node >= 0 && dictionary.isTerminal(node)
             }
+        if (o.learn) {
+            runLearn(file, set)
+            return
+        }
         val header = realHeader(file, set)
         println(header)
 
@@ -125,30 +131,98 @@ class SwipeMain(private val o: Options) {
     }
 
     /** The engine under test: SHARK² alone, or fused with the encoder under `--neural`. */
-    private fun engine(): ClassicEngine {
-        val encoder =
-            if (o.neural) {
-                SwipeEncoder.openDesktop(
-                    EvalMain.requireFile(
-                            o.swipenetLib,
-                            "swipenet library (tools/swipenet/build.sh host)",
-                        )
-                        .toAbsolutePath()
-                        .toString(),
-                    EvalMain.requireFile(
-                            o.swipenetModel,
-                            "swipenet model (tools/data/fetch-swipe-model.sh)",
-                        )
-                        .toFile(),
-                )
-            } else {
-                null
-            }
-        return ClassicEngine(
+    private fun engine(): ClassicEngine = engine(openEncoder())
+
+    private fun engine(encoder: SwipeEncoder?): ClassicEngine =
+        ClassicEngine(
             dictionary,
             baseConfig,
             random = kotlin.random.Random(o.seed),
             swipeEncoder = { encoder },
+        )
+
+    private fun openEncoder(): SwipeEncoder? =
+        if (o.neural) {
+            SwipeEncoder.openDesktop(
+                EvalMain.requireFile(
+                        o.swipenetLib,
+                        "swipenet library (tools/swipenet/build.sh host)",
+                    )
+                    .toAbsolutePath()
+                    .toString(),
+                EvalMain.requireFile(
+                        o.swipenetModel,
+                        "swipenet model (tools/data/fetch-swipe-model.sh)",
+                    )
+                    .toFile(),
+            )
+        } else {
+            null
+        }
+
+    /**
+     * `--real FILE --learn`: the swipe-learning replay (see [SwipeReplay]); output to
+     * `<out>/swipe-learn/`. The decoders are the ones the other real-swipe runs use.
+     */
+    private fun runLearn(file: java.nio.file.Path, set: RealSwipeSet) {
+        val out = o.out.resolve("swipe-learn")
+        Files.createDirectories(out)
+        val started = System.nanoTime()
+        val encoder = openEncoder()
+        val replay =
+            SwipeReplay(
+                keyboard,
+                SwipeEvaluator(keyboard, SwipeGenerator(keyboard), o.seed),
+                engine(encoder),
+                {
+                    SwipeLearner(
+                        dictionary,
+                        baseConfig,
+                        { encoder },
+                        o.seed,
+                        ConfigOverrides.applyFlat(PersonalModelConfig(), o.modelConfig),
+                        ConfigOverrides.applyFlat(ClassifierConfig(), o.classifierConfig),
+                    )
+                },
+            )
+        val result = replay.run(set.swipes, o.learnMinSwipes)
+        val header =
+            "KeyCorrect swipe-learning replay: ${file.fileName}, ${set.rows} rows read" +
+                (if (o.realLimit > 0) " (limit ${o.realLimit})" else "") +
+                "; ${set.swipes.size} swipes in ${result.sessionsSeen} sessions\n" +
+                "sessions kept (>= ${o.learnMinSwipes} swipes): ${result.sessions}; " +
+                "early (learning) swipes ${result.early}; scored late-half swipes " +
+                "${result.scored} (${result.scoredDictionary} dictionary words)\n" +
+                "each session is one user with a fresh engine; context: the swipe's sentence " +
+                "before it (oracle); single thread\n" +
+                neuralLine() +
+                "dictionary ${o.dict.fileName} (${dictionary.wordCount} words)" +
+                (if (o.config.isNotEmpty()) "\nconfig overrides: ${o.config}" else "") +
+                "\n"
+        val text = result.text()
+        println(header + "\n" + text)
+        val seconds = (System.nanoTime() - started) / 1e9
+        val json = LinkedHashMap<String, Any>()
+        json["options"] =
+            linkedMapOf(
+                "real" to file.toString(),
+                "realLimit" to o.realLimit,
+                "learnMinSwipes" to o.learnMinSwipes,
+                "neural" to o.neural,
+                "configOverrides" to o.config,
+                "label" to o.label,
+            )
+        json["results"] = result.toMap()
+        json["elapsedSeconds"] = seconds
+        Files.writeString(out.resolve("report.txt"), header + "\n" + text)
+        Files.writeString(out.resolve("report.json"), Json.write(json) + "\n")
+        println(
+            String.format(
+                Locale.ROOT,
+                "done in %.1f s; wrote %s",
+                seconds,
+                out.toAbsolutePath().normalize(),
+            )
         )
     }
 
