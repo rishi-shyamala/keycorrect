@@ -52,6 +52,7 @@ class Stats {
     var literalWrong = 0L
     var corrected = 0L
     var falseCorrections = 0L
+    var falseCorrectionsCapitalOov = 0L
     var autocorrectFired = 0L
     var firedWrong = 0L
     var missedTargetInTop3 = 0L
@@ -68,7 +69,12 @@ class Stats {
         if (o.finalCorrect) finalCorrect++
         if (o.casingExact) casingExact++
         if (!o.literalCorrect && o.finalCorrect) corrected++
-        if (o.literalCorrect && !o.finalCorrect) falseCorrections++
+        if (o.literalCorrect && !o.finalCorrect) {
+            falseCorrections++
+            if (!o.targetInDictionary && o.target.firstOrNull()?.isUpperCase() == true) {
+                falseCorrectionsCapitalOov++
+            }
+        }
         if (o.autocorrectFired) {
             autocorrectFired++
             if (!o.finalCorrect) firedWrong++
@@ -94,6 +100,7 @@ class Stats {
         literalWrong += o.literalWrong
         corrected += o.corrected
         falseCorrections += o.falseCorrections
+        falseCorrectionsCapitalOov += o.falseCorrectionsCapitalOov
         autocorrectFired += o.autocorrectFired
         firedWrong += o.firedWrong
         missedTargetInTop3 += o.missedTargetInTop3
@@ -127,6 +134,14 @@ class Stats {
     /** False corrections per 1000 evaluated words (the critical metric). */
     val falseCorrectionsPer1000
         get() = 1000.0 * ratio(falseCorrections, words)
+
+    /** False corrections that are not a capitalised out-of-vocabulary word (a name). */
+    val falseCorrectionsExclNames
+        get() = falseCorrections - falseCorrectionsCapitalOov
+
+    /** Per 1000 evaluated words, excluding capitalised out-of-vocabulary names (Tatoeba "Sami"). */
+    val falseCorrectionsExclNamesPer1000
+        get() = 1000.0 * ratio(falseCorrectionsExclNames, words)
 
     /** Share of correctly typed words that autocorrect broke. */
     val falseCorrectionRateOfCorrect

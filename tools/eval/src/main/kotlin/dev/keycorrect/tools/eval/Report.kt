@@ -21,6 +21,8 @@ object Report {
             "missedWithTargetInTop3" to s.missedTargetInTop3,
             "falseCorrections" to s.falseCorrections,
             "falseCorrectionsPer1000Words" to s.falseCorrectionsPer1000,
+            "falseCorrectionsExclCapitalOov" to s.falseCorrectionsExclNames,
+            "falseCorrectionsExclCapitalOovPer1000Words" to s.falseCorrectionsExclNamesPer1000,
             "falseCorrectionRateOfCorrectlyTyped" to s.falseCorrectionRateOfCorrect,
             "autocorrectFired" to s.autocorrectFired,
             "autocorrectFiredWrong" to s.firedWrong,
@@ -106,6 +108,11 @@ object Report {
             "FALSE CORRECTIONS per 1000 words",
             String.format(Locale.ROOT, "%.2f", s.falseCorrectionsPer1000) +
                 "   (${s.falseCorrections} words; ${pct(s.falseCorrectionRateOfCorrect).trim()} of correctly typed)",
+        )
+        row(
+            "false corrections excl. capitalised OOV names per 1000",
+            String.format(Locale.ROOT, "%.2f", s.falseCorrectionsExclNamesPer1000) +
+                "   (${s.falseCorrectionsExclNames} words)",
         )
         row("autocorrect fired / of which wrong", "${s.autocorrectFired} / ${s.firedWrong}")
         row("top-3 recall (target or literal in strip)", pct(s.top3Recall))
