@@ -6,7 +6,14 @@ import dev.keycorrect.core.engineapi.TouchPoint
 import java.text.Normalizer
 
 /** Learned shift of one key's touch distribution (Phase 3), in pixels of the layout. */
-data class KeyAdjustment(val dx: Float = 0f, val dy: Float = 0f, val sigmaScale: Float = 1f) {
+data class KeyAdjustment(
+    val dx: Float = 0f,
+    val dy: Float = 0f,
+    val sigmaScale: Float = 1f,
+    /** Per-axis widening on top of [sigmaScale] (default: the same). */
+    val sigmaScaleX: Float = sigmaScale,
+    val sigmaScaleY: Float = sigmaScale,
+) {
     companion object {
         val None = KeyAdjustment()
     }
@@ -28,6 +35,12 @@ fun interface TouchCorrection {
  */
 fun interface KeyUnitOffsets {
     fun offset(key: Char): Pair<Float, Float>?
+
+    /**
+     * Learned multiplier (x, y) of [key]'s sigma, e.g. from `Personalization.touchSigmaScale`; null
+     * (the default) leaves the tuned sigma.
+     */
+    fun sigmaScale(key: Char): Pair<Float, Float>? = null
 }
 
 /**
@@ -72,10 +85,15 @@ class SpatialModel(
             val unit = unitOffsets?.offset(c)
             meanX[s] = key.centerX + adj.dx + (unit?.first ?: 0f) * key.width
             meanY[s] = key.centerY + adj.dy + (unit?.second ?: 0f) * key.height
+            val scale = unitOffsets?.sigmaScale(c)
             invSigmaX[s] =
-                1f / (config.sigmaXFactor * key.width * adj.sigmaScale).coerceAtLeast(EPS)
+                1f /
+                    (config.sigmaXFactor * key.width * adj.sigmaScaleX * (scale?.first ?: 1f))
+                        .coerceAtLeast(EPS)
             invSigmaY[s] =
-                1f / (config.sigmaYFactor * key.height * adj.sigmaScale).coerceAtLeast(EPS)
+                1f /
+                    (config.sigmaYFactor * key.height * adj.sigmaScaleY * (scale?.second ?: 1f))
+                        .coerceAtLeast(EPS)
             slotChars[s++] = c
         }
         for (code in 0 until TABLE_SIZE) {
@@ -167,11 +185,7 @@ internal class SpatialModelCache(private val config: SpatialConfig, capacity: In
     /**
      * A model with the owner it was last checked against and the learned offsets it was built on.
      */
-    private class Entry(
-        val model: SpatialModel,
-        val owner: Any?,
-        val offsets: Array<Pair<Float, Float>?>,
-    )
+    private class Entry(val model: SpatialModel, val owner: Any?, val offsets: FloatArray)
 
     private val models =
         object : LinkedHashMap<Long, Entry>(16, 0.75f, true) {
@@ -210,27 +224,31 @@ internal class SpatialModelCache(private val config: SpatialConfig, capacity: In
         return model
     }
 
-    /** The learned offset of each distinct key char, in the order [SpatialModel] asks for them. */
-    private fun offsetsOf(
-        keys: List<KeySpec>,
-        unitOffsets: KeyUnitOffsets?,
-    ): Array<Pair<Float, Float>?> {
+    /**
+     * The learned offset and sigma scale of each distinct key char (dx, dy, sx, sy; 0, 0, 1, 1
+     * where nothing is learned, which builds the same Gaussian), in the order [SpatialModel] asks.
+     */
+    private fun offsetsOf(keys: List<KeySpec>, unitOffsets: KeyUnitOffsets?): FloatArray {
         if (unitOffsets == null) return NO_OFFSETS
         val seen = LinkedHashSet<Char>()
         for (key in keys) seen.add(SpatialModel.fold(key.char))
-        val out = arrayOfNulls<Pair<Float, Float>>(seen.size)
+        val out = FloatArray(seen.size * 4)
         var i = 0
         var any = false
         for (c in seen) {
             val o = unitOffsets.offset(c)
-            out[i++] = o
-            any = any || o != null
+            val s = unitOffsets.sigmaScale(c)
+            out[i++] = o?.first ?: 0f
+            out[i++] = o?.second ?: 0f
+            out[i++] = s?.first ?: 1f
+            out[i++] = s?.second ?: 1f
+            any = any || o != null || s != null
         }
         // Nothing learned builds the same model as no offsets at all.
         return if (any) out else NO_OFFSETS
     }
 
     private companion object {
-        val NO_OFFSETS = emptyArray<Pair<Float, Float>?>()
+        val NO_OFFSETS = FloatArray(0)
     }
 }

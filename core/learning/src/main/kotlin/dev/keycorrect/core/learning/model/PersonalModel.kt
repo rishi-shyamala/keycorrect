@@ -90,6 +90,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             override fun touchOffset(touchKey: String, char: Char) =
                 ref.get().touchOffset(touchKey, char)
 
+            override fun touchSigmaScale(touchKey: String, char: Char) =
+                ref.get().touchSigmaScale(touchKey, char)
+
             override val autocorrectThresholdDelta: Float
                 get() = ref.get().autocorrectThresholdDelta
 

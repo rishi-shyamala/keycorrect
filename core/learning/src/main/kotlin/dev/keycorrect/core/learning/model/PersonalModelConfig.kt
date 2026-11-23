@@ -91,6 +91,20 @@ data class PersonalModelConfig(
      * not a systematic offset, and the learned mean would otherwise drift toward the neighbour.
      */
     val touchOutlierLimit: Float = 0.7f,
+    /** Scale the decoder's key Gaussians by the learned per-key touch spread. */
+    val touchSigmaScaling: Boolean = true,
+    /**
+     * The touch noise (key sizes) the decoder's sigma factors are tuned for (the eval typist's
+     * sigma). The reference variance is that of a normal of this sigma truncated at
+     * [touchOutlierLimit], because the outlier filter makes the learned variance read low.
+     */
+    val touchReferenceSigma: Float = 0.25f,
+    /** Shrinkage toward the reference: this many samples' worth of prior variance. */
+    val touchSigmaPriorWeight: Float = 20f,
+    /** Raw samples a key needs before its spread is used. */
+    val touchSigmaMinSamples: Int = 20,
+    val touchSigmaMinScale: Float = 0.8f,
+    val touchSigmaMaxScale: Float = 1.3f,
     /** Words per profile before the keyboard-fit report should make recommendations (§6.5). */
     val touchMinProfileWords: Int = 300,
     // --- fusion ranker ---

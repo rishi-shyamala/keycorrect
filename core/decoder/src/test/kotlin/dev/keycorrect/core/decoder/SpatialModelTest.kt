@@ -106,6 +106,48 @@ class SpatialModelTest {
     }
 
     @Test
+    fun learnedSigmaScaleWidensTheKeyAndRebuildsTheCachedModel() {
+        val wideA =
+            object : KeyUnitOffsets {
+                override fun offset(key: Char): Pair<Float, Float>? = null
+
+                override fun sigmaScale(key: Char) = if (key == 'i') 1.3f to 1.3f else null
+            }
+        val wide = SpatialModel(TestKeyboard.layout.keys, unitOffsets = wideA)
+        // A touch between i and o: the widened i key no longer ties with o, it wins.
+        val a = TestKeyboard.touch('i')!!
+        val o = TestKeyboard.touch('o')!!
+        val mid = TouchPoint((a.x + o.x) / 2f, a.y, 0)
+        assertThat(wide.logLikelihood('i', mid)).isGreaterThan(wide.logLikelihood('o', mid))
+        assertThat(wide.logLikelihood('i', mid)).isGreaterThan(model.logLikelihood('i', mid))
+        // A narrowing scale does the opposite, and only on the scaled axis.
+        val narrowX =
+            SpatialModel(
+                TestKeyboard.layout.keys,
+                unitOffsets =
+                    object : KeyUnitOffsets {
+                        override fun offset(key: Char): Pair<Float, Float>? = null
+
+                        override fun sigmaScale(key: Char) = if (key == 'i') 0.8f to 1f else null
+                    },
+            )
+        assertThat(narrowX.logLikelihood('i', at('i', 0.2f * w)))
+            .isLessThan(model.logLikelihood('i', at('i', 0.2f * w)))
+        assertThat(narrowX.logLikelihood('i', at('i', 0f, 0.2f * w)))
+            .isWithin(1e-6f)
+            .of(model.logLikelihood('i', at('i', 0f, 0.2f * w)))
+
+        val cache = SpatialModelCache(SpatialConfig())
+        val identity = TouchCorrection.Identity
+        val first = cache.get(TestKeyboard.layout, identity, wideA, Any(), "t")
+        assertThat(cache.get(TestKeyboard.layout, identity, wideA, Any(), "t"))
+            .isSameInstanceAs(first)
+        val none = KeyUnitOffsets { null }
+        assertThat(cache.get(TestKeyboard.layout, identity, none, Any(), "t"))
+            .isNotSameInstanceAs(first)
+    }
+
+    @Test
     fun touchBetweenKeysIsAmbiguous() {
         val a = TestKeyboard.touch('i')!!
         val o = TestKeyboard.touch('o')!!

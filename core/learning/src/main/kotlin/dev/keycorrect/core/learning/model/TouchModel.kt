@@ -1,7 +1,9 @@
 package dev.keycorrect.core.learning.model
 
 import dev.keycorrect.core.learning.TouchSample
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.sqrt
 
 /**
@@ -165,6 +167,27 @@ internal class FrozenTouch(
         return c.meanX.toFloat().coerceIn(-m, m) to c.meanY.toFloat().coerceIn(-m, m)
     }
 
+    /**
+     * Per-axis multiplier of the decoder's key sigma: sqrt of the spread (shrunk toward the
+     * reference variance) over the reference sigma, clamped. Null when disabled or too few samples.
+     */
+    fun sigmaScale(touchKey: String, char: Char): Pair<Float, Float>? {
+        if (!cfg.touchSigmaScaling) return null
+        val c = profiles[touchKey]?.get(char.lowercaseChar()) ?: return null
+        if (c.n < cfg.touchSigmaMinSamples || c.w <= 0) return null
+        return axisScale(c.varX, c.w) to axisScale(c.varY, c.w)
+    }
+
+    private val referenceVar =
+        truncatedNormalVariance(cfg.touchReferenceSigma, cfg.touchOutlierLimit)
+
+    private fun axisScale(variance: Double, w: Double): Float {
+        val k = cfg.touchSigmaPriorWeight
+        val shrunk = (w * variance + k * referenceVar) / (w + k)
+        val scale = sqrt(shrunk / referenceVar).toFloat()
+        return scale.coerceIn(cfg.touchSigmaMinScale, cfg.touchSigmaMaxScale)
+    }
+
     fun statistics(): TouchStatistics {
         val out = ArrayList<ProfileTouchStatistics>()
         for ((key, map) in profiles.toSortedMap()) {
@@ -214,6 +237,28 @@ internal class FrozenTouch(
         }
         return TouchStatistics(out)
     }
+}
+
+/**
+ * Variance of a zero-mean normal of [sigma] truncated to +-[limit] (what the outlier filter leaves
+ * of a typist with that sigma): sigma^2 * (1 - 2 a phi(a) / (2 Phi(a) - 1)) with a = limit / sigma.
+ */
+internal fun truncatedNormalVariance(sigma: Float, limit: Float): Double {
+    val s = sigma.toDouble()
+    val a = limit / s
+    val phi = exp(-0.5 * a * a) / sqrt(2 * PI)
+    val mass = erf(a / sqrt(2.0))
+    return s * s * (1 - 2 * a * phi / mass)
+}
+
+/** Abramowitz-Stegun 7.1.26 (error below 1.5e-7). */
+private fun erf(x: Double): Double {
+    val t = 1 / (1 + 0.3275911 * x)
+    val poly =
+        t *
+            (0.254829592 +
+                t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))))
+    return 1 - poly * exp(-x * x)
 }
 
 /**
