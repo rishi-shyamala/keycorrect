@@ -60,6 +60,9 @@ object Report {
         out["byTypoKind"] = m.byTypo.mapValues { statsMap(it.value) }
         out["failureCategories"] = m.failureCategories
         if (includeNextWord) out["nextWord"] = nextWordMap(m.nextWord)
+        if (m.splits.pairs > 0 || m.splits.wordsWithSplitInTop3 > 0) {
+            out["missingSpaces"] = m.splits.toMap()
+        }
         return out
     }
 
@@ -110,6 +113,31 @@ object Report {
         if (s.completionWords > 0) {
             row("keystroke savings, completion taps", pct(s.ksrCompletion))
             if (includeNextWord) row("keystroke savings, + next-word taps", pct(s.ksrWithNextWord))
+        }
+        val sp = m.splits
+        if (sp.pairs > 0 || sp.wordsWithSplitInTop3 > 0) {
+            sb.append("\nMissing spaces\n")
+            if (sp.pairs > 0) {
+                row(
+                    "pairs typed without a space: top-1 / top-3",
+                    "${pct(Stats.ratio(sp.pairTop1, sp.pairs))} / " +
+                        "${pct(Stats.ratio(sp.pairTop3, sp.pairs))}   n=${sp.pairs}",
+                )
+                row(
+                    "pairs: split applied right / wrong thing applied",
+                    "${sp.pairApplied} / ${sp.pairAppliedWrong}",
+                )
+            }
+            row(
+                "ordinary words with a split in the strip, per 1000",
+                String.format(Locale.ROOT, "%.2f", sp.stripSplitsPer1000) +
+                    "   (${sp.wordsWithSplitInTop3} of ${sp.words})",
+            )
+            row(
+                "ordinary words wrongly split by autocorrect, per 1000",
+                String.format(Locale.ROOT, "%.2f", sp.falseSplitsPer1000) +
+                    "   (${sp.wordsSplitApplied})",
+            )
         }
         if (includeNextWord) {
             val n = m.nextWord

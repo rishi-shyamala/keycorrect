@@ -55,9 +55,21 @@ class EpisodeRunner(
         val committed = StringBuilder()
         val truth = StringBuilder()
         val tokens = sentence.tokens
-        for ((k, token) in tokens.withIndex()) {
+        val partners = HashMap<Int, Token>()
+        var next = 0
+        while (next < tokens.size - 1) {
+            val partner = spacePartner(sentenceIndex, tokens, next)
+            if (partner != null) partners[next++] = partner
+            next++
+        }
+        // A token typed together with the one before it is not a word of its own.
+        val joined = partners.keys.map { it + 1 }.toSet()
+        for ((k, token) in tokens.withIndex().filter { it.index !in joined }) {
             committed.append(token.gap)
             truth.append(token.gap)
+            val partner = partners[k]
+            val merged = partner != null
+            val target = if (partner != null) token.text + " " + partner.text else token.text
             if (!token.evaluated || !typist.canType(token.text)) {
                 committed.append(token.text)
                 truth.append(token.text)
@@ -69,7 +81,7 @@ class EpisodeRunner(
 
             // Before the first key: next word + phrase (and the tap-instead-of-typing option).
             var nextWordHit = false
-            if (options.nextWord) {
+            if (options.nextWord && !merged) {
                 val result =
                     predictor.predict(
                         PredictRequest(
@@ -91,7 +103,11 @@ class EpisodeRunner(
                 }
             }
 
-            val typed = typist.type(token.text, Random(mix(seed, sentenceIndex, k)))
+            val typed =
+                typist.type(
+                    if (partner != null) token.text + partner.text else token.text,
+                    Random(mix(seed, sentenceIndex, k)),
+                )
             val result =
                 predictor.predict(
                     PredictRequest(
@@ -109,7 +125,7 @@ class EpisodeRunner(
 
             var keysCompletion: Int? = null
             var keysNextWord: Int? = null
-            if (options.completion) {
+            if (options.completion && !merged) {
                 var used = literal.length
                 for (i in 1..literal.length - 2) {
                     val prefix =
@@ -142,7 +158,7 @@ class EpisodeRunner(
 
             val outcome =
                 WordOutcome(
-                    target = token.text,
+                    target = target,
                     literal = literal,
                     committed = word,
                     top = top,
@@ -153,6 +169,7 @@ class EpisodeRunner(
                     typedKeys = literal.length,
                     keysWithCompletion = keysCompletion,
                     keysWithNextWord = if (options.nextWord) keysNextWord else null,
+                    merged = merged,
                 )
             metrics.record(outcome)
             metrics.decisions?.add(
@@ -164,7 +181,7 @@ class EpisodeRunner(
                     FailureRow(
                         sentenceIndex,
                         category,
-                        token.text,
+                        target,
                         literal,
                         word,
                         top,
@@ -174,10 +191,33 @@ class EpisodeRunner(
                 )
             }
             committed.append(word)
-            truth.append(token.text)
+            truth.append(target)
         }
         committed.append(sentence.trailing)
         truth.append(sentence.trailing)
+    }
+
+    /**
+     * The next token when it is typed together with [tokens]`[k]` (no space, one target of two
+     * words), or null. Needs `TypistConfig.spaceOmissionRate` > 0, two typable in-dictionary words
+     * separated by exactly one space, and a draw from a stream of its own.
+     */
+    private fun spacePartner(sentenceIndex: Int, tokens: List<Token>, k: Int): Token? {
+        val rate = typist.config.spaceOmissionRate
+        val a = tokens[k]
+        val b = tokens[k + 1]
+        val eligible =
+            rate > 0f &&
+                b.gap == " " &&
+                a.evaluated &&
+                b.evaluated &&
+                a.inDictionary &&
+                b.inDictionary &&
+                typist.canType(a.text) &&
+                typist.canType(b.text)
+        val dropped =
+            eligible && Random(mix(seed xor SPACE_STREAM, sentenceIndex, k)).nextFloat() < rate
+        return if (dropped) b else null
     }
 
     private fun tail(text: CharSequence): String =
@@ -186,6 +226,7 @@ class EpisodeRunner(
 
     companion object {
         const val CONTEXT_TAIL_CHARS = 40
+        private const val SPACE_STREAM = 0x5eace5L
 
         /** SplitMix64-style mixing so each (sentence, word) gets an independent, stable seed. */
         fun mix(seed: Long, sentence: Int, word: Int): Long {

@@ -252,6 +252,11 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
         else base
     }
 
+    /**
+     * The prior [prior] of a user word outside the dictionary, blended with the personal n-gram.
+     */
+    fun userWordLogProb(prior: Float, word: String): Float = blend(prior, word)
+
     /** Whether the user has typed anything known after the current context. */
     val hasUserNextWords: Boolean
         get() = userNextWords().isNotEmpty()
@@ -266,6 +271,39 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
             if (id < Dictionary.FIRST_WORD_ID) null
             else user?.userLogProb(userContext, dict.word(id))
         return if (own != null && own > blended) own else blended
+    }
+
+    /**
+     * `ln P(id | w1, prev)` (personal n-gram blended in), the score of a word that follows the word
+     * [prev] (text [prevWord]) typed right after the current context. Leaves the context untouched;
+     * used to score the second half of a split word.
+     */
+    fun logProbAfter(prev: Int, prevWord: String, id: Int, word: String): Float {
+        var penalty = 0f
+        var base = Float.NaN
+        if (prev >= 0 && w1 >= 0) {
+            val tri = dict.trigramList(w1, prev)
+            if (tri >= 0) {
+                base = dict.logProbInTrigramList(tri, id)
+                if (base.isNaN()) penalty += config.trigramBackoffPenalty
+            }
+        }
+        if (base.isNaN() && prev >= 0) {
+            val bi = dict.bigramList(prev)
+            if (bi >= 0) {
+                val v = dict.logProbInBigramList(bi, id)
+                if (!v.isNaN()) base = v + penalty else penalty += config.bigramBackoffPenalty
+            }
+        }
+        if (base.isNaN()) base = dict.logProb(id) + penalty
+        if (user == null) return base
+        val saved = userContext
+        userContext = (saved + prevWord).takeLast(USER_CONTEXT_WORDS)
+        try {
+            return blend(base, word)
+        } finally {
+            userContext = saved
+        }
     }
 
     /** [logProb] without the personal n-gram. */

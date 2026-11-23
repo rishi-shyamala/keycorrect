@@ -46,6 +46,10 @@ data class StripSlot(
     val label: String = text,
     /** A literal whose tap also adds the word to the dictionary ("+ word"). */
     val addsWord: Boolean = false,
+    /**
+     * The candidate is a missing-space split ("of the"): two words, the joined text never learned.
+     */
+    val isSplit: Boolean = false,
 )
 
 /**
@@ -177,13 +181,8 @@ internal object StripBuilder {
             c.isPhrase -> StripSlot(shown, SlotKind.Phrase, c.text)
             c.source == CandidateSource.Shortcut -> StripSlot(shown, SlotKind.Shortcut, c.text)
             autocorrect ->
-                StripSlot(
-                    shown,
-                    SlotKind.Autocorrect,
-                    c.text,
-                    bold = true,
-                )
-            else -> StripSlot(shown, SlotKind.Suggestion, c.text)
+                StripSlot(shown, SlotKind.Autocorrect, c.text, bold = true, isSplit = c.isSplit)
+            else -> StripSlot(shown, SlotKind.Suggestion, c.text, isSplit = c.isSplit)
         }
     }
 }

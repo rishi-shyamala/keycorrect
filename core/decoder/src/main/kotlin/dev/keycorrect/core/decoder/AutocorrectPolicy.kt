@@ -130,6 +130,26 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
         return AutocorrectDecision(chosen, if (gap < config.nearTieMargin) other else null)
     }
 
+    /**
+     * Whether a missing-space split of [literal] (an unknown word) may be applied automatically:
+     * the same gates as a correction (field, shape, length, user word, mid-sentence capital), and
+     * never in name or address fields. The score margin is the caller's.
+     */
+    fun allowsSplit(input: AutocorrectInput): Boolean {
+        val first = input.literal.firstOrNull { it.isLetter() }
+        val capital = first != null && first.isUpperCase() && input.literal[0] == first
+        val nameField =
+            input.field == FieldClass.PersonName || input.field == FieldClass.PostalAddress
+        return input.allowed &&
+            !blocksField(input.field) &&
+            !nameField &&
+            input.literal.length >= config.minLiteralLength &&
+            !protects(input.literal) &&
+            !input.literalIsUserWord &&
+            !input.literalIsDictionaryWord &&
+            !(config.protectMidSentenceCapitals && capital && !input.sentenceInitial)
+    }
+
     /** Source, edit budget and capitalisation rules for applying [c] automatically. */
     private fun eligible(input: AutocorrectInput, c: RankedCandidate): Boolean {
         if (c.source != CandidateSource.Dictionary && c.source != CandidateSource.UserDictionary) {

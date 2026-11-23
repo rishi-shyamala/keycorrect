@@ -479,6 +479,59 @@ trained on), so there is no regression. The decode costs about 1 ms more on the 
 all of it the encoder call (0.33 ms) and the beam search. Device numbers: docs/PERF.md and
 `SwipeNetBenchmark`.
 
+## Missing spaces (`--space-omission P`)
+
+The typist can drop the space between two in-dictionary words (chance P per pair, own random
+stream, so P = 0 changes nothing); the pair is one target "w1 w2". The report gains a "Missing
+spaces" block (pair top-1/top-3, splits applied right or wrong, two-word suggestions on ordinary
+words). Decoder: `SplitConfig` / `SplitSearch` (exact splits of an unknown word of 4-24 letters, both
+halves dictionary or user words, no one-letter half but a/i; score = literal touch likelihood +
+penalty -2 + ln P(w1|ctx) + ln P(w2|ctx,w1)). Autocorrect application (`split.autocorrect`, on by
+default) needs a lead of `autocorrectMargin` (4) over the literal and the best other word, and is
+never used in email, URL, name or address fields. The veto (`split.veto`, `vetoMargin` 1): a split
+that is not applied but scores within 1 of the regular autocorrect's pick cancels that pick, so the
+typed text stays ("tothe" is not turned into "the").
+
+Results, test split, 2000 sentences, sigma 0.25, seed 7, `--threads 1` (P = 0.1: 1083 pairs):
+
+| Run | word acc | FC/1000 | pair top-1 / top-3 | split applied right / other applied | splits in strip /1000 ordinary words |
+|---|---|---|---|---|---|
+| baseline (main), P = 0 | 94.06% | 4.55 | - | - | - |
+| strip-only, P = 0 | 94.06% | 4.55 | - | - | 1.54 |
+| margin 4, no veto, P = 0 | 94.06% | 4.55 | - | - | 1.54 (0 wrongly split) |
+| **default** (margin 4, veto 1), P = 0 | 94.05% | 4.55 | - | - | 1.54 (0 wrongly split) |
+| split off, P = 0.1 | 86.36% | 4.91 | 0 / 0 | 0 / 287 | - |
+| strip-only, P = 0.1 | 86.36% | 4.91 | 46.0% / 47.1% | 0 / 287 | 1.64 |
+| margin 4, no veto, P = 0.1 | 89.28% | 4.91 | 46.0% / 47.1% | 405 / 154 | 1.64 |
+| **default** (margin 4, veto 1), P = 0.1 | 89.29% | 4.91 | 46.1% / 47.2% | 406 / 93 | 1.64 |
+
+(Splits in the strip fell from 2.21 to 1.54 per 1000 with the completion margin below.) Top-3
+recall of the whole strip at P = 0.1 rises from 89.4% to 93.1%. The veto cuts the pairs
+replaced by a wrong word by 40% (154 to 93); those now keep the typed text, with the split in the
+strip. At P = 0 it costs one correct autocorrect in 13 700 words (94.06% to 94.05%, false
+corrections unchanged). With `split.enabled=false` the report and failures CSV are byte-identical
+to main. Without touch noise or typos (`--no-typos --sigma 0.05`)
+pair top-1/top-3 is 84.4% / 88.7%: the rest of the loss is typos in either half (exact splits only).
+
+Tuning (dev split, seed 11, offset 3000; penalty and margin chosen there, not on the reported run):
+penalty -1..-6 moves pair top-1 from 48% to 41% and barely top-3 (-2 kept); margin 0 / 2 / 4 / 6 / 8 /
+14 gives accuracy 89.8 / 89.7 / 89.3 / 88.6 / 87.9 / 86.6% (86.1% off).
+False splits of ordinary words, 20 000 sentences (all splits, seed 21, names kept, ~150k words):
+margin 0: 17 (0.11 per 1000: Jayjay, overthink, inlaws, drysuit, "Mennad" -> "Men bad", ...);
+margin 4: 2; margin 8: 0.
+Veto margin (dev split, not comparable with the test-split table; P = 0.1 / P = 0, margin 4): pairs replaced by a wrong word 149 with no veto,
+111 / 103 / 95 / 92 / 89 at veto margin 0 / 1 / 2 / 3 / 4; P = 0 accuracy 94.19% up to margin 2,
+94.18% at 3, 94.17% at 4; margin 1 is the largest that cost no correct autocorrect on dev.
+
+### Completion margin (review follow-up)
+
+`split.completionMargin` (default 1): mid-word, a split joins the strip only if it beats the best
+completion of the typed prefix by that much; it never affects the autocorrect. Dev split (seed 11,
+offset 3000, P=0.1, strip-only), pair top-3 / ordinary words with a split in the strip per 1000:
+margin 0: 48.3% / 3.34; 1: 47.7% / 2.04; 2: 46.9% / 1.96; 4: 44.6% / 1.87; 6: 41.1% / 1.87. Margin
+1 removes 39% of the noise for 0.6 points of recall. The split search is skipped in email and URL
+fields, and contractions ("dont") and their endings are never split, whatever `autocorrect.contractions` says.
+
 ## Caveats
 
 The typist is a model, not data. Real users make correlated errors (thumb

@@ -13,6 +13,7 @@ data class ClassicConfig(
     val scoring: ScoringConfig = ScoringConfig(),
     val autocorrect: AutocorrectConfig = AutocorrectConfig(),
     val phrase: PhraseConfig = PhraseConfig(),
+    val split: SplitConfig = SplitConfig(),
     val user: UserDataConfig = UserDataConfig(),
     val gesture: GestureConfig = GestureConfig(),
     val neural: NeuralSwipeConfig = NeuralSwipeConfig(),
@@ -193,6 +194,43 @@ data class PhraseConfig(
     val minTotalProbability: Float = 0.15f,
 )
 
+/**
+ * Missing-space candidates: an unknown word that reads as two known words ("ofthe" -> "of the") is
+ * offered as a strip suggestion (docs/DECISIONS.md D-split). Score = the literal's touch
+ * likelihood + [penalty] + the language model's `ln P(w1 | context) + ln P(w2 | context, w1)`.
+ */
+data class SplitConfig(
+    val enabled: Boolean = true,
+    /** Words shorter than this are never split. */
+    val minLength: Int = 4,
+    /** Longer words are never split (bounds the search; the trie walk is linear per cut). */
+    val maxLength: Int = 24,
+    /** Each half has at least this many letters, except "a" and "i". */
+    val minHalfLength: Int = 2,
+    /** Added to the score of a split (a space the user did not type), ln units, <= 0. */
+    val penalty: Float = SPLIT_PENALTY,
+    /**
+     * Whether the autocorrect may apply a split on space/punctuation (docs/EVAL.md, "Missing
+     * spaces"). Off: strip only, and the split never changes the regular autocorrect.
+     */
+    val autocorrect: Boolean = true,
+    /** A split is applied only if it beats the literal and the best other candidate by this. */
+    val autocorrectMargin: Float = 4f,
+    /**
+     * With [autocorrect] on: when a split that is not applied scores within [vetoMargin] (ln units)
+     * of the regular autocorrect's pick, neither is applied and the typed text stays ("most ofthe"
+     * is not turned into "most the").
+     */
+    val veto: Boolean = true,
+    val vetoMargin: Float = SPLIT_VETO_MARGIN,
+    /**
+     * Mid-word, the split joins the strip only if it beats the best completion of what is typed by
+     * this much (ln units), so a split does not crowd out the word being typed. 0 disables the
+     * rule. A split dropped by this rule is not available to the autocorrect either.
+     */
+    val completionMargin: Float = 1f,
+)
+
 /** User dictionary and shortcuts. */
 data class UserDataConfig(
     /** Log-probability prior of a user word (a moderately common word). */
@@ -288,6 +326,15 @@ data class NeuralSwipeConfig(
     /** Floor of the neural log-likelihood, so one word the encoder rules out is not -infinity. */
     val neuralFloor: Float = NEURAL_FLOOR,
 )
+
+/**
+ * The default of [SplitConfig.penalty]; tuned on the dev split (docs/EVAL.md, "Missing spaces").
+ */
+const val SPLIT_PENALTY = -2f
+/**
+ * Default [SplitConfig.vetoMargin]: the largest that cost no correct autocorrect on the dev split.
+ */
+const val SPLIT_VETO_MARGIN = 1f
 
 /** The beam width of [NeuralSwipeConfig.beamWidth]. */
 const val NEURAL_BEAM_WIDTH = 32

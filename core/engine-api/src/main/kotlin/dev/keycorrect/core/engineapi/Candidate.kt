@@ -21,4 +21,6 @@ data class Candidate(
     val score: Float,
     val source: CandidateSource,
     val isPhrase: Boolean = false,
+    /** Two words for one typed word whose space was missing ("ofthe" -> "of the"). */
+    val isSplit: Boolean = false,
 )
