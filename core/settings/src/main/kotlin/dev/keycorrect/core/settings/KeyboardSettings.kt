@@ -166,6 +166,12 @@ data class KeyboardSettings(
     val gestureTyping: Boolean = true,
     /** Draw the swipe's trail under the finger. */
     val gestureTrail: Boolean = true,
+    /**
+     * Decode swipes with the neural encoder from the optional swipe pack (PHASE10 10a-4). On by
+     * default, but it only matters when the pack is installed; off, swipes decode with SHARK² alone
+     * and the pack isn't loaded.
+     */
+    val neuralSwipe: Boolean = true,
     /** How fast the spacebar joystick moves the cursor. */
     val cursorSpeed: CursorSpeed = CursorSpeed.Normal,
     /** Swiping left on backspace selects whole words and release deletes them. */

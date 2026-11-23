@@ -110,7 +110,17 @@ class AppContainer(
      * [applicationScope], so a load that finishes after a service is destroyed still lands here.
      */
     val swipeNetHost: SwipeNetHost by lazy {
-        SwipeNetHost(context, applicationScope, io)
+        neuralSwipeGate.value // start following the setting before the first encoder() call
+        SwipeNetHost(context, applicationScope, io, enabled = { neuralSwipeEnabled })
+    }
+
+    // The "Neural swipe" setting, read from the decoder thread. False until the stored value is
+    // known, so a swipe never loads the pack ahead of a setting that turns it off.
+    @Volatile private var neuralSwipeEnabled = false
+    private val neuralSwipeGate = lazy {
+        applicationScope.launch {
+            settingsRepository.settings.collect { neuralSwipeEnabled = it.neuralSwipe }
+        }
     }
     val userDictionary: UserDictionaryStore by lazy { SqlUserDictionaryStore(database) }
     val shortcuts: ShortcutStore by lazy { SqlShortcutStore(database) }

@@ -214,6 +214,20 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun neuralSwipeDefaultsOnAndRoundTrips() = runTest {
+        assertThat(repo.settings.first().neuralSwipe).isTrue()
+        repo.update { it.copy(neuralSwipe = false) }
+        assertThat(repo.settings.first().neuralSwipe).isFalse()
+        assertThat(store.data.first()[booleanPreferencesKey("neural_swipe")]).isFalse()
+        // Backup and restore carry it.
+        val exported = repo.exportValues()
+        assertThat(exported["neural_swipe"]).isEqualTo(false)
+        repo.update { it.copy(neuralSwipe = true) }
+        repo.applyValues(exported, replace = true)
+        assertThat(repo.settings.first().neuralSwipe).isFalse()
+    }
+
+    @Test
     fun neuralSettingsDefaultRoundTripAndClamp() = runTest {
         val d = repo.settings.first()
         assertThat(d.neuralRerank).isTrue()
