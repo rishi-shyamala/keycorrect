@@ -232,7 +232,12 @@ internal class PredictiveInput(
     )
 
     /** An autocorrection to apply at a separator: [text] for the typed word. */
-    private data class Autocorrection(val text: String, val runnerUp: String?)
+    private data class Autocorrection(
+        val text: String,
+        val runnerUp: String?,
+        /** The correction is a missing-space split ("of the"). */
+        val isSplit: Boolean = false,
+    )
 
     /**
      * The single gate for everything that reads the field's text, composes or talks to an engine:
@@ -680,6 +685,7 @@ internal class PredictiveInput(
             null,
             null,
             false,
+            slot.isSplit,
         )
         publish(StripModel.Empty)
         requestNextWord()
@@ -826,6 +832,7 @@ internal class PredictiveInput(
                     decision?.runnerUp,
                     SentenceContext.endsSentence(separator),
                     canUndo,
+                    decision?.isSplit == true,
                 )
             }
         val undoSeparator = separator
@@ -893,7 +900,7 @@ internal class PredictiveInput(
         val result = if (backend.predictor == null) null else freshResult(typed)
         return result?.let { r ->
             pendingCorrection(r, typed)?.let {
-                Autocorrection(it.text, r.autocorrectRunnerUp?.text)
+                Autocorrection(it.text, r.autocorrectRunnerUp?.text, it.isSplit)
             }
         }
     }
@@ -1072,6 +1079,7 @@ internal class PredictiveInput(
                     null,
                     if (trailingSpace) false else null,
                     false,
+                    slot.isSplit,
                 )
         }
         retypeGuard = null // settling a held revert may have set it again; the word is dealt with
@@ -2001,6 +2009,7 @@ internal class PredictiveInput(
         runnerUp: String?,
         sentenceEnd: Boolean?,
         canUndo: Boolean,
+        isSplit: Boolean = false,
     ): Correction? {
         shown.clear()
         if (pre == null) {
@@ -2019,6 +2028,8 @@ internal class PredictiveInput(
             if (resolution == Resolution.Deferred) null
             else Tracked(typed, committed, pre.context, method, learn.now(), runnerUp)
         tracked?.let(memory::add)
+        // A split ("ofthe" -> "of the") is two words: the classifier learns only the typed -> split
+        // pair from its event, never the joined text; each half goes to the sentence buffer.
         val event =
             if (settled && !isPick) {
                 null
@@ -2034,7 +2045,8 @@ internal class PredictiveInput(
                     shown = pre.shown,
                     touches = touchSamples(typed, committed, touchList, keyByChar),
                     sentenceInitial = pre.sentenceInitial,
-                    committedIsKnown = isKnown(committed),
+                    committedIsKnown = isSplit || isKnown(committed),
+                    isSplit = isSplit,
                     typedIsKnown = typed.isEmpty() || isKnown(typed),
                     tieRunnerUp = runnerUp,
                     sessionId = learn.sessionId,
@@ -2046,17 +2058,26 @@ internal class PredictiveInput(
         } else if (event != null) {
             learn.emit(event)
         }
-        if (committed.any { it.isLetter() }) {
+        val last = learnLeadingHalves(committed, isSplit)
+        if (last.any { it.isLetter() }) {
             if (correction != null && sentenceEnd != null) {
-                correction.pendingWord = committed
+                correction.pendingWord = last
                 correction.pendingWordEnd = sentenceEnd
             } else if (sentenceEnd != null) {
-                learn.sentenceWord(committed, sentenceEnd)
+                learn.sentenceWord(last, sentenceEnd)
             } else {
-                pendingSentence = committed
+                pendingSentence = last
             }
         }
         return correction
+    }
+
+    /** Sends all but the last word of a split to the sentence buffer; returns the last word. */
+    private fun learnLeadingHalves(committed: String, isSplit: Boolean): String {
+        val words =
+            if (isSplit) committed.split(' ').filter { it.isNotEmpty() } else listOf(committed)
+        for (w in words.dropLast(1)) if (w.any { it.isLetter() }) learn.sentenceWord(w, false)
+        return words.lastOrNull().orEmpty()
     }
 
     /**

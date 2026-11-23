@@ -53,6 +53,8 @@ class RankedCandidate(
     val breakdown: ScoreBreakdown,
     val wordId: Int = -1,
     val dictionaryForm: String? = null,
+    /** A missing-space split: [text] is two words (see [SplitConfig]). */
+    val isSplit: Boolean = false,
 ) {
     /**
      * Position in the pool before the learned ranker score was added (0 = best, -1 for the literal,
@@ -68,9 +70,11 @@ class RankedCandidate(
 
     /** Same candidate with another [score] (the learned ranker score added), keeping [rank]. */
     fun withScore(score: Float): RankedCandidate =
-        RankedCandidate(text, score, breakdown, wordId, dictionaryForm).also { it.rank = rank }
+        RankedCandidate(text, score, breakdown, wordId, dictionaryForm, isSplit).also {
+            it.rank = rank
+        }
 
-    fun toCandidate(): Candidate = Candidate(text, score, source)
+    fun toCandidate(): Candidate = Candidate(text, score, source, isSplit = isSplit)
 
     override fun toString(): String = "RankedCandidate($text, $score, $breakdown)"
 }

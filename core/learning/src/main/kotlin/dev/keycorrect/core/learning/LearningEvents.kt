@@ -104,6 +104,11 @@ data class WordCommitted(
     val tieRunnerUp: String? = null,
     /** Session id: a new session starts when the keyboard is shown in a new field. */
     val sessionId: Long = 0,
+    /**
+     * [committed] is two words from a missing space ("of the" for "ofthe"). Only the typed ->
+     * committed evidence is learned from it, never the joined text as a word.
+     */
+    val isSplit: Boolean = false,
 ) : LearningEvent
 
 /** How an applied autocorrection was undone (§6.3 rows 6, 7, 22, 23). */

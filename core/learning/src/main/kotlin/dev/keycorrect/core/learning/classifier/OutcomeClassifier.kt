@@ -63,7 +63,12 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
     // ---- WordCommitted ---------------------------------------------------------------------
 
     private fun wordCommitted(e: WordCommitted): List<LearningUpdate> {
-        if (!isTrainableWord(e.committed)) return emptyList() // row 15 (defensive)
+        if (e.isSplit) return splitCommitted(e)
+        // Row 15 (defensive): only word-sized text is trained on.
+        return if (isTrainableWord(e.committed)) commitUpdates(e) else emptyList()
+    }
+
+    private fun commitUpdates(e: WordCommitted): List<LearningUpdate> {
         return when (e.method) {
             CommitMethod.Typed -> typed(e)
             CommitMethod.Autocorrected -> autocorrected(e)
@@ -76,6 +81,41 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             CommitMethod.Gesture -> wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
             // Row 16: evidence like typing; the 0.3x scaling happens in classify().
             CommitMethod.Voice -> wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
+        }
+    }
+
+    /**
+     * A missing-space split ("ofthe" -> "of the") that was applied (kept) or tapped: the same
+     * correction evidence as any correction, so it can be confirmed as well as rejected (a revert
+     * is the ordinary [AutocorrectReverted]). Nothing else: the joined text is not a word, so no
+     * WordUsed, no new-word evidence, no touches, no casing.
+     */
+    private fun splitCommitted(e: WordCommitted): List<LearningUpdate> {
+        val words = e.committed.split(' ')
+        val trainable =
+            words.size == 2 && words.all { isTrainableWord(it) } && isTrainableWord(e.typed)
+        if (!trainable) return emptyList()
+        return when (e.method) {
+            CommitMethod.Autocorrected ->
+                listOf(
+                    CorrectionEvidence(
+                        e.typed,
+                        e.committed,
+                        bucket(e),
+                        config.autocorrectKeptDelta,
+                    ),
+                    AutocorrectOutcome(reverted = false),
+                )
+            CommitMethod.SuggestionPicked ->
+                listOf(
+                    CorrectionEvidence(
+                        e.typed,
+                        e.committed,
+                        bucket(e),
+                        config.pickedCorrectionDelta,
+                    )
+                )
+            else -> emptyList()
         }
     }
 

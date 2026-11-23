@@ -13,6 +13,7 @@ import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.Capability
 import dev.keycorrect.core.engineapi.EngineInfo
+import dev.keycorrect.core.engineapi.FieldClass
 import dev.keycorrect.core.engineapi.GestureEngine
 import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
@@ -122,6 +123,7 @@ class ClassicEngine(
         )
     private val contractions = ContractionIndex(dictionary)
     private val lexicon = UserLexicon(dictionary, config.user, userWords, shortcuts)
+    private val splits = SplitSearch(dictionary, lm, lexicon, config.split, config.user.wordLogProb)
     private val nextIds = IntArray(MAX_NEXT_WORDS)
     private val nextLogProbs = FloatArray(MAX_NEXT_WORDS)
     private val phraseIds = IntArray(1)
@@ -512,6 +514,15 @@ class ClassicEngine(
             applyBonus(ranked, request.lmBonus)
         }
         if (literalNode < 0 && !literalIsUser) addContraction(key, text, literal, ranked)
+        // No search at all where candidates and the strip are suppressed (email, URL fields).
+        val split =
+            if (literalNode < 0 && !literalIsUser && splitAllowed(key, field)) {
+                splitCandidate(key, text, right, scorer.literalLogLikelihood())
+            } else null
+        if (split != null && !crowdsOutCompletion(split, ranked)) {
+            ranked.add(split)
+            ranked.sortWith(RANK_ORDER)
+        }
 
         // Candidate strip: shortcut first, then the capitalised pronoun fix, then the ranking.
         val out = ArrayList<RankedCandidate>(request.maxCandidates)
@@ -538,7 +549,7 @@ class ClassicEngine(
                         literalScore = literal.score,
                         literalIsDictionaryWord = literalNode >= 0,
                         literalIsUserWord = literalIsUser,
-                        candidates = ranked.filter { it.text != text },
+                        candidates = ranked.filter { it.text != text && !it.isSplit },
                         field = field,
                         allowed = request.autocorrectAllowed,
                         sentenceInitial = sentenceInitial,
@@ -548,7 +559,19 @@ class ClassicEngine(
                     random ?: wordRandom(text, request.context.before),
                 )
             }
-        val autocorrect = decision.chosen
+        val autocorrect =
+            if (pronoun != null) {
+                decision.chosen
+            } else {
+                when (
+                    splitVerdict(split, decision, literal, ranked, text, sentenceInitial, request)
+                ) {
+                    SplitVerdict.Apply -> split
+                    SplitVerdict.KeepTyped -> null
+                    SplitVerdict.None -> decision.chosen
+                }
+            }
+        val runnerUp = if (autocorrect === decision.chosen) decision.runnerUp else null
 
         var phrase: Candidate? = null
         if (request.maxPhraseWords >= 2 && !autocorrectPolicy.blocksField(field)) {
@@ -563,7 +586,125 @@ class ClassicEngine(
                     )
             }
         }
-        return RankedPrediction(literal, out, autocorrect, phrase, decision.runnerUp)
+        return RankedPrediction(literal, out, autocorrect, phrase, runnerUp)
+    }
+
+    /** True if the unknown [key] is an apostrophe-less contraction ("dont"): never split. */
+    private fun isContraction(key: String): Boolean = contractions.lookup(key) != null
+
+    /**
+     * Whether [split] is too close to the best completion of the typed word ([SplitConfig
+     * .completionMargin]) to take a strip slot from it: the word may still be being typed.
+     */
+    private fun crowdsOutCompletion(
+        split: RankedCandidate,
+        ranked: List<RankedCandidate>,
+    ): Boolean {
+        val completion = ranked.firstOrNull { it.breakdown.completionChars > 0 }
+        return config.split.completionMargin > 0f &&
+            completion != null &&
+            split.score - completion.score < config.split.completionMargin
+    }
+
+    /** No split where candidates and the strip are suppressed (email, URL) or for a contraction. */
+    private fun splitAllowed(key: String, field: FieldClass): Boolean =
+        !autocorrectPolicy.blocksField(field) && !isContraction(key)
+
+    /**
+     * The best missing-space split of the unknown word [key] as a candidate, or null (see
+     * [SplitConfig]). Scored like any candidate: the literal's touch likelihood [spatial] (no char
+     * is wrong), the split penalty as its edit cost, and the language model of both words.
+     */
+    private fun splitCandidate(
+        key: String,
+        literal: String,
+        right: Int,
+        spatial: Float,
+    ): RankedCandidate? {
+        val found =
+            if (config.split.enabled && splits.applies(key)) {
+                splits.best(key) { active && pers.isBlocked(it) }
+            } else null
+        return found?.let { splitFrom(it, literal, right, spatial) }
+    }
+
+    private fun splitFrom(
+        found: SplitResult,
+        literal: String,
+        right: Int,
+        spatial: Float,
+    ): RankedCandidate {
+        val upper = Casing.isAllCaps(literal)
+        val second = if (upper) found.secondSurface.uppercase() else found.secondSurface
+        val text = shaped(found.firstSurface, literal) + " " + second
+        val rightLm = if (right >= 0) lm.rightLogProb(found.secondId, right) else 0f
+        val breakdown =
+            ScoreBreakdown(
+                spatial = spatial,
+                lm = found.lm,
+                rightLm = rightLm,
+                edits = config.split.penalty,
+                editCount = 1,
+                completionChars = 0,
+                source = CandidateSource.Dictionary,
+            )
+        return RankedCandidate(text, breakdown.total(config.scoring), breakdown, -1, null, true)
+            .also { it.rank = -1 }
+    }
+
+    /**
+     * What the split does to the autocorrect when [SplitConfig.autocorrect] is on and the policy
+     * allows it: [SplitVerdict.Apply] if it beats the literal, the regular autocorrect and the best
+     * other complete word by [SplitConfig.autocorrectMargin]; [SplitVerdict.KeepTyped] if it comes
+     * within [SplitConfig.vetoMargin] of the regular autocorrect (two readings too close to call,
+     * so the typed text stays); otherwise [SplitVerdict.None].
+     */
+    @Suppress("LongParameterList") // One decision's inputs.
+    private fun splitVerdict(
+        split: RankedCandidate?,
+        decision: AutocorrectDecision,
+        literal: RankedCandidate,
+        ranked: List<RankedCandidate>,
+        text: String,
+        sentenceInitial: Boolean,
+        request: PredictRequest,
+    ): SplitVerdict {
+        if (split == null || !config.split.autocorrect) return SplitVerdict.None
+        val input =
+            AutocorrectInput(
+                literal = text,
+                literalScore = literal.score,
+                literalIsDictionaryWord = false,
+                literalIsUserWord = false,
+                candidates = emptyList(),
+                field = request.context.field,
+                allowed = request.autocorrectAllowed,
+                sentenceInitial = sentenceInitial,
+            )
+        val allowed =
+            autocorrectPolicy.allowsSplit(input) && !(active && pers.isSuppressed(text, split.text))
+        val bestWord = ranked.firstOrNull { !it.isSplit && it.breakdown.completionChars == 0 }
+        val rival =
+            maxOf(
+                literal.score,
+                decision.chosen?.score ?: literal.score,
+                bestWord?.score ?: literal.score,
+            )
+        val chosen = decision.chosen
+        return when {
+            !allowed -> SplitVerdict.None
+            split.score - rival >= config.split.autocorrectMargin -> SplitVerdict.Apply
+            config.split.veto &&
+                chosen != null &&
+                split.score >= chosen.score - config.split.vetoMargin -> SplitVerdict.KeepTyped
+            else -> SplitVerdict.None
+        }
+    }
+
+    private enum class SplitVerdict {
+        Apply,
+        KeepTyped,
+        None,
     }
 
     /** [c] with the [bonus] for its text (if any) added to its score; [c] itself when none. */

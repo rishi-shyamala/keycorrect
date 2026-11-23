@@ -24,6 +24,12 @@ data class TypistConfig(
      */
     val biasX: Float = 0f,
     val biasY: Float = 0f,
+    /**
+     * A word and the next one are typed with no space between them (the pair is one target, "w1
+     * w2"): the chance per pair of in-dictionary words separated by one space. Drawn from its own
+     * random stream, so 0 (the default) leaves every other draw unchanged.
+     */
+    val spaceOmissionRate: Float = 0f,
 )
 
 /** The cognitive slip applied to a word, if any. */

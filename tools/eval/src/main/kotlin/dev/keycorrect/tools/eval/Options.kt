@@ -134,6 +134,8 @@ data class Options(
               --sigma F            touch sigma as a fraction of key width AND height (default 0.35)
               --sigma-x F --sigma-y F
               --omission P --insertion P --transposition P   cognitive typo rates per word (0.01)
+              --space-omission P   chance per pair of in-dictionary words that the space between them is
+                                   not typed; the pair is one target "w1 w2" (default 0; docs/EVAL.md, "Missing spaces")
               --no-typos           all three typo rates 0
               --oracle-context     context = true previous words instead of the committed output
               --names MODE         skip (default) | substitute | keep  -- Tatoeba's Tom/Mary
@@ -239,6 +241,7 @@ data class Options(
                     "--omission" -> typist = typist.copy(omissionRate = v().toFloat())
                     "--insertion" -> typist = typist.copy(insertionRate = v().toFloat())
                     "--transposition" -> typist = typist.copy(transpositionRate = v().toFloat())
+                    "--space-omission" -> typist = typist.copy(spaceOmissionRate = v().toFloat())
                     "--no-typos" ->
                         typist =
                             typist.copy(

@@ -21,6 +21,8 @@ class WordOutcome(
     val keysWithCompletion: Int?,
     /** Same, but the user may also tap a next-word prediction before typing the first char. */
     val keysWithNextWord: Int?,
+    /** The target is two words typed without the space (see `TypistConfig.spaceOmissionRate`). */
+    val merged: Boolean = false,
 ) {
     val literalCorrect = literal.equals(target, ignoreCase = true)
     val finalCorrect = committed.equals(target, ignoreCase = true)
@@ -150,6 +152,71 @@ class Stats {
     companion object {
         fun ratio(n: Long, d: Long): Double = if (d == 0L) 0.0 else n.toDouble() / d
     }
+}
+
+/**
+ * Missing-space (split) measurements. Targets typed without their space ([pairs]): how often the
+ * split is the top suggestion or in the top 3, applied by autocorrect, or something else was
+ * applied. Ordinary words: how often a two-word suggestion is on the strip or was applied.
+ */
+class SplitStats {
+    var pairs = 0L
+    var pairTop1 = 0L
+    var pairTop3 = 0L
+    var pairApplied = 0L
+    var pairAppliedWrong = 0L
+    var words = 0L
+    var wordsWithSplitInTop3 = 0L
+    var wordsSplitApplied = 0L
+
+    fun add(o: WordOutcome) {
+        val splitShown = o.top.any { it.contains(' ') }
+        if (o.merged) {
+            pairs++
+            if (o.top.firstOrNull()?.equals(o.target, ignoreCase = true) == true) pairTop1++
+            if (o.top.any { it.equals(o.target, ignoreCase = true) }) pairTop3++
+            if (o.autocorrectFired) {
+                if (o.finalCorrect) pairApplied++ else pairAppliedWrong++
+            }
+        } else {
+            words++
+            if (splitShown) wordsWithSplitInTop3++
+            if (o.autocorrectFired && o.committed.contains(' ')) wordsSplitApplied++
+        }
+    }
+
+    fun merge(o: SplitStats) {
+        pairs += o.pairs
+        pairTop1 += o.pairTop1
+        pairTop3 += o.pairTop3
+        pairApplied += o.pairApplied
+        pairAppliedWrong += o.pairAppliedWrong
+        words += o.words
+        wordsWithSplitInTop3 += o.wordsWithSplitInTop3
+        wordsSplitApplied += o.wordsSplitApplied
+    }
+
+    fun toMap(): Map<String, Any> =
+        linkedMapOf(
+            "pairs" to pairs,
+            "pairTop1" to Stats.ratio(pairTop1, pairs),
+            "pairTop3" to Stats.ratio(pairTop3, pairs),
+            "pairApplied" to Stats.ratio(pairApplied, pairs),
+            "pairAppliedWrong" to Stats.ratio(pairAppliedWrong, pairs),
+            "ordinaryWords" to words,
+            "ordinaryWithSplitInStrip" to wordsWithSplitInTop3,
+            "stripSplitsPer1000" to stripSplitsPer1000,
+            "ordinarySplitApplied" to wordsSplitApplied,
+            "falseSplitsPer1000" to falseSplitsPer1000,
+        )
+
+    /** Ordinary words wrongly turned into two words, per 1000 ordinary words. */
+    val falseSplitsPer1000
+        get() = 1000.0 * Stats.ratio(wordsSplitApplied, words)
+
+    /** Ordinary words whose strip shows a two-word suggestion, per 1000 ordinary words. */
+    val stripSplitsPer1000
+        get() = 1000.0 * Stats.ratio(wordsWithSplitInTop3, words)
 }
 
 /** Next-word prediction and phrase offers at word boundaries (empty composing text). */
@@ -301,6 +368,7 @@ class Metrics(recordDecisions: Boolean = false) {
     val byTypo: Map<String, Stats> = TypoKind.entries.associate { it.name.lowercase() to Stats() }
     val failureCategories = java.util.TreeMap<String, Long>()
     val nextWord = NextWordStats()
+    val splits = SplitStats()
     var sentences = 0L
     var skippedTokens = 0L
 
@@ -313,6 +381,7 @@ class Metrics(recordDecisions: Boolean = false) {
         byVocab.getValue(if (o.targetInDictionary) "in dictionary" else "not in dictionary").add(o)
         byTypo.getValue(o.typo.name.lowercase()).add(o)
         o.failure()?.let { failureCategories.merge(it, 1L, Long::plus) }
+        splits.add(o)
     }
 
     fun merge(o: Metrics) {
@@ -322,6 +391,7 @@ class Metrics(recordDecisions: Boolean = false) {
         byTypo.forEach { (k, v) -> v.merge(o.byTypo.getValue(k)) }
         o.failureCategories.forEach { (k, v) -> failureCategories.merge(k, v, Long::plus) }
         nextWord.merge(o.nextWord)
+        splits.merge(o.splits)
         sentences += o.sentences
         skippedTokens += o.skippedTokens
         o.decisions?.let { decisions?.addAll(it) }
