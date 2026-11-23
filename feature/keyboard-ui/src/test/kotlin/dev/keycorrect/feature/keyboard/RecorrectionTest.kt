@@ -99,7 +99,44 @@ class RecorrectionTest {
         start()
         tapInto("say teh ", 8)
         assertThat(controller.strip.isEmpty).isTrue()
-        tapInto("say teh", 4) // at the start of the word
+        tapInto("say  teh", 4) // between two spaces
+        assertThat(controller.strip.isEmpty).isTrue()
+    }
+
+    @Test
+    fun aCursorAtTheStartOfATypoShowsCorrectionsAndTheTapReplacesIt() {
+        start()
+        tapInto("say teh now", 4)
+        assertThat(controller.strip.centre?.text).isEqualTo("the")
+        val request = predictor.requests.last()
+        assertThat(request.composing.text).isEqualTo("teh")
+        assertThat(request.context.before).isEqualTo("say ")
+        assertThat(request.context.after).isEqualTo(" now")
+        controller.onSuggestionTap(controller.strip.centre!!)
+        assertThat(text()).isEqualTo("say the now")
+        assertThat(editor.cursor).isEqualTo(7)
+    }
+
+    @Test
+    fun aTypoAtTheStartOfTheFieldOrAfterAnOpeningBracketIsFoundToo() {
+        start()
+        tapInto("teh end", 7)
+        editor.moveCursor(0) // the tap moves the cursor to the start of the field
+        editor.echo(controller)
+        assertThat(controller.strip.centre?.text).isEqualTo("the")
+        controller.onSuggestionTap(controller.strip.centre!!)
+        assertThat(text()).isEqualTo("the end")
+        tapInto("say (teh)", 5)
+        assertThat(controller.strip.centre?.text).isEqualTo("the")
+    }
+
+    @Test
+    fun aCursorAfterADigitOrSymbolReadsNothingAfterIt() {
+        start()
+        editor.setText("say 4teh", 5)
+        editor.readCalls = 0
+        editor.echo(controller)
+        assertThat(editor.readCalls).isEqualTo(1) // before the cursor only
         assertThat(controller.strip.isEmpty).isTrue()
     }
 

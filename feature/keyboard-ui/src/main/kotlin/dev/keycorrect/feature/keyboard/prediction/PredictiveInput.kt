@@ -567,18 +567,18 @@ internal class PredictiveInput(
     // ------------------------------------------------------------------ re-correction
 
     /**
-     * The cursor was placed (externally, collapsed, nothing composing) in or at the end of a word:
-     * if it is not in the dictionary, decodes it as composing text without touches and offers the
-     * candidates in the strip ([onRecorrectResult]). Nothing is read where suggestions aren't
-     * allowed (sensitive fields, none wanted) or no engine exists; the text before the cursor was
-     * just read by [refreshContext], so this adds the one read of the text after it. Costs nothing
-     * per keystroke: only an external cursor move gets here, and the decode runs on the decoder
-     * thread.
+     * The cursor was placed (externally, collapsed, nothing composing) in, at the end or at the
+     * start of a word (Android puts a tap on a word's left half before it): if it is not in the
+     * dictionary, decodes it as composing text without touches and offers the candidates in the
+     * strip ([onRecorrectResult]). Nothing is read where suggestions aren't allowed (sensitive
+     * fields, none wanted) or no engine exists; the text before the cursor was just read by
+     * [refreshContext], so this adds the one read of the text after it. Costs nothing per
+     * keystroke: only an external cursor move gets here, and the decode runs on the decoder thread.
      */
     @Suppress("ReturnCount") // guard clauses
     private fun startRecorrect() {
         if (!canPredict() || backend.predictor == null || !cache.beforeReadable) return
-        if (!cache.endsInWordChar()) return // nothing to judge: skip reading the text after it
+        if (!cache.mayTouchWord()) return // nothing to judge: skip reading the text after it
         cache.ensureAfter()
         val word = cache.wordAroundCursor() ?: return
         if (!isUnknownPlainWord(word.text)) return

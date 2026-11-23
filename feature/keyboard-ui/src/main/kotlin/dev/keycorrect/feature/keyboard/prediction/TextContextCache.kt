@@ -168,8 +168,8 @@ internal class TextContextCache(private val editor: TextEditor) {
 
     /**
      * The plain word (letters and apostrophes, 2 to 32 chars, at a word boundary) that the cursor
-     * is inside or right after, or null. Needs both halves of the context to be known and readable;
-     * a word cut off by the end of what was read is not a word we can judge.
+     * is inside, right after or right before, or null. Needs both halves of the context to be known
+     * and readable; a word cut off by the end of what was read is not a word we can judge.
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod") // guard clauses of one scan
     fun wordAroundCursor(): WordAround? {
@@ -183,7 +183,6 @@ internal class TextContextCache(private val editor: TextEditor) {
         }
         while (i < text.length && isApostrophe(text[i])) i++
         val beforeLength = text.length - i
-        if (beforeLength == 0) return null
         var j = 0
         while (j < after.length && (after[j].isLetterOrDigit() || isApostrophe(after[j]))) j++
         if (j == after.length && after.length >= TypingContext.MAX_AFTER_CHARS) return null
@@ -194,10 +193,14 @@ internal class TextContextCache(private val editor: TextEditor) {
         return WordAround(word, i, beforeLength, j)
     }
 
-    /** The cached text before the cursor ends in a letter or an apostrophe (it may end a word). */
-    fun endsInWordChar(): Boolean {
-        val c = text.lastOrNull() ?: return false
-        return c.isLetter() || isApostrophe(c)
+    /**
+     * The cursor may touch a word: the cached text before it ends in a letter or an apostrophe (it
+     * may end a word), or at a boundary a word may start after (whitespace, opening punctuation, or
+     * the start of the field).
+     */
+    fun mayTouchWord(): Boolean {
+        val c = text.lastOrNull() ?: return !beforeTruncated
+        return c.isLetter() || isApostrophe(c) || c.isWhitespace() || c in OPENING_PUNCTUATION
     }
 
     /** Drops the first [n] chars after the cursor. */
