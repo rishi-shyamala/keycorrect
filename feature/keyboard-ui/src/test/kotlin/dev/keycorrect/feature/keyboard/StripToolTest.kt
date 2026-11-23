@@ -12,6 +12,12 @@ import dev.keycorrect.core.layout.KeyboardComposer
 import dev.keycorrect.core.settings.KeyboardSettings
 import dev.keycorrect.feature.keyboard.clipboard.FakeClipboardEnvironment
 import dev.keycorrect.feature.keyboard.clipboard.FakeClipboardEnvironment.Companion.clip
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 /** The strip tools: which show, when the strip is busy, and what they do. */
@@ -182,6 +188,75 @@ class StripToolTest {
                 stripToolsMode(suggestionsShown = false, autofillActive = false, revealed = true)
             )
             .isEqualTo(StripToolsMode.Full)
+    }
+
+    @Test
+    fun theToolsFoldIntoTheChevronAndFanOutFromIt() {
+        val full = ToolSlots(count = 4, leftCount = 2, totalWidth = 400, edgeWidth = 32)
+        val slots = CollapseSlots(full, chevronWidth = 48)
+        // c = 0 is the Full layout, whatever r is.
+        assertThat((0..3).map { slots.toolX(it, 1f, 0f, 0f) })
+            .containsExactly(0, 32, 336, 368)
+            .inOrder()
+        assertThat(slots.toolWidth(1f, 0f, 0f)).isEqualTo(32)
+        assertThat(slots.contentX(0f)).isEqualTo(64)
+        assertThat(slots.contentWidth(0f)).isEqualTo(272)
+        assertThat(slots.chevronX(0f)).isEqualTo(-48)
+        // Collapsed: every tool sits on the chevron, invisible; the content takes the rest.
+        assertThat((0..3).map { slots.toolX(it, 1f, 1f, 0f) }).containsExactly(0, 0, 0, 0)
+        assertThat(slots.toolWidth(1f, 1f, 0f)).isEqualTo(48)
+        assertThat(CollapseSlots.toolAlpha(1f, 0f)).isEqualTo(0f)
+        assertThat(slots.contentX(1f)).isEqualTo(48)
+        assertThat(slots.contentWidth(1f)).isEqualTo(352)
+        assertThat(slots.chevronX(1f)).isEqualTo(0)
+        assertThat(CollapseSlots.contentAlpha(1f, 1f, 0f)).isEqualTo(1f)
+        // Revealed: 88 px slots right of the chevron, full size and opaque; the content hidden.
+        assertThat((0..3).map { slots.toolX(it, 1f, 1f, 1f) })
+            .containsExactly(48, 136, 224, 312)
+            .inOrder()
+        assertThat(slots.toolWidth(1f, 1f, 1f)).isEqualTo(88)
+        assertThat(CollapseSlots.toolAlpha(1f, 1f)).isEqualTo(1f)
+        assertThat(CollapseSlots.contentAlpha(1f, 1f, 1f)).isEqualTo(0f)
+        assertThat(CollapseSlots.iconProgress(1f, 1f, 1f)).isEqualTo(0f)
+        // Halfway through a reveal.
+        assertThat(slots.toolX(3, 1f, 1f, 0.5f)).isEqualTo(156)
+        assertThat(slots.toolWidth(1f, 1f, 0.5f)).isEqualTo(68)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class) // virtual time
+    fun anEmptiedStripIsHeldBrieflySoAGapNeverShows() = runTest {
+        val source = MutableSharedFlow<Boolean>()
+        val seen = mutableListOf<Boolean>()
+        val job = launch { source.holdFalse(SUGGESTIONS_HOLD_MILLIS).collect { seen += it } }
+        runCurrent()
+        source.emit(true)
+        runCurrent()
+        assertThat(seen).containsExactly(true)
+        // A word is committed: the strip empties, and the next-word predictions arrive soon.
+        source.emit(false)
+        advanceTimeBy(SUGGESTIONS_HOLD_MILLIS / 2)
+        source.emit(true)
+        advanceTimeBy(SUGGESTIONS_HOLD_MILLIS * 2)
+        assertThat(seen).containsExactly(true)
+        // A strip that stays empty gives way once the hold is over.
+        source.emit(false)
+        advanceTimeBy(SUGGESTIONS_HOLD_MILLIS - 1)
+        assertThat(seen).containsExactly(true)
+        advanceTimeBy(2)
+        assertThat(seen).containsExactly(true, false).inOrder()
+        job.cancel()
+    }
+
+    @Test
+    fun theNeverSuggestPromptAndSelectionStripAreNotSuggestions() {
+        start()
+        controller.onKey(KeyAction.Text("h"))
+        controller.onKey(KeyAction.Text("i"))
+        assertThat(controller.suggestionsAllowed).isTrue()
+        editor.setSelection(0, 2)
+        assertThat(controller.suggestionsAllowed).isFalse()
+        assertThat(controller.suggestionsShown).isFalse()
     }
 
     // ------------------------------------------------------------------ on the controller

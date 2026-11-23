@@ -729,8 +729,15 @@ class KeyboardController(
      * while the never-suggest prompt is up (its Yes/Cancel own the strip) or the selection strip
      * shows. Derived, so typing within a busy strip recomposes nothing.
      */
-    internal val suggestionsShown: Boolean by derivedStateOf {
-        !strip.isEmpty && strip.neverSuggest == null && !selectionStripVisible
+    internal val suggestionsShown: Boolean
+        get() = stripHasSuggestions && suggestionsAllowed
+
+    /** The strip model has something to show (see [suggestionsShown]). */
+    internal val stripHasSuggestions: Boolean by derivedStateOf { !strip.isEmpty }
+
+    /** Neither the never-suggest prompt nor the selection strip owns the strip. */
+    internal val suggestionsAllowed: Boolean by derivedStateOf {
+        strip.neverSuggest == null && !selectionStripVisible
     }
 
     /** The strip's tools for the current field (see [toolsFor]). */

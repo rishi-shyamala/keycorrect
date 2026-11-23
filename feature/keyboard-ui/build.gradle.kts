@@ -49,6 +49,8 @@ dependencies {
     testImplementation(project(":core:decoder"))
     // The learning-curve test's optional neural arm (reranker over a host llama session).
     testImplementation(project(":core:llama"))
+    // The strip's hold on an emptied strip (a flow operator on virtual time).
+    testImplementation(libs.kotlinx.coroutines.test)
 
     // On-device UI tests (what the strip actually draws).
     androidTestImplementation(platform(libs.compose.bom))
