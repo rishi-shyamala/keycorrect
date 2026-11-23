@@ -99,6 +99,27 @@ object PathCalibration {
      * resampled to [POINTS] points by arc length), or null when there are too few usable pairs.
      */
     fun fit(swipes: List<RealSwipe>, keyboard: EvalKeyboard): AffineMap? {
+        val (src, dst) = pairs(swipes, keyboard)
+        if (src.size < 3) return null
+        return AffineMap.fit(src, dst, keyWidth(keyboard))
+    }
+
+    /**
+     * The best pure translation for the same pairs (the mean difference): a diagnostic next to
+     * [fit], whose scale terms are biased towards 0 by the arc-length alignment's noise.
+     */
+    fun fitOffset(swipes: List<RealSwipe>, keyboard: EvalKeyboard): AffineMap? {
+        val (src, dst) = pairs(swipes, keyboard)
+        if (src.isEmpty()) return null
+        val dx = src.indices.sumOf { dst[it][0] - src[it][0] } / src.size
+        val dy = src.indices.sumOf { dst[it][1] - src[it][1] } / src.size
+        return AffineMap(doubleArrayOf(1.0, 0.0, dx), doubleArrayOf(0.0, 1.0, dy), 0.0)
+    }
+
+    private fun pairs(
+        swipes: List<RealSwipe>,
+        keyboard: EvalKeyboard,
+    ): Pair<List<DoubleArray>, List<DoubleArray>> {
         val src = ArrayList<DoubleArray>()
         val dst = ArrayList<DoubleArray>()
         for (s in swipes) {
@@ -109,8 +130,7 @@ object PathCalibration {
             src += gesture
             dst += ideal
         }
-        if (src.size < 3) return null
-        return AffineMap.fit(src, dst, keyWidth(keyboard))
+        return src to dst
     }
 
     fun apply(map: AffineMap, gesture: GestureInput): GestureInput =
@@ -468,10 +488,12 @@ class SwipeReplay(
         val base = ArrayList<SwipeOutcome>()
         val word = ArrayList<SwipeOutcome>()
         val calibrated = ArrayList<SwipeOutcome>()
+        val shifted = ArrayList<SwipeOutcome>()
         val dictionary = ArrayList<Boolean>()
         val shapes = ArrayList<PathCalibration.Shape>()
         for (session in sessions) {
             val map = PathCalibration.fit(session.swipes, keyboard)
+            val shift = PathCalibration.fitOffset(session.swipes, keyboard)
             map?.let { shapes += PathCalibration.shape(it, keyboard) }
             val learner = newLearner()
             for (s in session.early) learner.learn(s, top(learner.engine, evaluator.request(s)))
@@ -485,6 +507,10 @@ class SwipeReplay(
                     if (map == null) request
                     else request.copy(gesture = PathCalibration.apply(map, s.gesture))
                 calibrated += outcome(s.target, top(baseline, moved))
+                val translated =
+                    if (shift == null) request
+                    else request.copy(gesture = PathCalibration.apply(shift, s.gesture))
+                shifted += outcome(s.target, top(baseline, translated))
                 dictionary += s.inDictionary
             }
         }
@@ -498,6 +524,11 @@ class SwipeReplay(
                 ArmOutcomes(
                     "path calibration ceiling (oracle, diagnostic)",
                     calibrated,
+                    dictionary,
+                ),
+                ArmOutcomes(
+                    "offset-only calibration ceiling (oracle, diagnostic)",
+                    shifted,
                     dictionary,
                 ),
             ),
