@@ -44,6 +44,7 @@ internal class Tracked(
         get() =
             method == Learned.SuggestionPicked ||
                 method == Learned.PredictionPicked ||
+                method == Learned.ContextReplaced ||
                 method == Learned.Gesture
 }
 

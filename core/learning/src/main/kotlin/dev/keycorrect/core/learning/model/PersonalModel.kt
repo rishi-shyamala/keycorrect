@@ -45,6 +45,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     private val decay = Decay(config.halfLifeMillis.toDouble())
     private val ngrams = NgramModel(config, decay)
     private val corrections = CorrectionMemory(config, decay)
+    private val tune = BaseTune(config, decay)
+    private var wordsLearned = 0L
+    private var contextCorrections = 0L
     private val touch = TouchModel(config)
     private val ranker = FusionRanker(config)
     private val thresholds = AdaptiveThresholds(config)
@@ -76,6 +79,12 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                 ref.get().userLogProb(context, word)
 
             override fun userNextWords(context: List<String>) = ref.get().userNextWords(context)
+
+            override fun userContextEvidence(context: List<String>) =
+                ref.get().userContextEvidence(context)
+
+            override fun baseTune(prevWord: String, word: String) =
+                ref.get().baseTune(prevWord, word)
 
             override fun correctionBias(typed: String, candidate: String, contextBucket: String) =
                 ref.get().correctionBias(typed, candidate, contextBucket)
@@ -163,6 +172,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     private var cUserWords: Set<String> = emptySet()
     private var cCasing: Map<String, String> = emptyMap()
 
+    /** Lifetime counters (never decayed, cleared on reset) for the LLM-tuning readiness note. */
+    @Synchronized fun lifetimeCounts() = LearningCounts(wordsLearned, contextCorrections)
+
     /** The latest published snapshot; hold on to it for the duration of one decode. */
     fun snapshot(): PersonalSnapshot = ref.get()
 
@@ -208,6 +220,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         retryPendingPreferences(nowMillis)
         ngrams.enforceCaps(active)
         corrections.enforceCaps(active)
+        tune.enforceCaps(active)
         housekeeping(nowMillis)
         maybePublish(nowMillis, urgent)
     }
@@ -230,6 +243,18 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                         .toDouble()
                         .coerceIn(-config.maxUsageWeightPerUpdate, config.maxUsageWeightPerUpdate)
                 ngrams.add(Text.contextKeys(u.context), w, weight, active)
+                if (weight > 0.0) wordsLearned++
+                record(now, u)
+            }
+            is LearningUpdate.BaseTuneEvidence -> {
+                val w = u.weight.toDouble()
+                tune.add(u.prev, u.preferred, w, active)
+                // Only an explicit choice over another word counts as a correction (N-27); typing
+                // past the predictions (no other word) only tunes.
+                u.other?.let {
+                    tune.add(u.prev, it, -w, active)
+                    contextCorrections++
+                }
                 record(now, u)
             }
             is LearningUpdate.NewWordEvidence -> {
@@ -436,6 +461,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                 version,
                 ngrams.freeze(active),
                 corrections.freeze(active),
+                tune.freeze(active),
                 cSuppressed,
                 cBlocked,
                 cUserWords,
@@ -445,6 +471,7 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                 config.rankerMaxScore,
                 thresholds.thresholdDelta(),
                 thresholds.phraseGateDelta(),
+                LearningCounts(wordsLearned, contextCorrections),
             )
         )
         sincePublish = 0
@@ -622,6 +649,11 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
                             )
                     ngrams.add(Text.contextKeys(u.context), w, -weight * f, active)
                 }
+                is LearningUpdate.BaseTuneEvidence -> {
+                    val w = u.weight.toDouble() * f
+                    tune.add(u.prev, u.preferred, -w, active)
+                    u.other?.let { tune.add(u.prev, it, w, active) }
+                }
                 is LearningUpdate.NewWordEvidence ->
                     lexicon.forgetCandidate(u.word, u.sessionId, u.weight.toDouble())
                 is LearningUpdate.CorrectionEvidence ->
@@ -664,6 +696,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             lastCheckpointMillis = ranker.lastCheckpointMillis,
             ngrams = ngrams.exportRows(),
             corrections = corrections.exportRows(),
+            tune = tune.exportRows(),
+            wordsLearned = wordsLearned,
+            contextCorrections = contextCorrections,
             suppressions = lexicon.suppressionRows(),
             blocks = lexicon.blockRows(),
             userWords = lexicon.userWordRows(),
@@ -694,6 +729,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
         lastWall = state.lastWallMillis
         ngrams.importRows(state.ngrams, active)
         corrections.importRows(state.corrections)
+        tune.importRows(state.tune)
+        wordsLearned = state.wordsLearned
+        contextCorrections = state.contextCorrections
         lexicon.importRows(state)
         touch.importRows(state.touch, state.touchProfiles)
         ranker.importRows(state.rankerWeights, state.rankerUpdates, state.lastCheckpointMillis)

@@ -51,9 +51,9 @@ import kotlin.random.Random
  * Personalization (docs/PLAN.md §6.1): [personalization] is read once per decode and must return an
  * immutable snapshot (a new instance when the learned data changes). It is used for
  * - the language model: the personal n-gram is interpolated into every LM score (candidates, the
- *   literal, user words, next-word predictions and phrase steps; `UserDataConfig.userNgramWeight`);
- *   next-word candidates still come from the dictionary's successor lists since the personal model
- *   cannot enumerate its own;
+ *   literal, user words, next-word predictions and phrase steps;
+ *   `UserDataConfig.userNgramWeightMin/Max`); next-word candidates still come from the dictionary's
+ *   successor lists since the personal model cannot enumerate its own;
  * - correction memory: `correctionBias` is added to every non-literal candidate's score; pairs with
  *   `isSuppressed` are never autocorrected but may still appear in the suggestion strip;
  *   `isBlocked` words are never suggested (candidates, next words, phrases);
@@ -238,7 +238,7 @@ class ClassicEngine(
             if (count > 0) {
                 pers = personalization()
                 active = pers !== Personalization.None
-                lm.bindPersonalization(pers, config.user.userNgramWeight)
+                lm.bindPersonalization(pers, config.user)
                 rescorer.rescore(count, request, pers.takeIf { active }, stale, scores)
             } else {
                 null
@@ -401,7 +401,7 @@ class ClassicEngine(
         pers = personalization()
         active = pers !== Personalization.None
         gateDelta = if (active) pers.phraseGateDelta else 0f
-        lm.bindPersonalization(pers, config.user.userNgramWeight)
+        lm.bindPersonalization(pers, config.user)
         bucket =
             if (active) {
                 contextBucket(

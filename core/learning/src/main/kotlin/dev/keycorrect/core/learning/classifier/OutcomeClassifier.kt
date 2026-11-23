@@ -7,6 +7,7 @@ import dev.keycorrect.core.learning.LearningEvent
 import dev.keycorrect.core.learning.LearningUpdate
 import dev.keycorrect.core.learning.LearningUpdate.AddUserWord
 import dev.keycorrect.core.learning.LearningUpdate.AutocorrectOutcome
+import dev.keycorrect.core.learning.LearningUpdate.BaseTuneEvidence
 import dev.keycorrect.core.learning.LearningUpdate.BlockWord
 import dev.keycorrect.core.learning.LearningUpdate.CasingEvidence
 import dev.keycorrect.core.learning.LearningUpdate.CorrectionEvidence
@@ -76,7 +77,11 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             CommitMethod.LiteralPicked -> literalPicked(e)
             // Row 15/predictions: a single tapped prediction is user-chosen but self-reinforcing.
             CommitMethod.PredictionPicked ->
-                listOf(WordUsed(e.context, e.committed, config.predictionPickedWeight))
+                withConflict(
+                    e,
+                    listOf(WordUsed(e.context, e.committed, config.predictionPickedWeight)),
+                )
+            CommitMethod.ContextReplaced -> contextReplaced(e)
             // Row 12: gesture-specific memory is Phase 5; for now just word use. No touches.
             CommitMethod.Gesture -> wordEvidence(e, config.typedWordWeight, 1f, typoCheck = true)
             // Row 16: evidence like typing; the 0.3x scaling happens in classify().
@@ -119,8 +124,95 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
         }
     }
 
+    /**
+     * The user replaced a dictionary word at the cursor by another (N-25): a contextual choice, so
+     * no correction memory and no ranker preference (those are keyed by what was typed). The new
+     * word is used heavily and the original taken back in the personal layer, and the built-in tune
+     * is nudged toward the new word over the original.
+     */
+    private fun contextReplaced(e: WordCommitted): List<LearningUpdate> {
+        if (!isTrainableWord(e.typed) || sameWord(e.typed, e.committed)) return emptyList()
+        val out = ArrayList<LearningUpdate>()
+        out += WordUsed(e.context, e.committed, config.contextReplacedWeight)
+        out += WordUsed(e.context, e.typed, -config.contextReplacedOriginalWeight)
+        val prev = e.context.lastOrNull()
+        if (prev != null && e.committedIsKnown) {
+            out += BaseTuneEvidence(prev, e.committed, e.typed, config.contextReplacedTuneWeight)
+        }
+        return out
+    }
+
+    /**
+     * Signals b) and c) (N-26): a conflict with what the built-in model put first. For a pick (b)
+     * the extra personal-layer weight is folded into the preferred word's own [WordUsed] and the
+     * top suggestion is tuned down; a typed word (c) only tunes its own pair up.
+     */
+    private fun withConflict(e: WordCommitted, base: List<LearningUpdate>): List<LearningUpdate> {
+        val prev = e.context.lastOrNull()
+        val conflict = if (e.committedIsKnown) conflictOf(e) else null
+        return when {
+            prev == null || conflict == null -> base
+            // Typing past the predictions is the commonest event there is: it only raises the
+            // typed pair (repetition makes it "regular"), never lowers the prediction, and adds no
+            // extra personal weight beyond the word's own use.
+            e.method == CommitMethod.Typed ->
+                base + BaseTuneEvidence(prev, e.committed, null, conflict.second)
+            else ->
+                boostFirstUse(base, e.committed) +
+                    BaseTuneEvidence(prev, e.committed, conflict.first.text, conflict.second)
+        }
+    }
+
+    /** [base] with [conflictExtraWeight][ClassifierConfig.conflictExtraWeight] on [word]'s use. */
+    private fun boostFirstUse(base: List<LearningUpdate>, word: String): List<LearningUpdate> {
+        var boosted = false
+        return base.map {
+            if (!boosted && it is WordUsed && isPositiveUse(it, word)) {
+                boosted = true
+                it.copy(weight = it.weight + config.conflictExtraWeight)
+            } else {
+                it
+            }
+        }
+    }
+
+    private fun isPositiveUse(u: WordUsed, word: String) = u.weight > 0f && sameWord(u.word, word)
+
+    /** The word the built-in model put first and the tune weight, or null when no conflict. */
+    private fun conflictOf(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val hit =
+            when (e.method) {
+                CommitMethod.SuggestionPicked,
+                CommitMethod.PredictionPicked -> pickedConflict(e)
+                CommitMethod.Typed -> typedConflict(e)
+                else -> null
+            }
+        return hit?.takeIf { !sameWord(it.first.text, e.committed) }
+    }
+
+    private fun pickedConflict(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val rank = e.pickedRank ?: e.shown.firstOrNull { sameWord(it.text, e.committed) }?.rank
+        val top = e.shown.firstOrNull { it.rank == 0 }
+        return if (rank != null && rank > 0 && top != null) {
+            top to config.pickedOverTopTuneWeight
+        } else {
+            null
+        }
+    }
+
+    private fun typedConflict(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val predicted = e.shown.filter { it.shownAtChars == 0 }
+        val top = predicted.minByOrNull { it.rank }
+        val pastIt = predicted.none { sameWord(it.text, e.committed) }
+        return if (top != null && pastIt) top to config.typedPastPredictionTuneWeight else null
+    }
+
     /** Rows 2, 3, 4, 13: user typed [WordCommitted.committed] and finished it themselves. */
     private fun typed(e: WordCommitted): List<LearningUpdate> {
+        return withConflict(e, typedUpdates(e))
+    }
+
+    private fun typedUpdates(e: WordCommitted): List<LearningUpdate> {
         val out = ArrayList<LearningUpdate>()
         // Row 4: an unknown typed word with a close known neighbour on the strip is probably a
         // typo the user did not bother to fix; it is not counted as a new word.
@@ -164,7 +256,10 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
     }
 
     /** Rows 1 and 13. */
-    private fun suggestionPicked(e: WordCommitted): List<LearningUpdate> {
+    private fun suggestionPicked(e: WordCommitted): List<LearningUpdate> =
+        withConflict(e, suggestionPickedUpdates(e))
+
+    private fun suggestionPickedUpdates(e: WordCommitted): List<LearningUpdate> {
         val out = ArrayList<LearningUpdate>()
         out += WordUsed(e.context, e.committed, config.suggestionPickedWeight)
         val rank = e.pickedRank ?: e.shown.firstOrNull { sameWord(it.text, e.committed) }?.rank
@@ -552,6 +647,7 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
             is NewWordEvidence -> weight.isFinite()
             is CorrectionEvidence -> delta.isFinite()
             is Preference -> weight.isFinite()
+            is BaseTuneEvidence -> weight.isFinite()
             is TouchEvidence -> samples.all { it.dx.isFinite() && it.dy.isFinite() }
             else -> true
         }

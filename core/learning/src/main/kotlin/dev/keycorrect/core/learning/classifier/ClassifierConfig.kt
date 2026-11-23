@@ -125,6 +125,22 @@ data class ClassifierConfig(
     /** Negative WordUsed for the first predicted word the user did not follow. */
     val phraseRejectedWordWeight: Float = 0.3f,
 
+    // ---- contextual conflicts with the built-in model (N-25, N-26) ---------------------------
+    /** Tapping another word for a dictionary word at the cursor: the new word, personal layer. */
+    val contextReplacedWeight: Float = 3.0f,
+    /** ... and the replaced original, taken back (negative WordUsed, personal layer, heavy). */
+    val contextReplacedOriginalWeight: Float = 2.0f,
+    /** Built-in tune weight of a context replacement (strong: an explicit contextual choice). */
+    val contextReplacedTuneWeight: Float = 1.0f,
+    /** Built-in tune weight when a lower-ranked suggestion/prediction was picked over rank 0. */
+    val pickedOverTopTuneWeight: Float = 0.5f,
+    /** Built-in tune weight when a typed word was not among the predictions shown before it. */
+    val typedPastPredictionTuneWeight: Float = 0.3f,
+    /**
+     * Extra personal-layer weight (WordUsed of the preferred word) with a picked/typed conflict.
+     */
+    val conflictExtraWeight: Float = 1.0f,
+
     // ---- global (rows 14-16) -------------------------------------------------------------------
     /** Row 16: multiplier for every weight learned from dictated text. */
     val voiceScale: Float = 0.3f,

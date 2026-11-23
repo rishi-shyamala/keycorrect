@@ -18,6 +18,19 @@ interface Personalization {
     /** Learned bias for correcting [typed] to [candidate] (ln units; > 0 favours). */
     fun correctionBias(typed: String, candidate: String, contextBucket: String): Float
 
+    /**
+     * The decayed evidence behind the personal n-gram's estimate for [context]: the total mass seen
+     * after the last two context words (the trigram context if present, else the bigram context,
+     * else 0). The decoder turns it into a confidence that sets the personal weight.
+     */
+    fun userContextEvidence(context: List<String>): Float = 0f
+
+    /**
+     * Learned nudge (ln units, added to the BUILT-IN log-probability) for [word] after [prevWord]:
+     * a slight tune of the base recommendations from the user's regular conflicts with them.
+     */
+    fun baseTune(prevWord: String, word: String): Float = 0f
+
     fun isSuppressed(typed: String, candidate: String): Boolean
 
     fun isBlocked(word: String): Boolean

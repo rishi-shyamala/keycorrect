@@ -44,6 +44,16 @@ data class PersonalModelConfig(
     val maxCorrectionBias: Float = 4f,
     /** Weight of the bucket-free score when blending with the bucket score (0 = ignore). */
     val correctionBackoff: Double = 0.5,
+    // --- built-in tune overlay (N-26) ---
+    val maxTuneEntries: Int = 20_000,
+    /** Anti-poisoning clamp of one event's step and of the total score of a (prev, word) pair. */
+    val tuneMaxStep: Double = 2.0,
+    val tuneMaxScore: Double = 6.0,
+    /**
+     * tune = maxTune * tanh(score / scale): one conflict is a nudge, regular ones approach the cap.
+     */
+    val maxTune: Float = 0.7f,
+    val tuneScale: Double = 3.0,
     // --- new-word promotion ---
     /**
      * An unknown word is promoted to the user dictionary once its candidate weight reaches this (a

@@ -19,6 +19,7 @@ import dev.keycorrect.core.learning.model.SentenceRow
 import dev.keycorrect.core.learning.model.SuppressionRow
 import dev.keycorrect.core.learning.model.TouchProfileRow
 import dev.keycorrect.core.learning.model.TouchRow
+import dev.keycorrect.core.learning.model.TuneRow
 import dev.keycorrect.core.learning.model.UserWordRow
 import dev.keycorrect.core.transfer.BlockedWord
 import dev.keycorrect.core.transfer.CandidateEntry
@@ -44,6 +45,7 @@ import dev.keycorrect.core.transfer.TouchKeyStats
 import dev.keycorrect.core.transfer.TouchSection
 import dev.keycorrect.core.transfer.TransferBundle
 import dev.keycorrect.core.transfer.TransferManifest
+import dev.keycorrect.core.transfer.TuneEntry
 
 /** The ranker's live weights are stored under this checkpoint time. */
 private const val LIVE_RANKER = -1L
@@ -159,6 +161,9 @@ internal object TransferMapper {
                 l.corrections.map {
                     CorrectionEntry(it.typed, it.target, it.bucket, it.score, it.lastActiveMillis)
                 },
+            tune = l.tune.map { TuneEntry(it.prev, it.word, it.score, it.lastActiveMillis) },
+            wordsLearned = l.wordsLearned,
+            contextCorrections = l.contextCorrections,
             suppressions =
                 l.suppressions.map { SuppressionEntry(it.typed, it.target, it.createdAtMillis) },
             candidates =
@@ -265,6 +270,9 @@ internal object TransferMapper {
                 l.corrections.map {
                     CorrectionRow(it.typed, it.target, it.bucket, it.score, it.lastActiveMillis)
                 },
+            tune = l.tune.map { TuneRow(it.prev, it.word, it.score, it.lastActiveMillis) },
+            wordsLearned = l.wordsLearned,
+            contextCorrections = l.contextCorrections,
             suppressions =
                 l.suppressions.map { SuppressionRow(it.typed, it.target, it.createdAtMillis) },
             blocks = dictionary.blockedWords.map { BlockRow(it.word, it.createdAtMillis) },

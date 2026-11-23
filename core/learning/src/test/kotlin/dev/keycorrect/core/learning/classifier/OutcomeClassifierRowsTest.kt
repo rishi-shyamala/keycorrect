@@ -43,7 +43,9 @@ class OutcomeClassifierRowsTest {
                         listOf(seen("hell", 0), seen("held", 1), seen("help", 2), seen("helm", 3)),
                 )
             )
-        assertThat(out).contains(WordUsed(ctx, "help", cfg.suggestionPickedWeight))
+        // Picked over the top suggestion (rank 0): a conflict, so the extra weight is folded in.
+        assertThat(out)
+            .contains(WordUsed(ctx, "help", cfg.suggestionPickedWeight + cfg.conflictExtraWeight))
         assertThat(out.all<Preference>().map { it.other })
             .containsExactly("hell", "held") // not helm (ranked below)
         assertThat(out.all<Preference>().map { it.weight }.toSet())

@@ -89,6 +89,9 @@ object Merge {
             activeClockMillis = maxOf(existing.activeClockMillis, incoming.activeClockMillis),
             ngrams = ngrams(existing.ngrams, incoming.ngrams, aging),
             corrections = corrections(existing.corrections, incoming.corrections, aging),
+            tune = tune(existing.tune, incoming.tune, aging),
+            wordsLearned = existing.wordsLearned + incoming.wordsLearned,
+            contextCorrections = existing.contextCorrections + incoming.contextCorrections,
             suppressions =
                 (existing.suppressions + incoming.suppressions).distinctBy {
                     lower(it.typed) to lower(it.target)
@@ -128,6 +131,21 @@ object Merge {
         aging: Aging,
     ): List<CorrectionEntry> =
         combine(existing, incoming, { Triple(it.typed, it.target, it.bucket) }) { a, b ->
+            val last = maxOf(a.lastActiveMillis, b.lastActiveMillis)
+            a.copy(
+                score =
+                    a.score * aging.evidence(last - a.lastActiveMillis) +
+                        b.score * aging.evidence(last - b.lastActiveMillis),
+                lastActiveMillis = last,
+            )
+        }
+
+    fun tune(
+        existing: List<TuneEntry>,
+        incoming: List<TuneEntry>,
+        aging: Aging,
+    ): List<TuneEntry> =
+        combine(existing, incoming, { it.prev to it.word }) { a, b ->
             val last = maxOf(a.lastActiveMillis, b.lastActiveMillis)
             a.copy(
                 score =

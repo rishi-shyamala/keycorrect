@@ -266,6 +266,12 @@ internal class FrozenNgrams(
         return ContextFactors(context.toList(), bi, tri).also { lastContext = it }
     }
 
+    /** The decayed total seen after the longest personal context level present, else 0. */
+    fun contextEvidence(context: List<String>): Float {
+        val f = factors(context)
+        return (if (f.tri.total > 0.0) f.tri.total else f.bi.total).toFloat()
+    }
+
     /**
      * The keys of words seen after [context] with enough evidence for [logProb] to speak for them
      * (the longer context's first). Empty for an unknown context, and cheap: it is called per

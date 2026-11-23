@@ -43,6 +43,12 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     private var user: Personalization? = null
     private var lnUser = 0f
     private var lnBase = 0f
+    private var weightMin = 0f
+    private var weightMax = 0f
+    private var confidenceK = 1f
+
+    /** The [userContext] instance [lnUser] / [lnBase] were computed for. */
+    private var weightsFor: List<String>? = null
     private var userContext: List<String> = emptyList()
 
     /** [userNextWords] memo: valid while [user] and [userContext] are the same instances. */
@@ -61,12 +67,28 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     }
 
     /** Binds [p] (null for none) for the following requests; call before [setContext]. */
-    fun bindPersonalization(p: Personalization?, weight: Float) {
-        user = if (p === Personalization.None || weight <= 0f) null else p
-        lnUser = ln(weight.coerceIn(1e-6f, 1f - 1e-6f))
-        lnBase = ln(1f - weight.coerceIn(1e-6f, 1f - 1e-6f))
+    fun bindPersonalization(p: Personalization?, cfg: UserDataConfig) {
+        weightMin = cfg.userNgramWeightMin
+        weightMax = max(cfg.userNgramWeightMin, cfg.userNgramWeightMax)
+        user = if (p === Personalization.None || weightMax <= 0f) null else p
+        confidenceK = cfg.userNgramConfidenceK.coerceAtLeast(MIN_CONFIDENCE_K)
+        weightsFor = null
         if (user == null) userContext = emptyList()
         lastBefore = null
+    }
+
+    /**
+     * Sets the personal weight for the current [userContext]: it grows with the personal model's
+     * confidence in this context, computed once per context (not per word).
+     */
+    private fun ensureWeights(p: Personalization) {
+        if (weightsFor === userContext) return
+        weightsFor = userContext
+        val n = p.userContextEvidence(userContext)
+        val c = if (n > 0f) n / (n + confidenceK) else 0f
+        val w = (weightMin + (weightMax - weightMin) * c).coerceIn(1e-6f, 1f - 1e-6f)
+        lnUser = ln(w)
+        lnBase = ln(1f - w)
     }
 
     /** True if a personal n-gram is bound. */
@@ -75,14 +97,20 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
 
     /**
      * Interpolates the personal estimate for [word] after the current context into [base]; [base]
-     * itself where the personal model has no estimate.
+     * itself where the personal model has no estimate. The built-in tune
+     * ([Personalization.baseTune], the user's regular conflicts with the built-in model) is added
+     * to [base] first, so it counts as personal ([logProb] minus the untuned base is the personal
+     * gain).
      */
     fun blend(base: Float, word: String): Float {
         val p = user ?: return base
-        val u = p.userLogProb(userContext, word) ?: return base
-        if (u.isNaN()) return base
+        val prev = userContext.lastOrNull()
+        val tuned = if (prev == null) base else base + p.baseTune(prev, word)
+        val u = p.userLogProb(userContext, word) ?: return tuned
+        if (u.isNaN()) return tuned
+        ensureWeights(p)
         val a = u + lnUser
-        val b = base + lnBase
+        val b = tuned + lnBase
         val m = max(a, b)
         return m + ln(exp(a - m) + exp(b - m))
     }
@@ -263,8 +291,8 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
 
     /**
      * What a phrase step is judged by: [logProb], or the user's own estimate when higher. The blend
-     * weighs the user at [UserDataConfig.userNgramWeight], below the phrase gate, so a phrase of
-     * the user's own words could otherwise never be offered, however often it is typed.
+     * weighs the user at [UserDataConfig.userNgramWeightMin] to Max, below the phrase gate, so a
+     * phrase of the user's own words could otherwise never be offered, however often it is typed.
      */
     fun phraseStepLogProb(id: Int, blended: Float = logProb(id)): Float {
         val own =
@@ -414,6 +442,9 @@ internal class LanguageModel(private val dict: Dictionary, private val config: S
     }
 
     private companion object {
+        /** Keeps the weight formula's denominator positive for a zero or negative K. */
+        const val MIN_CONFIDENCE_K = 1e-3f
+
         const val POOL = 32
         const val MAX_CONTEXT_CHARS = 192
         const val USER_CONTEXT_WORDS = 2

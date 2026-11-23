@@ -87,10 +87,15 @@ testable on the JVM against simulated editors. Tools never depend on `:app` or `
 `PredictiveInput` emits events (word finished, correction accepted or undone, strip pick, sentence
 words, touch offsets) through one privacy gate to `LearningSink` -> `LearningHost` (learning
 thread) -> `OutcomeClassifier` (PLAN section 6.3 outcome rules, keep thresholds N/M) ->
-`PersonalModel` (n-grams, correction memory, personal words, touch statistics; a journal for
-recent forgetting) -> `SqlLearningStore` (atomic commit/replaceAll) and a fresh immutable
+`PersonalModel` (n-grams, built-in tune overlay, correction memory, personal words, touch statistics,
+lifetime counters; a journal for recent forgetting) -> `SqlLearningStore` (atomic commit/replaceAll) and a fresh immutable
 snapshot published to the engine. Personalization never lives inside an engine; engines only read
 the snapshot. Evidence is eval-checked ([EVAL.md](EVAL.md), "Learning").
+
+The decoder blends the personal n-gram with the built-in model per context: weight
+`0.25 + 0.30 * n/(n+4)` (`UserDataConfig`; `n` = `Personalization.userContextEvidence`), after the
+built-in log-probability has been nudged by `Personalization.baseTune` (N-26). Engines without
+personalization see neither.
 
 Learned touches reach the decoder per key through `Personalization.touchOffset` (mean, shifts the key's
 Gaussian) and `touchSigmaScale` (spread: sqrt of the variance shrunk toward the reference sigma

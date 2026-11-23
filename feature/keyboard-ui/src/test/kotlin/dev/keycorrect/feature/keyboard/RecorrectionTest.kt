@@ -2,6 +2,9 @@ package dev.keycorrect.feature.keyboard
 
 import android.text.InputType
 import com.google.common.truth.Truth.assertThat
+import dev.keycorrect.core.engineapi.Candidate
+import dev.keycorrect.core.engineapi.CandidateSource
+import dev.keycorrect.core.engineapi.PredictResult
 import dev.keycorrect.core.input.FieldProfile
 import dev.keycorrect.core.layout.BuiltInLayouts
 import dev.keycorrect.core.layout.KeyAction
@@ -87,11 +90,77 @@ class RecorrectionTest {
     }
 
     @Test
-    fun aKnownWordShowsNothing() {
+    fun aKnownWordShowsItsAlternativesAndNeverItself() {
         start()
-        tapInto("say the", 7)
+        predictor.word("hello", listOf("hello", "help", "hell", "hallo"))
+        tapInto("say hello", 9)
+        val strip = controller.strip
+        assertThat(strip.centre?.text).isEqualTo("help")
+        assertThat(strip.left?.text).isEqualTo("hell")
+        assertThat(strip.right?.text).isEqualTo("hallo")
+        val shown = listOfNotNull(strip.left, strip.centre, strip.right).map { it.text }
+        assertThat(shown).doesNotContain("hello")
+        // One more than the strip holds, so three remain once the word itself is dropped.
+        assertThat(predictor.requests.last().maxCandidates).isEqualTo(4)
+        assertThat(predictor.requests.last().autocorrectAllowed).isFalse()
+    }
+
+    @Test
+    fun aKnownWordWithFewAlternativesShowsOnlyThose() {
+        start()
+        predictor.word("hello", listOf("hello", "help"))
+        tapInto("say hello", 9)
+        assertThat(controller.strip.centre?.text).isEqualTo("help")
+        assertThat(controller.strip.left).isNull()
+    }
+
+    @Test
+    fun tappingAnAlternativeOfAKnownWordIsAContextReplacementNotASpellingFix() {
+        start()
+        predictor.word("hello", listOf("hello", "help", "hell"))
+        tapInto("say hello", 9)
+        controller.onSuggestionTap(controller.strip.centre!!)
+        assertThat(text()).isEqualTo("say help")
+        val event = sink.of<WordCommitted>().single()
+        assertThat(event.typed).isEqualTo("hello")
+        assertThat(event.committed).isEqualTo("help")
+        assertThat(event.method).isEqualTo(CommitMethod.ContextReplaced)
+        assertThat(event.context).containsExactly("say")
+    }
+
+    @Test
+    fun theWordIsOutrankedWhenACandidateScoresAboveIt() {
+        start()
+        predictor.words["cat"] =
+            PredictResult(
+                candidates = listOf(Candidate("car", 1f, CandidateSource.Dictionary)),
+                literal = Candidate("cat", -2f, CandidateSource.Literal),
+                autocorrect = null,
+            )
+        tapInto("say cat", 7)
+        assertThat(controller.recorrectWordOutranked).isTrue()
+        predictor.words["hello"] =
+            PredictResult(
+                candidates = listOf(Candidate("help", -3f, CandidateSource.Dictionary)),
+                literal = Candidate("hello", -1f, CandidateSource.Literal),
+                autocorrect = null,
+            )
+        tapInto("say hello", 9)
+        assertThat(controller.recorrectWordOutranked).isFalse()
+    }
+
+    @Test
+    fun aKnownWordInAnEmailFieldShowsNothing() {
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                0,
+            )
+        )
+        predictor.word("hello", listOf("hello", "help"))
+        tapInto("say hello", 9)
         assertThat(controller.strip.isEmpty).isTrue()
-        assertThat(predictor.requests.map { it.composing.text }).doesNotContain("the")
+        assertThat(predictor.requests.map { it.composing.text }).doesNotContain("hello")
     }
 
     @Test

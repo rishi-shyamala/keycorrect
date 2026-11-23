@@ -209,6 +209,8 @@
     <string name="learning_enabled_summary">Adapt suggestions and autocorrect to the words you use. Everything stays on this device.</string>
     <string name="learning_incognito">Incognito</string>
     <string name="learning_incognito_summary">Pause learning for now. Learning is always off automatically in password and private fields.</string>
+    <string name="learning_llm_not_ready">LLM tuning: not enough personal data yet. Roughly %1$s more words and %2$s more corrections needed (rough estimate).</string>
+    <string name="learning_llm_ready">LLM tuning: your personal data is now probably enough for on-device LLM tuning (a future feature).</string>
     <string name="learning_stop_note">Turning learning off, or using Incognito, stops new learning. What was already learned, and recent learning history (kept up to 24 hours, encrypted), stay until you use Forget or Reset. Reset keeps your personal dictionary words.</string>
     <string name="learning_requires">Turn on learning to use this option.</string>
     <string name="learning_sentences">Keep recent sentences for on-device training</string>

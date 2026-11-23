@@ -73,6 +73,18 @@ sealed interface LearningUpdate {
     /** Phrase-gate feedback (rows 18–20). */
     data class PhraseFeedback(val offeredWords: Int, val acceptedWords: Int) : LearningUpdate
 
+    /**
+     * A contextual conflict with the built-in language model: after [prev] the user wanted
+     * [preferred] (and, when known, not [other]). Feeds the built-in tune overlay (a slight, capped
+     * nudge of the base log-probability); [weight] is in tune-score units.
+     */
+    data class BaseTuneEvidence(
+        val prev: String,
+        val preferred: String,
+        val other: String?,
+        val weight: Float,
+    ) : LearningUpdate
+
     /** Casing preference (row 13): the user typed [surface] for the lowercase key mid-sentence. */
     data class CasingEvidence(val surface: String) : LearningUpdate
 }

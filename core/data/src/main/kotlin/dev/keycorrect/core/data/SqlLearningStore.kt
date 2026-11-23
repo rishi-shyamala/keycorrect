@@ -21,6 +21,7 @@ import dev.keycorrect.core.learning.model.SentenceRow
 import dev.keycorrect.core.learning.model.SuppressionRow
 import dev.keycorrect.core.learning.model.TouchProfileRow
 import dev.keycorrect.core.learning.model.TouchRow
+import dev.keycorrect.core.learning.model.TuneRow
 import dev.keycorrect.core.learning.model.UserWordRow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -175,6 +176,15 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
             st.bindLong(5, r.lastActiveMillis)
         }
         db.insertAll(
+            "INSERT INTO learning_tune (prev, word, score, last_active) VALUES (?, ?, ?, ?)",
+            s.tune,
+        ) { st, r ->
+            st.bindString(1, r.prev)
+            st.bindString(2, r.word)
+            st.bindDouble(3, r.score)
+            st.bindLong(4, r.lastActiveMillis)
+        }
+        db.insertAll(
             "INSERT INTO learning_suppressions (typed, target, created_at) VALUES (?, ?, ?)",
             s.suppressions,
         ) { st, r ->
@@ -300,6 +310,8 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
                 META_LAST_WALL to s.lastWallMillis.toString(),
                 META_RANKER_UPDATES to s.rankerUpdates.toString(),
                 META_LAST_CHECKPOINT to s.lastCheckpointMillis.toString(),
+                META_WORDS_LEARNED to s.wordsLearned.toString(),
+                META_CONTEXT_CORRECTIONS to s.contextCorrections.toString(),
             )
         db.insertAll("INSERT INTO learning_meta (key, value) VALUES (?, ?)", meta) { st, r ->
             st.bindString(1, r.first)
@@ -336,6 +348,12 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
             lastWallMillis = meta[META_LAST_WALL]?.toLong() ?: d.lastWallMillis,
             rankerUpdates = meta[META_RANKER_UPDATES]?.toLong() ?: d.rankerUpdates,
             lastCheckpointMillis = meta[META_LAST_CHECKPOINT]?.toLong() ?: d.lastCheckpointMillis,
+            wordsLearned = meta[META_WORDS_LEARNED]?.toLong() ?: d.wordsLearned,
+            contextCorrections = meta[META_CONTEXT_CORRECTIONS]?.toLong() ?: d.contextCorrections,
+            tune =
+                db.readAll("SELECT prev, word, score, last_active FROM learning_tune") {
+                    TuneRow(it.getString(0), it.getString(1), it.getDouble(2), it.getLong(3))
+                },
             ngrams =
                 db.readAll("SELECT ord, key, weight, last_active FROM learning_ngrams") {
                     NgramRow(it.getInt(0), it.getString(1), it.getDouble(2), it.getLong(3))
@@ -480,5 +498,7 @@ class SqlLearningStore(private val database: KeyCorrectDatabase) : LearningStore
         const val META_LAST_WALL = "last_wall_millis"
         const val META_RANKER_UPDATES = "ranker_updates"
         const val META_LAST_CHECKPOINT = "last_checkpoint_millis"
+        const val META_WORDS_LEARNED = "words_learned"
+        const val META_CONTEXT_CORRECTIONS = "context_corrections"
     }
 }
