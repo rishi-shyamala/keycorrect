@@ -136,7 +136,9 @@ data class ClassifierConfig(
     val pickedOverTopTuneWeight: Float = 0.5f,
     /** Built-in tune weight when a typed word was not among the predictions shown before it. */
     val typedPastPredictionTuneWeight: Float = 0.3f,
-    /** Extra personal-layer weight (WordUsed of the preferred word) with a picked/typed conflict. */
+    /**
+     * Extra personal-layer weight (WordUsed of the preferred word) with a picked/typed conflict.
+     */
     val conflictExtraWeight: Float = 1.0f,
 
     // ---- global (rows 14-16) -------------------------------------------------------------------

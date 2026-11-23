@@ -49,7 +49,9 @@ data class PersonalModelConfig(
     /** Anti-poisoning clamp of one event's step and of the total score of a (prev, word) pair. */
     val tuneMaxStep: Double = 2.0,
     val tuneMaxScore: Double = 6.0,
-    /** tune = maxTune * tanh(score / scale): one conflict is a nudge, regular ones approach the cap. */
+    /**
+     * tune = maxTune * tanh(score / scale): one conflict is a nudge, regular ones approach the cap.
+     */
     val maxTune: Float = 0.7f,
     val tuneScale: Double = 3.0,
     // --- new-word promotion ---

@@ -13,7 +13,7 @@ class Migration(val from: Int, val to: Int, val migrate: (SupportSQLiteDatabase)
 
 internal object Schema {
     /** Current schema version. Bump together with a new entry in [MIGRATIONS]. */
-    const val VERSION = 5
+    const val VERSION = 6
 
     /** Ordered migrations. The database is created at v1 and migrated up, so there is one path. */
     val MIGRATIONS: List<Migration> =
@@ -22,6 +22,7 @@ internal object Schema {
             Migration(2, 3, ::migrateV2ToV3),
             Migration(3, 4, ::migrateV3ToV4),
             Migration(4, 5, ::migrateV4ToV5),
+            Migration(5, 6, ::migrateV5ToV6),
         )
 
     /** The frozen v1 DDL. Never edit; add a [Migration] instead. */
@@ -102,9 +103,17 @@ internal object Schema {
         db.execSQL("CREATE INDEX clips_created_at ON clips (created_at)")
     }
 
+    /** v6: the built-in tune overlay (N-26); the lifetime counters live in `learning_meta`. */
+    fun migrateV5ToV6(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE learning_tune (prev TEXT NOT NULL, word TEXT NOT NULL, " +
+                "score REAL NOT NULL, last_active INTEGER NOT NULL)"
+        )
+    }
+
     /** Every learning table in the current schema (v2 tables plus later additions). */
     val LEARNING_TABLES: List<String>
-        get() = LEARNING_V2_TABLES + "learning_keeps"
+        get() = LEARNING_V2_TABLES + "learning_keeps" + "learning_tune"
 
     /** Names of the tables created by [migrateV1ToV2], row tables first. */
     val LEARNING_V2_TABLES: List<String> =

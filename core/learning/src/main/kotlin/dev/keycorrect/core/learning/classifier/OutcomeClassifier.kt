@@ -147,40 +147,50 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
      * personal-layer weight is folded into the preferred word's own [WordUsed].
      */
     private fun withConflict(e: WordCommitted, base: List<LearningUpdate>): List<LearningUpdate> {
-        val prev = e.context.lastOrNull() ?: return base
-        if (!e.committedIsKnown) return base
-        val other: ShownSuggestion?
-        val tuneWeight: Float
-        when (e.method) {
-            CommitMethod.SuggestionPicked,
-            CommitMethod.PredictionPicked -> {
-                val rank =
-                    e.pickedRank ?: e.shown.firstOrNull { sameWord(it.text, e.committed) }?.rank
-                if (rank == null || rank <= 0) return base
-                other = e.shown.filter { it.rank == 0 }.firstOrNull()
-                tuneWeight = config.pickedOverTopTuneWeight
-            }
-            CommitMethod.Typed -> {
-                val predicted = e.shown.filter { it.shownAtChars == 0 }
-                if (predicted.isEmpty() || predicted.any { sameWord(it.text, e.committed) })
-                    return base
-                other = predicted.minByOrNull { it.rank }
-                tuneWeight = config.typedPastPredictionTuneWeight
-            }
-            else -> return base
-        }
-        if (other == null || sameWord(other.text, e.committed)) return base
+        val prev = e.context.lastOrNull()
+        val conflict = if (e.committedIsKnown) conflictOf(e) else null
+        if (prev == null || conflict == null) return base
         var boosted = false
-        val out =
-            base.map {
-                if (!boosted && it is WordUsed && it.weight > 0f && sameWord(it.word, e.committed)) {
-                    boosted = true
-                    it.copy(weight = it.weight + config.conflictExtraWeight)
-                } else {
-                    it
-                }
+        val out = base.map {
+            if (!boosted && it is WordUsed && isPositiveUse(it, e.committed)) {
+                boosted = true
+                it.copy(weight = it.weight + config.conflictExtraWeight)
+            } else {
+                it
             }
-        return out + BaseTuneEvidence(prev, e.committed, other.text, tuneWeight)
+        }
+        return out + BaseTuneEvidence(prev, e.committed, conflict.first.text, conflict.second)
+    }
+
+    private fun isPositiveUse(u: WordUsed, word: String) = u.weight > 0f && sameWord(u.word, word)
+
+    /** The word the built-in model put first and the tune weight, or null when no conflict. */
+    private fun conflictOf(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val hit =
+            when (e.method) {
+                CommitMethod.SuggestionPicked,
+                CommitMethod.PredictionPicked -> pickedConflict(e)
+                CommitMethod.Typed -> typedConflict(e)
+                else -> null
+            }
+        return hit?.takeIf { !sameWord(it.first.text, e.committed) }
+    }
+
+    private fun pickedConflict(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val rank = e.pickedRank ?: e.shown.firstOrNull { sameWord(it.text, e.committed) }?.rank
+        val top = e.shown.firstOrNull { it.rank == 0 }
+        return if (rank != null && rank > 0 && top != null) {
+            top to config.pickedOverTopTuneWeight
+        } else {
+            null
+        }
+    }
+
+    private fun typedConflict(e: WordCommitted): Pair<ShownSuggestion, Float>? {
+        val predicted = e.shown.filter { it.shownAtChars == 0 }
+        val top = predicted.minByOrNull { it.rank }
+        val pastIt = predicted.none { sameWord(it.text, e.committed) }
+        return if (top != null && pastIt) top to config.typedPastPredictionTuneWeight else null
     }
 
     /** Rows 2, 3, 4, 13: user typed [WordCommitted.committed] and finished it themselves. */

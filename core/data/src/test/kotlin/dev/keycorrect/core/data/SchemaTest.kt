@@ -76,8 +76,9 @@ class SchemaTest {
     }
 
     @Test
-    fun versionIsFive() {
-        assertThat(Schema.VERSION).isEqualTo(5)
+    fun versionIsSix() {
+        assertThat(Schema.VERSION).isEqualTo(6)
+        assertThat(Schema.plan(Schema.MIGRATIONS, 5, 6)).hasSize(1)
         assertThat(Schema.plan(Schema.MIGRATIONS, 1, 2)).hasSize(1)
         assertThat(Schema.plan(Schema.MIGRATIONS, 3, 4)).hasSize(1)
         assertThat(Schema.plan(Schema.MIGRATIONS, 4, 5)).hasSize(1)
@@ -125,5 +126,24 @@ class SchemaTest {
                 .map { it.removePrefix("CREATE TABLE ").substringBefore(' ') }
         assertThat(created).containsExactlyElementsIn(Schema.CLIP_TABLES)
         assertThat(statements.none { it.startsWith("DROP") || it.startsWith("ALTER") }).isTrue()
+    }
+
+    @Test
+    fun v5ToV6MigrationCreatesOnlyTheTuneTable() {
+        val statements = ArrayList<String>()
+        val db =
+            java.lang.reflect.Proxy.newProxyInstance(
+                javaClass.classLoader,
+                arrayOf(androidx.sqlite.db.SupportSQLiteDatabase::class.java),
+            ) { _, method, args ->
+                if (method.name == "execSQL") statements += args[0] as String
+                null
+            } as androidx.sqlite.db.SupportSQLiteDatabase
+
+        Schema.migrate(db, Schema.MIGRATIONS, 5, 6)
+
+        assertThat(statements).hasSize(1)
+        assertThat(statements[0]).startsWith("CREATE TABLE learning_tune ")
+        assertThat(Schema.LEARNING_TABLES).contains("learning_tune")
     }
 }

@@ -151,7 +151,12 @@ class RecorrectionTest {
 
     @Test
     fun aKnownWordInAnEmailFieldShowsNothing() {
-        start(FieldProfile.from(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, 0))
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                0,
+            )
+        )
         predictor.word("hello", listOf("hello", "help"))
         tapInto("say hello", 9)
         assertThat(controller.strip.isEmpty).isTrue()

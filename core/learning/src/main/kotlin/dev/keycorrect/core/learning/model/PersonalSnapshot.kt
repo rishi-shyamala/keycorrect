@@ -15,6 +15,7 @@ data class LearningCounts(val wordsLearned: Long = 0, val contextCorrections: Lo
  * by [PersonalModel] on the learning thread and published through an atomic reference; never
  * mutated afterwards (collections are private copies, table shards are shared copy-on-write).
  */
+@Suppress("TooManyFunctions") // The read-only Personalization surface plus its test accessors.
 class PersonalSnapshot
 internal constructor(
     /** Increases with every publish. */
@@ -42,8 +43,7 @@ internal constructor(
     override fun userContextEvidence(context: List<String>): Float =
         ngrams?.contextEvidence(context) ?: 0f
 
-    override fun baseTune(prevWord: String, word: String): Float =
-        tune?.value(prevWord, word) ?: 0f
+    override fun baseTune(prevWord: String, word: String): Float = tune?.value(prevWord, word) ?: 0f
 
     override fun correctionBias(typed: String, candidate: String, contextBucket: String): Float =
         corrections?.bias(typed, candidate, contextBucket) ?: 0f

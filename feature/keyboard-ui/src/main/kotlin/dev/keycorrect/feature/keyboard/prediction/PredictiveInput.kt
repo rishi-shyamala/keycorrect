@@ -134,14 +134,15 @@ internal class PredictiveInput(
 
     /**
      * The word the cursor was just placed in or after (an external move), whose replacements the
-     * strip offers (the corrections of an unknown word, the other contextual choices of a known one); see [startRecorrect]. Cleared by typing and by any move.
+     * strip offers (the corrections of an unknown word, the other contextual choices of a known
+     * one); see [startRecorrect]. Cleared by typing and by any move.
      */
     private var recorrect: TextContextCache.WordAround? = null
 
     /**
      * Whether the engine ranked a candidate above the re-corrected word itself (its literal score
-     * is below the best other candidate's). Prepared for a future "likely real-word typo"
-     * highlight (N-25); nothing in the UI uses it yet. Valid while a re-correction is showing.
+     * is below the best other candidate's). Prepared for a future "likely real-word typo" highlight
+     * (N-25); nothing in the UI uses it yet. Valid while a re-correction is showing.
      */
     private var recorrectOutranked = false
 
@@ -581,10 +582,11 @@ internal class PredictiveInput(
      * start of a word (Android puts a tap on a word's left half before it): decodes it as composing
      * text without touches and offers the candidates in the strip ([onRecorrectResult]), the word
      * itself left out, so the strip shows the next three whether the word is unknown (corrections)
-     * or a dictionary word (what else fits here, N-25). Nothing is read where suggestions aren't allowed (sensitive
-     * fields, none wanted) or no engine exists; the text before the cursor was just read by
-     * [refreshContext], so this adds the one read of the text after it. Costs nothing per
-     * keystroke: only an external cursor move gets here, and the decode runs on the decoder thread.
+     * or a dictionary word (what else fits here, N-25). Nothing is read where suggestions aren't
+     * allowed (sensitive fields, none wanted) or no engine exists; the text before the cursor was
+     * just read by [refreshContext], so this adds the one read of the text after it. Costs nothing
+     * per keystroke: only an external cursor move gets here, and the decode runs on the decoder
+     * thread.
      */
     @Suppress("ReturnCount") // guard clauses
     private fun startRecorrect() {
@@ -904,15 +906,21 @@ internal class PredictiveInput(
 
     /** Letters and apostrophes, two letters at least, no shortcut, not in an e-mail/URL field. */
     private fun isPlainWord(word: String): Boolean {
-        if (backend.predictor == null) return false // the dictionary isn't loaded: all is unknown
         val kind = profile?.kind
-        if (kind == FieldKind.Email || kind == FieldKind.Url) return false
-        if (word.count { it.isLetter() } < 2) return false
-        if (!word.first().isLetter() || !word.all { it.isLetter() || isApostrophe(it) }) {
-            return false
-        }
-        return backend.shortcutFor(word) == null
+        // Without a predictor the dictionary isn't loaded: all is unknown.
+        val fieldOk = backend.predictor != null && kind != FieldKind.Email && kind != FieldKind.Url
+        val shape =
+            word.count { it.isLetter() } >= 2 &&
+                word.first().isLetter() &&
+                word.all { it.isLetter() || isApostrophe(it) }
+        return fieldOk && shape && backend.shortcutFor(word) == null
     }
+
+    /** A strip tap (suggestion, prediction or context replacement), not typing. */
+    private fun Learned.isPick() =
+        this == Learned.SuggestionPicked ||
+            this == Learned.PredictionPicked ||
+            this == Learned.ContextReplaced
 
     /** Whether a tap may add a word here: an explicit act, but never in incognito. */
     private fun canAddWords() = profile?.wordsCanBeAdded == true && !settings.incognito
@@ -2059,10 +2067,7 @@ internal class PredictiveInput(
         }
         val session = sessionFor(pre)
         edit = null
-        val isPick =
-            method == Learned.SuggestionPicked ||
-                method == Learned.PredictionPicked ||
-                method == Learned.ContextReplaced
+        val isPick = method.isPick()
         val resolution = resolveEdit(session, committed, isPick)
         phrases.advance(committed, pre.phraseKept, pre.offered, pre.context, startWatch = true)
         if (resolution == Resolution.Unchanged) return null

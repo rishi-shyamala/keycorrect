@@ -248,10 +248,10 @@ data class UserDataConfig(
     /**
      * Weight of the personal n-gram in the interpolated language model: `ln(w * P_user + (1 - w) *
      * P_base)`, used where `Personalization.userLogProb` is non-null. The weight grows with the
-     * personal model's confidence c in the current context: `w = min + (max - min) * c`, with c =
-     * n / (n + [userNgramConfidenceK]) and n the decayed evidence behind the context (the trigram
-     * context's total if any, else the bigram context's; 0 without). With no context evidence
-     * w = [userNgramWeightMin] (the former fixed 0.25); a context the user has typed in often
+     * personal model's confidence c in the current context: `w = min + (max - min) * c`, with c = n
+     * / (n + [userNgramConfidenceK]) and n the decayed evidence behind the context (the trigram
+     * context's total if any, else the bigram context's; 0 without). With no context evidence w =
+     * [userNgramWeightMin] (the former fixed 0.25); a context the user has typed in often
      * approaches [userNgramWeightMax], slightly above the built-in model (N-26).
      */
     val userNgramWeightMin: Float = 0.25f,

@@ -118,11 +118,17 @@ class PersonalLayersTest {
     fun theBaseTuneNudgesTheBuiltInScoreAndCountsAsPersonal() {
         val base = heldLm(plain)
         val tuned =
-            heldLm(engine(Fake(tune = { prev, w -> if (prev == "they" && w == "held") 0.5f else 0f })))
+            heldLm(
+                engine(Fake(tune = { prev, w -> if (prev == "they" && w == "held") 0.5f else 0f }))
+            )
         assertThat(tuned.lm).isWithin(1e-4f).of(base.lm + 0.5f)
         assertThat(tuned.userLm).isWithin(1e-4f).of(0.5f)
         // Another context is not tuned.
-        val other = heldLm(engine(Fake(tune = { p, w -> if (p == "they" && w == "held") 0.5f else 0f })), "you ")
+        val other =
+            heldLm(
+                engine(Fake(tune = { p, w -> if (p == "they" && w == "held") 0.5f else 0f })),
+                "you ",
+            )
         assertThat(other.lm).isWithin(1e-4f).of(heldLm(plain, "you ").lm)
     }
 
@@ -168,11 +174,13 @@ class PersonalLayersTest {
         // Background typing, so the personal n-gram has enough mass to speak at all.
         val words = listOf("the", "and", "was", "see", "keys", "home", "friend", "water", "world")
         repeat(40) { i ->
-            model.apply(listOf(LearningUpdate.WordUsed(emptyList(), words[i % words.size], 1f)), t++)
+            model.apply(
+                listOf(LearningUpdate.WordUsed(emptyList(), words[i % words.size], 1f)),
+                t++,
+            )
         }
         repeat(replacements) {
-            val ups =
-                classifier.classify(replaced(listOf("Sharks", "live"), "in", "on", t))
+            val ups = classifier.classify(replaced(listOf("Sharks", "live"), "in", "on", t))
             model.apply(ups, t++)
         }
         model.publishNow(t)
@@ -191,7 +199,8 @@ class PersonalLayersTest {
         val e = engine(model.snapshot())
         val after = nextWords(e, "Sharks live ")
         assertThat(after).contains("on")
-        assertThat(after.indexOf("on")).isLessThan(after.indexOf("in").let { if (it < 0) Int.MAX_VALUE else it })
+        assertThat(after.indexOf("on"))
+            .isLessThan(after.indexOf("in").let { if (it < 0) Int.MAX_VALUE else it })
 
         // Elsewhere the order is what the built-in model says.
         val put = nextWords(plain, "Put it ")

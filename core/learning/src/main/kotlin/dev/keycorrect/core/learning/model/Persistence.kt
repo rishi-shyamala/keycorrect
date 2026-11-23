@@ -256,17 +256,21 @@ class InMemoryLearningStore : LearningStore {
  *
  * Format v1: fields joined by U+001F; field 0 = `v1`, field 1 = type tag (W word-used, N new-word,
  * A add-word, R revert-kept, C correction, S suppress, B block, T touch, P preference, O outcome, F
- * phrase, K casing, U base tune). A P item's trailing field (the FieldClass name) is absent in older rows and
- * then decodes as Text. Strings are percent-escaped for `%`, U+001F and U+001E. A list is one
- * field: `count` followed by its items, all joined by U+001E. Floats use [Float.toString] (exact
- * round trip). A touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions
- * or corrupt data, so an old app never crashes on a newer journal.
+ * phrase, K casing, U base tune). A P item's trailing field (the FieldClass name) is absent in
+ * older rows and then decodes as Text. Strings are percent-escaped for `%`, U+001F and U+001E. A
+ * list is one field: `count` followed by its items, all joined by U+001E. Floats use
+ * [Float.toString] (exact round trip). A touch sample item is `charCode,dx,dy`. [decode] returns
+ * null for unknown versions or corrupt data, so an old app never crashes on a newer journal.
  */
 object JournalCodec {
     const val VERSION = "v1"
     private const val FS = '\u001F'
     private const val RS = '\u001E'
 
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "LongMethod",
+    ) // One flat branch per update type, nothing nested.
     fun encode(update: LearningUpdate): String {
         val f = ArrayList<String>()
         f += VERSION

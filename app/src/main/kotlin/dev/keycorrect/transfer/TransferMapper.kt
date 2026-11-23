@@ -17,9 +17,9 @@ import dev.keycorrect.core.learning.model.PersistedLearning
 import dev.keycorrect.core.learning.model.RankerWeightRow
 import dev.keycorrect.core.learning.model.SentenceRow
 import dev.keycorrect.core.learning.model.SuppressionRow
-import dev.keycorrect.core.learning.model.TuneRow
 import dev.keycorrect.core.learning.model.TouchProfileRow
 import dev.keycorrect.core.learning.model.TouchRow
+import dev.keycorrect.core.learning.model.TuneRow
 import dev.keycorrect.core.learning.model.UserWordRow
 import dev.keycorrect.core.transfer.BlockedWord
 import dev.keycorrect.core.transfer.CandidateEntry
@@ -40,12 +40,12 @@ import dev.keycorrect.core.transfer.SettingValue
 import dev.keycorrect.core.transfer.SettingsSection
 import dev.keycorrect.core.transfer.ShortcutEntry
 import dev.keycorrect.core.transfer.SuppressionEntry
-import dev.keycorrect.core.transfer.TuneEntry
 import dev.keycorrect.core.transfer.TouchBucket
 import dev.keycorrect.core.transfer.TouchKeyStats
 import dev.keycorrect.core.transfer.TouchSection
 import dev.keycorrect.core.transfer.TransferBundle
 import dev.keycorrect.core.transfer.TransferManifest
+import dev.keycorrect.core.transfer.TuneEntry
 
 /** The ranker's live weights are stored under this checkpoint time. */
 private const val LIVE_RANKER = -1L
