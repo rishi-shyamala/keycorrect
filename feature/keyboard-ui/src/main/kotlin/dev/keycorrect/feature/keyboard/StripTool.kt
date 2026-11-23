@@ -5,11 +5,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -144,7 +142,7 @@ internal class ToolSlots(
 }
 
 private const val TOOL_ANIMATION_MILLIS = 250
-private val TOOL_ANIMATION = tween<Float>(TOOL_ANIMATION_MILLIS, easing = FastOutSlowInEasing)
+internal val TOOL_ANIMATION = tween<Float>(TOOL_ANIMATION_MILLIS, easing = FastOutSlowInEasing)
 private val EdgeToolWidth = 32.dp
 
 /** Wide enough for a 48 dp touch target (the strip is 40 dp tall, so that is its limit). */
@@ -153,17 +151,23 @@ private const val IDLE_ICON_DP = 24f
 private const val BUSY_ICON_DP = 18f
 
 /**
- * The strip: [StripTool] buttons and [content] between them. Idle, the tools are full size and
- * evenly spaced across the strip and [content] is invisible (it has nothing to show); busy, they
- * shrink and move to the edges (Edit and Emoji left, Settings and Clipboard right) around
- * [content], which fades in. A 250 ms animation moves each tool between its two slots.
+ * The strip: [StripTool] buttons and [content] between them, in one of three [StripToolsMode]s.
+ *
+ * [StripToolsMode.Full]: idle, the tools are full size and evenly spaced across the strip and
+ * [content] is invisible (it has nothing to show); busy, they shrink and move to the edges (Edit
+ * and Emoji left, Settings and Clipboard right) around [content], which fades in.
+ * [StripToolsMode.Collapsed]: the tools fold into a chevron button at the left edge and [content]
+ * widens to fill the rest. [StripToolsMode.Revealed]: the tools fan out from the chevron to even
+ * slots and [content] fades out. Every change between these animates over 250 ms (see
+ * [CollapseSlots] for the geometry).
  *
  * The busy flag (see [stripBusy]; [autofillActive] adds autofill chips) is read only by the
- * [snapshotFlow] that drives the animation, and the animated progress only by the layout and draw
- * phases, so typing never recomposes this: it recomposes only what [content] reads.
+ * [snapshotFlow] that drives its animation, and the animated progress values only by the layout and
+ * draw phases. The mode is derived, so only its flips recompose this: typing recomposes only what
+ * [content] reads.
  */
 @Composable
-@Suppress("LongParameterList") // the controller, host callbacks, and the slot; one entry point
+@Suppress("LongParameterList", "LongMethod") // one entry point; one layout of all three modes
 internal fun StripTools(
     controller: KeyboardController,
     onPress: () -> Unit,
@@ -176,36 +180,54 @@ internal fun StripTools(
     val tools =
         if (controller.selectionStripVisible && !autofillActive) emptyList() else controller.tools
     val progress = rememberBusyProgress(controller, autofillActive)
-    val mode = stripToolsMode(controller.suggestionsShown, autofillActive, controller.toolsRevealed)
-    if (tools.isNotEmpty() && mode != StripToolsMode.Full) {
-        CollapsibleTools(
-            controller,
-            tools,
-            revealed = mode == StripToolsMode.Revealed,
-            onPress,
-            onOpenSettings,
-            modifier,
-            content,
-        )
-        return
-    }
+    val mode = rememberToolsMode(controller, autofillActive)
+    // A strip with no tools has nothing to fold: it keeps the Full layout.
+    val shownMode = if (tools.isEmpty()) StripToolsMode.Full else mode
+    val collapse = rememberModeProgress(shownMode != StripToolsMode.Full)
+    val reveal = rememberModeProgress(shownMode == StripToolsMode.Revealed)
+    // What can be tapped (and is reported to accessibility) follows the target mode, so nothing
+    // invisible takes a tap.
+    val toolsActive = shownMode != StripToolsMode.Collapsed
+    val chevronActive = shownMode != StripToolsMode.Full
+    val revealed = shownMode == StripToolsMode.Revealed
     val leftCount = leftToolCount(tools)
-    val edgePx = with(LocalDensity.current) { EdgeToolWidth.roundToPx() }
+    val density = LocalDensity.current
+    val edgePx = with(density) { EdgeToolWidth.roundToPx() }
+    val chevronPx = with(density) { CollapseButtonWidth.roundToPx() }
+    val iconProgress =
+        remember(progress, collapse, reveal) {
+            derivedIconProgress(progress, collapse, reveal)
+        }
     Layout(
         content = {
             tools.forEach { tool ->
                 ToolButton(
                     icon = tool.icon(),
                     description = tool.description(),
-                    progress = progress,
+                    progress = iconProgress,
                     selected = controller.selectedState(tool),
+                    enabled = toolsActive,
+                    modifier =
+                        Modifier.graphicsLayer {
+                            alpha = CollapseSlots.toolAlpha(collapse.value, reveal.value)
+                        },
                 ) {
                     onPress()
                     controller.onTool(tool, onOpenSettings)
                 }
             }
-            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = progress.value }) {
+            Box(
+                modifier =
+                    Modifier.fillMaxSize().graphicsLayer {
+                        alpha =
+                            CollapseSlots.contentAlpha(progress.value, collapse.value, reveal.value)
+                    }
+            ) {
                 content()
+            }
+            ChevronButton(revealed, chevronActive, collapse) {
+                onPress()
+                controller.toggleToolsRevealed()
             }
         },
         modifier = modifier.fillMaxSize(),
@@ -213,80 +235,30 @@ internal fun StripTools(
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val count = tools.size
+        val slots = CollapseSlots(ToolSlots(count, leftCount, width, edgePx), chevronPx)
         val t = progress.value
-        val slots = ToolSlots(count, leftCount, width, edgePx)
-        val toolWidth = if (count == 0) 0 else slots.width(t)
-        // The content is always laid out at its busy size; only its alpha animates.
-        val middle =
-            measurables[count].measure(
-                Constraints.fixed((width - count * edgePx).coerceAtLeast(0), height)
-            )
-        val buttons = Array(count) { measurables[it].measure(Constraints.fixed(toolWidth, height)) }
+        val c = collapse.value
+        val r = reveal.value
+        val middle = measurables[count].measure(Constraints.fixed(slots.contentWidth(c), height))
+        val buttons =
+            Array(count) {
+                measurables[it].measure(Constraints.fixed(slots.toolWidth(t, c, r), height))
+            }
+        val chevron = measurables[count + 1].measure(Constraints.fixed(chevronPx, height))
         layout(width, height) {
-            middle.place(leftCount * edgePx, 0)
-            buttons.forEachIndexed { i, p ->
-                p.place(slots.x(i, t), 0)
+            // A part that is fully hidden is not placed, so it draws nothing and takes no input.
+            if (c < 1f || r < 1f) middle.place(slots.contentX(c), 0)
+            if (c < 1f || r > 0f) {
+                buttons.forEachIndexed { i, p -> p.place(slots.toolX(i, t, c, r), 0) }
             }
-        }
-    }
-}
-
-/**
- * The strip while suggestions show: a collapse button at the left edge, then either [content]
- * (collapsed, nearly the full width) or the [tools] spread evenly (revealed). No animation: the
- * swap is a state change of one tap. A strip with no tools never gets here.
- */
-@Composable
-@Suppress("LongParameterList") // the controller, host callbacks, and the slot; one entry point
-private fun CollapsibleTools(
-    controller: KeyboardController,
-    tools: List<StripTool>,
-    revealed: Boolean,
-    onPress: () -> Unit,
-    onOpenSettings: () -> Unit,
-    modifier: Modifier,
-    content: @Composable () -> Unit,
-) {
-    Row(modifier = modifier.fillMaxSize()) {
-        ToolButton(
-            icon = if (revealed) ShortcutIcons.ChevronLeft else ShortcutIcons.ChevronRight,
-            description =
-                stringResource(
-                    if (revealed) R.string.shortcut_tools_hide else R.string.shortcut_tools_show
-                ),
-            progress = FullSizeIcons,
-            selected = null,
-            modifier = Modifier.width(CollapseButtonWidth),
-            stateDescription =
-                stringResource(
-                    if (revealed) R.string.shortcut_tools_expanded
-                    else R.string.shortcut_tools_collapsed
-                ),
-        ) {
-            onPress()
-            controller.toggleToolsRevealed()
-        }
-        if (revealed) {
-            tools.forEach { tool ->
-                ToolButton(
-                    icon = tool.icon(),
-                    description = tool.description(),
-                    progress = FullSizeIcons,
-                    selected = controller.selectedState(tool),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    onPress()
-                    controller.onTool(tool, onOpenSettings)
-                }
-            }
-        } else {
-            Box(Modifier.weight(1f).fillMaxHeight()) { content() }
+            // Placed last, so it is on top of the tools folding into it.
+            if (c > 0f) chevron.place(slots.chevronX(c), 0)
         }
     }
 }
 
 /** Progress 0 is the idle, full-size icon. */
-private val FullSizeIcons: State<Float> =
+internal val FullSizeIcons: State<Float> =
     object : State<Float> {
         override val value: Float = 0f
     }
@@ -318,17 +290,19 @@ private fun rememberBusyProgress(
 
 /**
  * One tool button, a full-height touch target that fills the width it is given. Its icon shrinks
- * from 24 dp to 18 dp as [progress] goes to busy. [selected] is null for a plain button, else
+ * from 24 dp to 18 dp as [progress] goes to busy. A button that is not [enabled] is hidden: it
+ * takes no taps and is not reported to accessibility. [selected] is null for a plain button, else
  * whether the tool is on (drawn in the primary colour and reported to accessibility).
  */
 @Composable
 @Suppress("LongParameterList") // icon, label, state, modifier and click: a button's own inputs
-private fun ToolButton(
+internal fun ToolButton(
     icon: ImageVector,
     description: String,
     progress: State<Float>,
     selected: Boolean?,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     stateDescription: String? = null,
     onClick: () -> Unit,
 ) {
@@ -340,8 +314,10 @@ private fun ToolButton(
             modifier
                 .fillMaxHeight()
                 .focusProperties { canFocus = false }
-                .clickable(onClick = onClick)
+                .clickable(enabled = enabled, onClick = onClick)
                 .clearAndSetSemantics {
+                    // A hidden button (folded away mid-animation) says nothing.
+                    if (!enabled) return@clearAndSetSemantics
                     contentDescription = description
                     role = Role.Button
                     if (selected != null) this.selected = selected
