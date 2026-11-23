@@ -22,12 +22,19 @@ import kotlinx.serialization.json.long
  * [EvalKeyboard]: [target] is the word without surrounding punctuation, [context] the words of its
  * sentence before it (the dataset has no committed text, so this is oracle context).
  */
+@Suppress("LongParameterList") // A plain data row: the dataset's fields, mapped.
 class RealSwipe(
     val target: String,
     val context: String,
     val gesture: GestureInput,
     /** Whether the dictionary has the word; no dictionary-bound decoder can return it otherwise. */
     val inDictionary: Boolean,
+    /** The dataset's session id (one recording session of one person), "" in hand-made rows. */
+    val session: String = "",
+    /** Recording time of the row in epoch ms (0 when absent); orders a session's swipes. */
+    val timestamp: Long = 0L,
+    /** The dataset's row id (tie-break for equal timestamps). */
+    val id: Long = 0L,
 )
 
 /** What [RealSwipes.load] kept and why it dropped the rest. */
@@ -45,6 +52,9 @@ class RealSwipeSet(
  * [rmsKeyWidths] is the fit's residual, so a layout mismatch shows up in the report.
  */
 class AffineMap(private val x: DoubleArray, private val y: DoubleArray, val rmsKeyWidths: Double) {
+    /** The six parameters `[a, b, c, d, e, f]` of `x' = a u + b v + c`, `y' = d u + e v + f`. */
+    fun coefficients(): DoubleArray = doubleArrayOf(x[0], x[1], x[2], y[0], y[1], y[2])
+
     fun mapX(u: Double, v: Double) = (x[0] * u + x[1] * v + x[2]).toFloat()
 
     fun mapY(u: Double, v: Double) = (y[0] * u + y[1] * v + y[2]).toFloat()
@@ -165,6 +175,9 @@ object RealSwipes {
                         context(row.str("sentence"), index),
                         GestureInput(touches),
                         known(target),
+                        row["session"]?.jsonPrimitive?.content.orEmpty(),
+                        row["timestamp"]?.jsonPrimitive?.long ?: 0L,
+                        row["id"]?.jsonPrimitive?.long ?: 0L,
                     )
                 )
             }

@@ -394,6 +394,67 @@ Real swipes score about 8 points below the clean synthetic run (89.5% at noise 0
 messy one (78.5% at 0.4). On dictionary words, half of the misses still have the target in the
 top 3 (a ranking problem); the other half don't (a shape problem). Long words lose the most.
 
+### Swipe learning replay (`--learn`, 2026-11-23)
+
+Part 1 of PHASE10 10a-5 (eval only; no app change). Each swipe.futo.org session with at least
+`--learn-min-swipes` (default 100) swipes is one simulated user, with a fresh engine and personal
+model. Its swipes are ordered by (timestamp, id); the first half is the early history and only the
+second half is scored (top-1, top-3, wrong commits as in the real-swipe report; all words and
+dictionary words). Arms:
+
+- **baseline**: no learning. (Rows without a session id are left out.)
+- **word-use learning**: today's production learning. After every swipe the simulated user commits
+  the decoded top word as `CommitMethod.Gesture` (as `commitSwipe` does). If it was wrong and the
+  target is in the top 3 the user taps it: a second Gesture commit of the target (as
+  `replaceSwipedWord`); otherwise the target is committed as Typed with no touches. Events go
+  through `OutcomeClassifier` into a `PersonalModel` bound to the engine's `Personalization`.
+  Not replayed: `WordReplaced` and the sentence buffer. Context is the oracle sentence prefix.
+- **path calibration ceiling** (diagnostic, not a product feature): one affine map per session
+  (6 parameters, EvalKeyboard pixels) fitted on all the session's swipes so the gestures line up
+  with the polylines through their target words' key centres (both resampled to 64 points by arc
+  length), applied to the late-half gestures. It uses the answers, hence a ceiling. The report also
+  gives the mean fitted offset, scale and skew in key widths.
+- **offset-only calibration ceiling**: the same fit restricted to a translation. Added because the
+  arc-length alignment's noise biases the scale terms (y scale fits at 0.84, a regression-dilution
+  artefact), which makes the full affine arm worse than doing nothing.
+
+"Regressions" are late-half swipes right in the baseline and wrong in the arm; "fixes" the reverse.
+Output: `<out>/swipe-learn/report.txt` and `report.json`, byte-identical across runs.
+
+```
+./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --learn"
+./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --learn --neural"
+```
+
+Dev split: 54,269 rows, 52,472 swipes in 682 sessions; 141 sessions kept; 16,609 scored late-half
+swipes (16,019 dictionary words). Late-half top-1 / top-3 / wrong commits (all words), with
+regressions / fixes against the baseline:
+
+| Decoder | Arm | Top-1 | Top-3 | Wrong | Regr. | Fixes |
+|---|---|---|---|---|---|---|
+| SHARK² | baseline | 82.05% | 89.46% | 17.88% | | |
+| SHARK² | word-use learning | 82.03% | 89.45% | 17.89% | 11 | 9 |
+| SHARK² | calibration ceiling | 81.38% | 89.16% | 18.62% | 396 | 285 |
+| SHARK² | offset-only ceiling | 82.30% | 89.63% | 17.64% | 92 | 135 |
+| + neural | baseline | 91.69% | 94.80% | 8.31% | | |
+| + neural | word-use learning | 91.65% | 94.81% | 8.34% | 11 | 5 |
+| + neural | calibration ceiling | 91.67% | 94.92% | 8.32% | 147 | 145 |
+| + neural | offset-only ceiling | 91.85% | 95.04% | 8.15% | 91 | 118 |
+
+Dictionary words move by the same amounts. Mean fitted shift over sessions: +0.05 / -0.10 key
+widths (x / y; mean absolute 0.07 / 0.10). Reading: word-use learning from swipes does nothing
+measurable on a session's later half; the oracle affine fit does not reach the +0.3 point bar
+(N-24) and hurts SHARK²; only the offset-only oracle gains (+0.26 SHARK², +0.16 with the encoder).
+
+Misdecode memory ceiling (the report's last section; counted on the baseline's top-8 decodes,
+skipping swipes with no candidate, so its total is a few swipes below the arms'): a late-half swipe
+is fixable when its wrong top-1 and its target, both in the top 8, form a decoded -> picked pair
+the user tapped earlier in the session (target in the top 3); at risk when its right top-1 forms
+such a pair with another top-8 candidate. With the encoder: 27 fixable vs 202 at risk after one
+earlier pick, 4 vs 34 after two (SHARK²: 43 vs 474, 5 vs 65), out of 16,608 (SHARK²: 16,597)
+counted swipes. Wrong
+swipes rarely repeat the same way, so 10a-5 stops here (DECISIONS N-23).
+
 ### Neural fusion (`--neural`)
 
 Phase 10a-3 (docs/PHASE10.md): FUTO Swipe's encoder fused with SHARK². `--neural` works for
