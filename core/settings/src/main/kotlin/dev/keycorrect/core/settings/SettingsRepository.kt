@@ -141,6 +141,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 spacebarCursor = this[SPACEBAR_CURSOR] ?: d.spacebarCursor,
                 gestureTyping = this[GESTURE_TYPING] ?: d.gestureTyping,
                 gestureTrail = this[GESTURE_TRAIL] ?: d.gestureTrail,
+                neuralSwipe = this[NEURAL_SWIPE] ?: d.neuralSwipe,
                 cursorSpeed =
                     CursorSpeed.entries.firstOrNull { it.name == this[CURSOR_SPEED] }
                         ?: d.cursorSpeed,
@@ -299,6 +300,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         this[SPACEBAR_CURSOR] = s.spacebarCursor
         this[GESTURE_TYPING] = s.gestureTyping
         this[GESTURE_TRAIL] = s.gestureTrail
+        this[NEURAL_SWIPE] = s.neuralSwipe
         this[CURSOR_SPEED] = s.cursorSpeed.name
         this[BACKSPACE_SWIPE] = s.backspaceSwipe
         this[EMOJI_SUGGESTIONS] = s.emojiSuggestions
@@ -394,6 +396,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
         val GESTURE_TYPING = booleanPreferencesKey("gesture_typing")
         val GESTURE_TRAIL = booleanPreferencesKey("gesture_trail")
+        val NEURAL_SWIPE = booleanPreferencesKey("neural_swipe")
         val CURSOR_SPEED = stringPreferencesKey("cursor_speed")
         val BACKSPACE_SWIPE = booleanPreferencesKey("backspace_swipe")
         val EMOJI_SUGGESTIONS = booleanPreferencesKey("emoji_suggestions")
@@ -452,6 +455,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 SPACEBAR_CURSOR.name,
                 GESTURE_TYPING.name,
                 GESTURE_TRAIL.name,
+                NEURAL_SWIPE.name,
                 BACKSPACE_SWIPE.name,
                 EMOJI_SUGGESTIONS.name,
                 CLIPBOARD_HISTORY.name,

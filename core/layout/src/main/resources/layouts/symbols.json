@@ -1,7 +1,8 @@
 // Symbols layer, page 1: digits, the shifted digits in US order, then punctuation.
 // Row 3 lines up with the letters' row 3 (1.5u page key, 7 keys, 1.5u backspace). The bottom row is
 // appended at runtime (bottomRow: auto). With the number row on, numberRowExtra adds a row of operators
-// under the digits so this page has as many rows as the letters.
+// under the digits so this page has as many rows as the letters. The ^ in row 2 has letterHint false,
+// so the letters' 9-key middle row gets ! @ # $ % & * ( ) (^ is the operator row's third key).
 {
   "format": 1,
   "id": "symbols",
@@ -26,7 +27,7 @@
       { "label": "#", "popup": ["№"] },
       { "label": "$", "popup": ["€", "£", "¥", "¢"] },
       { "label": "%", "popup": ["‰"] },
-      "^",
+      { "label": "^", "letterHint": false },
       { "label": "&", "popup": ["§"] },
       { "label": "*", "popup": ["†", "‡", "★"] },
       { "label": "(", "popup": ["[", "{", "<"] },
@@ -48,8 +49,8 @@
     "insertAt": 1,
     "row": [
       { "label": "+", "popup": ["±"] },
-      "×",
-      "÷",
+      { "label": "×", "popup": ["÷"] },
+      "^",
       { "label": "=", "popup": ["≠", "≈"] },
       { "label": "/", "popup": ["\\"] },
       "_",

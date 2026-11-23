@@ -8,6 +8,8 @@
 #                                      pack APK as a second asset when its files are downloaded
 #                                      (tools/data/fetch-voice.sh; otherwise it is skipped) and
 #                                      the neural pack APK likewise (tools/data/fetch-neural.sh)
+#                                      and the swipe pack APK (tools/data/fetch-swipe-model.sh and
+#                                      tools/swipenet/build.sh android)
 #
 # publish needs a clean, pushed HEAD (the release points at that exact commit) and the signing
 # properties in ~/.gradle/gradle.properties.
@@ -137,6 +139,13 @@ case "${1:-}" in
         publish_pack neural neuralpack verifyNeuralFiles dev.keycorrect.neural tools/data/fetch-neural.sh \
             "  the offline language model and its native library for suggestion reranking. Install it too,
   from the same page; it needs the keyboard installed from the same key. Updates install over it."
+        publish_pack swipe swipepack verifySwipeFiles dev.keycorrect.swipe \
+            tools/data/fetch-swipe-model.sh \
+            "  the optional neural swipe model (FUTO Swipe, about 3.2 MB) that reads swipes more accurately
+  than the built-in decoder. Without it swipes still work; it is on by default once installed and
+  Settings → Editing → Neural swipe turns it off. Powered by FUTO Swipe, used under the FUTO Model
+  Weights License 1.0, whose text ships in the pack and in Settings → About. It needs the keyboard
+  installed from the same key. Updates install over it."
         branch=$(git rev-parse --abbrev-ref HEAD)
         notes="Test build **$name+$short** (Settings → About shows this version).
 
@@ -144,7 +153,7 @@ case "${1:-}" in
 - Package \`dev.keycorrect\`, signed with the KeyCorrect release key; updates install over it.
 - Install: open this page on the phone, download the APK, allow your browser to install unknown
   apps when asked, then enable KeyCorrect in Settings → Keyboard list and default
-  (docs/INSTALL.md).$voice_note$neural_note"
+  (docs/INSTALL.md).$voice_note$neural_note$swipe_note"
         gh release create "$tag" "${assets[@]}" --target "$sha" --prerelease \
             --title "KeyCorrect $name (test build)" --notes "$notes"
         ;;

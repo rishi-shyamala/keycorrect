@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,40 @@ fun LicensesScreen(contentPadding: PaddingValues) {
         Body(R.string.licenses_onnxruntime)
         Body(R.string.licenses_moonshine)
         Body(R.string.licenses_silero)
+        Body(R.string.licenses_executorch)
+
+        FutoSection()
+    }
+}
+
+/**
+ * The FUTO Swipe credit and, with the swipe pack installed, its full licence text (the pack's own
+ * `LICENSE.md`, read from the signed pack).
+ */
+@Composable
+private fun FutoSection() {
+    val pack = rememberSwipePackState()
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    SectionHeader(stringResource(R.string.licenses_futo_header))
+    Body(R.string.licenses_futo_body)
+    val license = (pack as? SwipePackState.Installed)?.license
+    if (license == null) {
+        if (pack !is SwipePackState.Checking) Body(R.string.licenses_futo_not_installed)
+        return
+    }
+    NavRow(
+        title =
+            stringResource(
+                if (expanded) R.string.licenses_futo_hide else R.string.licenses_futo_show
+            ),
+        onClick = { expanded = !expanded },
+    )
+    if (expanded) {
+        Text(
+            license,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
     }
 }
 

@@ -37,10 +37,12 @@ class SwipeNetHostTest {
                 },
         )
 
+    private var enabled = true
+
     private fun host(results: ArrayDeque<() -> SwipePackResult>): Pair<SwipeNetHost, () -> Int> {
         var opens = 0
         val host =
-            SwipeNetHost(scope, dispatcher, clock = { now }) {
+            SwipeNetHost(scope, dispatcher, enabled = { enabled }, clock = { now }) {
                 opens++
                 results.removeFirst()()
             }
@@ -115,5 +117,22 @@ class SwipeNetHostTest {
         assertThat(host.encoder()).isSameInstanceAs(encoder)
         assertThat(opens).isEqualTo(1)
         appScope.cancel()
+    }
+
+    @Test
+    fun withTheSettingOffThePackIsNeverLoadedAndALoadedEncoderIsNotUsed() {
+        enabled = false
+        val (host, opens) = host(ArrayDeque(listOf({ SwipePackResult.Available(encoder, "1") })))
+        assertThat(host.encoder()).isNull()
+        assertThat(host.encoder()).isNull()
+        assertThat(opens()).isEqualTo(0)
+        enabled = true
+        assertThat(host.encoder()).isNull() // the load starts now
+        assertThat(host.encoder()).isSameInstanceAs(encoder)
+        enabled = false
+        assertThat(host.encoder()).isNull()
+        enabled = true
+        assertThat(host.encoder()).isSameInstanceAs(encoder)
+        assertThat(opens()).isEqualTo(1)
     }
 }
