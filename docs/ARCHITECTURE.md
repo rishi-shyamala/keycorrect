@@ -92,6 +92,13 @@ recent forgetting) -> `SqlLearningStore` (atomic commit/replaceAll) and a fresh 
 snapshot published to the engine. Personalization never lives inside an engine; engines only read
 the snapshot. Evidence is eval-checked ([EVAL.md](EVAL.md), "Learning").
 
+Learned touches reach the decoder per key through `Personalization.touchOffset` (mean, shifts the key's
+Gaussian) and `touchSigmaScale` (spread: sqrt of the variance shrunk toward the reference sigma
+0.25, over that sigma, clamped to 0.8-1.3 per axis; `touchSigmaScaling`). Both flow through
+`KeyUnitOffsets` into `SpatialModel`; `SpatialModelCache` keeps a model across snapshots while the
+per-key offsets and scales it was built on are unchanged. The reference variance is that of a normal
+truncated at `touchOutlierLimit`, since the outlier filter makes learned variances read low.
+
 ## Optional packs and plugins
 
 - **Voice pack**, **neural pack** and **swipe pack** (FUTO Swipe encoder, Phase 10): separate APKs, installed by the user, found through

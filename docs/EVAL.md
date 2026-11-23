@@ -672,6 +672,25 @@ Before the phase-3 fixes below (seed 1 / seed 2, all windows): accuracy 86.44 / 
 88.88), personal-word accuracy 56.0 / 64.3, reverts 74 / 73, touch error 0.128 / 0.123, user
 dictionary 104 / 84 words of which 77 / 64 were uncorrected typos.
 
+### Touch sigma scaling (2026-11-22)
+
+`touchSigmaScaling` (default on) scales each key's decoder sigma by its learned touch spread (shrunk
+toward the reference sigma 0.25 with weight 20, at least 20 samples, clamped 0.8-1.3 per axis). Seed
+1, 20 000 words, bias -0.10/+0.20, learning arm (scaling off -> on) / no-learning baseline:
+
+| typist sigma | word accuracy % (all) | keyboard accuracy % (all) | late 10k-20k word / keyboard | false corr. /1000 (all) |
+|---|---|---|---|---|
+| 0.20 | 97.76 -> 97.70 / 97.26 | 93.71 -> 93.74 / 92.57 | 97.97 -> 97.95 / 94.09 -> 94.11 | 1.85 -> 1.75 |
+| 0.35 | 87.34 -> 87.95 / 86.87 | 67.57 -> 68.22 / 66.77 | 87.57 -> 88.22 / 68.01 -> 68.71 | 0.70 -> 0.70 |
+| 0.45 | 78.39 -> 79.80 / 78.47 | 49.20 -> 50.66 / 48.63 | 78.21 -> 79.75 / 49.54 -> 51.05 | 0.50 -> 0.50 |
+
+Seed 2 (all words, scaling off -> on): sigma 0.35 87.65 -> 88.18%, sigma 0.45 79.02 -> 80.61%; false
+corrections 0.60 -> 0.70 and 0.25 -> 0.40 per 1000.
+
+Neutral for a precise typist, +0.6 / +1.4 points of word accuracy at sigma 0.35 / 0.45 (without it the
+learning arm is no better than the baseline at 0.45). The plain eval has no personalization and is
+byte-identical.
+
 ### Revert thresholds (2026-10-10, PLAN §6.3 rows 6/7)
 
 A revert whose restored literal is finished unchanged is a **keep**. `OutcomeClassifier` no longer

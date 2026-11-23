@@ -58,7 +58,8 @@ import kotlin.random.Random
  *   `isSuppressed` are never autocorrected but may still appear in the suggestion strip;
  *   `isBlocked` words are never suggested (candidates, next words, phrases);
  * - casing: `preferredCasing` replaces the dictionary casing when the literal has no capitals;
- * - touch: `touchOffset(touchKey, c)` shifts each key's Gaussian mean by that many key sizes;
+ * - touch: `touchOffset(touchKey, c)` shifts each key's Gaussian mean by that many key sizes and
+ *   `touchSigmaScale` widens or narrows it (learned spread, shrunk and clamped);
  * - gates: `autocorrectThresholdDelta` shifts the autocorrect threshold (see
  *   [AutocorrectInput.thresholdDelta]); `phraseGateDelta` is added to the ln-domain phrase
  *   thresholds (positive = stricter);
@@ -438,7 +439,14 @@ class ClassicEngine(
         val sentenceInitial = lm.atSentenceStart
         val right = lm.parseRightContext(request.context.after)
         val tk = if (active) touchKey() else null
-        val unit = if (tk != null) KeyUnitOffsets { pers.touchOffset(tk, it) } else null
+        val unit =
+            if (tk != null) {
+                object : KeyUnitOffsets {
+                    override fun offset(key: Char) = pers.touchOffset(tk, key)
+
+                    override fun sigmaScale(key: Char) = pers.touchSigmaScale(tk, key)
+                }
+            } else null
         scorer.bind(
             spatialModels.get(
                 request.layout,

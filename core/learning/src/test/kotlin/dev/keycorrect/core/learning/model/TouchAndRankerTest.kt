@@ -29,6 +29,48 @@ class TouchAndRankerTest {
         assertThat(m.snapshot().touchOffset("Tablet/land/x", 'a')).isNull()
     }
 
+    /** Deterministic zero-mean samples with the given spread (alternating +-sd on both axes). */
+    private fun spread(n: Int, sd: Float) =
+        TouchEvidence(
+            key,
+            List(n) {
+                TouchSample('a', if (it % 2 == 0) sd else -sd, if (it % 2 == 0) -sd else sd)
+            },
+        )
+
+    private fun scale(cfg: PersonalModelConfig, n: Int, sd: Float): Pair<Float, Float>? {
+        val m = PersonalModel(cfg.eager())
+        m.applyAt(0, spread(n, sd))
+        return m.snapshot().touchSigmaScale(key, 'A')
+    }
+
+    @Test
+    fun sigmaScaleIsNullBelowMinSamplesOrWhenDisabled() {
+        assertThat(scale(PersonalModelConfig(), 19, 0.3f)).isNull()
+        assertThat(scale(PersonalModelConfig(), 20, 0.3f)).isNotNull()
+        assertThat(scale(PersonalModelConfig(touchSigmaScaling = false), 200, 0.3f)).isNull()
+    }
+
+    @Test
+    fun sigmaScaleIsShrunkTowardOneAndClamped() {
+        val cfg = PersonalModelConfig()
+        // Reference-like spread: about 1 (truncation makes the reference variance a bit lower).
+        val ref = truncatedNormalVariance(cfg.touchReferenceSigma, cfg.touchOutlierLimit)
+        val atRef = scale(cfg, 400, Math.sqrt(ref).toFloat())!!
+        assertThat(atRef.first).isWithin(0.01f).of(1f)
+        // A wide typist with little evidence is pulled toward 1 more than with a lot.
+        val few = scale(cfg, 20, 0.35f)!!.first
+        val many = scale(cfg, 400, 0.35f)!!.first
+        assertThat(few).isLessThan(many)
+        assertThat(few).isGreaterThan(1f)
+        // Shrinkage formula at n = 20, sd = 0.35: w = 20 = k, so variance is the mean of the two.
+        val expected = Math.sqrt(((0.35 * 0.35 + ref) / 2) / ref).toFloat()
+        assertThat(few).isWithin(1e-3f).of(expected)
+        // Clamped on both sides.
+        assertThat(scale(cfg, 400, 0.6f)!!.first).isEqualTo(cfg.touchSigmaMaxScale)
+        assertThat(scale(cfg, 400, 0.02f)!!.second).isEqualTo(cfg.touchSigmaMinScale)
+    }
+
     @Test
     fun touchOffsetIsClampedToHalfAKey() {
         val m = PersonalModel(testConfig())

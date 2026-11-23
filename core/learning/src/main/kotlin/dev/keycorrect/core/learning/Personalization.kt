@@ -28,6 +28,13 @@ interface Personalization {
     /** Learned mean touch offset for [char] (key units), or null below the evidence threshold. */
     fun touchOffset(touchKey: String, char: Char): Pair<Float, Float>?
 
+    /**
+     * Learned multiplier (x, y) of the decoder's key Gaussian width for [char], from the spread of
+     * the user's touches on it (1 = the tuned default), or null below the evidence threshold or
+     * when sigma scaling is off.
+     */
+    fun touchSigmaScale(touchKey: String, char: Char): Pair<Float, Float>? = null
+
     /** Additive adjustment to the autocorrect threshold from the observed revert rate. */
     val autocorrectThresholdDelta: Float
 

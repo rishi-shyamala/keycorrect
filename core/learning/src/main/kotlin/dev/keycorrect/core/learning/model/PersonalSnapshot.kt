@@ -45,6 +45,9 @@ internal constructor(
     override fun touchOffset(touchKey: String, char: Char): Pair<Float, Float>? =
         touch?.offset(touchKey, char)
 
+    override fun touchSigmaScale(touchKey: String, char: Char): Pair<Float, Float>? =
+        touch?.sigmaScale(touchKey, char)
+
     override fun rankerScore(features: RankingFeatures): Float =
         FusionRanker.score(rankerWeights, features, rankerMaxScore)
 
