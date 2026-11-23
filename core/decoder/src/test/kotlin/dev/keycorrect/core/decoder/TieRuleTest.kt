@@ -183,7 +183,8 @@ class TieRuleTest {
 
     @Test
     fun thresholdDeltaShiftsTheGateButRealWordsOnlyGetStricter() {
-        val policy = AutocorrectPolicy()
+        // The short real-word margin is off so "tset" gets the general real-word margin.
+        val policy = AutocorrectPolicy(AutocorrectConfig(shortRealWordMargin = 6f))
         val gap = 20f - 5f
         val base = input(false, cand("a", -5f))
         assertThat(policy.choose(base)).isNotNull()
