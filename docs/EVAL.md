@@ -537,13 +537,14 @@ fields, and contractions ("dont") and their endings are never split, whatever `a
 A typo that is itself a word ("go" for "to", "us" for "is", "or" for "of", "gave" for "have") needs
 `realWordMargin` (6) over the literal to be corrected, and most such fixes sat first in the strip
 without being applied (323 "in top 3 but not applied" on the test split, 290 of them at rank 0).
-For a real-word literal of at most `shortRealWordMaxLength` (4) letters whose best candidate is one
-edit away (an added apostrophe excluded: "were" never becomes "we're" this way), the margin is
+For a real-word literal of at most `shortRealWordMaxLength` (4) characters whose best candidate is one
+decoder edit away (slips to a neighbouring key are part of the touch model, not edits; a candidate
+with more apostrophes than the literal is excluded: "were" never becomes "we're" this way), the margin is
 `shortRealWordMargin` (4). The context acts through the candidate scores; a separate
 language-model gain gate was tried and was inert below a gain of 5 and only cost accuracy above it.
 
 Dev split (seed 11, offset 3000, 2000 sentences, sigma 0.25), margin for words of at most 3 / 4 / 6
-letters, accuracy and in-dictionary FC/1000 (off: 94.19%, 0.14):
+characters, accuracy and in-dictionary FC/1000 (off: 94.19%, 0.14):
 margin 5: 94.31 / 94.35 / 94.37%, FC 0.14 / 0.21 / 0.21; margin 4: 94.42 / 94.46 / 94.47%, FC 0.27 /
 0.41 / 0.62; margin 3: 94.47 / 94.54 / 94.52%, FC 0.34 / 0.69 / 1.10; margin 2: 94.51 / 94.53 /
 94.49%, FC 0.76 / 1.79 / 2.68. Margin 4 at 4 letters was chosen.
@@ -559,8 +560,8 @@ Test split (seed 7, 2000 sentences, `--threads 1`):
 | off, sigma 0.35 | 77.28% | 2.28 | 0.14 | - |
 | **margin 4**, sigma 0.35 | **77.94%** | 2.48 | 0.34 | - |
 
-The four new real-word false corrections at sigma 0.25 are ate -> are, Bye -> The, cart -> cat,
-too -> to (13 700 words). The learned threshold shift still only raises the margin, and a declined
+The four new real-word false corrections at sigma 0.25 are ate -> are, Bye -> The (y -> h is a
+neighbouring-key slip), cart -> cat, too -> to (13 700 words). The learned threshold shift still only raises the margin, and a declined
 pair still vetoes it.
 
 ## Caveats

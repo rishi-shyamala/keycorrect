@@ -140,8 +140,9 @@ data class AutocorrectConfig(
     val realWordMargin: Float = 6f,
     /**
      * [realWordMargin] for a real-word literal of at most [shortRealWordMaxLength] chars whose best
-     * candidate is one edit away ("go" -> "to", "us" -> "is"), where the context usually decides
-     * (docs/EVAL.md, "Short real-word errors"). Equal to [realWordMargin] turns the rule off.
+     * candidate is one decoder edit away and adds no apostrophe ("go" -> "to", "us" -> "is"), where
+     * the context usually decides (docs/EVAL.md, "Short real-word errors"). Equal to
+     * [realWordMargin] turns the rule off.
      */
     val shortRealWordMargin: Float = 4f,
     val shortRealWordMaxLength: Int = 4,

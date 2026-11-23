@@ -51,6 +51,42 @@ class ShortRealWordTest {
     }
 
     @Test
+    fun theLengthLimitIsInclusive() {
+        assertThat(chosen("gave", cand("have", -5.5f))).isEqualTo("have")
+        assertThat(chosen("gaves", cand("haves", -5.5f))).isNull()
+    }
+
+    @Test
+    fun nameFieldsStillAddTheirExtraMargin() {
+        val input =
+            AutocorrectInput(
+                "go",
+                -10f,
+                true,
+                false,
+                listOf(cand("to", -5.5f)),
+                FieldClass.PersonName,
+                true,
+            )
+        assertThat(policy.decide(input, null).chosen).isNull()
+    }
+
+    @Test
+    fun aCloseRunnerUpStillBlocksIt() {
+        val input =
+            AutocorrectInput(
+                "go",
+                -10f,
+                true,
+                false,
+                listOf(cand("to", -5.5f), cand("so", -5.7f)),
+                FieldClass.Text,
+                true,
+            )
+        assertThat(policy.decide(input, null).chosen).isNull()
+    }
+
+    @Test
     fun anAddedApostropheKeepsTheRealWordMargin() {
         assertThat(chosen("were", cand("we're", -5.5f))).isNull()
     }

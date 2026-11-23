@@ -135,9 +135,10 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
 
     /**
      * Whether a real-word literal gets [AutocorrectConfig.shortRealWordMargin]: at most
-     * [AutocorrectConfig.shortRealWordMaxLength] chars and [top] one edit away ("go" -> "to" before
-     * "the store"; the context acts through the scores). Never for an added apostrophe: "were" ->
-     * "we're" and "cant" -> "can't" keep the general margin.
+     * [AutocorrectConfig.shortRealWordMaxLength] chars and [top] one decoder edit away ("go" ->
+     * "to" before "the store"; the context acts through the scores). Never for a candidate with
+     * more apostrophes than the literal: "were" -> "we're" and "cant" -> "can't" keep the general
+     * margin.
      */
     private fun shortRealWord(input: AutocorrectInput, top: RankedCandidate): Boolean =
         input.literal.length <= config.shortRealWordMaxLength &&
