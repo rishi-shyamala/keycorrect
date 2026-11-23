@@ -467,7 +467,9 @@ class PredictiveControllerTest {
         editor.echo(controller)
         assertThat(editor.composing).isEmpty()
         assertThat(text()).isEqualTo("hel")
-        assertThat(controller.strip.isEmpty).isTrue()
+        // The cursor now sits at the start of the unknown word: the strip offers its fixes.
+        assertThat(controller.strip.centre?.text).isEqualTo("help")
+        assertThat(predictor.requests.last().composing.touches).containsExactly(null, null, null)
     }
 
     @Test
@@ -844,7 +846,8 @@ class PredictiveControllerTest {
         editor.echo(controller)
         assertThat(controller.state.shift).isEqualTo(ShiftState.Auto)
         assertThat(editor.capsQueries).isEqualTo(0)
-        assertThat(editor.readCalls).isEqualTo(1) // the text before the cursor
+        // The text before the cursor, then after it: a word may start at the cursor.
+        assertThat(editor.readCalls).isEqualTo(2)
         type("x")
         assertThat(controller.state.shift).isEqualTo(ShiftState.Off)
         assertThat(editor.capsQueries).isEqualTo(0)
