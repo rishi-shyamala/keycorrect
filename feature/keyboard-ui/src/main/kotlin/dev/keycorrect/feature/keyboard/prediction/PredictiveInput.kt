@@ -1259,7 +1259,15 @@ internal class PredictiveInput(
         swiping = null
         if (!canPredict()) return false
         val final = gesture?.let {
-            val request = GestureRequest(s.context, it, layout, MAX_CANDIDATES, loop.advance())
+            val request =
+                GestureRequest(
+                    s.context,
+                    it,
+                    layout,
+                    MAX_CANDIDATES,
+                    loop.advance(),
+                    engineAllowed = engineAllowed(),
+                )
             loop.submitFinalGesture(request)
         }
         if (final == null) return finishSwipe(null, case)

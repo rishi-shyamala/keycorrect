@@ -4,9 +4,12 @@ import com.google.common.truth.Truth.assertThat
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
 import dev.keycorrect.core.engineapi.ComposingInput
+import dev.keycorrect.core.engineapi.GestureInput
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.KeyLayoutModel
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
+import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.engineapi.TypingContext
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -484,5 +487,76 @@ class NeuralRerankerTest {
         assertThat(NeuralReranker.phraseWords("don't worry")).isEqualTo("don't worry")
         assertThat(NeuralReranker.phraseWords("  ")).isNull()
         assertThat(NeuralReranker.phraseWords("2 cats")).isNull()
+    }
+
+    // ------------------------------------------------------------------ swipes
+
+    private fun gestureRequest(allowed: Boolean = true) =
+        GestureRequest(
+            TypingContext("thank you "),
+            GestureInput(listOf(TouchPoint(0f, 0f, 0L), TouchPoint(9f, 9f, 9L))),
+            KeyLayoutModel(1, emptyList()),
+            engineAllowed = allowed,
+            sequence = 7,
+        )
+
+    private val swipeResult =
+        PredictResult(
+            candidates = listOf(dict("hello"), dict("hells"), dict("hallo")),
+            literal = null,
+            autocorrect = dict("hello"),
+            sequence = 7,
+        )
+
+    private fun NeuralReranker.gesture(
+        request: GestureRequest = gestureRequest(),
+        stale: () -> Boolean = { false },
+    ) = refineGesture(request, swipeResult, stale)
+
+    @Test
+    fun aGestureIsReorderedByTheGestureWeightedBonus() {
+        // hello, hells, hallo: mean -5; "hallo" is far the likeliest after "thank you".
+        val r = reranker(strength = 0.5f) { _, _, _ -> floatArrayOf(-9f, -6f, 0f) }
+        val out = r.gesture()!!
+        assertThat(out.candidates.map { it.text })
+            .containsExactly("hallo", "hells", "hello")
+            .inOrder()
+        assertThat(out.autocorrect!!.text).isEqualTo("hallo")
+        val w = 0.5f * NeuralReranker.GESTURE_LM_WEIGHT
+        assertThat(out.candidates[0].score).isWithin(1e-5f).of(-1f + w * 5f)
+        assertThat(out.candidates[2].score).isWithin(1e-5f).of(-1f + w * -4f)
+        assertThat(out.sequence).isEqualTo(7)
+    }
+
+    @Test
+    fun aGestureIsOnlyRefinedWhenTheEngineIsAllowedAndStrengthIsOn() {
+        val calls = AtomicInteger()
+        val scorer = CandidateScorer { _, c, _ ->
+            calls.incrementAndGet()
+            FloatArray(c.size)
+        }
+        assertThat(reranker(scorer = scorer).gesture(gestureRequest(allowed = false))).isNull()
+        assertThat(reranker(strength = 0f, scorer = scorer).gesture()).isNull()
+        assertThat(calls.get()).isEqualTo(0)
+    }
+
+    @Test
+    fun aStaleGestureOrNoAnswerKeepsTheDecodedResult() {
+        val calls = AtomicInteger()
+        val counting = reranker { _, c, _ ->
+            calls.incrementAndGet()
+            FloatArray(c.size)
+        }
+        assertThat(counting.gesture(stale = { true })).isNull()
+        assertThat(calls.get()).isEqualTo(0)
+        assertThat(reranker { _, _, _ -> null }.gesture()).isNull()
+        assertThat(reranker { _, _, _ -> floatArrayOf(1f) }.gesture()).isNull()
+    }
+
+    @Test
+    fun aGestureWithOneCandidateHasNothingToCompare() {
+        val r = reranker { _, c, _ -> FloatArray(c.size) }
+        val one = swipeResult.copy(candidates = listOf(dict("hello")))
+        assertThat(r.refineGesture(gestureRequest(), one) { false }).isNull()
     }
 }

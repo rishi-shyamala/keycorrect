@@ -152,6 +152,41 @@ class SwipeTypingTest {
         assertThat(sink.isSilent).isTrue()
     }
 
+    @Test
+    fun onlyTheFinalDecodeMayBeReranked() {
+        start()
+        swipe("hello", "hallo")
+        val requests = predictor.gestureRequests
+        assertThat(requests.size).isAtLeast(2)
+        assertThat(requests.dropLast(1).none { it.engineAllowed }).isTrue()
+        assertThat(requests.last().engineAllowed).isTrue()
+    }
+
+    @Test
+    fun noRerankOfASwipeWhereTheEngineGateIsClosed() {
+        for (s in
+            listOf(
+                KeyboardSettings(neuralRerank = false),
+                KeyboardSettings(incognito = true),
+                KeyboardSettings(learningEnabled = false),
+            )) {
+            predictor.gestureRequests.clear()
+            start(settings = s)
+            swipe("hello", "hallo")
+            assertThat(predictor.gestureRequests).isNotEmpty()
+            assertThat(predictor.gestureRequests.none { it.engineAllowed }).isTrue()
+        }
+        predictor.gestureRequests.clear()
+        start(
+            FieldProfile.from(
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                0,
+            )
+        )
+        swipe("hello", "hallo")
+        assertThat(predictor.gestureRequests.none { it.engineAllowed }).isTrue()
+    }
+
     // ------------------------------------------------------------------ preview
 
     @Test
