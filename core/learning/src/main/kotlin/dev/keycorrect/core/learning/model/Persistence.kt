@@ -28,6 +28,14 @@ data class CorrectionRow(
     val lastActiveMillis: Long,
 )
 
+/** Built-in tune cell: [score] of the word [word] after [prev] (normalised keys). */
+data class TuneRow(
+    val prev: String,
+    val word: String,
+    val score: Double,
+    val lastActiveMillis: Long,
+)
+
 data class SuppressionRow(val typed: String, val target: String, val createdAtMillis: Long)
 
 data class BlockRow(val word: String, val createdAtMillis: Long)
@@ -125,10 +133,18 @@ data class PersistedLearning(
     val pendingAdds: List<PendingAddRow> = emptyList(),
     /** Added in format 2; absent (empty) in older states. */
     val keeps: List<KeepRow> = emptyList(),
+    /** Added in format 3 (built-in tune overlay); empty in older states. */
+    val tune: List<TuneRow> = emptyList(),
+    /** Added in format 3: lifetime counters for the LLM-tuning readiness note. */
+    val wordsLearned: Long = 0,
+    val contextCorrections: Long = 0,
 ) {
     companion object {
-        /** 2: [keeps]. A format-1 state loads unchanged with no keeps. */
-        const val FORMAT_VERSION = 2
+        /**
+         * 2: [keeps]. 3: [tune], [wordsLearned], [contextCorrections]. Older states load unchanged
+         * with the new parts empty.
+         */
+        const val FORMAT_VERSION = 3
     }
 }
 
@@ -240,7 +256,7 @@ class InMemoryLearningStore : LearningStore {
  *
  * Format v1: fields joined by U+001F; field 0 = `v1`, field 1 = type tag (W word-used, N new-word,
  * A add-word, R revert-kept, C correction, S suppress, B block, T touch, P preference, O outcome, F
- * phrase, K casing). A P item's trailing field (the FieldClass name) is absent in older rows and
+ * phrase, K casing, U base tune). A P item's trailing field (the FieldClass name) is absent in older rows and
  * then decodes as Text. Strings are percent-escaped for `%`, U+001F and U+001E. A list is one
  * field: `count` followed by its items, all joined by U+001E. Floats use [Float.toString] (exact
  * round trip). A touch sample item is `charCode,dx,dy`. [decode] returns null for unknown versions
@@ -320,6 +336,13 @@ object JournalCodec {
                 f += "K"
                 f += esc(update.surface)
             }
+            is LearningUpdate.BaseTuneEvidence -> {
+                f += "U"
+                f += esc(update.prev)
+                f += esc(update.preferred)
+                f += esc(update.other.orEmpty())
+                f += update.weight.toString()
+            }
         }
         return f.joinToString(FS.toString())
     }
@@ -373,6 +396,13 @@ object JournalCodec {
             "O" -> LearningUpdate.AutocorrectOutcome(f[2] == "1")
             "F" -> LearningUpdate.PhraseFeedback(f[2].toInt(), f[3].toInt())
             "K" -> LearningUpdate.CasingEvidence(unesc(f[2]))
+            "U" ->
+                LearningUpdate.BaseTuneEvidence(
+                    unesc(f[2]),
+                    unesc(f[3]),
+                    unesc(f[4]).ifEmpty { null },
+                    f[5].toFloat(),
+                )
             else -> null
         }
 

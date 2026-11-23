@@ -4,6 +4,13 @@ import dev.keycorrect.core.learning.Personalization
 import dev.keycorrect.core.learning.RankingFeatures
 
 /**
+ * Lifetime counters (never decayed, cleared on reset): [wordsLearned] positive word-usage updates
+ * the model absorbed, [contextCorrections] built-in tune updates (contextual conflicts). Used for
+ * the rough LLM-tuning readiness note (N-27).
+ */
+data class LearningCounts(val wordsLearned: Long = 0, val contextCorrections: Long = 0)
+
+/**
  * Immutable, lock-free view of everything learned at one moment, read by the decoder thread. Built
  * by [PersonalModel] on the learning thread and published through an atomic reference; never
  * mutated afterwards (collections are private copies, table shards are shared copy-on-write).
@@ -14,6 +21,7 @@ internal constructor(
     val version: Long,
     private val ngrams: FrozenNgrams?,
     private val corrections: FrozenCorrections?,
+    private val tune: FrozenTune?,
     private val suppressed: Set<String>,
     private val blocked: Set<String>,
     private val userWords: Set<String>,
@@ -23,11 +31,19 @@ internal constructor(
     private val rankerMaxScore: Float,
     override val autocorrectThresholdDelta: Float,
     override val phraseGateDelta: Float,
+    /** Lifetime counters for the "LLM tuning readiness" note (N-27). */
+    val counts: LearningCounts = LearningCounts(),
 ) : Personalization {
     override fun userLogProb(context: List<String>, word: String): Float? =
         ngrams?.logProb(context, word)
 
     override fun userNextWords(context: List<String>) = ngrams?.nextWords(context).orEmpty()
+
+    override fun userContextEvidence(context: List<String>): Float =
+        ngrams?.contextEvidence(context) ?: 0f
+
+    override fun baseTune(prevWord: String, word: String): Float =
+        tune?.value(prevWord, word) ?: 0f
 
     override fun correctionBias(typed: String, candidate: String, contextBucket: String): Float =
         corrections?.bias(typed, candidate, contextBucket) ?: 0f
@@ -62,6 +78,7 @@ internal constructor(
         val Empty: PersonalSnapshot =
             PersonalSnapshot(
                 0,
+                null,
                 null,
                 null,
                 emptySet(),

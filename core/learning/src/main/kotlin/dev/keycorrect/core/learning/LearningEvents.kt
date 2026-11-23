@@ -75,6 +75,12 @@ enum class CommitMethod {
     PredictionPicked,
     Gesture,
     Voice,
+    /**
+     * The user put the cursor on a word that is in the dictionary and tapped a different word for
+     * it ("Sharks live [on] the sea" -> "in"): a contextual preference, not a spelling fix.
+     * [WordCommitted.typed] is the replaced original; [WordCommitted.context] the words before it.
+     */
+    ContextReplaced,
 }
 
 /** A word was committed. One per word; the core training signal (§6.3 rows 1–5, 8, 12–16). */
