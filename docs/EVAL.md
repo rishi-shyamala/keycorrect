@@ -70,6 +70,10 @@ unless noted. Everything is also reported per target-word length bucket
 * **false corrections per 1000 words** literal was right (in the dictionary
   or not) and the keyboard changed it. The headline safety number.
   Split into real-word and not-in-dictionary targets.
+* **false corrections excl. capitalised OOV names per 1000** the same count without
+  false corrections whose target is not in the dictionary and starts with an uppercase letter
+  (names such as Tatoeba's "Sami", "Yanni", "Fadil", also with 's). Tune against this number;
+  the headline line is unchanged. Also in `results.json`.
 * **top-3 recall** target (or the literal, when right) is in the 3-slot strip.
 * **completion KSR** keystroke savings if the user taps a strip suggestion as
   soon as the target is on it: one tap = one keystroke, baseline = typed
