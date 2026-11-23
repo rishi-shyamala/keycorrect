@@ -10,7 +10,10 @@ data class KeyAdjustment(
     val dx: Float = 0f,
     val dy: Float = 0f,
     val sigmaScale: Float = 1f,
-    /** Per-axis widening on top of [sigmaScale] (default: the same). */
+    /**
+     * Per-axis widening; the model reads only these. They default to [sigmaScale] at construction,
+     * so `copy(sigmaScale = ...)` alone does not change them: set the per-axis values.
+     */
     val sigmaScaleX: Float = sigmaScale,
     val sigmaScaleY: Float = sigmaScale,
 ) {

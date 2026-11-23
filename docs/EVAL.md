@@ -625,6 +625,9 @@ toward the reference sigma 0.25 with weight 20, at least 20 samples, clamped 0.8
 | 0.35 | 87.34 -> 87.95 / 86.87 | 67.57 -> 68.22 / 66.77 | 87.57 -> 88.22 / 68.01 -> 68.71 | 0.70 -> 0.70 |
 | 0.45 | 78.39 -> 79.80 / 78.47 | 49.20 -> 50.66 / 48.63 | 78.21 -> 79.75 / 49.54 -> 51.05 | 0.50 -> 0.50 |
 
+Seed 2 (all words, scaling off -> on): sigma 0.35 87.65 -> 88.18%, sigma 0.45 79.02 -> 80.61%; false
+corrections 0.60 -> 0.70 and 0.25 -> 0.40 per 1000.
+
 Neutral for a precise typist, +0.6 / +1.4 points of word accuracy at sigma 0.35 / 0.45 (without it the
 learning arm is no better than the baseline at 0.45). The plain eval has no personalization and is
 byte-identical.
