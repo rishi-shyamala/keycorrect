@@ -537,6 +537,16 @@ class LayoutParserTest {
     }
 
     @Test
+    fun letterHintDefaultsToTrueAndRejectsPopupEntries() {
+        assertThat(key("\"^\"").letterHint).isTrue()
+        assertThat(key("""{"label":"^","letterHint":false}""").letterHint).isFalse()
+        assertThat(
+                errorOf(layout("""[[{"label":"a","popup":[{"label":"b","letterHint":false}]}]]"""))
+            )
+            .contains("popup[0].letterHint")
+    }
+
+    @Test
     fun longPressVoiceParsesToTheAction() {
         val k = key("""{"label":",","longPress":"voice"}""")
         assertThat(k.longPress).isEqualTo(KeyAction.Voice)

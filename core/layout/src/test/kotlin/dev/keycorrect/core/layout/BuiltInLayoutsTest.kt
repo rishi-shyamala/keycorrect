@@ -289,7 +289,7 @@ class BuiltInLayoutsTest {
         val opts = ComposeOptions(numberRow = true)
         val p1 = composer.compose(KeyboardSet.Default, "symbols", options = opts).rows
         assertThat(p1[0].keys.map { it.label }.joinToString("")).isEqualTo("1234567890")
-        assertThat(p1[1].keys.map { it.label }.joinToString("")).isEqualTo("+×÷=/_<>[]")
+        assertThat(p1[1].keys.map { it.label }.joinToString("")).isEqualTo("+×^=/_<>[]")
         assertThat(p1[2].keys.map { it.label }.joinToString("")).isEqualTo("!@#$%^&*()")
         val p2 = composer.compose(KeyboardSet.Default, "symbols2", options = opts).rows
         assertThat(p2[0].keys.map { it.label }.joinToString("")).isEqualTo("1234567890")
@@ -662,7 +662,7 @@ class BuiltInLayoutsTest {
             mapOf(
                 "q" to "+",
                 "w" to "×",
-                "e" to "÷",
+                "e" to "^",
                 "r" to "=",
                 "t" to "/",
                 "y" to "_",
@@ -675,10 +675,10 @@ class BuiltInLayoutsTest {
                 "d" to "#",
                 "f" to "$",
                 "g" to "%",
-                "h" to "^",
-                "j" to "&",
-                "k" to "*",
-                "l" to "(",
+                "h" to "&",
+                "j" to "*",
+                "k" to "(",
+                "l" to ")",
                 "z" to "-",
                 "x" to "'",
                 "c" to "\"",
@@ -704,6 +704,8 @@ class BuiltInLayoutsTest {
                 .isEqualTo(digit.toString())
         }
         assertThat(keys.getValue("a").hint).isEqualTo("!")
+        assertThat(keys.getValue("h").hint).isEqualTo("&")
+        assertThat(keys.getValue("l").hint).isEqualTo(")")
         assertThat(keys.getValue("z").hint).isEqualTo("-")
         // Accents come after the symbol.
         assertThat(keys.getValue("e").popup.map { it.label })
@@ -723,7 +725,7 @@ class BuiltInLayoutsTest {
         }
         val e = letters(numberRow = true)
         assertThat(e.getValue("e").popup.map { it.label })
-            .containsExactly("÷", "è", "é", "ê", "ë", "ē")
+            .containsExactly("^", "è", "é", "ê", "ë", "ē")
             .inOrder()
         assertThat(letters(numberRow = true, symbolHints = false).getValue("e").hint).isNull()
         assertThat(

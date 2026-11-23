@@ -6,7 +6,7 @@ package dev.keycorrect.core.layout
  * Applies the rules to the letter [rows], which start at row index [firstRow] of the final layer:
  * digit entries come off the top row if the number row is on ([numberRow]), and each character key
  * gets the symbol at its row and column of [symbols] (null: no symbol hints) as its hint and first
- * popup entry.
+ * popup entry. Symbol keys with [ResolvedKey.letterHint] false are skipped and not counted.
  */
 internal fun withLetterHints(
     rows: List<ResolvedRow>,
@@ -14,7 +14,8 @@ internal fun withLetterHints(
     symbols: List<ResolvedRow>?,
     numberRow: Boolean,
 ): List<ResolvedRow> = rows.mapIndexed { index, row ->
-    val symbolKeys = symbols?.getOrNull(firstRow + index)?.keys?.filter { it.isTextKey }
+    val symbolKeys =
+        symbols?.getOrNull(firstRow + index)?.keys?.filter { it.isTextKey && it.letterHint }
     var column = 0
     row.copy(
         keys =

@@ -106,6 +106,12 @@ data class ResolvedKey(
      * Never set together with a popup.
      */
     val longPress: KeyAction? = null,
+    /**
+     * False for a symbols-page key that is skipped when the letters layer takes its symbol hints
+     * ([ComposeOptions.symbolHints]): it gives no hint and does not count as a column, so a symbols
+     * row one key longer than its letter row still reaches the last letter key.
+     */
+    val letterHint: Boolean = true,
 ) {
     /** Keys that act on press and auto-repeat while held. */
     val repeatable: Boolean

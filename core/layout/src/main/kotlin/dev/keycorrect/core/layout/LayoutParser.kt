@@ -217,6 +217,7 @@ internal object LayoutParser {
             if (key.hint != HINT_UNSET) fail("$path.hint", "not valid on popup entries")
             if (key.width != null) fail("$path.width", "not valid on popup entries")
             if (key.style != null) fail("$path.style", "not valid on popup entries")
+            if (!key.letterHint) fail("$path.letterHint", "not valid on popup entries")
         } else if (!takesPopup && key.popup.isNotEmpty()) {
             fail(
                 "$path.popup",
@@ -283,6 +284,7 @@ internal object LayoutParser {
                 key.description ?: description,
                 shiftedLabel,
                 longPress,
+                key.letterHint,
             )
 
         return when (type) {
