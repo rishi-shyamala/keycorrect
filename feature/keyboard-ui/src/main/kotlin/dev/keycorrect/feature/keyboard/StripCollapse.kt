@@ -23,8 +23,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
 
 /**
- * How long an emptied strip keeps the collapsed layout, waiting for suggestions to return: longer
- * than a next-word decode takes, short enough that a really empty strip gets its tools back soon.
+ * How long an emptied strip keeps the collapsed layout, waiting for suggestions to return: meant to
+ * cover a next-word decode (a few ms on the desktop; tune from device numbers), and short enough
+ * that a really empty strip gets its tools back soon.
  */
 internal const val SUGGESTIONS_HOLD_MILLIS = 150L
 

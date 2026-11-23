@@ -727,7 +727,8 @@ class KeyboardController(
     /**
      * Whether the strip shows suggestions that the tools give way to, see [stripToolsMode]. Not
      * while the never-suggest prompt is up (its Yes/Cancel own the strip) or the selection strip
-     * shows. Derived, so typing within a busy strip recomposes nothing.
+     * shows. The strip reads its two derived halves itself, holding [stripHasSuggestions] briefly
+     * when it turns false (see [StripTools]).
      */
     internal val suggestionsShown: Boolean
         get() = stripHasSuggestions && suggestionsAllowed
