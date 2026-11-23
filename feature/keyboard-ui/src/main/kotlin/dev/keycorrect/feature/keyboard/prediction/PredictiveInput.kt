@@ -648,7 +648,10 @@ internal class PredictiveInput(
         val word = recorrect ?: return false
         recorrect = null
         val replacement = slot.insert
-        val before = editor.textBeforeCursor(word.beforeLength)?.toString()
+        // Zero-length reads are skipped: some editors answer them with null.
+        val before =
+            if (word.beforeLength == 0) ""
+            else editor.textBeforeCursor(word.beforeLength)?.toString()
         val after = if (word.afterLength == 0) "" else editor.textAfterCursor(word.afterLength)
         val intact =
             before == word.text.take(word.beforeLength) &&
