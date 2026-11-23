@@ -93,11 +93,43 @@ class SwipeReplayTest {
                     ArmOutcomes("arm", outcomes(true, true, false), listOf(true, true, false)),
                 ),
                 CalibrationSummary(emptyList()),
+                MisdecodeCeiling(),
             )
         val a = result()
         val b = result()
         assertThat(a.text()).isEqualTo(b.text())
         assertThat(Json.write(a.toMap())).isEqualTo(Json.write(b.toMap()))
         assertThat(a.text()).contains("regressions 1  fixes 1")
+    }
+
+    @Test
+    fun theMisdecodeCeilingCountsRepeatedPairsAndCorrectSwipesAtRisk() {
+        // Early half: "form" decoded for "from" twice (picked from the strip). Late half: the same
+        // misdecode again (fixable), and a correct "form" with "from" behind it (at risk).
+        val s =
+            SwipeSessions.group(
+                    listOf(
+                        swipe("s", 1, 1, "from"),
+                        swipe("s", 2, 2, "from"),
+                        swipe("s", 3, 3, "from"),
+                        swipe("s", 4, 4, "form"),
+                    ),
+                    1,
+                )
+                .single()
+        val top = listOf("form", "from", "for")
+        val c = MisdecodeCeiling()
+        c.add(s, List(4) { top })
+        assertThat(c.scored).isEqualTo(2)
+        assertThat(c.wrong).isEqualTo(1)
+        assertThat(c.fixable.toList()).containsExactly(1, 1, 0).inOrder()
+        // By the last swipe the pair has been seen three times (the late misdecode counts too).
+        assertThat(c.atRisk.toList()).containsExactly(1, 1, 1).inOrder()
+    }
+
+    @Test
+    fun rowsWithoutASessionAreLeftOut() {
+        val sessions = SwipeSessions.group(List(3) { swipe("", it.toLong(), it.toLong()) }, 1)
+        assertThat(sessions).isEmpty()
     }
 }

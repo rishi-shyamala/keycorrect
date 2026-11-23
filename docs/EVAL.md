@@ -402,7 +402,7 @@ model. Its swipes are ordered by (timestamp, id); the first half is the early hi
 second half is scored (top-1, top-3, wrong commits as in the real-swipe report; all words and
 dictionary words). Arms:
 
-- **baseline**: no learning.
+- **baseline**: no learning. (Rows without a session id are left out.)
 - **word-use learning**: today's production learning. After every swipe the simulated user commits
   the decoded top word as `CommitMethod.Gesture` (as `commitSwipe` does). If it was wrong and the
   target is in the top 3 the user taps it: a second Gesture commit of the target (as
@@ -446,11 +446,13 @@ widths (x / y; mean absolute 0.07 / 0.10). Reading: word-use learning from swipe
 measurable on a session's later half; the oracle affine fit does not reach the +0.3 point bar
 (N-24) and hurts SHARK²; only the offset-only oracle gains (+0.26 SHARK², +0.16 with the encoder).
 
-Misdecode memory ceiling (a one-off count on the same replay, not a report arm): a late-half swipe
+Misdecode memory ceiling (the report's last section; counted on the baseline's top-8 decodes,
+skipping swipes with no candidate, so its total is a few swipes below the arms'): a late-half swipe
 is fixable when its wrong top-1 and its target, both in the top 8, form a decoded -> picked pair
 the user tapped earlier in the session (target in the top 3); at risk when its right top-1 forms
 such a pair with another top-8 candidate. With the encoder: 27 fixable vs 202 at risk after one
-earlier pick, 4 vs 34 after two (SHARK²: 43 vs 474, 5 vs 65), out of 16,608 scored swipes. Wrong
+earlier pick, 4 vs 34 after two (SHARK²: 43 vs 474, 5 vs 65), out of 16,608 (SHARK²: 16,597)
+counted swipes. Wrong
 swipes rarely repeat the same way, so 10a-5 stops here (DECISIONS N-23).
 
 ### Neural fusion (`--neural`)

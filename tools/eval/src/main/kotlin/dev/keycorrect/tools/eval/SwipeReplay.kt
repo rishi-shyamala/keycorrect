@@ -8,6 +8,7 @@ import dev.keycorrect.core.decoder.ClassicEngine
 import dev.keycorrect.core.dictionary.Dictionary
 import dev.keycorrect.core.engineapi.GestureInput
 import dev.keycorrect.core.engineapi.GestureRequest
+import dev.keycorrect.core.engineapi.KeySpec
 import dev.keycorrect.core.engineapi.TouchPoint
 import dev.keycorrect.core.learning.CommitMethod
 import dev.keycorrect.core.learning.WordCommitted
@@ -34,11 +35,13 @@ class SwipeSession(val id: String, val swipes: List<RealSwipe>) {
 object SwipeSessions {
     /**
      * Groups [swipes] by session; each session is ordered by (timestamp, id) and kept when it has
-     * at least [minSwipes] swipes. Sessions come back ordered by id, so the result does not depend
-     * on the file's row order beyond equal (timestamp, id) pairs, which keep file order.
+     * at least [minSwipes] swipes; rows without a session id are left out (they can't be one user).
+     * Sessions come back ordered by id, so the result does not depend on the file's row order
+     * beyond equal (timestamp, id) pairs, which keep file order.
      */
     fun group(swipes: List<RealSwipe>, minSwipes: Int): List<SwipeSession> =
         swipes
+            .filter { it.session.isNotEmpty() }
             .groupBy { it.session }
             .filter { it.value.size >= minSwipes }
             .toSortedMap()
@@ -164,11 +167,9 @@ object PathCalibration {
         val kw = keyWidth(keyboard)
         val keys = keyboard.layout.keys.filter { it.char.isLetter() }
         val c = map.coefficients()
-        fun dx(k: dev.keycorrect.core.engineapi.KeySpec) =
-            map.mapX(k.centerX.toDouble(), k.centerY.toDouble()) - k.centerX
+        fun dx(k: KeySpec) = map.mapX(k.centerX.toDouble(), k.centerY.toDouble()) - k.centerX
 
-        fun dy(k: dev.keycorrect.core.engineapi.KeySpec) =
-            map.mapY(k.centerX.toDouble(), k.centerY.toDouble()) - k.centerY
+        fun dy(k: KeySpec) = map.mapY(k.centerX.toDouble(), k.centerY.toDouble()) - k.centerY
         return Shape(
             keys.map(::dx).average() / kw,
             keys.map(::dy).average() / kw,
@@ -235,10 +236,11 @@ class SwipeLearner(
         val t = maxOf(clock + 1, swipe.timestamp)
         clock = t
         val context = context(swipe)
-        val first = top.firstOrNull() ?: target
+        val first = top.firstOrNull()
         val events = ArrayList<WordCommitted>(2)
-        events += commit(t, context, swipe, first, CommitMethod.Gesture)
-        if (PersonalUser.fold(first) != PersonalUser.fold(target)) {
+        // An empty decode commits nothing in the app (the strip is restored); the user types it.
+        if (first != null) events += commit(t, context, swipe, first, CommitMethod.Gesture)
+        if (first == null || PersonalUser.fold(first) != PersonalUser.fold(target)) {
             val onStrip = top.any { PersonalUser.fold(it) == PersonalUser.fold(target) }
             val method = if (onStrip) CommitMethod.Gesture else CommitMethod.Typed
             clock = t + CORRECTION_MS
@@ -374,6 +376,80 @@ class CalibrationSummary(val shapes: List<PathCalibration.Shape>) {
         )
 }
 
+/**
+ * The ceiling of a swipe misdecode memory keyed by the word pair (decoded -> picked), counted on
+ * the baseline's decodes: in each session, in time order, a wrong top-1 whose target is on the
+ * strip (top 3) records the pair. A late-half swipe is [fixable] at k when its wrong top-1 and its
+ * target (in the top 8) form a pair recorded at least k times, and [atRisk] at k when its right
+ * top-1 forms such a pair with another top-8 candidate (a memory strong enough to fix the first
+ * could flip the second).
+ */
+class MisdecodeCeiling {
+    var scored = 0
+    var wrong = 0
+    val fixable = IntArray(MAX_K)
+    val atRisk = IntArray(MAX_K)
+
+    /** Counts one session's swipes, given [top8] (folded) per swipe in session order. */
+    fun add(session: SwipeSession, top8: List<List<String>>) {
+        val pairs = HashMap<String, Int>()
+        for ((i, s) in session.swipes.withIndex()) {
+            val top = top8[i]
+            if (top.isEmpty()) continue
+            val target = PersonalUser.fold(s.target)
+            val first = top[0]
+            if (i >= session.early.size) count(pairs, top, target)
+            if (first != target && target in top.take(STRIP))
+                pairs.merge(key(first, target), 1, Int::plus)
+        }
+    }
+
+    private fun count(pairs: Map<String, Int>, top: List<String>, target: String) {
+        val first = top[0]
+        scored++
+        if (first != target) wrong++
+        for (k in 1..MAX_K) {
+            if (first != target && target in top && (pairs[key(first, target)] ?: 0) >= k) {
+                fixable[k - 1]++
+            }
+            if (first == target && top.drop(1).any { (pairs[key(first, it)] ?: 0) >= k }) {
+                atRisk[k - 1]++
+            }
+        }
+    }
+
+    private fun key(a: String, b: String) = "$a>$b"
+
+    fun text(): String = buildString {
+        append(String.format(Locale.ROOT, "late-half swipes %d, wrong top-1 %d\n", scored, wrong))
+        for (k in 1..MAX_K) {
+            append(
+                String.format(
+                    Locale.ROOT,
+                    "  pair seen >= %d times: fixable %d, correct swipes at risk %d\n",
+                    k,
+                    fixable[k - 1],
+                    atRisk[k - 1],
+                )
+            )
+        }
+    }
+
+    fun toMap(): Map<String, Any> =
+        linkedMapOf(
+            "scored" to scored,
+            "wrongTop1" to wrong,
+            "fixable" to fixable.toList(),
+            "atRisk" to atRisk.toList(),
+        )
+
+    companion object {
+        const val MAX_K = 3
+        const val TOP = 8
+        private const val STRIP = 3
+    }
+}
+
 /** Everything the replay measured. */
 class ReplayResult(
     val sessions: Int,
@@ -381,6 +457,7 @@ class ReplayResult(
     val early: Int,
     val arms: List<ArmOutcomes>,
     val calibration: CalibrationSummary,
+    val misdecodes: MisdecodeCeiling,
 ) {
     private val base: ArmOutcomes
         get() = arms.first()
@@ -400,6 +477,8 @@ class ReplayResult(
         }
         append("== path calibration fits ==\n")
         append(calibration.text())
+        append("\n== misdecode memory ceiling (baseline decodes, top 8) ==\n")
+        append(misdecodes.text())
     }
 
     private fun line(label: String, arm: ArmOutcomes, dict: Boolean): String {
@@ -445,6 +524,7 @@ class ReplayResult(
             "scoredDictionarySwipes" to scoredDictionary,
             "arms" to armMaps,
             "calibration" to calibration.toMap(),
+            "misdecodeCeiling" to misdecodes.toMap(),
         )
     }
 
@@ -491,7 +571,9 @@ class SwipeReplay(
         val shifted = ArrayList<SwipeOutcome>()
         val dictionary = ArrayList<Boolean>()
         val shapes = ArrayList<PathCalibration.Shape>()
+        val misdecodes = MisdecodeCeiling()
         for (session in sessions) {
+            countMisdecodes(misdecodes, session)
             val map = PathCalibration.fit(session.swipes, keyboard)
             val shift = PathCalibration.fitOffset(session.swipes, keyboard)
             map?.let { shapes += PathCalibration.shape(it, keyboard) }
@@ -533,11 +615,23 @@ class SwipeReplay(
                 ),
             ),
             CalibrationSummary(shapes),
+            misdecodes,
         )
     }
 
-    private fun top(engine: ClassicEngine, request: GestureRequest): List<String> =
-        engine.decodeGestureNow(request).candidates.take(maxCandidates).map { it.text }
+    private fun countMisdecodes(ceiling: MisdecodeCeiling, session: SwipeSession) {
+        val top8 =
+            session.swipes.map { s ->
+                top(baseline, evaluator.request(s), MisdecodeCeiling.TOP).map(PersonalUser::fold)
+            }
+        ceiling.add(session, top8)
+    }
+
+    private fun top(
+        engine: ClassicEngine,
+        request: GestureRequest,
+        n: Int = maxCandidates,
+    ): List<String> = engine.decodeGestureNow(request).candidates.take(n).map { it.text }
 
     private fun outcome(target: String, top: List<String>): SwipeOutcome {
         val t = PersonalUser.fold(target)
