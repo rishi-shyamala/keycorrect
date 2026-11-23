@@ -724,6 +724,10 @@ class KeyboardController(
     private var touchDevice = DeviceClass.Phone
     private var landscape = false
 
+    /** See [PredictiveInput.recorrectWordOutranked]. */
+    internal val recorrectWordOutranked: Boolean
+        get() = input.recorrectWordOutranked
+
     /**
      * Whether the strip shows suggestions that the tools give way to, see [stripToolsMode]. Not
      * while the never-suggest prompt is up (its Yes/Cancel own the strip) or the selection strip
