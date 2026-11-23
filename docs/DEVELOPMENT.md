@@ -130,6 +130,9 @@ tools/release/release.sh bump      # next -test.N in version.properties, version
 tools/release/release.sh publish   # signed build of the clean, pushed HEAD -> pre-release v<versionName>
 ```
 
+The bump goes to `main` through a PR, and `publish` runs on `main` after the merge, so local builds
+of `main` carry the version of the latest test build.
+
 `publish` attaches the packs only if their files are fetched (`tools/data/fetch-voice.sh`,
 `tools/data/fetch-neural.sh`; the neural pack also needs the NDK). Build packs alone with
 `./gradlew :voicepack:assembleRelease :neuralpack:assembleRelease`; they are not part of CI.
