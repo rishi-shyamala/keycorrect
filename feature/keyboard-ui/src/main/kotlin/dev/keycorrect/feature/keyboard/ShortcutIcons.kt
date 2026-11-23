@@ -42,5 +42,11 @@ internal object ShortcutIcons {
                 "1.5 0 0 1 4 6.5M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10",
         )
 
+    /** Chevron pointing right: show the tools beside the suggestions. */
+    val ChevronRight = outline("chevron_right", "M9.5 6l6 6-6 6")
+
+    /** Chevron pointing left: back to the suggestions. */
+    val ChevronLeft = outline("chevron_left", "M14.5 6l-6 6 6 6")
+
     private fun outline(name: String, path: String): ImageVector = outlineIcon(name, path)
 }

@@ -1,20 +1,71 @@
 package dev.keycorrect.feature.keyboard
 
-import androidx.compose.ui.unit.sp
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
-/** The slot font shrink rule that [fitText] applies to a word that overflows its slot. */
+/** The rule [fitText] applies to a word that overflows its slot: shrink, then cut at the start. */
 class FitTextTest {
+    private fun decide(base: Float, min: Float, available: Float, atBase: Float, atMin: Float) =
+        decideFit(base, min, available, atBase, { atMin })
+
     @Test
-    fun anOverflowingWordShrinksToAFifthLessButNotBelowTheMinimum() {
-        assertThat(shrunkSize(20.sp)).isEqualTo(16.sp)
-        assertThat(shrunkSize(14.sp)).isEqualTo(12.sp)
+    fun aWordThatFitsKeepsTheChosenSize() {
+        val d = decide(base = 14f, min = 12f, available = 100f, atBase = 100f, atMin = 85f)
+        assertThat(d.size).isEqualTo(14f)
+        assertThat(d.ellipsizeStart).isFalse()
     }
 
     @Test
-    fun aSizeAtOrBelowTheMinimumIsLeftAlone() {
-        assertThat(shrunkSize(12.sp)).isEqualTo(12.sp)
-        assertThat(shrunkSize(10.sp)).isEqualTo(10.sp)
+    fun anOverflowingWordShrinksContinuouslyToFit() {
+        val d = decide(base = 20f, min = 8f, available = 80f, atBase = 100f, atMin = 40f)
+        assertThat(d.size).isWithin(0.001f).of(16f)
+        assertThat(d.ellipsizeStart).isFalse()
+    }
+
+    @Test
+    fun shrinkingStopsAtTheMinimumAndTheStartIsCut() {
+        val d = decide(base = 14f, min = 12f, available = 50f, atBase = 100f, atMin = 86f)
+        assertThat(d.size).isEqualTo(12f)
+        assertThat(d.ellipsizeStart).isTrue()
+    }
+
+    @Test
+    fun aWordThatFitsExactlyAtTheMinimumIsNotCut() {
+        val d = decide(base = 14f, min = 12f, available = 86f, atBase = 100f, atMin = 86f)
+        assertThat(d.size).isWithin(0.05f).of(12f)
+        assertThat(d.ellipsizeStart).isFalse()
+    }
+
+    @Test
+    fun aMinimumAboveTheSizeIsCappedAtTheSize() {
+        val d = decide(base = 10f, min = 14f, available = 50f, atBase = 100f, atMin = 100f)
+        assertThat(d.size).isEqualTo(10f)
+        assertThat(d.ellipsizeStart).isTrue()
+    }
+
+    @Test
+    fun largestFittingFindsTheBoundaryInLogarithmicMeasures() {
+        for (limit in 0..40) {
+            var calls = 0
+            val keep =
+                largestFitting(40) {
+                    calls++
+                    it <= limit
+                }
+            assertThat(keep).isEqualTo(maxOf(1, limit))
+            assertThat(calls).isAtMost(6)
+        }
+        assertThat(largestFitting(0) { false }).isEqualTo(1)
+    }
+
+    @Test
+    fun startEllipsisKeepsTheEndOfTheWord() {
+        assertThat(startEllipsized("computing", 4)).isEqualTo("…ting")
+        assertThat(startEllipsized("cat", 5)).isEqualTo("cat")
+    }
+
+    @Test
+    fun startEllipsisNeverSplitsASurrogatePair() {
+        assertThat(startEllipsized("ab😀cd", 3)).isEqualTo("…cd")
     }
 }

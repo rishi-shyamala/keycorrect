@@ -107,6 +107,40 @@ internal fun KeyLabelsSection(
     )
 }
 
+/** The size suggestions are drawn at and the smallest they shrink to before being ellipsized. */
+@Composable
+internal fun SuggestionTextSection(
+    settings: KeyboardSettings,
+    onUpdate: ((KeyboardSettings) -> KeyboardSettings) -> Unit,
+) {
+    SectionHeader(stringResource(R.string.theme_section_suggestions))
+    SliderRow(
+        title = stringResource(R.string.theme_suggestion_size),
+        value = settings.suggestionTextSize.toFloat(),
+        valueRange = KeyboardSettings.SUGGESTION_TEXT_SIZE_RANGE.toFloatRange(),
+        valueLabel = { stringResource(R.string.value_sp, it.roundToInt()) },
+        onValueCommitted = { v -> onUpdate { it.copy(suggestionTextSize = v.roundToInt()) } },
+        snap = { it.roundToInt().toFloat() },
+    )
+    SliderRow(
+        title = stringResource(R.string.theme_suggestion_min_size),
+        supportingText = stringResource(R.string.theme_suggestion_min_size_summary),
+        value = settings.suggestionMinSize.toFloat(),
+        // Never above the text size (the stored value is clamped to it too).
+        valueRange =
+            KeyboardSettings.SUGGESTION_MIN_SIZE_RANGE.first.toFloat()..minOf(
+                        KeyboardSettings.SUGGESTION_MIN_SIZE_RANGE.last,
+                        settings.suggestionTextSize,
+                    )
+                    .toFloat(),
+        valueLabel = { stringResource(R.string.value_sp, it.roundToInt()) },
+        onValueCommitted = { v -> onUpdate { it.copy(suggestionMinTextSize = v.roundToInt()) } },
+        snap = { it.roundToInt().toFloat() },
+    )
+}
+
+private fun IntRange.toFloatRange() = first.toFloat()..last.toFloat()
+
 @StringRes
 private fun pressLabel(style: PressStyle): Int =
     when (style) {

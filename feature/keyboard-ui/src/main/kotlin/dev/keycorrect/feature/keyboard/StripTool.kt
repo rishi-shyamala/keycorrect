@@ -5,9 +5,11 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +32,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -87,6 +90,34 @@ internal fun stripBusy(
     hasClip: Boolean,
 ): Boolean = fieldHasText || !stripEmpty || composing || selectionStrip || hasClip
 
+/** How the strip lays out the tools; see [stripToolsMode]. */
+internal enum class StripToolsMode {
+    /** Today's layout: tools at the edges around the content, or spread out when idle. */
+    Full,
+
+    /** Suggestions shown: one chevron button at the left edge, the content takes the rest. */
+    Collapsed,
+
+    /** The chevron was tapped: the tools fill the strip in place of the suggestions. */
+    Revealed,
+}
+
+/**
+ * Suggestions ([suggestionsShown]) collapse the tools into one chevron button so they get nearly
+ * the whole width; tapping it ([revealed]) swaps them for the tools. Autofill chips, the selection
+ * strip and an idle strip (not [suggestionsShown]) keep the [StripToolsMode.Full] layout.
+ */
+internal fun stripToolsMode(
+    suggestionsShown: Boolean,
+    autofillActive: Boolean,
+    revealed: Boolean,
+): StripToolsMode =
+    when {
+        !suggestionsShown || autofillActive -> StripToolsMode.Full
+        revealed -> StripToolsMode.Revealed
+        else -> StripToolsMode.Collapsed
+    }
+
 /** Tools to pin to the left edge when busy; the rest go to the right. */
 internal fun leftToolCount(tools: List<StripTool>): Int = tools.count { it.atLeftEdge }
 
@@ -115,6 +146,9 @@ internal class ToolSlots(
 private const val TOOL_ANIMATION_MILLIS = 250
 private val TOOL_ANIMATION = tween<Float>(TOOL_ANIMATION_MILLIS, easing = FastOutSlowInEasing)
 private val EdgeToolWidth = 32.dp
+
+/** Wide enough for a 48 dp touch target (the strip is 40 dp tall, so that is its limit). */
+private val CollapseButtonWidth = 48.dp
 private const val IDLE_ICON_DP = 24f
 private const val BUSY_ICON_DP = 18f
 
@@ -142,7 +176,19 @@ internal fun StripTools(
     val tools =
         if (controller.selectionStripVisible && !autofillActive) emptyList() else controller.tools
     val progress = rememberBusyProgress(controller, autofillActive)
-    val editSelected = controller.editToolSelected
+    val mode = stripToolsMode(controller.suggestionsShown, autofillActive, controller.toolsRevealed)
+    if (tools.isNotEmpty() && mode != StripToolsMode.Full) {
+        CollapsibleTools(
+            controller,
+            tools,
+            revealed = mode == StripToolsMode.Revealed,
+            onPress,
+            onOpenSettings,
+            modifier,
+            content,
+        )
+        return
+    }
     val leftCount = leftToolCount(tools)
     val edgePx = with(LocalDensity.current) { EdgeToolWidth.roundToPx() }
     Layout(
@@ -152,12 +198,7 @@ internal fun StripTools(
                     icon = tool.icon(),
                     description = tool.description(),
                     progress = progress,
-                    selected =
-                        when (tool) {
-                            StripTool.Edit -> editSelected
-                            StripTool.Keyboard -> controller.fullKeyboardShown
-                            else -> null
-                        },
+                    selected = controller.selectedState(tool),
                 ) {
                     onPress()
                     controller.onTool(tool, onOpenSettings)
@@ -191,6 +232,66 @@ internal fun StripTools(
 }
 
 /**
+ * The strip while suggestions show: a collapse button at the left edge, then either [content]
+ * (collapsed, nearly the full width) or the [tools] spread evenly (revealed). No animation: the
+ * swap is a state change of one tap. A strip with no tools never gets here.
+ */
+@Composable
+@Suppress("LongParameterList") // the controller, host callbacks, and the slot; one entry point
+private fun CollapsibleTools(
+    controller: KeyboardController,
+    tools: List<StripTool>,
+    revealed: Boolean,
+    onPress: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+) {
+    Row(modifier = modifier.fillMaxSize()) {
+        ToolButton(
+            icon = if (revealed) ShortcutIcons.ChevronLeft else ShortcutIcons.ChevronRight,
+            description =
+                stringResource(
+                    if (revealed) R.string.shortcut_tools_hide else R.string.shortcut_tools_show
+                ),
+            progress = FullSizeIcons,
+            selected = null,
+            modifier = Modifier.width(CollapseButtonWidth),
+            stateDescription =
+                stringResource(
+                    if (revealed) R.string.shortcut_tools_expanded
+                    else R.string.shortcut_tools_collapsed
+                ),
+        ) {
+            onPress()
+            controller.toggleToolsRevealed()
+        }
+        if (revealed) {
+            tools.forEach { tool ->
+                ToolButton(
+                    icon = tool.icon(),
+                    description = tool.description(),
+                    progress = FullSizeIcons,
+                    selected = controller.selectedState(tool),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    onPress()
+                    controller.onTool(tool, onOpenSettings)
+                }
+            }
+        } else {
+            Box(Modifier.weight(1f).fillMaxHeight()) { content() }
+        }
+    }
+}
+
+/** Progress 0 is the idle, full-size icon. */
+private val FullSizeIcons: State<Float> =
+    object : State<Float> {
+        override val value: Float = 0f
+    }
+
+/**
  * The busy progress: 0 idle, 1 busy, animated whenever [stripBusy] (or [autofillActive]) flips.
  * Read the returned state in layout or draw only.
  */
@@ -221,11 +322,14 @@ private fun rememberBusyProgress(
  * whether the tool is on (drawn in the primary colour and reported to accessibility).
  */
 @Composable
+@Suppress("LongParameterList") // icon, label, state, modifier and click: a button's own inputs
 private fun ToolButton(
     icon: ImageVector,
     description: String,
     progress: State<Float>,
     selected: Boolean?,
+    modifier: Modifier = Modifier,
+    stateDescription: String? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -233,13 +337,15 @@ private fun ToolButton(
             // Never focusable: a focus highlight on the first tool (Edit) when a selection change
             // moves or drops the focus elsewhere in the strip looked like the tool being selected.
             // The selected look is the [selected] flag alone.
-            Modifier.fillMaxHeight()
+            modifier
+                .fillMaxHeight()
                 .focusProperties { canFocus = false }
                 .clickable(onClick = onClick)
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Button
                     if (selected != null) this.selected = selected
+                    if (stateDescription != null) this.stateDescription = stateDescription
                 },
         contentAlignment = Alignment.Center,
     ) {
@@ -256,6 +362,14 @@ private fun ToolButton(
         )
     }
 }
+
+/** Null for a plain button, else whether the tool is on (Edit: its panel is open). */
+private fun KeyboardController.selectedState(tool: StripTool): Boolean? =
+    when (tool) {
+        StripTool.Edit -> editToolSelected
+        StripTool.Keyboard -> fullKeyboardShown
+        else -> null
+    }
 
 private fun StripTool.icon(): ImageVector =
     when (this) {
