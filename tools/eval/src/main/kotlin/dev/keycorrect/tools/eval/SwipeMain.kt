@@ -131,9 +131,7 @@ class SwipeMain(private val o: Options) {
     }
 
     /** The engine under test: SHARK² alone, or fused with the encoder under `--neural`. */
-    private fun engine(): ClassicEngine = engine(openEncoder())
-
-    private fun engine(encoder: SwipeEncoder?): ClassicEngine =
+    private fun engine(encoder: SwipeEncoder? = openEncoder()): ClassicEngine =
         ClassicEngine(
             dictionary,
             baseConfig,
@@ -159,6 +157,20 @@ class SwipeMain(private val o: Options) {
         } else {
             null
         }
+
+    private fun learnHeader(file: java.nio.file.Path, set: RealSwipeSet, result: ReplayResult) =
+        "KeyCorrect swipe-learning replay: ${file.fileName}, ${set.rows} rows read" +
+            (if (o.realLimit > 0) " (limit ${o.realLimit})" else "") +
+            "; ${set.swipes.size} swipes in ${result.sessionsSeen} sessions\n" +
+            "sessions kept (>= ${o.learnMinSwipes} swipes): ${result.sessions}; " +
+            "early (learning) swipes ${result.early}; scored late-half swipes " +
+            "${result.scored} (${result.scoredDictionary} dictionary words)\n" +
+            "each session is one user with a fresh engine; context: the swipe's sentence " +
+            "before it (oracle); single thread\n" +
+            neuralLine() +
+            "dictionary ${o.dict.fileName} (${dictionary.wordCount} words)" +
+            (if (o.config.isNotEmpty()) "\nconfig overrides: ${o.config}" else "") +
+            "\n"
 
     /**
      * `--real FILE --learn`: the swipe-learning replay (see [SwipeReplay]); output to
@@ -186,19 +198,7 @@ class SwipeMain(private val o: Options) {
                 },
             )
         val result = replay.run(set.swipes, o.learnMinSwipes)
-        val header =
-            "KeyCorrect swipe-learning replay: ${file.fileName}, ${set.rows} rows read" +
-                (if (o.realLimit > 0) " (limit ${o.realLimit})" else "") +
-                "; ${set.swipes.size} swipes in ${result.sessionsSeen} sessions\n" +
-                "sessions kept (>= ${o.learnMinSwipes} swipes): ${result.sessions}; " +
-                "early (learning) swipes ${result.early}; scored late-half swipes " +
-                "${result.scored} (${result.scoredDictionary} dictionary words)\n" +
-                "each session is one user with a fresh engine; context: the swipe's sentence " +
-                "before it (oracle); single thread\n" +
-                neuralLine() +
-                "dictionary ${o.dict.fileName} (${dictionary.wordCount} words)" +
-                (if (o.config.isNotEmpty()) "\nconfig overrides: ${o.config}" else "") +
-                "\n"
+        val header = learnHeader(file, set, result)
         val text = result.text()
         println(header + "\n" + text)
         val seconds = (System.nanoTime() - started) / 1e9

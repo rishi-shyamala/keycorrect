@@ -22,6 +22,7 @@ import kotlinx.serialization.json.long
  * [EvalKeyboard]: [target] is the word without surrounding punctuation, [context] the words of its
  * sentence before it (the dataset has no committed text, so this is oracle context).
  */
+@Suppress("LongParameterList") // A plain data row: the dataset's fields, mapped.
 class RealSwipe(
     val target: String,
     val context: String,
