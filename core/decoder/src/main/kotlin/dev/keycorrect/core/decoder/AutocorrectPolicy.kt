@@ -99,7 +99,10 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
         if (input.isSuppressed(top.text)) return AutocorrectDecision.None
         var required =
             if (input.literalIsDictionaryWord) {
-                config.realWordMargin + maxOf(input.thresholdDelta, 0f)
+                val margin =
+                    if (shortRealWord(input, top)) config.shortRealWordMargin
+                    else config.realWordMargin
+                margin + maxOf(input.thresholdDelta, 0f)
             } else {
                 threshold + input.thresholdDelta
             }
@@ -129,6 +132,18 @@ class AutocorrectPolicy(val config: AutocorrectConfig = AutocorrectConfig()) {
         }
         return AutocorrectDecision(chosen, if (gap < config.nearTieMargin) other else null)
     }
+
+    /**
+     * Whether a real-word literal gets [AutocorrectConfig.shortRealWordMargin]: at most
+     * [AutocorrectConfig.shortRealWordMaxLength] chars and [top] one decoder edit away ("go" ->
+     * "to" before "the store"; the context acts through the scores). Never for a candidate with
+     * more apostrophes than the literal: "were" -> "we're" and "cant" -> "can't" keep the general
+     * margin.
+     */
+    private fun shortRealWord(input: AutocorrectInput, top: RankedCandidate): Boolean =
+        input.literal.length <= config.shortRealWordMaxLength &&
+            top.breakdown.editCount <= 1 &&
+            top.text.count { it == '\'' } <= input.literal.count { it == '\'' }
 
     /**
      * Whether a missing-space split of [literal] (an unknown word) may be applied automatically:
