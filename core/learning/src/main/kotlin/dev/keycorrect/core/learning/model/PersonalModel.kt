@@ -172,6 +172,9 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
     private var cUserWords: Set<String> = emptySet()
     private var cCasing: Map<String, String> = emptyMap()
 
+    /** Lifetime counters (never decayed, cleared on reset) for the LLM-tuning readiness note. */
+    @Synchronized fun lifetimeCounts() = LearningCounts(wordsLearned, contextCorrections)
+
     /** The latest published snapshot; hold on to it for the duration of one decode. */
     fun snapshot(): PersonalSnapshot = ref.get()
 

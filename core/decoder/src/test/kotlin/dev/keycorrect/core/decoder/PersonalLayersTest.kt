@@ -183,7 +183,9 @@ class PersonalLayersTest {
     fun aContextReplacementReordersTheNextWordsInThatContextOnly() {
         val before = nextWords(plain, "Sharks live ")
         assertThat(before.indexOf("in")).isAtLeast(0)
-        assertThat(before.indexOf("on")).isGreaterThan(before.indexOf("in")) // the base prefers "in"
+        // The base prefers "in": "on" is below it or not even offered.
+        assertThat(before.indexOf("on").let { if (it < 0) Int.MAX_VALUE else it })
+            .isGreaterThan(before.indexOf("in"))
 
         val model = trainedModel(replacements = 2)
         val e = engine(model.snapshot())

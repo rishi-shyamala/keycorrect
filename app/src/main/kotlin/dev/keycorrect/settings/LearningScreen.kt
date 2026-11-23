@@ -50,6 +50,13 @@ import kotlinx.coroutines.launch
 /** Choices for "Forget recent learning", in minutes. */
 private val ForgetWindows = listOf(15, 60, 24 * 60)
 
+/**
+ * Rough estimates of how much personal data on-device LLM tuning (LoRA, DECISIONS N-1, a future
+ * feature) would need: words learned from and context corrections (N-27). Not measured.
+ */
+private const val LLM_READY_WORDS = 20_000L
+private const val LLM_READY_CORRECTIONS = 300L
+
 /** What the screen needs from the learning system, read in one consistent step. */
 private data class LearningSummary(val overview: LearningOverview, val touch: TouchStatistics)
 
@@ -156,6 +163,25 @@ private fun LearningBody(
     }
     val summary = (state as LoadState.Loaded).value
     val overview = summary.overview
+
+    val wordsLeft = (LLM_READY_WORDS - overview.counts.wordsLearned).coerceAtLeast(0)
+    val correctionsLeft =
+        (LLM_READY_CORRECTIONS - overview.counts.contextCorrections).coerceAtLeast(0)
+    val number = java.text.NumberFormat.getIntegerInstance()
+    Text(
+        if (wordsLeft == 0L && correctionsLeft == 0L) {
+            stringResource(R.string.learning_llm_ready)
+        } else {
+            stringResource(
+                R.string.learning_llm_not_ready,
+                number.format(wordsLeft),
+                number.format(correctionsLeft),
+            )
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 
     // Sentence buffer count and "Clear now".
     ListItem(

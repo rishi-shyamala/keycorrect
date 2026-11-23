@@ -161,6 +161,15 @@ data class CorrectionEntry(
     val lastActiveMillis: Long = 0,
 )
 
+/** Built-in tune cell (core/learning `TuneRow`): the score of [word] after [prev]. */
+@Serializable
+data class TuneEntry(
+    val prev: String,
+    val word: String,
+    val score: Double,
+    val lastActiveMillis: Long = 0,
+)
+
 @Serializable
 data class SuppressionEntry(val typed: String, val target: String, val createdAtMillis: Long = 0)
 
@@ -206,6 +215,11 @@ data class LearningSection(
     val activeClockMillis: Long = 0,
     val ngrams: List<NgramEntry> = emptyList(),
     val corrections: List<CorrectionEntry> = emptyList(),
+    /** Built-in tune overlay (N-26); absent in older backups. */
+    val tune: List<TuneEntry> = emptyList(),
+    /** Lifetime counters for the LLM-tuning readiness note (N-27); absent in older backups. */
+    val wordsLearned: Long = 0,
+    val contextCorrections: Long = 0,
     val suppressions: List<SuppressionEntry> = emptyList(),
     val candidates: List<CandidateEntry> = emptyList(),
     val casing: List<CasingEntry> = emptyList(),

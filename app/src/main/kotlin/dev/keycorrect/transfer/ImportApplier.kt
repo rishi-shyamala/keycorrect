@@ -151,6 +151,10 @@ internal object ImportApplier {
                 l.corrections.map {
                     it.copy(lastActiveMillis = move(it.lastActiveMillis, source, targetClock))
                 },
+            tune =
+                l.tune.map {
+                    it.copy(lastActiveMillis = move(it.lastActiveMillis, source, targetClock))
+                },
         )
     }
 
@@ -221,6 +225,12 @@ internal object ImportApplier {
                 l.corrections
                     .filter { it.score.isFinite() && it.typed.isNotBlank() }
                     .distinctBy { Triple(it.typed, it.target, it.bucket) },
+            tune =
+                l.tune
+                    .filter { it.score.isFinite() && it.prev.isNotBlank() && it.word.isNotBlank() }
+                    .distinctBy { it.prev to it.word },
+            wordsLearned = l.wordsLearned.coerceAtLeast(0),
+            contextCorrections = l.contextCorrections.coerceAtLeast(0),
             suppressions = l.suppressions.distinctBy { it.typed to it.target },
             candidates = l.candidates.filter { it.commitWeight.isFinite() }.distinctBy { it.key },
             casing = l.casing.filter { it.count.isFinite() }.distinctBy { it.key to it.surface },

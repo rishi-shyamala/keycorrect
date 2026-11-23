@@ -13,6 +13,7 @@ import dev.keycorrect.core.learning.classifier.OutcomeClassifier
 import dev.keycorrect.core.learning.model.ForgetResult
 import dev.keycorrect.core.learning.model.JournalEntry
 import dev.keycorrect.core.learning.model.LearnedCorrection
+import dev.keycorrect.core.learning.model.LearningCounts
 import dev.keycorrect.core.learning.model.LearningPersistence
 import dev.keycorrect.core.learning.model.LearningStore
 import dev.keycorrect.core.learning.model.PersistedLearning
@@ -86,6 +87,8 @@ data class LearningOverview(
     val suppressedCorrections: List<Pair<String, String>>,
     /** Number of stored recent sentences (decision D10). */
     val sentenceCount: Int,
+    /** Lifetime counters for the LLM-tuning readiness note (N-27). */
+    val counts: LearningCounts = LearningCounts(),
 )
 
 /**
@@ -716,6 +719,7 @@ class LearningHost(
             blockedWords = model.blockedWords(),
             suppressedCorrections = model.suppressedCorrections(),
             sentenceCount = model.sentences.size(),
+            counts = model.lifetimeCounts(),
         )
 
     private fun changed() {
