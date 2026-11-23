@@ -105,11 +105,14 @@ class SwipeMain(private val o: Options) {
                 "\n" +
                 known.text("Results: real swipes of dictionary words")
         println(text)
+        val rerank =
+            if (o.rerankModel == null) ""
+            else SwipeRerankArm(o, engine, evaluator, REAL_WARMUP_SWIPES).run(set).also(::println)
 
         val seconds = (System.nanoTime() - started) / 1e9
         val json = realJson(file, set, all, known, seconds)
         Files.writeString(out.resolve("results.json"), Json.write(json) + "\n")
-        Files.writeString(out.resolve("report.txt"), header + "\n" + text)
+        Files.writeString(out.resolve("report.txt"), header + "\n" + text + rerank)
         if (o.failures > 0) Files.writeString(out.resolve("swipe_misses.csv"), all.missesCsv())
         println(
             String.format(

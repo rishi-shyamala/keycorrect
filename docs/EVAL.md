@@ -473,6 +473,33 @@ On the dev split SHARK² scores 81.66% and the fusion 91.39% top-1 (94.72% on di
 | SHARK², noise 0.4 | 78.53% | 87.51% | 0.14 / 1.04 |
 | Fused, noise 0.4 | 83.85% | 91.42% | 0.98 / 1.77 |
 
+#### Swipe rerank
+
+The SmolLM2 reranker that re-ranks typed words (`NeuralReranker`) also re-ranks the final decode of
+a swipe (`NeuralReranker.refineGesture`; previews are never reranked, and the same gates as for
+typing apply: `GestureRequest.engineAllowed`). It scores the final candidates only (no wider pool,
+no second decode), adds `strength * gestureLmWeight * (lp - mean lp)` to each candidate's score and
+re-sorts. `GESTURE_LM_WEIGHT` is 0.8, so 0.4 at the default LM strength 0.5. `--rerank MODEL.gguf`
+with `--mode swipe --real` runs it after the normal results; `--lm-weight` is the effective weight
+(strength 1), `--rerank-context-words` and `--rerank-cache` work as for taps. Without `--rerank` the
+output is unchanged.
+
+```
+./gradlew -q :tools:eval:run --args="--mode swipe --real data/raw/swipe/dev.jsonl --neural --threads 1 --rerank data/raw/neural/SmolLM2-135M-Q8_0.gguf --lm-weight 0.05,0.1,0.2,0.4,0.8 --rerank-cache"
+```
+
+| Real swipes | Top-1 | Top-3 | Wrong commits | Gained / lost | Scorer p50 / p95 ms |
+|---|---|---|---|---|---|
+| Dev (9,649), no rerank | 91.20% | | | | |
+| Dev, effective 0.4 | 92.15% (z 7.3) | | | | |
+| Dev, effective 0.4, pool 8 | 92.23% | | | | |
+| Test (48,355), no rerank | 91.11% | 94.78% | 8.81% | | |
+| **Test, effective 0.4 (shipped)** | **92.22%** | 94.78% | 7.70% | 698 / 161 (z 18.3) | 5.8 / 13.9 |
+
+On dev the plateau is 0.4-0.8, and a wider pool adds 0.08 points, which does not pay for the extra
+scoring. The test split was scored once with the shipped weight. The model only reorders the
+candidates the decoder already returned, so top-3 cannot change.
+
 The fusion cuts wrong commits on real swipes by half. Long words gain the most: 7+ letters go from
 72% to 88% top-1. The synthetic eval improves too (the generator is not what the encoder was
 trained on), so there is no regression. The decode costs about 1 ms more on the desktop, almost

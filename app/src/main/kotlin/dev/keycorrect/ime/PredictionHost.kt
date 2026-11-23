@@ -192,7 +192,11 @@ class PredictionHost(
                 override fun predictGesture(
                     request: GestureRequest,
                     stale: () -> Boolean,
-                ): PredictResult = decodeActivity.track { engine.decodeGestureNow(request, stale) }
+                ): PredictResult = decodeActivity.track {
+                    val result = engine.decodeGestureNow(request, stale)
+                    // Only the final decode of a swipe is reranked (it has engineAllowed).
+                    reranker?.refineGesture(request, result, stale) ?: result
+                }
 
                 override fun warmUpGestures(layout: KeyLayoutModel) = engine.warmUpGestures(layout)
             }

@@ -58,6 +58,11 @@ data class GestureRequest(
     val layout: KeyLayoutModel,
     val maxCandidates: Int = 3,
     val sequence: Long = 0,
+    /**
+     * Whether an optional engine (the language-model re-ranker) may see this request: set on the
+     * final decode of a swipe when [PredictRequest.engineAllowed] would be, never on previews.
+     */
+    val engineAllowed: Boolean = false,
 )
 
 /**
