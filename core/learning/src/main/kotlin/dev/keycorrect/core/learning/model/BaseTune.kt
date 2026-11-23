@@ -52,7 +52,9 @@ internal class BaseTune(private val cfg: PersonalModelConfig, private val decay:
         cells.clear()
         for (r in rows) {
             if (r.prev.isEmpty() || r.word.isEmpty() || !r.score.isFinite()) continue
-            cells.put(Text.join(r.prev, r.word), Cell(r.score, r.lastActiveMillis))
+            // A backup (or a merge of two) may hold any score: keep it within the live bound.
+            val score = r.score.coerceIn(-cfg.tuneMaxScore, cfg.tuneMaxScore)
+            cells.put(Text.join(r.prev, r.word), Cell(score, r.lastActiveMillis))
         }
     }
 }
@@ -65,7 +67,8 @@ internal class FrozenTune(
     private val cfg: PersonalModelConfig,
 ) {
     fun value(prev: String, word: String): Float {
-        val cell = if (size == 0) null else cells[Text.join(Text.key(prev), Text.key(word))]
+        if (size == 0) return 0f
+        val cell = cells[Text.join(Text.key(prev), Text.key(word))]
         val s = if (cell == null) 0.0 else decay.value(cell, now)
         return if (s == 0.0) 0f else (cfg.maxTune * tanh(s / cfg.tuneScale)).toFloat()
     }

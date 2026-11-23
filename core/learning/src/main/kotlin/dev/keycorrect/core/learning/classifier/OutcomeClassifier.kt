@@ -143,23 +143,37 @@ class OutcomeClassifier(private val config: ClassifierConfig = ClassifierConfig(
     }
 
     /**
-     * Signals b) and c) (N-26): a conflict with what the built-in model put first. The extra
-     * personal-layer weight is folded into the preferred word's own [WordUsed].
+     * Signals b) and c) (N-26): a conflict with what the built-in model put first. For a pick (b)
+     * the extra personal-layer weight is folded into the preferred word's own [WordUsed] and the
+     * top suggestion is tuned down; a typed word (c) only tunes its own pair up.
      */
     private fun withConflict(e: WordCommitted, base: List<LearningUpdate>): List<LearningUpdate> {
         val prev = e.context.lastOrNull()
         val conflict = if (e.committedIsKnown) conflictOf(e) else null
-        if (prev == null || conflict == null) return base
+        return when {
+            prev == null || conflict == null -> base
+            // Typing past the predictions is the commonest event there is: it only raises the
+            // typed pair (repetition makes it "regular"), never lowers the prediction, and adds no
+            // extra personal weight beyond the word's own use.
+            e.method == CommitMethod.Typed ->
+                base + BaseTuneEvidence(prev, e.committed, null, conflict.second)
+            else ->
+                boostFirstUse(base, e.committed) +
+                    BaseTuneEvidence(prev, e.committed, conflict.first.text, conflict.second)
+        }
+    }
+
+    /** [base] with [conflictExtraWeight][ClassifierConfig.conflictExtraWeight] on [word]'s use. */
+    private fun boostFirstUse(base: List<LearningUpdate>, word: String): List<LearningUpdate> {
         var boosted = false
-        val out = base.map {
-            if (!boosted && it is WordUsed && isPositiveUse(it, e.committed)) {
+        return base.map {
+            if (!boosted && it is WordUsed && isPositiveUse(it, word)) {
                 boosted = true
                 it.copy(weight = it.weight + config.conflictExtraWeight)
             } else {
                 it
             }
         }
-        return out + BaseTuneEvidence(prev, e.committed, conflict.first.text, conflict.second)
     }
 
     private fun isPositiveUse(u: WordUsed, word: String) = u.weight > 0f && sameWord(u.word, word)

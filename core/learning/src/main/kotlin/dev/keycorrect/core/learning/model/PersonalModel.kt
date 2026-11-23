@@ -249,8 +249,12 @@ class PersonalModel(val config: PersonalModelConfig = PersonalModelConfig()) {
             is LearningUpdate.BaseTuneEvidence -> {
                 val w = u.weight.toDouble()
                 tune.add(u.prev, u.preferred, w, active)
-                u.other?.let { tune.add(u.prev, it, -w, active) }
-                contextCorrections++
+                // Only an explicit choice over another word counts as a correction (N-27); typing
+                // past the predictions (no other word) only tunes.
+                u.other?.let {
+                    tune.add(u.prev, it, -w, active)
+                    contextCorrections++
+                }
                 record(now, u)
             }
             is LearningUpdate.NewWordEvidence -> {

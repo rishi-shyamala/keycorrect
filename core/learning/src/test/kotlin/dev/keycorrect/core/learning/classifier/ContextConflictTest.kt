@@ -104,10 +104,10 @@ class ContextConflictTest {
             classifier.classify(
                 committed("keys", shown = listOf(prediction("home", 0), prediction("world", 1)))
             )
+        // Only the typed pair goes up: the prediction is not tuned down, and no extra weight.
         assertThat(out)
-            .contains(BaseTuneEvidence("the", "keys", "home", cfg.typedPastPredictionTuneWeight))
-        assertThat(out)
-            .contains(WordUsed(ctx, "keys", cfg.typedWordWeight + cfg.conflictExtraWeight))
+            .contains(BaseTuneEvidence("the", "keys", null, cfg.typedPastPredictionTuneWeight))
+        assertThat(out).contains(WordUsed(ctx, "keys", cfg.typedWordWeight))
     }
 
     @Test
