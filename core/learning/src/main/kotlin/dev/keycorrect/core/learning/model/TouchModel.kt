@@ -172,10 +172,9 @@ internal class FrozenTouch(
      * reference variance) over the reference sigma, clamped. Null when disabled or too few samples.
      */
     fun sigmaScale(touchKey: String, char: Char): Pair<Float, Float>? {
-        if (!cfg.touchSigmaScaling) return null
-        val c = profiles[touchKey]?.get(char.lowercaseChar()) ?: return null
-        if (c.n < cfg.touchSigmaMinSamples || c.w <= 0) return null
-        return axisScale(c.varX, c.w) to axisScale(c.varY, c.w)
+        val c = if (cfg.touchSigmaScaling) profiles[touchKey]?.get(char.lowercaseChar()) else null
+        return if (c == null || c.n < cfg.touchSigmaMinSamples || c.w <= 0) null
+        else axisScale(c.varX, c.w) to axisScale(c.varY, c.w)
     }
 
     private val referenceVar =
