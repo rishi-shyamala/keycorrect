@@ -2,6 +2,7 @@ package dev.keycorrect.core.decoder.rerank
 
 import dev.keycorrect.core.engineapi.Candidate
 import dev.keycorrect.core.engineapi.CandidateSource
+import dev.keycorrect.core.engineapi.GestureRequest
 import dev.keycorrect.core.engineapi.PredictRequest
 import dev.keycorrect.core.engineapi.PredictResult
 import java.util.concurrent.Executor
@@ -53,6 +54,8 @@ fun interface PhraseGenerator {
  *   scorer thread; the words become the result's phrase.
  * @param phrasesEnabled the user's phrase-suggestion setting, read per call.
  * @param lmWeight scale of the bonus against the classic fused score.
+ * @param gestureLmWeight the same for swipes ([refineGesture]); the swipe score is on a different
+ *   scale (the fused log-likelihoods), where the dev plateau is 0.4-0.8 effective.
  * @param deadlineMs how long [refine] waits for the scorer before keeping the classic result.
  * @param maxTexts the most texts (literal plus candidates) sent to the scorer in one call.
  * @param contextWords the scorer sees between half of this and this many words before the cursor;
@@ -71,6 +74,7 @@ class NeuralReranker(
     val phraseGenerator: PhraseGenerator? = null,
     private val phrasesEnabled: () -> Boolean = { false },
     private val lmWeight: Float = LM_WEIGHT,
+    private val gestureLmWeight: Float = GESTURE_LM_WEIGHT,
     private val deadlineMs: Long = RERANK_DEADLINE_MS,
     private val maxTexts: Int = MAX_TEXTS,
     private val contextWords: Int = CONTEXT_WORDS,
@@ -88,20 +92,64 @@ class NeuralReranker(
         val strength = strengthFor(request) ?: return null
         if (busy.get()) return null // a late answer is still running; don't decode for nothing
         val scored = wideResult(request, result, stale, redecode) ?: return null
-        val texts = textsToScore(scored)
-        if (texts.size < 2) return null // one text has nothing to be compared with
         val context = contextWindow(request.context.before, contextWords)
+        val bonus =
+            bonusFor(context, strength * lmWeight, textsToScore(scored), stale) ?: return null
+        val refined = redecode(request.copy(lmBonus = bonus))
+        if (stale()) return null
+        return withPhrase(refined, context, stale) ?: refined
+    }
 
+    /**
+     * The swipe counterpart of [refine], for the final decode of a swipe only (the keyboard sets
+     * [GestureRequest.engineAllowed] there, under the same gates as for typing, and never on
+     * previews): scores the candidates of the finished [result] and returns it with each score
+     * raised by the bonus, using [gestureLmWeight], re-sorted (best score first, ties by text, as
+     * the gesture decoder sorts). Only the candidates of [result] are scored, with no wider pool
+     * and no second decode: the gesture decoder adds nothing after the candidate score. Null (keep
+     * [result]) in the cases [refine] returns null for. Phrases are not generated for swipes, and
+     * the result's literal and phrase are kept as they are.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    fun refineGesture(
+        request: GestureRequest,
+        result: PredictResult,
+        stale: () -> Boolean,
+    ): PredictResult? {
+        val strength =
+            lmStrength().takeIf { request.engineAllowed && it > 0f && it.isFinite() } ?: return null
+        if (busy.get() || stale()) return null
+        val head = result.candidates.filter { it.text.isNotBlank() }.distinctBy { it.text }
+        val context = contextWindow(request.context.before, contextWords)
+        val bonus =
+            bonusFor(context, strength * gestureLmWeight, head.map { it.text }, stale)
+                ?: return null
+        val ranked =
+            head
+                .map { it.copy(score = it.score + (bonus[it.text] ?: 0f)) }
+                .sortedWith(compareByDescending<Candidate> { it.score }.thenBy { it.text })
+        return result.copy(candidates = ranked, autocorrect = ranked.firstOrNull())
+    }
+
+    /**
+     * `weight * (lp - mean lp)` for each of [texts] (the model's log-probabilities after
+     * [context]); null when there is nothing to compare, no answer in time, or the input moved on.
+     */
+    @Suppress("ReturnCount") // guard clauses
+    private fun bonusFor(
+        context: String,
+        weight: Float,
+        texts: List<String>,
+        stale: () -> Boolean,
+    ): Map<String, Float>? {
+        if (texts.size < 2) return null // one text has nothing to be compared with
         val job = start { scorer.score(context, texts, deadlineMs) } ?: return null
         val lp = await(job, deadlineMs, stale) ?: return null
         if (lp.size != texts.size || lp.any { !it.isFinite() }) return null
         val mean = lp.average().toFloat()
         val bonus = HashMap<String, Float>(texts.size * 2)
-        for (i in texts.indices) bonus[texts[i]] = strength * lmWeight * (lp[i] - mean)
-        if (stale()) return null
-        val refined = redecode(request.copy(lmBonus = bonus))
-        if (stale()) return null
-        return withPhrase(refined, context, stale) ?: refined
+        for (i in texts.indices) bonus[texts[i]] = weight * (lp[i] - mean)
+        return if (stale()) null else bonus
     }
 
     /** The LM strength to apply to [request], or null when it may not or need not be reranked. */
@@ -243,6 +291,12 @@ class NeuralReranker(
          * "Eval").
          */
         const val LM_WEIGHT = 0.2f
+
+        /**
+         * Default scale of the bonus for swipes. With the default LM strength (0.5) the effective
+         * weight is 0.4: 91.20% to 92.15% top-1 on 9,649 dev swipes (docs/EVAL.md, "Swipe rerank").
+         */
+        const val GESTURE_LM_WEIGHT = 0.8f
 
         /** Default for the most texts sent to the scorer in one call. */
         const val MAX_TEXTS = 16
